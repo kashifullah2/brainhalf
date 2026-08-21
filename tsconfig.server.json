@@ -1,0 +1,20 @@
+// Typechecks the Cloudflare-side code (Pages Functions + shared server lib),
+// which runs on the Workers runtime rather than in the browser and therefore
+// needs a different set of ambient types than tsconfig.json provides.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["functions/**/*.ts", "server/**/*.ts"]
+}

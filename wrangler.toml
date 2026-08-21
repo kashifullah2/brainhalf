@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# Cloudflare Pages configuration
+#
+# Local full-stack dev (Functions + D1 + HMR):
+#   pnpm dev:api        # wrangler in front, vite behind it
+#
+# Apply migrations:
+#   pnpm db:migrate:local     # local sqlite under .wrangler/
+#   pnpm db:migrate:remote    # the real D1 database
+#
+# Secrets (OCR_API_KEY, GOOGLE_CLIENT_ID) are NOT stored here. Set them in the
+# Pages dashboard (Settings -> Environment variables) and in .dev.vars locally.
+#
+# OCR_API_KEY is required: functions/api/ocr.ts returns 503 without it rather
+# than falling back to a credential in source. OCR_API_URL, OCR_MODEL and
+# OCR_MODEL_ESCALATION are plain config with defaults in code (OpenAI,
+# gpt-5.4-mini, gpt-5.4) — set them only to override.
+# ---------------------------------------------------------------------------
+
+# `name` must match the existing Cloudflare Pages project, which is what serves
+# brainhalf.com / www.brainhalf.com.
+name = "brainhalf"
+compatibility_date = "2026-08-01"
+pages_build_output_dir = "dist"
+
+# The application database: users, sessions, batches, documents.
+# Local dev uses its own sqlite file under .wrangler/ keyed by database_name,
+# so nothing here touches production until --remote is passed.
+[[d1_databases]]
+binding = "DB"
+database_name = "brainhalf-ocr-db"
+database_id = "dea61974-e734-4bf6-9532-c1e6ef61620b"
+migrations_dir = "migrations"
+
+# Original uploaded documents. Keys are prefixed with the owner's user id,
+# which is what makes the ownership check in functions/api/storage possible.
+[[r2_buckets]]
+binding = "DOCUMENTS"
+bucket_name = "brainhalf-storage"
+
+# ---------------------------------------------------------------------------
+# There is no EMAIL binding here, and two endpoints look for one
+# (server/http.ts declares it optional):
+#
+#   functions/api/contact.ts              -> answers 503 without it
+#   functions/api/auth/password-reset.ts  -> stores the token, then logs the
+#                                            reset URL instead of sending it
+#
+# So password reset is testable but not deliverable, and the form on /contact
+# sends through EmailJS from the browser instead (see the comment at the top of
+# src/pages/legal/Contact.tsx). Wiring real delivery means either adding a
+# binding that Pages Functions support, or calling a mail provider's HTTP API
+# with a secret and adapting the `EMAIL` shape in server/http.ts to match --
+# that needs an account and a credential, so it is left open rather than
+# guessed at.
+# ---------------------------------------------------------------------------

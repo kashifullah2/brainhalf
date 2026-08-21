@@ -1,0 +1,49 @@
+# Response headers for the static assets and the HTML document.
+#
+# This file only covers what Pages serves from dist/. Function responses set
+# their own headers in server/http.ts (no-store, nosniff, Referrer-Policy), so
+# the API is not affected by anything here.
+#
+# Every external origin below is one the app actually loads from. Adding an
+# origin is a decision to trust it with script execution or data; removing one
+# breaks whatever used it. The current set:
+#   accounts.google.com      Google Identity Services (script + its iframe,
+#                            plus the GSI stylesheet it injects)
+#   www.googletagmanager.com Google Analytics loader
+#   *.google-analytics.com   Analytics beacons
+#   static.cloudflareinsights.com Cloudflare Web Analytics beacon (Pages
+#                            injects this automatically when analytics is on)
+#   cloudflareinsights.com   Where that beacon posts its RUM data
+#   fonts.googleapis.com     Font stylesheet, @import'ed from src/index.css
+#   fonts.gstatic.com        The font files themselves
+#   api.dicebear.com         Fallback avatars in AuthContext
+#   lh3.googleusercontent.com Google profile pictures
+#
+# Two notes for whoever edits this next:
+#
+# 1. style-src needs 'unsafe-inline' because React writes inline style
+#    attributes (progress bars, confidence meters). script-src deliberately does
+#    NOT get it. The JSON-LD block in index.html is an inline <script>, so a
+#    strict script-src makes the browser log a refusal for it. Nothing breaks:
+#    application/ld+json is never executed, and crawlers parse the HTML without
+#    applying CSP. Do not add 'unsafe-inline' to script-src to silence it.
+#
+# 2. connect-src now includes OCR vendor origins (https://api.futureppo.top 
+#    and https://api.openai.com) to allow the browser-side fallback path to work
+#    when Cloudflare Pages times out the proxy request.
+/*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.googletagmanager.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://api.dicebear.com https://lh3.googleusercontent.com https://www.googletagmanager.com; connect-src 'self' https://accounts.google.com https://www.google-analytics.com https://*.google-analytics.com https://cloudflareinsights.com https://api.futureppo.top https://api.openai.com https://*.amazonaws.com; frame-src https://accounts.google.com; worker-src 'self' blob:; upgrade-insecure-requests
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# Hashed build output is immutable, so it can be cached hard. The HTML document
+# is not hashed and must not be, or a deploy would not reach anyone.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: no-cache

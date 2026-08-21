@@ -1,0 +1,15 @@
+# Copy to .dev.vars for local `pnpm dev:api`.
+#
+# Pages Functions read their environment from .dev.vars (NOT .env) when running
+# under wrangler. .dev.vars is gitignored; this example file is not.
+#
+# In production set the same names in the Cloudflare Pages dashboard under
+# Settings -> Environment variables, with OCR_API_KEY marked as a Secret.
+
+OCR_API_KEY=
+OCR_API_URL=https://api.futureppo.top/v1
+OCR_MODEL=hunyuan-ocr
+
+# Needed by /api/auth/google to validate the `aud` claim of the Google ID token.
+# Use the same value as VITE_GOOGLE_CLIENT_ID in .env.
+GOOGLE_CLIENT_ID=
