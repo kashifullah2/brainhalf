@@ -713,7 +713,7 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
               <Check className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary-foreground opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" strokeWidth={3} />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-foreground">Re-run with latest engine</span>
+              <span className="text-sm font-bold text-foreground">Re-run fresh extraction</span>
               <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Bypass cache for fresh extraction</span>
             </div>
           </label>
