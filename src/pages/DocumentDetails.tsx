@@ -72,7 +72,7 @@ export default function DocumentDetails() {
   const [, params] = useRoute("/app/batches/:batchId/documents/:documentId");
   const batchId = params?.batchId ? parseInt(params.batchId, 10) : 0;
   const documentId = params?.documentId ? parseInt(params.documentId, 10) : 0;
-  usePageTitle(`Document #${documentId} · BrainHalf`);
+  usePageTitle(`Document #${documentId} · BrainHalf`, { noindex: true });
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -287,7 +287,7 @@ export default function DocumentDetails() {
             <Tabs defaultValue="fields" className="flex flex-col h-full">
               <TabsList className="grid w-full grid-cols-2 shrink-0 p-1.5 bg-muted/50 rounded-2xl">
                 <TabsTrigger value="fields" className="rounded-xl font-bold py-2 data-[state=active]:shadow-sm">Extracted Fields</TabsTrigger>
-                <TabsTrigger value="raw" className="rounded-xl font-bold py-2 data-[state=active]:shadow-sm">Raw OCR Text</TabsTrigger>
+                <TabsTrigger value="raw" className="rounded-xl font-bold py-2 data-[state=active]:shadow-sm">Raw Text</TabsTrigger>
               </TabsList>
               
               <TabsContent value="fields" className="flex-1 mt-6 outline-none min-h-0">

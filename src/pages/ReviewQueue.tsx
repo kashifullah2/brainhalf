@@ -23,7 +23,7 @@ import {
 
 export default function ReviewQueue() {
   const { toast } = useToast();
-  usePageTitle("Review queue · BrainHalf");
+  usePageTitle("Review queue · BrainHalf", { noindex: true });
   const [items, setItems] = useState<FlaggedDocument[]>([]);
   const [threshold, setThreshold] = useState<number>(0.80);
   const [isLoading, setIsLoading] = useState(true);

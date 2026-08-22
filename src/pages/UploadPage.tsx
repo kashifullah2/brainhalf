@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 export default function UploadPage() {
   const [, setLocation] = useLocation();
-  usePageTitle("New batch · BrainHalf");
+  usePageTitle("New batch · BrainHalf", { noindex: true });
   const createBatch = useCreateBatch();
   const [mode, setMode] = useState("invoice");
   const [customPrompt, setCustomPrompt] = useState("");

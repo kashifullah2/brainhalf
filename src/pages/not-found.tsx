@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/lib/use-page-title";
 
 export default function NotFound() {
-  usePageTitle("Page not found · BrainHalf");
+  usePageTitle("404 Page not found · BrainHalf", { noindex: true });
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-24 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted text-muted-foreground">

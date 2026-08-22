@@ -41,7 +41,8 @@ const FAQ_ITEMS = [
 
 export default function Home() {
   usePageTitle(
-    "BrainHalf — AI OCR for invoices, receipts & documents",
+    "BrainHalf — AI Document Extraction for invoices, receipts & documents",
+    { canonicalPath: "/", noindex: false }
   );
   const [activeTab, setActiveTab] = useState<
     "invoice" | "receipt" | "academic"
@@ -270,7 +271,7 @@ export default function Home() {
                     <span className="text-xs font-medium text-muted-foreground">
                       Processed in{" "}
                       <strong className="text-foreground">0.84s</strong> via
-                      Hunyuan AI
+                      BH Model 1
                     </span>
                     <Button
                       asChild
@@ -539,7 +540,7 @@ export default function Home() {
 
           <div className="pt-8 border-t border-border/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground font-medium">
             <span>© 2026 brainhalf. All rights reserved.</span>
-            <span>AI OCR for invoices, receipts & documents.</span>
+            <span>AI document extraction for invoices, receipts & documents.</span>
           </div>
         </div>
       </footer>

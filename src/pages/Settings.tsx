@@ -17,7 +17,7 @@ const TAB_IDS = ["organization", "security", "privacy", "team", "billing"];
 export default function Settings() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
-  usePageTitle("Settings · BrainHalf");
+  usePageTitle("Settings · BrainHalf", { noindex: true });
   // The tab is read from the URL so /app/settings/billing is linkable and the
   // browser's back button steps through tabs.
   const [match, params] = useRoute<{ tab: string }>("/app/settings/:tab");

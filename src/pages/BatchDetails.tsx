@@ -88,7 +88,7 @@ export default function BatchDetails() {
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [page, setPage] = useState(0);
-  usePageTitle(batch ? `Batch #${batch.id} · BrainHalf` : "Batch · BrainHalf");
+  usePageTitle(batch ? `Batch #${batch.id} · BrainHalf` : "Batch · BrainHalf", { noindex: true });
   // The confidence bars used a hardcoded 0.9 cut-off, so an 87% field looked
   // "warning" in the table while the review queue (80%) did not flag it at all.
   const [threshold, setThreshold] = useState(0.8);

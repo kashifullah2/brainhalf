@@ -42,7 +42,7 @@ import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
 export default function AppHome() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  usePageTitle("Dashboard · BrainHalf");
+  usePageTitle("Dashboard · BrainHalf", { noindex: true });
   const queryClient = useQueryClient();
   const { data: batches, isLoading, error } = useListBatches();
 

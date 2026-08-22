@@ -3,7 +3,7 @@ import { LegalLayout } from "./LegalLayout";
 
 export default function PrivacyPolicy() {
   return (
-    <LegalLayout title="Privacy Policy">
+    <LegalLayout title="Privacy Policy" canonicalPath="/privacy">
       <h2>1. Information We Collect</h2>
       <p>We only collect the information necessary to provide you with the BrainHalf OCR service. This includes:</p>
       <ul>
@@ -15,13 +15,13 @@ export default function PrivacyPolicy() {
       <h2>2. Core Data Privacy Commitments</h2>
       <p>At BrainHalf, the security and confidentiality of your information are fundamental to our operations. We strictly adhere to the following core commitments regarding the handling of your data:</p>
       <ul>
-        <li><strong>No Data Misuse:</strong> We process your documents and information strictly for the purpose of providing the OCR extraction services you have requested. We do not engage in unauthorized access, secondary processing, or any form of misuse of your confidential data.</li>
+        <li><strong>No Data Misuse:</strong> We process your documents and information strictly for the purpose of providing the data extraction services you have requested. We do not engage in unauthorized access, secondary processing, or any form of misuse of your confidential data.</li>
         <li><strong>No Data Selling or Unauthorized Sharing:</strong> Your personal information and uploaded documents are strictly confidential. We do not sell, rent, license, or distribute your data to third-party data brokers or marketing agencies under any circumstances without your explicit, opt-in consent.</li>
         <li><strong>No AI Model Training:</strong> We fully respect your intellectual property and sensitive commercial information. Your documents are processed exclusively for immediate data extraction and are explicitly restricted from being used to train, fine-tune, or otherwise improve our artificial intelligence models or any third-party foundation models.</li>
       </ul>
 
       <h2>3. How We Use Your Data</h2>
-      <p>Your uploaded documents are transmitted securely to our extraction engine (Hunyuan OCR) and are <strong>not used to train our AI models</strong>. Once the extraction is complete, your extracted data is safely stored locally in your browser's IndexedDB database.</p>
+      <p>Your uploaded documents are transmitted securely to our extraction engine (BH Model 1 & BH Model 2) and are <strong>not used to train our AI models</strong>. Once the extraction is complete, your extracted data is safely stored locally in your browser's IndexedDB database.</p>
       <p>We do not sell, rent, or trade your personal information or uploaded documents with third parties.</p>
 
       <h2>3. Data Security & Retention</h2>

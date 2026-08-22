@@ -33,7 +33,6 @@
     "vitest": "^2.1.9"
   },
   "dependencies": {
-    "@aws-sdk/client-textract": "^3.1111.0",
     "@emailjs/browser": "^4.4.1",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",

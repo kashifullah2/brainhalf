@@ -3,8 +3,11 @@ import { Link } from "wouter";
 import { Navbar } from "@/components/layout/Navbar";
 import { usePageTitle } from "@/lib/use-page-title";
 
-export function LegalLayout({ children, title }: { children: React.ReactNode; title: string }) {
-  usePageTitle(`${title} · BrainHalf`);
+export function LegalLayout({ children, title, canonicalPath }: { children: React.ReactNode; title: string; canonicalPath?: string }) {
+  usePageTitle(`${title} · BrainHalf`, {
+    canonicalPath,
+    noindex: false,
+  });
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
       <Navbar />
@@ -26,7 +29,7 @@ export function LegalLayout({ children, title }: { children: React.ReactNode; ti
       <footer className="border-t border-border/40 py-6 md:py-0 bg-muted/20 mt-12">
         <div className="container flex flex-col items-center justify-between gap-4 md:h-16 md:flex-row px-4 md:px-6">
           <p className="text-center text-sm leading-loose text-muted-foreground md:text-left">
-            Built by <a href="#" className="font-medium underline underline-offset-4">brainhalf</a>. All rights reserved.
+            Built by <Link href="/" className="font-medium underline underline-offset-4">brainhalf</Link>. All rights reserved.
           </p>
           <div className="flex gap-4 text-sm font-medium text-muted-foreground">
             <Link href="/privacy" className="hover:text-foreground">Privacy</Link>

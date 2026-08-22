@@ -17,7 +17,6 @@
 // ---------------------------------------------------------------------------
 
 import localforage from "localforage";
-import { TextractClient, DetectDocumentTextCommand } from "@aws-sdk/client-textract";
 import { 
   calculateFieldConfidence, 
   calculateDocumentOverallConfidence,
@@ -134,62 +133,7 @@ export async function processWithHunyuanOCR(
     console.log(`[OCR Client] forceReprocess enabled. Bypassing cache for ${file.name}`);
   }
 
-  if (tier === "textract" as string) {
-    const accessKeyId = (import.meta.env.VITE_AWS_ACCESS_KEY_ID || "").trim();
-    const secretAccessKey = (import.meta.env.VITE_AWS_SECRET_ACCESS_KEY || "").trim();
-    if (!accessKeyId || !secretAccessKey) {
-      throw new Error("AWS credentials not configured. Please add VITE_AWS_ACCESS_KEY_ID and VITE_AWS_SECRET_ACCESS_KEY to .env");
-    }
 
-    const client = new TextractClient({
-      region: import.meta.env.VITE_AWS_REGION || "us-east-1",
-      credentials: {
-        accessKeyId,
-        secretAccessKey
-      }
-    });
-    
-    const base64Content = base64Data.split(",")[1].replace(/\s/g, "");
-    const binaryString = atob(base64Content);
-    const len = binaryString.length;
-    const imageBytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      imageBytes[i] = binaryString.charCodeAt(i);
-    }
-
-    const command = new DetectDocumentTextCommand({
-      Document: { Bytes: imageBytes }
-    });
-    
-    try {
-      const response = await client.send(command);
-      let rawText = "";
-      if (response.Blocks) {
-        rawText = response.Blocks
-          .filter(block => block.BlockType === "LINE")
-          .map(block => block.Text)
-          .join("\n");
-      }
-
-      const confDetails = calculateFieldConfidence("Full Text Transcription", rawText, 0.99, imageQuality);
-      return {
-        rawText,
-        fields: [{
-          normalizedField: "Full Text Transcription",
-          originalLabel: "Transcription",
-          value: rawText,
-          editedValue: null,
-          confidence: confDetails.score
-        }],
-        rows: []
-      };
-    } catch (err: any) {
-      console.error("Textract Error:", err);
-      const errorName = err.name || "UnknownError";
-      const errorMsg = err.message || "An error occurred";
-      throw new Error(`Textract Error (${errorName}): ${errorMsg}`);
-    }
-  }
 
   // PDFs go as a `file` part, images as `image_url`. The vision `image_url`
   // field accepts png/jpeg/webp/gif only, so the PDFs this app has always

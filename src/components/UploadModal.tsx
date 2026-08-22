@@ -90,7 +90,7 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "multilingual",
-    label: "Multilingual OCR",
+    label: "Multilingual Extraction",
     icon: Globe,
     tagline: "Any language",
     description:
@@ -671,7 +671,7 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
           {/* Two equal-height columns filling the row. */}
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="flex flex-col gap-2 p-3 border border-border/40 rounded-xl bg-muted/20">
-              <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">OCR Engine</span>
+              <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Extraction Model</span>
               <div className="flex bg-background border border-border/40 rounded-lg overflow-hidden flex-wrap">
                 <button
                   type="button"
@@ -682,23 +682,23 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
                   type="button"
                   className={cn("flex-1 px-2 py-1.5 text-[11px] font-bold transition-colors border-l border-border/40 min-w-[50px]", engine === "hunyuan" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground")}
                   onClick={() => setEngine("hunyuan")}
-                  title="Force Hunyuan OCR (Fast, standard)"
+                  title="Force BH Model 1 (Fast, standard extraction)"
                 >
-                  Hunyuan
+                  BH Model 1
                 </button>
                 <button
                   type="button"
                   className={cn("flex-1 px-2 py-1.5 text-[11px] font-bold transition-colors border-l border-border/40 min-w-[50px] rounded-r-md", engine === "textract" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground")}
                   onClick={() => setEngine("textract")}
-                  title="Force Amazon Textract (Forms & Tables)"
+                  title="Force BH Model 2 (Forms & Tables high precision)"
                 >
-                  Textract
+                  BH Model 2
                 </button>
               </div>
               <p className="text-[11px] text-muted-foreground mt-2 max-w-[280px]">
-                {engine === "auto" ? "Starts with Model 1, escalates to Premium on low confidence." :
-                 engine === "hunyuan" ? "Forces BrainHalf Model 1 for all pages." :
-                 engine === "textract" ? "Uses Amazon Textract for high-accuracy document parsing." : ""}
+                {engine === "auto" ? "Starts with BH Model 1, escalates to BH Model 2 on low confidence." :
+                 engine === "hunyuan" ? "Forces BrainHalf Model 1 for fast document extraction." :
+                 engine === "textract" ? "Uses BrainHalf Model 2 for high-precision form and table parsing." : ""}
               </p>
             </div>
 

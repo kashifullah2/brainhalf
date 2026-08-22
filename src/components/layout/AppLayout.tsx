@@ -109,7 +109,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
                     <span className="truncate text-base font-semibold tracking-tight">
                       brain<span className="font-extrabold text-primary">half</span>
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">OCR Platform</span>
+                    <span className="truncate text-xs text-muted-foreground">AI Extraction</span>
                   </div>
                 </Link>
               </SidebarMenuButton>

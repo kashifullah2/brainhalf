@@ -315,13 +315,13 @@ async function extractWithEscalation(
 ): Promise<{ result: HunyuanOCRResponse; overallConfidence: number }> {
 
   if (engine === "textract") {
-    // For now, call processWithHunyuanOCR with "textract" tier, which will be handled in ocr-client.ts
+    // Force BH Model 2 (escalation tier)
     const result = await processWithHunyuanOCR(
       file,
       mode,
       forceReprocess,
       customPrompt,
-      "textract" as any,
+      "escalation",
     );
     const overallConfidence = calculateDocumentOverallConfidence(
       result.fields,

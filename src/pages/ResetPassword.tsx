@@ -27,7 +27,7 @@ const MIN_PASSWORD_LENGTH = 10;
 export default function ResetPassword() {
   const [, setLocation] = useLocation();
   const { confirmPasswordReset } = useAuth();
-  usePageTitle("Reset password · BrainHalf");
+  usePageTitle("Reset password · BrainHalf", { noindex: true });
 
   // A reset link is always a fresh document load, so the query string is read
   // once rather than subscribed to.

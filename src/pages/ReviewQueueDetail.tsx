@@ -35,7 +35,7 @@ export default function ReviewQueueDetail() {
   const [, params] = useRoute("/app/review-queue/:documentId");
   const documentId = params?.documentId ? parseInt(params.documentId, 10) : 0;
   const { toast } = useToast();
-  usePageTitle("Review document · BrainHalf");
+  usePageTitle("Review document · BrainHalf", { noindex: true });
 
   const [item, setItem] = useState<FlaggedDocument | null>(null);
   const [threshold, setThreshold] = useState<number>(0.80);

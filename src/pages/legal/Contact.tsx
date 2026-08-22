@@ -96,7 +96,7 @@ export default function Contact() {
   };
 
   return (
-    <LegalLayout title="Contact Us">
+    <LegalLayout title="Contact Us" canonicalPath="/contact">
       <p>Have questions about BrainHalf OCR? Need help with enterprise volume or custom integration? Drop us a message below.</p>
       
       <div className="mt-8 rounded-2xl border border-border/40 bg-card p-6 md:p-8 shadow-sm not-prose">

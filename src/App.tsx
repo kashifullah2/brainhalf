@@ -46,7 +46,7 @@ const queryClient = new QueryClient({
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const AUTH_FEATURES = [
-  { label: "OCR any invoice or receipt", sub: "PDF, PNG, JPG, WEBP — all supported" },
+  { label: "Extract data from any invoice or receipt", sub: "PDF, PNG, JPG, WEBP — all supported" },
   { label: "5 extraction modes", sub: "Invoice, full text, table, key-value, receipt" },
   { label: "Export in one click", sub: "CSV, Excel, or JSON — ready to use" },
 ];
@@ -72,7 +72,7 @@ function AuthBrandPanel() {
       {/* headline */}
       <div className="relative z-10 flex flex-col gap-8">
         <div>
-          <p className="text-[11px] font-bold tracking-widest uppercase text-primary/80 mb-4">Powered by Hunyuan OCR</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-primary/80 mb-4">Powered by BH Model 1 & BH Model 2</p>
           <h2 className="text-4xl font-extrabold leading-tight tracking-tight text-white">
             Stop typing.<br />Start extracting.
           </h2>
@@ -139,7 +139,7 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
 }
 
 function SignInPage() {
-  usePageTitle("Sign in · BrainHalf");
+  usePageTitle("Sign in · BrainHalf", { canonicalPath: "/sign-in", noindex: false });
   return (
     <AuthLayout>
       <GoogleAuthCard mode="sign-in" />
@@ -148,7 +148,7 @@ function SignInPage() {
 }
 
 function SignUpPage() {
-  usePageTitle("Create account · BrainHalf");
+  usePageTitle("Create account · BrainHalf", { canonicalPath: "/sign-up", noindex: false });
   return (
     <AuthLayout>
       <GoogleAuthCard mode="sign-up" />
