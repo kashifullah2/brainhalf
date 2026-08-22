@@ -669,54 +669,22 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
       {isStarted && queue.length > 0 && (
         <div className="flex flex-col gap-4 pt-6 border-t border-border/50">
           {/* Two equal-height columns filling the row. */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="flex flex-col gap-2 p-3 border border-border/40 rounded-xl bg-muted/20">
-              <span className="text-[11px] font-bold text-foreground uppercase tracking-widest">Extraction Model</span>
-              <div className="flex bg-background border border-border/40 rounded-lg overflow-hidden flex-wrap">
-                <button
-                  type="button"
-                  className={cn("flex-1 px-2 py-1.5 text-[11px] font-bold transition-colors min-w-[50px]", engine === "auto" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground")}
-                  onClick={() => setEngine("auto")}
-                >Auto</button>
-                <button
-                  type="button"
-                  className={cn("flex-1 px-2 py-1.5 text-[11px] font-bold transition-colors border-l border-border/40 min-w-[50px]", engine === "hunyuan" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground")}
-                  onClick={() => setEngine("hunyuan")}
-                  title="Force BH Model 1 (Fast, standard extraction)"
-                >
-                  BH Model 1
-                </button>
-                <button
-                  type="button"
-                  className={cn("flex-1 px-2 py-1.5 text-[11px] font-bold transition-colors border-l border-border/40 min-w-[50px] rounded-r-md", engine === "textract" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground")}
-                  onClick={() => setEngine("textract")}
-                  title="Force BH Model 2 (Forms & Tables high precision)"
-                >
-                  BH Model 2
-                </button>
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-2 max-w-[280px]">
-                {engine === "auto" ? "Starts with BH Model 1, escalates to BH Model 2 on low confidence." :
-                 engine === "hunyuan" ? "Forces BrainHalf Model 1 for fast document extraction." :
-                 engine === "textract" ? "Uses BrainHalf Model 2 for high-precision form and table parsing." : ""}
-              </p>
-            </div>
-
+          <div className="flex flex-col gap-4">
             <label className="flex items-center gap-3 p-3 border border-border/40 rounded-xl bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors">
               <div className="relative flex items-center shrink-0">
-              <input 
-                type="checkbox"
-                checked={forceReprocess}
-                onChange={(e) => setForceReprocess(e.target.checked)}
-                className="peer h-5 w-5 appearance-none rounded border border-primary/30 bg-background checked:bg-primary checked:border-primary transition-colors cursor-pointer"
-              />
-              <Check className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary-foreground opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" strokeWidth={3} />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-foreground">Re-run fresh extraction</span>
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Bypass cache for fresh extraction</span>
-            </div>
-          </label>
+                <input 
+                  type="checkbox"
+                  checked={forceReprocess}
+                  onChange={(e) => setForceReprocess(e.target.checked)}
+                  className="peer h-5 w-5 appearance-none rounded border border-primary/30 bg-background checked:bg-primary checked:border-primary transition-colors cursor-pointer"
+                />
+                <Check className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary-foreground opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" strokeWidth={3} />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-foreground">Re-run fresh extraction</span>
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Bypass cache for fresh extraction</span>
+              </div>
+            </label>
           </div>
           <div className="flex items-center justify-between gap-4">
             <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground font-mono tabular-nums">

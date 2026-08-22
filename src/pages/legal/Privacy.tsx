@@ -21,7 +21,7 @@ export default function PrivacyPolicy() {
       </ul>
 
       <h2>3. How We Use Your Data</h2>
-      <p>Your uploaded documents are transmitted securely to our extraction engine (BH Model 1 & BH Model 2) and are <strong>not used to train our AI models</strong>. Once the extraction is complete, your extracted data is safely stored locally in your browser's IndexedDB database.</p>
+      <p>Your uploaded documents are transmitted securely to our extraction engine (BH Model 1) and are <strong>not used to train our AI models</strong>. Once the extraction is complete, your extracted data is safely stored locally in your browser's IndexedDB database.</p>
       <p>We do not sell, rent, or trade your personal information or uploaded documents with third parties.</p>
 
       <h2>3. Data Security & Retention</h2>

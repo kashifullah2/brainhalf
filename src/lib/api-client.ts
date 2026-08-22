@@ -310,27 +310,9 @@ async function extractWithEscalation(
   mode: string,
   forceReprocess: boolean,
   customPrompt: string | undefined,
-  threshold: number,
-  engine: "auto" | "hunyuan" | "textract" = "auto",
+  _threshold: number,
+  _engine: string = "hunyuan",
 ): Promise<{ result: HunyuanOCRResponse; overallConfidence: number }> {
-
-  if (engine === "textract") {
-    // Force BH Model 2 (escalation tier)
-    const result = await processWithHunyuanOCR(
-      file,
-      mode,
-      forceReprocess,
-      customPrompt,
-      "escalation",
-    );
-    const overallConfidence = calculateDocumentOverallConfidence(
-      result.fields,
-      result.rawText,
-    );
-    return { result, overallConfidence };
-  }
-
-
   const result = await processWithHunyuanOCR(
     file,
     mode,
@@ -342,46 +324,6 @@ async function extractWithEscalation(
     result.fields,
     result.rawText,
   );
-
-  if (overallConfidence >= threshold || engine === "hunyuan") {
-    return { result, overallConfidence };
-  }
-
-  // At most one escalation per document. Retrying further would spend the
-  // premium quota on pages that are genuinely illegible rather than merely hard.
-  try {
-    const escalated = await processWithHunyuanOCR(
-      file,
-      mode,
-      forceReprocess,
-      customPrompt,
-      "escalation",
-    );
-    const escalatedConfidence = calculateDocumentOverallConfidence(
-      escalated.fields,
-      escalated.rawText,
-    );
-
-    // Keep whichever read the document better. The premium model is usually the
-    // stronger reader but not reliably so on any given page, and discarding a
-    // better result because it came from the cheaper model would be perverse.
-    if (escalatedConfidence > overallConfidence) {
-      console.log(
-        `[api-client] escalated ${file.name}: ${overallConfidence.toFixed(2)} -> ${escalatedConfidence.toFixed(2)}`,
-      );
-      return { result: escalated, overallConfidence: escalatedConfidence };
-    }
-  } catch (error) {
-    // A failed escalation must never fail the document. The cheap-tier result is
-    // real and usable — it simply goes to the review queue, which is where a
-    // below-threshold document belongs regardless. Hitting the daily escalation
-    // cap (RULES.ocrEscalation) arrives here as a 429 and is expected, not a bug.
-    console.warn(
-      `[api-client] escalation failed for ${file.name}; keeping the standard-tier result:`,
-      error,
-    );
-  }
-
   return { result, overallConfidence };
 }
 

@@ -72,7 +72,7 @@ function AuthBrandPanel() {
       {/* headline */}
       <div className="relative z-10 flex flex-col gap-8">
         <div>
-          <p className="text-[11px] font-bold tracking-widest uppercase text-primary/80 mb-4">Powered by BH Model 1 & BH Model 2</p>
+          <p className="text-[11px] font-bold tracking-widest uppercase text-primary/80 mb-4">Powered by BH Model 1</p>
           <h2 className="text-4xl font-extrabold leading-tight tracking-tight text-white">
             Stop typing.<br />Start extracting.
           </h2>
