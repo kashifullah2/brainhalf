@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useUpload } from "@/lib/upload";
-import type { CreateBatchProgress } from "@/lib/api-client";
+import { useCreateBatch, useListTemplates, trackTemplateUsage, type CreateBatchProgress, type ExtractionTemplate } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -17,6 +17,7 @@ import {
   Globe,
   MessageSquareText,
   Eye,
+  FileCode2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -127,12 +128,14 @@ export function PresetSelector({
   customPrompt,
   onCustomPromptChange,
   className,
+  templates = [],
 }: {
   value: string;
-  onChange: (id: string) => void;
+  onChange: (id: string, presetData?: { prompt?: string }) => void;
   customPrompt?: string;
   onCustomPromptChange?: (prompt: string) => void;
   className?: string;
+  templates?: ExtractionTemplate[];
 }) {
   return (
     <div className={cn("flex flex-col gap-6", className)}>
@@ -140,6 +143,105 @@ export function PresetSelector({
         height; items-start left each card at its own height and the row
         edges looked ragged whenever the selected card expanded. */}
     <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4")}>
+      
+      {/* Saved Templates First */}
+      {[...templates].sort((a, b) => (b.useCount || 0) - (a.useCount || 0)).map((template) => {
+        const selected = value === `template_${template.id}`;
+        
+        return (
+          <button
+            key={`template_${template.id}`}
+            type="button"
+            onClick={() => {
+              onChange(`template_${template.id}`, { prompt: template.prompt || undefined });
+            }}
+            className={cn(
+              "relative flex h-full flex-col p-4 rounded-2xl border-2 text-left transition-all duration-300 group overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary/40",
+              selected
+                ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-md ring-1 ring-primary/20 scale-[1.01]"
+                : "border-border/60 bg-card hover:border-primary/40 hover:shadow-sm"
+            )}
+          >
+            {/* Ambient Background Glow for Selected */}
+            {selected && (
+              <span className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(var(--primary)/0.15),transparent_60%)] pointer-events-none" />
+            )}
+
+            <div className="relative z-10 flex items-start gap-4">
+              <div
+                className={cn(
+                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] transition-colors border",
+                  selected
+                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                    : "bg-muted text-muted-foreground border-border/40 group-hover:bg-primary/10 group-hover:text-primary group-hover:border-primary/20"
+                )}
+              >
+                <FileCode2 className="h-5 w-5" />
+              </div>
+
+              <div className="flex-1 min-w-0 flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p
+                    className={cn(
+                      "text-sm font-bold truncate",
+                      selected ? "text-primary" : "text-foreground"
+                    )}
+                  >
+                    {template.name}
+                  </p>
+                  {selected && (
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+                      <Check className="h-3 w-3" strokeWidth={3} />
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                  Saved Template
+                </p>
+
+                {/* Always visible. When this only rendered for the selected card,
+                    the grid still stretched every sibling to the expanded card's
+                    height, leaving the unselected ones as tall empty boxes. */}
+                <p className="mt-2 text-[13px] leading-relaxed font-medium text-muted-foreground">
+                  {template.description || `Based on ${PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}`}
+                </p>
+
+                <div
+                  className={cn(
+                    "grid transition-all duration-300 ease-in-out",
+                    selected ? "grid-rows-[1fr] mt-3 opacity-100" : "grid-rows-[0fr] opacity-0"
+                  )}
+                >
+                  <div className="overflow-hidden flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1 py-1">
+                        Base Mode:
+                      </span>
+                      <span className="rounded-md px-2 py-1 text-[11px] font-bold tracking-wide uppercase bg-primary/10 text-primary border border-primary/20">
+                        {PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}
+                      </span>
+                    </div>
+                    {PRESETS.find((p) => p.id === template.baseMode)?.extracts && (
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mr-1 py-1 w-full">
+                          Expected Fields:
+                        </span>
+                        {PRESETS.find((p) => p.id === template.baseMode)?.extracts.map((e) => (
+                          <span key={e} className="rounded-md px-2 py-1 text-[11px] font-bold tracking-wide bg-muted text-foreground border border-border/60">
+                            {e}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+
+      {/* Built-in Presets */}
       {PRESETS.map((preset) => {
         const Icon = preset.icon;
         const selected = value === preset.id;
@@ -229,8 +331,8 @@ export function PresetSelector({
       })}
     </div>
 
-    {/* Custom prompt textarea — only visible when "custom" is selected */}
-    {value === "custom" && (
+    {/* Custom prompt textarea — visible for 'custom', 'vqa', or templates that have a custom prompt. */}
+    {(value === "custom" || value.startsWith("template_")) && (
       <div className="rounded-2xl border-2 border-primary/30 bg-card p-6 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
         <div className="flex items-center gap-2">
           <MessageSquareText className="h-4 w-4 text-primary" />
@@ -255,7 +357,7 @@ export function PresetSelector({
       </div>
     )}
 
-    {/* VQA question textarea — only visible when "vqa" is selected */}
+    {/* VQA question textarea — only visible when "vqa" is selected directly */}
     {value === "vqa" && (
       <div className="rounded-2xl border-2 border-primary/30 bg-card p-6 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
         <div className="flex items-center gap-2">
@@ -449,7 +551,6 @@ interface UploadFlowProps {
       mode: string;
       forceReprocess?: boolean;
       customPrompt?: string;
-      engine?: "auto" | "hunyuan" | "textract";
     },
     onProgress?: (progress: CreateBatchProgress) => void,
   ) => Promise<{ id: number; failedCount?: number }>;
@@ -475,7 +576,6 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
   const [isCreatingBatch, setIsCreatingBatch] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
   const [forceReprocess, setForceReprocess] = useState(false);
-  const [engine, setEngine] = useState<"auto" | "hunyuan" | "textract">("auto");
   const [progress, setProgress] = useState<CreateBatchProgress | null>(null);
 
   const sanitizeFile = (file: File): File => {
@@ -546,7 +646,7 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
     setProgress(null);
     try {
       const batch = await createBatchFn(
-        { documents: readyDocuments, mode, forceReprocess, customPrompt, engine },
+        { documents: readyDocuments, mode, forceReprocess, customPrompt },
         setProgress,
       );
       onBatchCreated(batch.id);
@@ -593,11 +693,11 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
               </div>
               <div className="space-y-2">
                 <p className="text-2xl font-extrabold tracking-tight text-foreground">
-                  Drag & Drop Files Here
+                  Drop your documents here
                 </p>
                 <p className="text-sm font-medium text-muted-foreground/80 max-w-md mx-auto leading-relaxed">
-                  Support for PDF, JPG, PNG, and WEBP, up to 25 MB per file.
-                  High-resolution scans give the best results.
+                  PDF, JPG, PNG or WEBP, up to 25 MB each. The sharper the
+                  scan, the less you will have to correct afterwards.
                 </p>
               </div>
             </div>
@@ -607,7 +707,7 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
               variant="secondary"
               className="relative z-10 pointer-events-none rounded-full px-8 h-12 shadow-md font-bold uppercase tracking-wide text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-all mt-4"
             >
-              Browse Files
+              Browse files
             </Button>
             <input
               id="file-upload"
@@ -682,7 +782,7 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
               </div>
               <div className="flex flex-col">
                 <span className="text-sm font-bold text-foreground">Re-run fresh extraction</span>
-                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Bypass cache for fresh extraction</span>
+                <span className="text-[11px] font-semibold text-muted-foreground">Ignore the saved result and read the file again from scratch</span>
               </div>
             </label>
           </div>

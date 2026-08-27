@@ -64,6 +64,21 @@
   --shadow-lg: 0 12px 24px -4px rgba(28, 25, 23, 0.08), 0 4px 8px -2px rgba(28, 25, 23, 0.03);
   --shadow-xl: 0 24px 36px -6px rgba(28, 25, 23, 0.12), 0 8px 16px -4px rgba(28, 25, 23, 0.04);
   --shadow-glow: 0 0 25px -5px rgba(249, 115, 22, 0.25);
+
+  /* Entrance animation used by marketing surfaces. Staggered per element with
+     an arbitrary [animation-delay]; prefers-reduced-motion disables it below. */
+  --animate-fade-up: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 :root {
@@ -264,6 +279,21 @@
 
   ::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  /* Text selection painted in the UA's default blue, which collided with the
+     orange brand everywhere a heading was dragged over. */
+  ::selection {
+    background: hsl(var(--primary) / 0.25);
+    color: hsl(var(--foreground));
+  }
+
+  /* The fade-up entrance on marketing surfaces must never run for someone who
+     has asked the OS to reduce motion. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-up {
+      animation: none;
+    }
   }
 }
 

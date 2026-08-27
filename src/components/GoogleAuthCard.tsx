@@ -168,9 +168,9 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
           {currentMode === "forgot-password" && "Reset password"}
         </h1>
         <p className="text-sm font-medium text-muted-foreground">
-          {currentMode === "sign-in" && "Sign in to your brainhalf.com workspace"}
-          {currentMode === "sign-up" && "Start extracting document data with brainhalf.com"}
-          {currentMode === "forgot-password" && "Enter your email to receive recovery instructions"}
+          {currentMode === "sign-in" && "Your batches are right where you left them."}
+          {currentMode === "sign-up" && "Free while we build the paid plans. No card, no sales call."}
+          {currentMode === "forgot-password" && "Tell us the email you signed up with and we'll send a reset link."}
         </p>
       </div>
 

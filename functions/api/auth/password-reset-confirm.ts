@@ -14,6 +14,11 @@ import {
   sessionCookie,
   toSessionUser,
 } from '../../../server/session';
+import {
+  RULES,
+  enforceRateLimit,
+  ipIdentity,
+} from '../../../server/rate-limit';
 
 interface Body {
   token?: unknown;
@@ -28,6 +33,18 @@ interface TokenRow {
 }
 
 export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => {
+  // A 256-bit token is not brute-forceable in the abstract, but an endpoint
+  // with no limit lets a script hammer the DB with guesses from one IP. The
+  // token is one-use and the reset route is itself rate-limited, so the cap
+  // here is a backstop against a single point of abuse.
+  const limited = await enforceRateLimit(
+    env,
+    'auth/password-reset-confirm',
+    ipIdentity(request),
+    RULES.passwordResetConfirm,
+  );
+  if (limited) return limited;
+
   const body = await readJson<Body>(request);
   if (!body || typeof body.token !== 'string' || !body.token) {
     return fail('This reset link is not valid.', 400);

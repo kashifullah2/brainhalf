@@ -53,6 +53,7 @@ export interface BatchSummaryDto {
   completedDocuments: number;
   failedDocuments: number;
   engineType?: string;
+  prompt?: string;
   firstDocumentContentType?: string;
   firstDocumentObjectPath?: string;
 }
@@ -67,6 +68,7 @@ interface BatchRow {
   id: number;
   status: string;
   engine_type: string;
+  prompt: string | null;
   created_at: string;
   total_documents: number;
   completed_documents: number;
@@ -114,6 +116,7 @@ const SUMMARY_SELECT = `
   SELECT b.id                AS id,
          b.status            AS status,
          b.engine_type       AS engine_type,
+         b.prompt            AS prompt,
          b.created_at        AS created_at,
          (SELECT COUNT(*) FROM documents d WHERE d.batch_id = b.id)
            AS total_documents,
@@ -136,6 +139,7 @@ function toSummary(row: BatchRow): BatchSummaryDto {
     completedDocuments: row.completed_documents,
     failedDocuments: row.failed_documents,
     engineType: row.engine_type,
+    prompt: row.prompt ?? undefined,
     firstDocumentContentType: row.first_content_type ?? undefined,
     firstDocumentObjectPath: row.first_object_path ?? undefined,
   };

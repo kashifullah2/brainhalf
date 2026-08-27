@@ -35,6 +35,12 @@ export interface AppEnv {
    * different application would be accepted.
    */
   GOOGLE_CLIENT_ID?: string;
+  /**
+   * Fallback name under which the same public Google OAuth client ID is exposed
+   * to the client bundle. auth/google.ts accepts it so a single value can be
+   * shared between the Vite build and the server. Same value as GOOGLE_CLIENT_ID.
+   */
+  VITE_GOOGLE_CLIENT_ID?: string;
   /** Cloudflare Email Service binding, used for password reset mail. */
   EMAIL?: { send: (message: unknown) => Promise<unknown> };
 }

@@ -13,6 +13,11 @@ import {
   toSessionUser,
 } from '../../../server/session';
 import { verifyGoogleIdToken } from '../../../server/google';
+import {
+  RULES,
+  enforceRateLimit,
+  ipIdentity,
+} from '../../../server/rate-limit';
 
 interface GoogleBody {
   /** The `credential` field from Google Identity Services. */
@@ -30,6 +35,18 @@ interface Row {
 }
 
 export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => {
+  // Same identity policy as the other sign-in endpoints: the IP, not the
+  // account (there is no account yet — the whole point of the route is to
+  // create one). A burst of bad Google tokens from one address is throttled
+  // before it can grind the verifier.
+  const limited = await enforceRateLimit(
+    env,
+    'auth/google',
+    ipIdentity(request),
+    RULES.googleSignIn,
+  );
+  if (limited) return limited;
+
   const body = await readJson<GoogleBody>(request);
   if (!body || typeof body.credential !== 'string' || !body.credential) {
     return fail('Missing Google credential.', 400);

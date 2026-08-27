@@ -64,15 +64,13 @@ const HUNYUAN_USER_AGENT =
   "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 // --- Escalation tier: OpenAI -------------------------------------------------
-const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_OPENAI_MODEL = "gpt-4o";
-
-/**
- * Model used on the DEFAULT tier only when no Hunyuan key is configured and the
- * proxy falls back to OpenAI. Kept cheap (mini) so the fallback does not burn
- * the small premium allowance.
- */
-const DEFAULT_OPENAI_FALLBACK_MODEL = "gpt-4o-mini";
+// Defaults live in server/openai-params.ts, shared with the dev proxy in
+// vite.config.ts so the two cannot drift.
+import {
+  DEFAULT_OPENAI_BASE_URL,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_FALLBACK_MODEL,
+} from '../../server/openai-params';
 
 type Tier = 'default' | 'escalation';
 

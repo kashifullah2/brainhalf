@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
   ArrowLeft,
@@ -9,8 +9,10 @@ import {
   FileText,
   Save,
   Sparkles,
+  Keyboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState, ListSkeleton } from "@/components/app";
 import { AutoResizingTextarea } from "@/components/ui/auto-resizing-textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +29,55 @@ import {
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { confidenceTone } from "@/components/ConfidenceIndicator";
 import { usePageTitle } from "@/lib/use-page-title";
+import { useReviewHotkeys } from "@/hooks/use-review-hotkeys";
+
+// ---------------------------------------------------------------------------
+// Keyboard hint bar — sits at the bottom of the correction panel, always
+// visible so users discover hotkeys immediately.
+// ---------------------------------------------------------------------------
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-[5px] border border-border/60 bg-muted/60 px-1.5 text-[10px] font-bold text-muted-foreground shadow-[0_1px_0_1px_hsl(var(--border)/0.15)] select-none">
+      {children}
+    </kbd>
+  );
+}
+
+function HotkeyHintBar() {
+  return (
+    <div className="flex items-center gap-4 flex-wrap px-4 py-2.5 border-t border-border/40 bg-muted/10 text-muted-foreground">
+      <div className="flex items-center gap-1.5">
+        <Keyboard className="h-3.5 w-3.5 text-primary/60" />
+        <span className="text-[10px] font-extrabold uppercase tracking-widest text-primary/60">Shortcuts</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Kbd>J</Kbd><Kbd>K</Kbd>
+        <span className="text-[10px] font-semibold">Navigate</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Kbd>A</Kbd>
+        <span className="text-[10px] font-semibold">Approve</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Kbd>E</Kbd>
+        <span className="text-[10px] font-semibold">Save Edit</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Kbd>R</Kbd>
+        <span className="text-[10px] font-semibold">Reject</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Kbd>⇧A</Kbd>
+        <span className="text-[10px] font-semibold">Approve All</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Kbd>Esc</Kbd>
+        <span className="text-[10px] font-semibold">Back</span>
+      </div>
+    </div>
+  );
+}
 
 export default function ReviewQueueDetail() {
   const [, setLocation] = useLocation();
@@ -42,7 +93,10 @@ export default function ReviewQueueDetail() {
   const [resolutions, setResolutions] = useState<Record<string, any>>({});
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
-  const [activeField, setActiveField] = useState<string | null>(null);
+  const [focusedFieldIndex, setFocusedFieldIndex] = useState(0);
+
+  // Refs for scrolling field cards into view on keyboard navigation.
+  const fieldCardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const loadData = async () => {
     setIsLoading(true);
@@ -81,33 +135,19 @@ export default function ReviewQueueDetail() {
     loadData();
   }, [documentId]);
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center py-32">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
-      </div>
-    );
-  }
+  // Scroll the focused field card into view when it changes.
+  useEffect(() => {
+    const card = fieldCardRefs.current.get(focusedFieldIndex);
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [focusedFieldIndex]);
 
-  if (!item) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <AlertTriangle className="h-12 w-12 text-warning mb-4" />
-        <h2 className="text-xl font-extrabold">Document Not Found in Review Queue</h2>
-        <p className="text-sm font-medium text-muted-foreground mt-1 max-w-sm">
-          This document might have already been fully verified or removed.
-        </p>
-        <Button asChild variant="outline" className="rounded-full font-bold uppercase text-xs mt-6">
-          <Link href="/app/review-queue">Back to Review Queue</Link>
-        </Button>
-      </div>
-    );
-  }
+  const flaggedFields = item?.flaggedFields ?? [];
+  const doc = item?.document;
+  const batchId = item?.batchId;
 
-  const { document: doc, flaggedFields, batchId } = item;
-  const fileUrl = storageUrl(doc.objectPath);
-
-  const handleAction = async (
+  const handleAction = useCallback(async (
     fieldName: string,
     action: "approved" | "corrected" | "rejected",
     customValue?: string,
@@ -115,7 +155,8 @@ export default function ReviewQueueDetail() {
     // in one toast per field on top of the summary toast.
     options?: { silent?: boolean }
   ) => {
-    const originalField = flaggedFields.find((f) => f.normalizedField === fieldName);
+    if (!item) return;
+    const originalField = item.flaggedFields.find((f) => f.normalizedField === fieldName);
     if (!originalField) return;
 
     const originalVal = originalField.value;
@@ -124,13 +165,13 @@ export default function ReviewQueueDetail() {
     try {
       // batchId comes from the queue item, so the write does not need an extra
       // round trip to work out which batch this document belongs to.
-      await saveFieldResolution(doc.id, fieldName, originalVal, finalVal, action, batchId);
+      await saveFieldResolution(item.document.id, fieldName, originalVal, finalVal, action, item.batchId);
 
       // Update local resolution state
-      const resKey = `${doc.id}_${fieldName}`;
+      const resKey = `${item.document.id}_${fieldName}`;
       setResolutions((prev) => ({
         ...prev,
-        [resKey]: { documentId: doc.id, fieldName, originalValue: originalVal, resolvedValue: finalVal, status: action, timestamp: new Date().toISOString() }
+        [resKey]: { documentId: item.document.id, fieldName, originalValue: originalVal, resolvedValue: finalVal, status: action, timestamp: new Date().toISOString() }
       }));
 
       if (!options?.silent) {
@@ -138,6 +179,19 @@ export default function ReviewQueueDetail() {
           title: `Field ${action.toUpperCase()}`,
           description: `"${humanizeFieldLabel(fieldName)}" set to "${finalVal}".`,
         });
+      }
+
+      // Auto-advance to the next unresolved field after an action.
+      if (!options?.silent) {
+        const nextUnresolved = flaggedFields.findIndex((f, i) => {
+          if (i <= focusedFieldIndex) return false;
+          const key = `${item.document.id}_${f.normalizedField}`;
+          // Check both existing resolutions and whether the field we just resolved is this one.
+          return !resolutions[key] && f.normalizedField !== fieldName;
+        });
+        if (nextUnresolved !== -1) {
+          setFocusedFieldIndex(nextUnresolved);
+        }
       }
     } catch (err: any) {
       toast({
@@ -147,10 +201,11 @@ export default function ReviewQueueDetail() {
       });
       throw err;
     }
-  };
+  }, [item, fieldValues, resolutions, flaggedFields, focusedFieldIndex, toast]);
 
-  const handleApproveAll = async () => {
-    const pending = flaggedFields.filter((f) => !resolutions[`${doc.id}_${f.normalizedField}`]);
+  const handleApproveAll = useCallback(async () => {
+    if (!item) return;
+    const pending = item.flaggedFields.filter((f) => !resolutions[`${item.document.id}_${f.normalizedField}`]);
     let approved = 0;
     for (const f of pending) {
       try {
@@ -166,11 +221,55 @@ export default function ReviewQueueDetail() {
       toast({
         title: approved === pending.length ? "All fields verified" : `${approved} of ${pending.length} fields approved`,
         description: approved === pending.length
-          ? `${doc.filename} is now fully reviewed.`
+          ? `${item.document.filename} is now fully reviewed.`
           : "The rest still need attention — the failures are shown above.",
       });
     }
-  };
+  }, [item, resolutions, handleAction, toast]);
+
+  // -------------------------------------------------------------------------
+  // Keyboard hotkeys
+  // -------------------------------------------------------------------------
+  useReviewHotkeys({
+    fieldCount: flaggedFields.length,
+    focusedIndex: focusedFieldIndex,
+    onFocusField: setFocusedFieldIndex,
+    onApprove: (index) => {
+      const field = flaggedFields[index];
+      if (field) handleAction(field.normalizedField, "approved");
+    },
+    onCorrect: (index) => {
+      const field = flaggedFields[index];
+      if (field) handleAction(field.normalizedField, "corrected");
+    },
+    onReject: (index) => {
+      const field = flaggedFields[index];
+      if (field) handleAction(field.normalizedField, "rejected");
+    },
+    onApproveAll: handleApproveAll,
+    onBack: () => setLocation("/app/review-queue"),
+  });
+
+  if (isLoading) {
+    return <ListSkeleton rows={3} />;
+  }
+
+  if (!item || !doc) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        title="Nothing left to review here"
+        body="This document has either been fully verified already or was removed from the queue."
+        action={
+          <Button asChild variant="outline" className="h-12 rounded-full px-8 text-xs font-bold uppercase tracking-wide">
+            <Link href="/app/review-queue">Back to the queue</Link>
+          </Button>
+        }
+      />
+    );
+  }
+
+  const fileUrl = storageUrl(doc.objectPath);
 
   const reviewedCount = flaggedFields.filter((f) => resolutions[`${doc.id}_${f.normalizedField}`]).length;
   const isComplete = reviewedCount === flaggedFields.length;
@@ -196,7 +295,9 @@ export default function ReviewQueueDetail() {
               </Badge>
             </div>
             <p className="text-xs font-semibold text-muted-foreground mt-0.5">
-              Reviewing {flaggedFields.length} low-confidence field{flaggedFields.length > 1 ? "s" : ""} (&lt;{(threshold * 100).toFixed(0)}%)
+              {flaggedFields.length} field{flaggedFields.length > 1 ? "s" : ""} came
+              back under {(threshold * 100).toFixed(0)}% — worth a glance before
+              you export.
             </p>
           </div>
         </div>
@@ -266,7 +367,7 @@ export default function ReviewQueueDetail() {
             </CardHeader>
 
             <CardContent className="p-6 overflow-y-auto flex-1 space-y-6">
-              {flaggedFields.map((field) => {
+              {flaggedFields.map((field, index) => {
                 const conf = field.confidence ?? 0.5;
                 // Was a hardcoded 0.7 cut-off; now the same threshold-aware
                 // tone the rest of the app uses.
@@ -276,6 +377,7 @@ export default function ReviewQueueDetail() {
                 const resKey = `${doc.id}_${field.normalizedField}`;
                 const res = resolutions[resKey];
                 const isResolved = !!res;
+                const isFocused = index === focusedFieldIndex;
 
                 const borderColor = isResolved
                   ? "border-success/40 bg-success/5"
@@ -287,15 +389,27 @@ export default function ReviewQueueDetail() {
                   <div 
                     key={field.normalizedField} 
                     id={`review-field-${field.normalizedField}`}
-                    className={`p-4 rounded-2xl border transition-all duration-200 cursor-pointer ${activeField === field.normalizedField ? 'ring-2 ring-primary border-primary' : borderColor}`}
-                    onMouseEnter={() => setActiveField(field.normalizedField)}
-                    onMouseLeave={() => setActiveField(null)}
+                    ref={(el) => {
+                      if (el) fieldCardRefs.current.set(index, el);
+                      else fieldCardRefs.current.delete(index);
+                    }}
+                    className={`p-4 rounded-2xl border transition-all duration-200 cursor-pointer ${
+                      isFocused
+                        ? "ring-2 ring-primary border-primary shadow-md"
+                        : borderColor
+                    }`}
+                    onClick={() => setFocusedFieldIndex(index)}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-extrabold uppercase tracking-wider text-foreground">
                         {humanizeFieldLabel(field.normalizedField)}
                       </span>
                       <div className="flex items-center gap-2">
+                        {isFocused && !isResolved && (
+                          <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Focused
+                          </span>
+                        )}
                         {isResolved ? (
                           <Badge variant="outline" className="rounded-full text-[11px] font-extrabold uppercase tracking-widest bg-success/10 text-success border-success/20">
                             {res.status}
@@ -350,6 +464,9 @@ export default function ReviewQueueDetail() {
                 );
               })}
             </CardContent>
+
+            {/* Persistent keyboard shortcut hint bar */}
+            <HotkeyHintBar />
           </Card>
         </div>
       </div>

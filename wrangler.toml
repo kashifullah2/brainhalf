@@ -8,13 +8,15 @@
 #   pnpm db:migrate:local     # local sqlite under .wrangler/
 #   pnpm db:migrate:remote    # the real D1 database
 #
-# Secrets (OCR_API_KEY, GOOGLE_CLIENT_ID) are NOT stored here. Set them in the
-# Pages dashboard (Settings -> Environment variables) and in .dev.vars locally.
+# Secrets (HUNYUAN_API_KEY, OPENAI_API_KEY, GOOGLE_CLIENT_ID) are NOT stored
+# here. Set them in the Pages dashboard (Settings -> Environment variables) and
+# in .dev.vars locally.
 #
-# OCR_API_KEY is required: functions/api/ocr.ts returns 503 without it rather
-# than falling back to a credential in source. OCR_API_URL, OCR_MODEL and
-# OCR_MODEL_ESCALATION are plain config with defaults in code (OpenAI,
-# gpt-5.4-mini, gpt-5.4) — set them only to override.
+# HUNYUAN_API_KEY is required: functions/api/ocr.ts returns 503 without it rather
+# than falling back to a credential in source. OPENAI_API_KEY enables the
+# escalation tier (re-reads pages the default tier scored low). HUNYUAN_*,
+# OPENAI_* base URLs and models are plain config with defaults in code — set
+# them only to override. See .dev.vars.example for the full list.
 # ---------------------------------------------------------------------------
 
 # `name` must match the existing Cloudflare Pages project, which is what serves

@@ -22,6 +22,7 @@ const VALID_MODES = new Set([
 
 interface CreateBody {
   mode?: unknown;
+  customPrompt?: unknown;
   documents?: unknown;
 }
 
@@ -53,6 +54,10 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
   if (!VALID_MODES.has(mode)) {
     return fail(`Unknown extraction mode: ${mode}.`, 400);
   }
+  
+  const customPrompt = typeof body.customPrompt === 'string' && body.customPrompt.trim().length > 0
+    ? body.customPrompt.trim()
+    : null;
 
   if (!Array.isArray(body.documents) || body.documents.length === 0) {
     return fail('A batch needs at least one document.', 400);
@@ -69,9 +74,9 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
   );
 
   const batchInsert = await env.DB.prepare(
-    `INSERT INTO batches (user_id, status, engine_type) VALUES (?, 'queued', ?)`,
+    `INSERT INTO batches (user_id, status, engine_type, prompt) VALUES (?, 'queued', ?, ?)`,
   )
-    .bind(auth.user.id, mode)
+    .bind(auth.user.id, mode, customPrompt)
     .run();
 
   const batchId = Number(batchInsert.meta.last_row_id);

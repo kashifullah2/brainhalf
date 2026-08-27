@@ -17,7 +17,7 @@
 /** Hard platform ceiling for one deriveBits call. */
 const MAX_ITERATIONS_PER_CALL = 100_000;
 const PBKDF2_ITERATIONS = 100_000;
-const PBKDF2_ROUNDS = 1;
+const PBKDF2_ROUNDS = 6;
 const SALT_BYTES = 16;
 const KEY_BITS = 256;
 

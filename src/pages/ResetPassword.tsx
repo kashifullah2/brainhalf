@@ -88,13 +88,12 @@ export default function ResetPassword() {
             and can only be used once, so request a new one.
           </p>
         </div>
-        <Link
-          href="/sign-in"
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-white transition-colors hover:bg-primary/90"
-        >
-          Back to sign in
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+        <Button asChild className="h-11 gap-2 rounded-xl px-5 text-sm font-bold">
+          <Link href="/sign-in">
+            Back to sign in
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
       </div>
     );
   }

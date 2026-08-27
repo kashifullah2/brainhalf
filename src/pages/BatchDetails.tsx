@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useRoute, Link } from "wouter";
-import { format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { 
   useGetBatch, 
   getGetBatchQueryKey, 
@@ -34,10 +34,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { DocumentSidePanel } from "@/components/DocumentSidePanel";
+import { EmptyState, ListSkeleton } from "@/components/app";
 import { StatusDot } from "@/components/StatusDot";
 import { UploadFlow } from "@/components/UploadModal";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeFieldLabel } from "@/lib/humanizeField";
+import { humanizeExtractionError } from "@/lib/humanize-error";
 import { usePageTitle } from "@/lib/use-page-title";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
 import { sanitizeForExport } from "@/lib/utils";
@@ -77,7 +79,7 @@ export default function BatchDetails() {
     try {
       await retryDoc.mutateAsync({ batchId, documentId });
       queryClient.invalidateQueries({ queryKey: getGetBatchQueryKey(batchId) });
-      toast({ title: "Retry initiated", description: "Document added back to queue." });
+      toast({ title: "Back in the queue", description: "We'll read this one again in a moment." });
     } catch (e: any) {
       toast({ title: "Retry failed", description: e.message, variant: "destructive" });
     }
@@ -131,7 +133,7 @@ export default function BatchDetails() {
       // change duplicate status for the edited doc AND its counterpart).
       await queryClient.invalidateQueries({ queryKey: getGetBatchQueryKey(batchId) });
       
-      toast({ title: "Field updated" });
+      toast({ title: "Saved", description: "Your correction is in — exports will use it." });
     } catch (e: any) {
       toast({ title: "Update failed", description: e.message, variant: "destructive" });
     } finally {
@@ -269,7 +271,6 @@ export default function BatchDetails() {
       mode: string;
       forceReprocess?: boolean;
       customPrompt?: string;
-      engine?: "auto" | "hunyuan" | "textract";
     },
     onProgress?: (progress: CreateBatchProgress) => void,
   ) => {
@@ -284,7 +285,6 @@ export default function BatchDetails() {
         documents: data.documents,
         forceReprocess: data.forceReprocess,
         customPrompt: data.customPrompt,
-        engine: data.engine,
       },
       onProgress,
     });
@@ -293,7 +293,10 @@ export default function BatchDetails() {
   const handleBatchAppended = () => {
     setIsUploadOpen(false);
     queryClient.invalidateQueries({ queryKey: getGetBatchQueryKey(batchId) });
-    toast({ title: "Documents appended", description: "New files added to this batch successfully." });
+    toast({
+      title: `Added to Batch #${batch?.id ?? ""}`.trim(),
+      description: "The new files are queued — this table fills in as each one is read.",
+    });
   };
 
   const handleExportExcel = () => {
@@ -321,24 +324,21 @@ export default function BatchDetails() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col flex-1 items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-10 w-10 animate-spin text-primary/50 mb-4" />
-        <h2 className="text-xl font-bold text-foreground">Loading extraction results...</h2>
-      </div>
-    );
+    return <ListSkeleton rows={6} />;
   }
 
   if (!batch) {
     return (
-      <div className="flex flex-col flex-1 items-center justify-center min-h-[60vh] text-center max-w-md mx-auto">
-        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-2xl font-bold text-foreground mb-2">Batch Not Found</h2>
-        <p className="text-muted-foreground mb-8">This batch may have been deleted or never existed.</p>
-        <Button asChild>
-          <Link href="/app">Return to Dashboard</Link>
-        </Button>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title="This batch isn't here any more"
+        body="It may have been deleted, or the link may point somewhere that never existed. Nothing else in your account is affected."
+        action={
+          <Button asChild className="h-12 rounded-full px-8 text-xs font-bold uppercase tracking-wide">
+            <Link href="/app">Return to dashboard</Link>
+          </Button>
+        }
+      />
     );
   }
 
@@ -369,7 +369,10 @@ export default function BatchDetails() {
               <StatusDot status={batch.status} />
             </div>
             <p className="text-sm font-semibold text-muted-foreground mt-2">
-              Created {format(new Date(batch.createdAt), "PPp")} • {batch.completedDocuments}/{batch.totalDocuments} processed
+              Started {formatDistanceToNow(new Date(batch.createdAt), { addSuffix: true })}
+              {" · "}
+              {batch.completedDocuments} of {batch.totalDocuments} read
+              {batch.status === "processing" ? " — still working on the rest" : ""}
             </p>
           </div>
           
@@ -419,6 +422,7 @@ export default function BatchDetails() {
                 <div className="p-4 bg-background">
                   <UploadFlow
                     mode={batch.engineType || "invoice"}
+                    customPrompt={batch.prompt}
                     onBatchCreated={handleBatchAppended}
                     createBatchFn={handleAppendBatchWrapper}
                   />
@@ -427,6 +431,39 @@ export default function BatchDetails() {
             </Dialog>
           </div>
         </div>
+
+        {/* When every document in the batch failed, the reason is a property of
+            the run, not of each row — say it once, at the top, in words that
+            point at the fix. */}
+        {(() => {
+          const docs = batch.documents ?? [];
+          const failed = docs.filter((d: any) => d.status === "failed");
+          if (!docs.length || failed.length !== docs.length) return null;
+          const human = humanizeExtractionError(failed[0]?.error);
+          return (
+            <div
+              className="flex flex-col gap-3 rounded-3xl border border-destructive/30 bg-destructive/5 p-5 sm:flex-row sm:items-start"
+              title={failed[0]?.error ?? undefined}
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-extrabold text-foreground">
+                  {human.title}
+                </p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {human.body}
+                </p>
+                {human.operatorHint ? (
+                  <p className="pt-1 text-xs font-medium text-muted-foreground/80">
+                    {human.operatorHint}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Table and inspector sit side by side on wide screens. The panel used
             to be a sibling in a vertical stack, so a component named
@@ -545,8 +582,11 @@ export default function BatchDetails() {
                                 <div className="flex flex-col min-w-0">
                                   <span className="truncate group-hover:text-primary transition-colors" title={String(row.filename)}>{String(row.filename)}</span>
                                   {isDuplicate && (
-                                    <span className="text-[11px] font-extrabold uppercase tracking-widest text-warning leading-none mt-0.5">
-                                      Possible Duplicate
+                                    <span
+                                      className="text-[11px] font-extrabold uppercase tracking-widest text-warning leading-none mt-0.5"
+                                      title="Byte-for-byte identical to another document in your account."
+                                    >
+                                      Already uploaded
                                     </span>
                                   )}
                                 </div>
@@ -649,7 +689,13 @@ export default function BatchDetails() {
             })()}
           </div>
           <div className="p-4 border-t border-border/60 bg-muted/20 text-xs font-bold uppercase tracking-widest text-muted-foreground flex flex-wrap items-center justify-between gap-3">
-            <span>Double-click any extracted value to edit.</span>
+            {/* The edit hint pointed at values that do not exist on a batch
+                where nothing was extracted, which read as a broken promise. */}
+            <span>
+              {batch.columns?.length
+                ? "Double-click any extracted value to edit."
+                : "No values were extracted from this batch yet."}
+            </span>
             <div className="flex items-center gap-4">
               <span>
                 {filteredRows.length} row{filteredRows.length === 1 ? "" : "s"}

@@ -80,8 +80,8 @@ export default function Contact() {
       await emailjs.send(serviceId, templateId, data, publicKey);
 
       toast({
-        title: "Message Sent",
-        description: "Thank you for reaching out! We'll get back to you shortly.",
+        title: "Message sent",
+        description: "Thanks — we read every one of these and will reply soon.",
       });
       form.reset();
     } catch (err: unknown) {
@@ -97,7 +97,11 @@ export default function Contact() {
 
   return (
     <LegalLayout title="Contact Us" canonicalPath="/contact">
-      <p>Have questions about BrainHalf OCR? Need help with enterprise volume or custom integration? Drop us a message below.</p>
+      <p>
+        A real person reads these. Whether it is a document brainhalf keeps
+        misreading, a volume question, or something that is just plain broken —
+        write it below and we will come back to you.
+      </p>
       
       <div className="mt-8 rounded-2xl border border-border/40 bg-card p-6 md:p-8 shadow-sm not-prose">
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
@@ -124,20 +128,20 @@ export default function Contact() {
               name="message"
               required 
               maxLength={LIMITS.message}
-              placeholder="Tell us about your volume, use-case, or issues..." 
+              placeholder="What are you trying to do, and where did it go sideways?" 
               className="min-h-[150px] resize-y rounded-lg bg-background" 
             />
           </div>
 
           <Button type="submit" disabled={isBusy} className="h-12 w-full sm:w-auto self-end px-8 rounded-full shadow-sm text-sm font-bold uppercase tracking-wide">
             {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-            {isBusy ? "Sending..." : "Send Message"}
+            {isBusy ? "Sending…" : "Send message"}
           </Button>
         </form>
       </div>
 
       <div className="mt-12">
-        <h3>Other ways to reach us</h3>
+        <h3>Prefer plain email?</h3>
         <ul>
           <li><strong>Email:</strong> {SUPPORT_EMAIL}</li>
         </ul>

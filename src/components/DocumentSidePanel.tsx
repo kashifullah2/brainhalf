@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertCircle, X } from "lucide-react";
 import { humanizeFieldLabel } from "@/lib/humanizeField";
+import { humanizeExtractionError } from "@/lib/humanize-error";
 import { getConfidenceThreshold } from "@/lib/review-queue-store";
 import { confidenceTone, ConfidenceIndicator } from "@/components/ConfidenceIndicator";
 
@@ -40,18 +41,37 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-6">
           {/* Failed documents carry the extraction error; without it the
-              field list would render empty with no explanation. */}
-          {doc.status === "failed" && doc.error && (
-            <div className="flex items-start gap-3 p-4 rounded-2xl border border-destructive/40 bg-destructive/5 text-destructive">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-extrabold uppercase tracking-widest">Extraction failed</p>
-                <p className="text-xs font-medium mt-1 opacity-80 break-words">{doc.error}</p>
+              field list would render empty with no explanation. The raw string
+              stays available as a tooltip. */}
+          {doc.status === "failed" && (() => {
+            const human = humanizeExtractionError(doc.error);
+            return (
+              <div
+                className="flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 p-4 text-destructive"
+                title={doc.error ?? undefined}
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="space-y-1">
+                  <p className="text-xs font-extrabold uppercase tracking-widest">
+                    {human.title}
+                  </p>
+                  <p className="break-words text-xs font-medium opacity-80">
+                    {human.body}
+                  </p>
+                  {human.operatorHint ? (
+                    <p className="break-words pt-1 text-[11px] font-medium text-muted-foreground">
+                      {human.operatorHint}
+                    </p>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          )}
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Extracted Fields</h4>
+            );
+          })()}
+          {/* An "Extracted Fields" heading over nothing looked like a rendering
+              fault on every failed document. */}
+          {doc.extractedFields?.length ? (
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Extracted Fields</h4>
             <div className="space-y-3">
               {doc.extractedFields?.map((field: any, idx: number) => {
                 const conf = field.confidence ?? 0.9;
@@ -84,7 +104,12 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
                 );
               })}
             </div>
-          </div>
+            </div>
+          ) : doc.status !== "failed" ? (
+            <p className="rounded-2xl border border-dashed border-border/60 p-4 text-center text-xs font-semibold text-muted-foreground">
+              No fields were pulled from this page.
+            </p>
+          ) : null}
         </div>
       </ScrollArea>
     </div>

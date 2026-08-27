@@ -4,17 +4,18 @@ import { useAuth } from "@/context/AuthContext";
 import { SidebarProvider,
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
-  SidebarSeparator,
   SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -28,51 +29,64 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { toast } from "@/hooks/use-toast";
-import { 
-  FileText, 
-  LayoutDashboard, 
+import { getReviewQueueItems } from "@/lib/review-queue-store";
+import {
+  Sparkles,
+  FileText,
+  LayoutDashboard,
+  CheckSquare,
+  UploadCloud,
   Settings as SettingsIcon,
   CreditCard,
   LogOut,
-  CheckSquare
+  ChevronsUpDown,
+  Inbox,
 } from "lucide-react";
+import type { ComponentType } from "react";
 
-const navItems = [
-  {
-    title: "Dashboard",
-    url: "/app",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Review Queue",
-    url: "/app/review-queue",
-    icon: CheckSquare,
-  },
-  // "Templates" was removed: it linked to /app/templates, which has no route, so
-  // it 404'd. Advertising a feature that does not exist is worse than omitting
-  // it — add the entry back together with the page.
-  //
-  // "Batches" was also removed: it pointed at /app, the same destination as
-  // Dashboard, so two nav items highlighted at once and neither was wrong.
-];
+interface NavItem {
+  title: string;
+  url: string;
+  icon: ComponentType<{ className?: string }>;
+}
 
-const secondaryNavItems = [
-  {
-    title: "Settings",
-    url: "/app/settings",
-    icon: SettingsIcon,
-  },
-  {
-    // Deep-links to the billing tab inside Settings.
-    title: "Billing",
-    url: "/app/settings/billing",
-    icon: CreditCard,
-  },
-];
+/**
+ * A small convenience: the first few letters of an email, used as the avatar
+ * fallback when the account has no picture. Reads like a person, not a bug.
+ */
+function initialsOf(name: string | undefined, email: string | undefined): string {
+  const a = name?.trim();
+  if (a) {
+    const parts = a.split(/\s+/);
+    if (parts.length > 1) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    return a.slice(0, 2).toUpperCase();
+  }
+  const b = email?.trim();
+  return b ? b.slice(0, 2).toUpperCase() : "·";
+}
 
 export const AppLayout = React.memo(function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
+
+  // "Review Queue" badge: how many documents still need a human look. Shown
+  // only once the count is known — there is no misleading "0" before the fetch.
+  const [queueCount, setQueueCount] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const items = await getReviewQueueItems();
+        if (!cancelled) setQueueCount(items.length);
+      } catch {
+        // A quiet failure: the queue page still works, the badge just stays hidden.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSignOut = async () => {
     try {
@@ -94,6 +108,41 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
     }
   };
 
+  // Workspace nav — the things someone opens every day.
+  const navItems: NavItem[] = [
+    { title: "Dashboard", url: "/app", icon: LayoutDashboard },
+    { title: "Upload", url: "/app/upload", icon: UploadCloud },
+    { title: "Review Queue", url: "/app/review-queue", icon: CheckSquare },
+  ];
+
+  // Lower-urgency settings & account. Billing deep-links to the tab inside
+  // Settings — there is no /app/billing page.
+  const accountNavItems: NavItem[] = [
+    { title: "Settings", url: "/app/settings", icon: SettingsIcon },
+    { title: "Billing", url: "/app/settings/billing", icon: CreditCard },
+  ];
+
+  /** Active = exact match for the top level, prefix match for children. */
+  const isActive = (item: NavItem) => {
+    if (item.url === "/app") return location === "/app" || location === "/app/";
+    return location === item.url || location.startsWith(`${item.url}/`);
+  };
+
+  /** Settings owns the whole subtree except the billing tab, which owns its path. */
+  const isAccountActive = (item: NavItem) => {
+    if (item.url === "/app/settings/billing") return location === item.url;
+    return (
+      location.startsWith("/app/settings") &&
+      location !== "/app/settings/billing" &&
+      (location === "/app/settings" || location.startsWith("/app/settings/"))
+    );
+  };
+
+  const email = user?.email ?? "";
+  const name = user?.name ?? "";
+  const initials = initialsOf(name, email);
+  const userMenuTestId = "button-user-menu";
+
   return (
     <SidebarProvider>
       <Sidebar variant="inset" collapsible="icon">
@@ -102,7 +151,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild tooltip="brainhalf">
                 <Link href="/app">
-                  <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+                  <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm shadow-primary/25">
                     <FileText className="size-4" />
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
@@ -116,17 +165,44 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
-        
+
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Platform</SidebarGroupLabel>
+            <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {navItems.map((item) => (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      isActive={location === item.url || (item.url !== '/app' && location.startsWith(item.url))}
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item)}
+                      tooltip={item.title}
+                    >
+                      <Link href={item.url}>
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                        {item.title === "Review Queue" && queueCount !== null && (
+                          <SidebarMenuBadge className="bg-primary/10 text-primary">
+                            {queueCount}
+                          </SidebarMenuBadge>
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup className="mt-auto">
+            <SidebarGroupLabel>Account</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {accountNavItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isAccountActive(item)}
                       tooltip={item.title}
                     >
                       <Link href={item.url}>
@@ -139,98 +215,136 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-
-          <SidebarGroup className="mt-auto">
-            <SidebarGroupLabel>Preferences</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {secondaryNavItems.map((item) => {
-                  // Settings and Billing both live under /app/settings, so the
-                  // generic startsWith check highlighted both entries at once
-                  // on the billing tab. Billing owns its exact path; Settings
-                  // owns the rest of the subtree.
-                  const isActive =
-                    item.url === "/app/settings/billing"
-                      ? location === item.url
-                      : item.url === "/app/settings"
-                        ? location.startsWith("/app/settings") && location !== "/app/settings/billing"
-                        : location === item.url || location.startsWith(item.url);
-                  return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild 
-                      isActive={isActive}
-                      tooltip={item.title}
-                    >
-                      <Link href={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
         </SidebarContent>
 
-        <SidebarSeparator />
-        <SidebarRail />
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    size="lg"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                    tooltip="Account"
+                  >
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarImage src={user?.picture || undefined} alt={name || "Your avatar"} />
+                      <AvatarFallback className="rounded-lg bg-sidebar-accent text-sidebar-foreground">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{name || "You"}</span>
+                      <span className="truncate text-xs text-muted-foreground">{email}</span>
+                    </div>
+                    <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-xl"
+                  align="start"
+                  side="right"
+                  sideOffset={8}
+                  forceMount
+                >
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-semibold leading-none text-foreground">{name || "You"}</p>
+                      <p className="text-xs leading-none text-muted-foreground">{email}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-lg">
+                    <Link href="/app/settings" className="flex w-full items-center">
+                      <SettingsIcon className="mr-2 h-4 w-4" />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-lg">
+                    <Link href="/app/settings/billing" className="flex w-full items-center">
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Billing
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive rounded-lg"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
 
-        {/* Removed SidebarFooter as user dropdown is now in the top Navbar */}
+        <SidebarRail />
       </Sidebar>
 
       <SidebarInset>
-        {/* Opaque, not translucent: with bg-background/80 + backdrop-blur the
-            page content showed through the bar while scrolling, which read as a
-            rendering fault. */}
+        {/* Translucency is safe here (unlike the earlier bg-background/80 +
+            backdrop-blur attempt that read as a fault): the inset sidebar layout
+            gives this header its own opaque page background behind it, so the
+            blur only ever softens page content scrolling beneath — the intended
+            glass effect, not see-through chrome. */}
         {/* px mirrors <main> below so the header's contents stay vertically
             aligned with the page container at every breakpoint. */}
-        <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-2 border-b border-border/40 bg-background px-4 md:px-6 lg:px-8">
+        <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-2 border-b border-border/40 bg-background/80 backdrop-blur-md px-4 md:px-6 lg:px-8">
           <div className="flex w-full max-w-7xl mx-auto items-center gap-2">
             <SidebarTrigger className="-ml-2" />
+            {/* A tiny "where you are" cue: the workspace the current page belongs to. */}
+            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
+              <span className="h-1 w-1 rounded-full bg-primary/60" />
+              <span>Workspace</span>
+            </div>
             <div className="ml-auto flex items-center gap-2">
-            <ThemeToggle />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-9 w-9 rounded-full shadow-sm border border-border/60 hover:border-primary/50 transition-colors" data-testid="button-user-menu">
-                  <Avatar className="h-9 w-9">
-                    <AvatarImage src={user?.picture} alt={user?.name || ""} />
-                    <AvatarFallback className="bg-primary/10 text-primary font-bold">{user?.givenName?.charAt(0) || user?.name?.charAt(0) || "G"}</AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56 rounded-xl" align="end" forceMount>
-                <DropdownMenuLabel className="font-normal p-2">
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-semibold leading-none text-foreground">{user?.name}</p>
-                    <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild className="cursor-pointer rounded-lg">
-                  <Link href="/app/settings" className="flex w-full items-center">
-                    <SettingsIcon className="mr-2 h-4 w-4" />
-                    Settings
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild className="cursor-pointer rounded-lg">
-                  <Link href="/app/settings/billing" className="flex w-full items-center">
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Billing
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive rounded-lg"
-                  onClick={handleSignOut}
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <ThemeToggle />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="relative h-9 w-9 rounded-full shadow-sm border border-border/60 hover:border-primary/50 transition-colors"
+                    data-testid={userMenuTestId}
+                    aria-label="Account menu"
+                  >
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={user?.picture || undefined} alt={name || ""} />
+                      <AvatarFallback className="bg-primary/10 text-primary font-bold">{initials}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56 rounded-xl" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal p-2">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-semibold leading-none text-foreground">{name || "You"}</p>
+                      <p className="text-xs leading-none text-muted-foreground">{email}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-lg">
+                    <Link href="/app/settings" className="flex w-full items-center">
+                      <SettingsIcon className="mr-2 h-4 w-4" />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-lg">
+                    <Link href="/app/settings/billing" className="flex w-full items-center">
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Billing
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive rounded-lg"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>

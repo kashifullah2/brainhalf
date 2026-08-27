@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { calculateFieldConfidence } from './confidence-scorer';
+import { calculateFieldConfidence, validateFieldMath } from './confidence-scorer';
 
 /**
  * These cases come from real extractions in the deployed app, where clean values
@@ -83,5 +83,96 @@ describe('calculateFieldConfidence — low-quality signals still flag', () => {
   it('flags repeated-character hallucinations', () => {
     const result = calculateFieldConfidence('Vendor', 'aaaaaaaa', 0.95);
     expect(result.flags.join(' ')).toMatch(/Repetitive/);
+  });
+});
+
+describe('validateFieldMath — cross-field arithmetic', () => {
+  const field = (name: string, value: string) => ({
+    normalizedField: name,
+    value,
+    editedValue: null,
+  });
+
+  it('detects Subtotal + Tax ≠ Total', () => {
+    const warnings = validateFieldMath([
+      field('Subtotal', '$100.00'),
+      field('Tax', '$10.00'),
+      field('Total', '$115.00'), // should be $110.00
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].involvedFields).toContain('Total');
+    expect(warnings[0].expected).toBe('110.00');
+    expect(warnings[0].actual).toBe('115.00');
+  });
+
+  it('passes when Subtotal + Tax = Total within rounding tolerance', () => {
+    const warnings = validateFieldMath([
+      field('Subtotal', '$99.99'),
+      field('Tax', '$10.00'),
+      field('Total', '$109.99'),
+    ]);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('detects Qty × Unit Price ≠ Amount', () => {
+    const warnings = validateFieldMath([
+      field('Qty', '5'),
+      field('Unit Price', '$20.00'),
+      field('Amount', '$110.00'), // should be $100.00
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].expected).toBe('100.00');
+  });
+
+  it('returns no warnings for non-invoice documents', () => {
+    const warnings = validateFieldMath([
+      field('Full Text Transcription', 'Hello world'),
+      field('Image Description', 'A photo of a cat'),
+    ]);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('handles European number notation (1.234,56)', () => {
+    const warnings = validateFieldMath([
+      field('Subtotal', '1.000,00'),
+      field('Tax', '200,00'),
+      field('Total', '1.200,00'),
+    ]);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('detects unusually high tax rates (> 40%)', () => {
+    const warnings = validateFieldMath([
+      field('Subtotal', '$100.00'),
+      field('Tax', '$50.00'),
+      field('Total', '$150.00'),
+    ]);
+    // It should have 0 warnings for the total math, but 1 for the high tax rate
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('unusually high');
+    expect(warnings[0].actual).toBe('50.0%');
+  });
+
+  it('detects negative tax rates', () => {
+    const warnings = validateFieldMath([
+      field('Subtotal', '$100.00'),
+      field('Tax', '-$5.00'),
+      field('Total', '$95.00'),
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('unusually high or negative');
+  });
+
+  it('validates Subtotal + Tax - Discount = Total combined math', () => {
+    const warnings = validateFieldMath([
+      field('Subtotal', '$100.00'),
+      field('Tax', '$10.00'),
+      field('Discount', '$20.00'),
+      field('Total', '$80.00'), // should be 100 + 10 - 20 = 90
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].expected).toBe('90.00');
+    expect(warnings[0].actual).toBe('80.00');
+    expect(warnings[0].involvedFields).toContain('Discount');
   });
 });

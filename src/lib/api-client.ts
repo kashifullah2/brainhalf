@@ -59,6 +59,7 @@ export interface BatchSummary {
   completedDocuments: number;
   failedDocuments: number;
   engineType?: string;
+  prompt?: string;
   firstDocumentContentType?: string;
   firstDocumentObjectPath?: string;
 }
@@ -257,7 +258,6 @@ export interface CreateBatchInput {
   mode: string;
   forceReprocess?: boolean;
   customPrompt?: string;
-  engine?: "auto" | "hunyuan" | "textract";
 }
 
 /** Mirrors the fallback in src/pages/BatchDetails.tsx. */
@@ -301,6 +301,10 @@ async function resolveConfidenceThreshold(): Promise<number> {
  * exhaust the account. Escalating only below-threshold documents spends the
  * small quota where it can actually change an outcome.
  *
+ * A failed escalation is not a failed document: the default-tier reading stands.
+ * The premium quota may simply be exhausted (RULES.ocrEscalation caps it per
+ * day), and throwing here would discard a usable result over a quota notice.
+ *
  * Shared by createBatch and appendBatch deliberately. The two loops were
  * byte-identical copies, and a change applied to one and not the other is how
  * they would silently diverge.
@@ -310,9 +314,8 @@ async function extractWithEscalation(
   mode: string,
   forceReprocess: boolean,
   customPrompt: string | undefined,
-  _threshold: number,
-  _engine: string = "hunyuan",
-): Promise<{ result: HunyuanOCRResponse; overallConfidence: number }> {
+  threshold: number,
+): Promise<{ result: HunyuanOCRResponse; overallConfidence: number; escalated: boolean }> {
   const result = await processWithHunyuanOCR(
     file,
     mode,
@@ -320,11 +323,39 @@ async function extractWithEscalation(
     customPrompt,
     "default",
   );
-  const overallConfidence = calculateDocumentOverallConfidence(
+  let overallConfidence = calculateDocumentOverallConfidence(
     result.fields,
     result.rawText,
   );
-  return { result, overallConfidence };
+
+  // Nothing worth re-reading when there are no fields to score, or the score
+  // already clears the account's bar.
+  if (!result.fields.length || overallConfidence >= threshold) {
+    return { result, overallConfidence, escalated: false };
+  }
+
+  try {
+    const retry = await processWithHunyuanOCR(
+      file,
+      mode,
+      forceReprocess,
+      customPrompt,
+      "escalation",
+    );
+    if (retry.fields.length) {
+      const retryConfidence = calculateDocumentOverallConfidence(
+        retry.fields,
+        retry.rawText,
+      );
+      if (retryConfidence > overallConfidence) {
+        return { result: retry, overallConfidence: retryConfidence, escalated: true };
+      }
+    }
+  } catch (error) {
+    console.warn("[api-client] escalation re-read failed; keeping default-tier result:", error);
+  }
+
+  return { result, overallConfidence, escalated: false };
 }
 
 /**
@@ -399,7 +430,6 @@ export async function createBatch(
         input.forceReprocess ?? false,
         input.customPrompt,
         confidenceThreshold,
-        input.engine,
       );
 
       await apiFetch(`/batches/${created.id}/documents/${serverDoc.id}/result`, {
@@ -473,7 +503,6 @@ export interface AppendBatchInput {
   documents: PreparedDocument[];
   forceReprocess?: boolean;
   customPrompt?: string;
-  engine?: "auto" | "hunyuan" | "textract";
 }
 
 interface AppendedBatch {
@@ -538,7 +567,6 @@ export async function appendBatch(
         input.forceReprocess ?? false,
         input.customPrompt,
         confidenceThreshold,
-        input.engine,
       );
 
       await apiFetch(`/batches/${created.id}/documents/${serverDoc.id}/result`, {
@@ -674,5 +702,74 @@ export async function updateSettings(confidenceThreshold: number): Promise<void>
   await apiFetch("/settings", {
     method: "PATCH",
     body: JSON.stringify({ confidenceThreshold }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Extraction Templates
+// ---------------------------------------------------------------------------
+
+export interface ExtractionTemplate {
+  id: number;
+  name: string;
+  baseMode: string;
+  prompt: string | null;
+  description: string | null;
+  expectedFields: string[];
+  useCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTemplateInput {
+  name: string;
+  baseMode: string;
+  prompt?: string;
+  description?: string;
+  expectedFields?: string[];
+}
+
+export type UpdateTemplateInput = Partial<CreateTemplateInput>;
+
+export function getTemplatesQueryKey() {
+  return ["templates"] as const;
+}
+
+export function useListTemplates() {
+  return useQuery<ExtractionTemplate[]>({
+    queryKey: getTemplatesQueryKey(),
+    queryFn: () => apiFetch<ExtractionTemplate[]>("/templates"),
+  });
+}
+
+export async function createTemplate(
+  input: CreateTemplateInput,
+): Promise<ExtractionTemplate> {
+  return apiFetch<ExtractionTemplate>("/templates", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateTemplate(
+  id: number,
+  input: UpdateTemplateInput,
+): Promise<ExtractionTemplate> {
+  return apiFetch<ExtractionTemplate>(`/templates/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteTemplate(id: number): Promise<void> {
+  await apiFetch<{ deleted: boolean }>(`/templates/${id}`, {
+    method: "DELETE",
+  });
+}
+
+/** Bumps the use_count so "most used" sorting works. Fire-and-forget. */
+export function trackTemplateUsage(id: number): void {
+  apiFetch(`/templates/${id}`, { method: "POST" }).catch(() => {
+    // Best-effort; do not interrupt the upload flow.
   });
 }

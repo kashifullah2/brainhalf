@@ -2,17 +2,19 @@ import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 
 import { useAuth } from "@/context/AuthContext";
+import { PageHeader } from "@/components/app";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Building2, Shield, Lock, Users, CreditCard, LogOut, Loader2 } from "lucide-react";
+import { Building2, Shield, Lock, Users, CreditCard, LogOut, Loader2, FileText } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 
 import { getConfidenceThreshold, setConfidenceThreshold } from "@/lib/review-queue-store";
 import { usePageTitle } from "@/lib/use-page-title";
+import { TemplatesSettings } from "@/components/TemplatesSettings";
 
 /** Valid tab slugs, also used to validate the :tab route parameter. */
-const TAB_IDS = ["organization", "security", "privacy", "team", "billing"];
+const TAB_IDS = ["organization", "templates", "security", "privacy", "team", "billing"];
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -85,6 +87,7 @@ export default function Settings() {
 
   const tabs = [
     { id: "organization", label: "Organization", icon: Building2 },
+    { id: "templates", label: "Saved Templates", icon: FileText },
     { id: "security", label: "Security", icon: Shield },
     { id: "privacy", label: "Data & Privacy", icon: Lock },
     { id: "team", label: "Team", icon: Users },
@@ -96,17 +99,11 @@ export default function Settings() {
       {/* AppLayout's <main> supplies the page padding; max-w-5xl only narrows
           the settings column inside it. */}
       <div className="flex flex-col flex-1 w-full max-w-5xl mx-auto">
-        <div className="space-y-2 mb-8 border-b border-border/40 pb-6">
-          <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-primary shadow-sm border border-primary/20">
-            Account
-          </div>
-          <h1 className="text-4xl font-extrabold tracking-tight text-foreground">
-            Settings
-          </h1>
-          <p className="text-lg font-medium text-muted-foreground">
-            Manage your organization, team members, and billing details.
-          </p>
-        </div>
+        <PageHeader
+          eyebrow={<><Building2 className="h-3.5 w-3.5" /> Account</>}
+          title="Settings"
+          description="Your account, your data, and how sure brainhalf has to be before it asks for your help."
+        />
 
         <div className="flex flex-col md:flex-row gap-10">
           {/* Settings Sidebar */}
@@ -187,7 +184,7 @@ export default function Settings() {
 
                       <div className="space-y-2 pt-2 border-t border-border/40">
                         <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                          Default Confidence Threshold (Review Queue Routing)
+                          How sure should brainhalf be before it asks you?
                         </label>
                         <div className="flex items-center gap-4">
                           <input
@@ -204,21 +201,23 @@ export default function Settings() {
                           </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground font-semibold mt-1">
-                          Extracted fields scoring below this score are automatically routed to your Review Queue for verification.
+                          Anything read with less confidence than this lands in
+                          your review queue instead of quietly going into an
+                          export. Raise it if you would rather check more.
+                        </p>
+                        {/* The slider persists on change, so this belongs next
+                            to the slider — it used to sit alone under a divider
+                            at the bottom of the card, which read as an empty
+                            form footer waiting for a Save button. */}
+                        <p className="pt-1 text-[11px] font-semibold text-muted-foreground/80">
+                          Saved to your account the moment you let go.
                         </p>
                       </div>
                     </div>
-
-                    <div className="pt-8 border-t border-border/40 flex items-center justify-between gap-4">
-                      <p className="text-[11px] font-semibold text-muted-foreground">
-                        The confidence threshold saves to your account as soon as
-                        you move the slider.
-                      </p>
-                      {/* The slider persists on change; no separate save
-                          action is needed. */}
-                    </div>
                   </form>
                 )}
+
+                {activeTab === "templates" && <TemplatesSettings />}
 
                 {activeTab === "security" && (
                   <div className="space-y-6">

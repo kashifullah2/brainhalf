@@ -14,7 +14,8 @@ import {
   X,
   Filter,
   ArrowDownUp,
-  FileType2
+  FileType2,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,15 @@ import {
 } from "@/components/ui/select";
 import { StatusDot } from "@/components/StatusDot";
 import { PRESETS } from "@/components/UploadModal";
+import {
+  EmptyState,
+  ErrorState,
+  ListSkeleton,
+  PageHeader,
+  greeting,
+} from "@/components/app";
+import { StatsBand } from "@/components/marketing";
+import { useAuth } from "@/context/AuthContext";
 import {
   useListBatches,
   getBatch,
@@ -45,6 +55,7 @@ export default function AppHome() {
   usePageTitle("Dashboard · BrainHalf", { noindex: true });
   const queryClient = useQueryClient();
   const { data: batches, isLoading, error } = useListBatches();
+  const { user } = useAuth();
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBusy, setIsBusy] = useState(false);
@@ -73,6 +84,61 @@ export default function AppHome() {
   const allSelected = filteredBatches?.length > 0 && selectedIds.size === filteredBatches.length;
 
   const isSelecting = selectedIds.size > 0;
+
+  /**
+   * The header line. Written to sound like a colleague reporting in rather than
+   * a counter: it says what is happening right now and whether anything is
+   * still moving.
+   */
+  const summary = useMemo(() => {
+    if (!batches?.length) return null;
+    const docs = batches.reduce((n: number, b: any) => n + (b.totalDocuments ?? 0), 0);
+    const running = batches.filter(
+      (b: any) => b.status === "processing" || b.status === "queued",
+    ).length;
+    const failed = batches.filter((b: any) => b.status === "failed").length;
+    const partial = batches.filter((b: any) => b.status === "partial").length;
+
+    const runs = `${batches.length} ${batches.length === 1 ? "run" : "runs"}`;
+    const pages = `${docs} ${docs === 1 ? "document" : "documents"}`;
+    // Named plainly: a failed run is not something that "could use a second
+    // look", it is something that did not happen.
+    const tail = running
+      ? `${running} still working — this list updates itself.`
+      : failed
+        ? `${failed} didn't come back — worth another run.`
+        : partial
+          ? `${partial} came back only partly filled.`
+          : "Everything is extracted and ready to export.";
+
+    return {
+      text: `${runs} · ${pages} · ${tail}`,
+      docs,
+      running,
+      needsAttention: failed + partial,
+    };
+  }, [batches]);
+
+  const stats = useMemo(() => {
+    if (!batches?.length || !summary) return null;
+    const done = batches.filter((b: any) => b.status === "completed").length;
+    return [
+      { value: String(batches.length), label: "Batches" },
+      { value: String(summary.docs), label: "Documents" },
+      { value: String(done), label: "Completed" },
+      // A hard-coded "In flight: 0" told the reader nothing on a dashboard where
+      // everything had already failed. Show whichever of the two is the real story.
+      summary.running > 0 || summary.needsAttention === 0
+        ? { value: String(summary.running), label: "In flight" }
+        : { value: String(summary.needsAttention), label: "Need a rerun" },
+    ];
+  }, [batches, summary]);
+
+  /** Raw engine ids read like database rows; PRESETS already has the wording. */
+  const engineLabels = useMemo(
+    () => new Map(PRESETS.map((p) => [p.id, p.label])),
+    [],
+  );
 
   const toggleSelect = useCallback((id: number, e: React.MouseEvent) => {
     e.preventDefault();
@@ -249,128 +315,145 @@ export default function AppHome() {
         <div className="absolute bottom-[-10%] left-[-5%] w-[30%] h-[30%] rounded-full bg-accent/5 blur-[100px]" />
       </div>
 
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10 border-b border-border/40 pb-8">
-        <div className="space-y-3 min-w-0 lg:max-w-2xl">
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-foreground">
-            Batches
-          </h1>
-          <p className="text-muted-foreground text-base md:text-lg font-medium">
-            Every extraction run in one place. Open a batch to review, edit,
-            and export its data.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {batches && batches.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Was `hidden md:flex`: on phones the only way to find a batch
-                  was scrolling the whole list. flex-wrap keeps the controls
-                  usable at any width. */}
-              <div className="flex flex-wrap items-center gap-2 bg-muted/30 p-1 rounded-xl border border-border/40">
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="h-9 border-none bg-transparent shadow-none text-xs font-bold uppercase tracking-wider w-[130px]">
-                    <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Status" /></div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="queued">Queued</SelectItem>
-                    <SelectItem value="processing">Processing</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="partial">Partial</SelectItem>
-                    <SelectItem value="failed">Failed</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="w-px h-4 bg-border/60 hidden sm:block" />
-                {/* Options come from PRESETS so the filter always matches real
-                    engine ids. */}
-                <Select value={filterEngine} onValueChange={setFilterEngine}>
-                  <SelectTrigger className="h-9 border-none bg-transparent shadow-none text-xs font-bold uppercase tracking-wider w-[140px]">
-                    <SelectValue placeholder="Engine" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Engines</SelectItem>
-                    {PRESETS.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="w-px h-4 bg-border/60 hidden sm:block" />
-                <Select value={sortOrder} onValueChange={(val: "newest"|"oldest") => setSortOrder(val)}>
-                  <SelectTrigger className="h-9 border-none bg-transparent shadow-none text-xs font-bold uppercase tracking-wider w-[130px]">
-                    <div className="flex items-center gap-2"><ArrowDownUp className="h-3.5 w-3.5" /> <SelectValue placeholder="Sort" /></div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="newest">Newest First</SelectItem>
-                    <SelectItem value="oldest">Oldest First</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+      <PageHeader
+        eyebrow={
+          <>
+            <Sparkles className="h-3.5 w-3.5" />
+            {greeting()}
+            {user?.name ? `, ${user.name.split(" ")[0]}` : ""}
+          </>
+        }
+        title="Your batches"
+        description={
+          summary?.text ??
+          "Every extraction run in one place. Open a batch to review, edit, and export its data."
+        }
+        actions={
+          <>
+            {batches && batches.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Was `hidden md:flex`: on phones the only way to find a batch
+                    was scrolling the whole list. flex-wrap keeps the controls
+                    usable at any width. */}
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/40 bg-muted/30 p-1">
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-9 w-[130px] border-none bg-transparent text-xs font-bold uppercase tracking-wider shadow-none">
+                      <div className="flex items-center gap-2"><Filter className="h-3.5 w-3.5" /> <SelectValue placeholder="Status" /></div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="queued">Queued</SelectItem>
+                      <SelectItem value="processing">Processing</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="partial">Partial</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="hidden h-4 w-px bg-border/60 sm:block" />
+                  {/* Options come from PRESETS so the filter always matches real
+                      engine ids. */}
+                  <Select value={filterEngine} onValueChange={setFilterEngine}>
+                    <SelectTrigger className="h-9 w-[140px] border-none bg-transparent text-xs font-bold uppercase tracking-wider shadow-none">
+                      <SelectValue placeholder="Engine" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Engines</SelectItem>
+                      {PRESETS.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="hidden h-4 w-px bg-border/60 sm:block" />
+                  <Select value={sortOrder} onValueChange={(val: "newest"|"oldest") => setSortOrder(val)}>
+                    <SelectTrigger className="h-9 w-[130px] border-none bg-transparent text-xs font-bold uppercase tracking-wider shadow-none">
+                      <div className="flex items-center gap-2"><ArrowDownUp className="h-3.5 w-3.5" /> <SelectValue placeholder="Sort" /></div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest First</SelectItem>
+                      <SelectItem value="oldest">Oldest First</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <Button
-                variant="outline"
-                className="rounded-full shadow-sm px-5 h-11 text-xs font-bold uppercase tracking-wide border-border/60"
-                onClick={handleSelectAll}
-              >
-                {allSelected ? (
-                  <>
-                    <CheckSquare className="mr-2 h-4 w-4" /> Deselect All
-                  </>
-                ) : (
-                  <>
-                    <Square className="mr-2 h-4 w-4" /> Select All
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
-          <Button
-            className="rounded-full shadow-sm px-8 h-11 md:h-12 text-xs md:text-sm font-bold uppercase tracking-wide shrink-0"
-            onClick={() => setLocation("/app/upload")}
-          >
-            <Plus className="mr-2 h-4 w-4" /> New Batch
-          </Button>
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-full border-border/60 px-5 text-xs font-bold uppercase tracking-wide shadow-sm"
+                  onClick={handleSelectAll}
+                >
+                  {allSelected ? (
+                    <>
+                      <CheckSquare className="mr-2 h-4 w-4" /> Deselect All
+                    </>
+                  ) : (
+                    <>
+                      <Square className="mr-2 h-4 w-4" /> Select All
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+            <Button
+              className="h-11 shrink-0 rounded-full px-8 text-xs font-bold uppercase tracking-wide shadow-md shadow-primary/20 transition-all hover:-translate-y-px hover:shadow-lg hover:shadow-primary/30 md:h-12 md:text-sm"
+              onClick={() => setLocation("/app/upload")}
+            >
+              <Plus className="mr-2 h-4 w-4" /> New Batch
+            </Button>
+          </>
+        }
+      />
+
+      {stats ? (
+        <div className="mb-8">
+          <StatsBand stats={stats} />
         </div>
-      </div>
+      ) : null}
 
       {isLoading ? (
-        <div className="flex flex-col justify-center items-center py-32 space-y-4">
-          <Loader2 className="h-10 w-10 animate-spin text-primary/50" />
-          <h2 className="text-xl font-bold text-foreground">
-            Loading your batches…
-          </h2>
-        </div>
+        <ListSkeleton rows={4} />
       ) : error ? (
-        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-8 text-center text-destructive font-bold shadow-sm">
-          We couldn't load your batches. Check your connection and try again.
-        </div>
+        <ErrorState
+          title="We couldn't reach your batches"
+          body="The connection dropped on the way. Nothing was lost — try again in a moment."
+          onRetry={() =>
+            queryClient.invalidateQueries({ queryKey: getListBatchesQueryKey() })
+          }
+        />
       ) : batches?.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-32 text-center max-w-lg mx-auto">
-          <div className="flex h-24 w-24 items-center justify-center rounded-[2rem] bg-card border-2 border-dashed border-border/60 text-muted-foreground mb-8 rotate-3 shadow-sm">
-            <FileText className="h-10 w-10" />
-          </div>
-          <h3 className="text-3xl font-extrabold tracking-tight mb-4 text-foreground text-balance">
-            Let's get your weekend back.
-          </h3>
-          <p className="text-muted-foreground mb-8 text-base font-medium leading-relaxed">
-            Drop in a few invoices, receipts, or any document — brainhalf will
-            pull out the fields and line them up in a table you can actually
-            use.
-          </p>
-          <Button
-            className="rounded-full px-8 h-12 shadow-sm text-sm tracking-wide uppercase font-bold"
-            onClick={() => setLocation("/app/upload")}
-          >
-            <Plus className="mr-2 h-4 w-4" /> Start extraction
-          </Button>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="Let's get your weekend back."
+          body="Drop in a few invoices, receipts, or any document — brainhalf will pull out the fields and line them up in a table you can actually use."
+          action={
+            <Button
+              className="h-12 rounded-full px-8 text-sm font-bold uppercase tracking-wide shadow-sm"
+              onClick={() => setLocation("/app/upload")}
+            >
+              <Plus className="mr-2 h-4 w-4" /> Start extraction
+            </Button>
+          }
+        />
       ) : (
         <>
-          <div className="bg-card border border-border/60 rounded-3xl shadow-sm overflow-hidden">
+          <div className="bg-card border border-border/60 rounded-3xl shadow-sm overflow-hidden transition-shadow duration-300 hover:shadow-md">
             {filteredBatches.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 text-center">
-                <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                <h3 className="text-xl font-bold text-foreground">No batches found</h3>
-                <p className="text-muted-foreground text-sm mt-1">Try adjusting your filters or start a new extraction.</p>
-              </div>
+              <EmptyState
+                inset
+                icon={Filter}
+                title="Nothing matches those filters"
+                body="Widen the status or engine filter, or start a fresh extraction."
+                action={
+                  <Button
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => {
+                      setFilterStatus("all");
+                      setFilterEngine("all");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
             ) : (
               <div className="divide-y divide-border/40">
                 {filteredBatches.map((batch: any) => {
@@ -379,9 +462,9 @@ export default function AppHome() {
                   const isImage = batch.firstDocumentContentType?.startsWith("image/");
                   
                   return (
-                    <div 
+                    <div
                       key={batch.id}
-                      className={`group flex flex-col sm:flex-row sm:items-center gap-4 p-4 sm:p-5 transition-colors cursor-pointer ${isSelected ? 'bg-primary/[0.03]' : 'hover:bg-muted/30'}`}
+                      className={`group flex flex-col sm:flex-row sm:items-center gap-4 p-4 sm:p-5 transition-colors cursor-pointer ${isSelected ? 'bg-primary/[0.04]' : 'hover:bg-muted/30'}`}
                       onClick={(e) => {
                         // Avoid triggering link if clicking checkbox or buttons
                         if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).closest("button")) return;
@@ -389,19 +472,19 @@ export default function AppHome() {
                       }}
                     >
                       <div className="flex items-center gap-4 w-full sm:w-auto sm:flex-1 min-w-0">
-                        <input 
+                        <input
                           type="checkbox"
                           className="rounded border-border/60 text-primary focus:ring-primary/50 h-5 w-5 cursor-pointer shrink-0"
                           checked={isSelected}
                           onChange={(e) => toggleSelect(batch.id, e as any)}
                           onClick={(e) => e.stopPropagation()}
                         />
-                        
-                        <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl bg-muted/40 border border-border/60 overflow-hidden shrink-0 flex items-center justify-center relative">
+
+                        <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl bg-muted/40 border border-border/60 overflow-hidden shrink-0 flex items-center justify-center relative transition-colors group-hover:border-primary/30">
                           {batch.firstDocumentObjectPath && isImage ? (
                             <img
                               src={storageUrl(batch.firstDocumentObjectPath)}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                               alt={`First document in batch ${batch.id}`}
                               loading="lazy"
                               // Falls back to the file icon rather than showing
@@ -411,7 +494,7 @@ export default function AppHome() {
                               }}
                             />
                           ) : (
-                            <FileType2 className="h-6 w-6 text-muted-foreground/50" />
+                            <FileType2 className="h-6 w-6 text-muted-foreground/50 transition-colors group-hover:text-primary/60" />
                           )}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
                         </div>
@@ -422,7 +505,9 @@ export default function AppHome() {
                               Batch #{batch.id}
                             </h3>
                             <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full bg-muted border border-border/40 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                              {batch.engineType || "Invoice"}
+                              {engineLabels.get(batch.engineType) ??
+                                batch.engineType ??
+                                "Invoice"}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground font-semibold">
@@ -436,15 +521,34 @@ export default function AppHome() {
                       <div className="flex items-center gap-6 sm:gap-8 w-full sm:w-auto pl-9 sm:pl-0">
                         <div className="flex flex-col gap-1.5 w-full sm:w-32 lg:w-48 shrink-0">
                           <div className="flex justify-between text-[11px] font-extrabold uppercase tracking-widest">
-                            <span className="text-muted-foreground">Progress</span>
-                            <span className={progress === 100 ? "text-success" : "text-foreground"}>
+                            <span className="text-muted-foreground">
+                              {batch.status === "failed" ? "Nothing read" : "Progress"}
+                            </span>
+                            <span
+                              className={
+                                batch.status === "failed"
+                                  ? "text-destructive"
+                                  : progress === 100
+                                    ? "text-success"
+                                    : "text-foreground"
+                              }
+                            >
                               {batch.completedDocuments} / {batch.totalDocuments}
                             </span>
                           </div>
-                          <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/40">
-                            <div 
-                              className={`h-full transition-all duration-500 ${progress === 100 ? 'bg-success' : 'bg-primary'}`} 
-                              style={{ width: `${progress}%` }} 
+                          {/* An empty grey track on a failed batch read as "not
+                              started yet". Tint the track so the row's state is
+                              legible without reading the label. */}
+                          <div
+                            className={`h-2 w-full overflow-hidden rounded-full border ${
+                              batch.status === "failed"
+                                ? "border-destructive/30 bg-destructive/15"
+                                : "border-border/40 bg-muted"
+                            }`}
+                          >
+                            <div
+                              className={`h-full transition-all duration-700 ease-out ${progress === 100 ? 'bg-success' : 'bg-gradient-to-r from-primary to-warning'}`}
+                              style={{ width: `${progress}%` }}
                             />
                           </div>
                         </div>

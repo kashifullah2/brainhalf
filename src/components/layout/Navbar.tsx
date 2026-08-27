@@ -36,11 +36,11 @@ export function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
-      <div className="container max-w-7xl mx-auto flex h-20 items-center justify-between px-6 md:px-8">
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+      <div className="container max-w-7xl mx-auto flex h-16 md:h-20 items-center justify-between px-6 md:px-8">
         <div className="flex items-center gap-6 md:gap-10">
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm group-hover:scale-105 transition-transform">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/25 group-hover:scale-105 group-hover:shadow-lg transition-all duration-300">
               <FileText className="h-5 w-5" />
             </div>
             <span className="hidden tracking-tight text-2xl text-foreground md:block">
@@ -48,6 +48,18 @@ export function Navbar() {
               <span className="font-extrabold text-primary">half</span>
             </span>
           </Link>
+          {/* Anchor links to the marketing page's sections; hidden while signed
+              in because the dashboard is then one click away anyway. */}
+          {!isSignedIn && (
+            <nav className="hidden lg:flex items-center gap-6 text-sm font-semibold text-muted-foreground">
+              <Link href="/#how-it-works" className="hover:text-foreground transition-colors">
+                How it works
+              </Link>
+              <Link href="/#faq" className="hover:text-foreground transition-colors">
+                FAQ
+              </Link>
+            </nav>
+          )}
         </div>
         
         <div className="flex items-center gap-4 md:gap-6">

@@ -38,6 +38,23 @@ export const RULES: Record<string, RateLimitRule> = {
   ocr: { limit: 120, windowSeconds: 3600 },
   upload: { limit: 200, windowSeconds: 3600 },
   /**
+   * Google ID-token sign-in. Lower than login because the route both verifies a
+   * JWT and can create an account, and an attacker burning through it from one
+   * IP costs a JWT verification each time.
+   */
+  googleSignIn: { limit: 10, windowSeconds: 300 },
+  /**
+   * Password-reset token redemption (the second half of the reset flow). No
+   * limit here once meant a brute-force of the 256-bit token — each guess hits
+   * the DB. A per-IP cap plus the one-use token keeps it honest.
+   */
+  passwordResetConfirm: { limit: 10, windowSeconds: 300 },
+  /**
+   * Logout. Low-risk (only destroys a session), but a flood wastes DB trips.
+   * Generous: a real user clicking "Sign out" a few times should never see a 429.
+   */
+  logout: { limit: 30, windowSeconds: 300 },
+  /**
    * The premium OCR tier, used only to re-extract a document the cheap tier read
    * with low confidence. Its daily allowance is roughly 125 pages, an order of
    * magnitude below the cheap tier, so this is a *budget* guard rather than an

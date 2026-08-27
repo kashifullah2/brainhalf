@@ -4,12 +4,26 @@
 # under wrangler. .dev.vars is gitignored; this example file is not.
 #
 # In production set the same names in the Cloudflare Pages dashboard under
-# Settings -> Environment variables, with OCR_API_KEY marked as a Secret.
+# Settings -> Environment variables, with the *_API_KEY names marked as Secrets.
 
-OCR_API_KEY=
-OCR_API_URL=https://api.futureppo.top/v1
-OCR_MODEL=hunyuan-ocr
+# Default OCR tier: required. api/ocr.ts returns 503 without it.
+HUNYUAN_API_KEY=sk-Yjj4t4DQNjdzXhGdfFXdIpa6sXKR6v0EqEfjXA4rdvOizlh3
+# Optional overrides; defaults live in code (functions/api/ocr.ts).
+HUNYUAN_BASE_URL=https://api.futureppo.top/v1
+HUNYUAN_MODEL=hunyuan-ocr
+
+# Escalation OCR tier: re-reads pages scored low by the default tier.
+# Optional — without it, escalation answers 503 and results keep the
+# default-tier reading. OCR_API_KEY is accepted as a legacy alias.
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-5.4-mini
 
 # Needed by /api/auth/google to validate the `aud` claim of the Google ID token.
 # Use the same value as VITE_GOOGLE_CLIENT_ID in .env.
 GOOGLE_CLIENT_ID=
+
+# Optional: Cloudflare Email Service binding for password-reset mail.
+# Without it, password reset stores the token and logs the link instead of
+# sending it (see wrangler.toml).
+EMAIL=

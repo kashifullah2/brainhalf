@@ -12,6 +12,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  EmptyState,
+  ListSkeleton,
+  PageHeader,
+  StatCard,
+} from "@/components/app";
 import { useToast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/lib/use-page-title";
 import { 
@@ -83,92 +89,68 @@ export default function ReviewQueue() {
   return (
     <div className="flex flex-col flex-1 w-full">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b border-border/40 pb-6">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-warning/10 px-3.5 py-1 text-xs font-bold uppercase tracking-widest text-warning border border-warning/20 shadow-sm mb-3">
-            <CheckSquare className="h-3.5 w-3.5" />
-            Human-in-the-Loop
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
-            Review Queue
-          </h1>
-          <p className="text-base sm:text-lg font-medium text-muted-foreground mt-1">
-            Fields extracted below your <span className="text-foreground font-bold">{(threshold * 100).toFixed(0)}%</span> confidence threshold are routed here for human verification.
-          </p>
-        </div>
-
-        <Button asChild variant="outline" className="rounded-full font-bold uppercase text-xs tracking-wider gap-2 self-start md:self-auto border-border/60">
-          <Link href="/app/settings">
-            <SlidersHorizontal className="h-4 w-4" />
-            Configure Threshold
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow={<><CheckSquare className="h-3.5 w-3.5" /> Human in the loop</>}
+        title="Second pair of eyes"
+        description={
+          <>
+            Anything the model read below your{" "}
+            <span className="font-bold text-foreground">
+              {(threshold * 100).toFixed(0)}%
+            </span>{" "}
+            confidence line waits here. Nothing is exported until you are happy
+            with it.
+          </>
+        }
+        actions={
+          <Button asChild variant="outline" className="gap-2 self-start rounded-full border-border/60 text-xs font-bold uppercase tracking-wider md:self-auto">
+            <Link href="/app/settings">
+              <SlidersHorizontal className="h-4 w-4" />
+              Configure Threshold
+            </Link>
+          </Button>
+        }
+      />
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-        <Card className="rounded-3xl border-border/60 shadow-sm bg-card p-6">
-          <div className="flex items-start justify-between gap-3">
-            {/* min-h reserves the second line so the three cards' numbers share a
-                baseline whether or not a label wraps. */}
-            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground min-h-[2.25rem]">Awaiting Review</span>
-            <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
-              <FileText className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="text-3xl font-black tracking-tight text-foreground mt-3">
-            {pendingItems.length}
-          </div>
-        </Card>
-
-        <Card className="rounded-3xl border-border/60 shadow-sm bg-card p-6">
-          <div className="flex items-start justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground min-h-[2.25rem]">Pending Field Verification</span>
-            <div className="p-2 rounded-xl bg-warning/10 text-warning shrink-0">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="text-3xl font-black tracking-tight text-foreground mt-3">
-            {pendingFields}
-            {/* The "/ N" denominator read as "0 /0" whenever the queue was
-                clear. Only show it once flagged fields actually exist. */}
-            {totalFlaggedFields > 0 && (
-              <span className="text-sm font-bold text-muted-foreground"> of {totalFlaggedFields} flagged</span>
-            )}
-          </div>
-        </Card>
-
-        <Card className="rounded-3xl border-border/60 shadow-sm bg-card p-6">
-          <div className="flex items-start justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground min-h-[2.25rem]">Routing Threshold</span>
-            <div className="p-2 rounded-xl bg-success/10 text-success shrink-0">
-              <Sparkles className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="text-3xl font-black tracking-tight text-foreground mt-3">
-            {(threshold * 100).toFixed(0)}%
-          </div>
-        </Card>
+      <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
+        <StatCard
+          label="Awaiting Review"
+          value={pendingItems.length}
+          icon={FileText}
+          tone="primary"
+        />
+        <StatCard
+          label="Pending Field Verification"
+          value={pendingFields}
+          /* The "/ N" denominator read as "0 of 0" whenever the queue was
+             clear. Only show it once flagged fields actually exist. */
+          hint={totalFlaggedFields > 0 ? `of ${totalFlaggedFields} flagged` : undefined}
+          icon={AlertTriangle}
+          tone="warning"
+        />
+        <StatCard
+          label="Routing Threshold"
+          value={`${(threshold * 100).toFixed(0)}%`}
+          icon={Sparkles}
+          tone="success"
+        />
       </div>
 
       {/* Queue List */}
       {isLoading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </div>
+        <ListSkeleton rows={3} />
       ) : items.length === 0 ? (
-        <Card className="rounded-3xl border-border/60 p-12 text-center bg-card shadow-sm flex flex-col items-center">
-          <div className="h-16 w-16 rounded-full bg-success/10 text-success flex items-center justify-center mb-4">
-            <CheckCircle2 className="h-8 w-8" />
-          </div>
-          <h3 className="text-xl font-extrabold text-foreground">Review Queue Clear!</h3>
-          <p className="text-sm font-medium text-muted-foreground max-w-md mt-2">
-            All extracted document fields meet or exceed your confidence threshold of {(threshold * 100).toFixed(0)}%. No documents require manual correction.
-          </p>
-          <Button asChild className="rounded-full px-8 font-bold uppercase text-xs mt-6 shadow-sm">
-            <Link href="/app/upload">Run New Batch</Link>
-          </Button>
-        </Card>
+        <EmptyState
+          icon={CheckCircle2}
+          title="Nothing needs you right now."
+          body={`Every field came back at or above your ${(threshold * 100).toFixed(0)}% threshold, so there is nothing to correct. Go do something else.`}
+          action={
+            <Button asChild className="h-12 rounded-full px-8 text-xs font-bold uppercase tracking-wide shadow-sm">
+              <Link href="/app/upload">Run a new batch</Link>
+            </Button>
+          }
+        />
       ) : (
         <div className="space-y-8">
           <div className="space-y-4">
@@ -180,9 +162,9 @@ export default function ReviewQueue() {
 
           {pendingItems.length === 0 && (
             <Card className="rounded-3xl border-border/60 bg-card p-8 text-center shadow-sm">
-              <p className="text-sm font-bold text-foreground">Nothing left to review.</p>
+              <p className="text-sm font-bold text-foreground">All caught up.</p>
               <p className="mt-1 text-sm font-medium text-muted-foreground">
-                Every flagged field has been verified.
+                Every flagged field on this list has been checked off.
               </p>
             </Card>
           )}

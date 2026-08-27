@@ -44,6 +44,17 @@ function loadAnalytics() {
   gtag("config", MEASUREMENT_ID, { anonymize_ip: true });
 }
 
+export function trackAnalyticsEvent(eventName: string, eventParams?: Record<string, unknown>) {
+  if (typeof window === "undefined") return;
+  const w = window as unknown as { dataLayer?: unknown[] };
+  if (!w.dataLayer) return;
+  
+  w.dataLayer.push({
+    event: eventName,
+    ...eventParams,
+  });
+}
+
 export function AnalyticsConsent() {
   const [consent, setConsent] = useState<Consent | null | "unknown">("unknown");
 

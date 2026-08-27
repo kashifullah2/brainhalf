@@ -6,11 +6,6 @@
 // else in the browser bundle — a VITE_-prefixed secret is inlined into the
 // published JavaScript and readable by anyone with DevTools.
 //
-// That claim used to be true, but Cloudflare Pages Functions timeouts 
-// required re-introducing a direct-to-provider fallback. If the proxy fails, 
-// the client will attempt to call the provider directly using VITE_HUNYUAN_API_KEY 
-// or VITE_OCR_API_KEY. Be aware that this publishes the key to anyone who opens
-// the network tab.
 // The caller selects a *tier*, not a model. The proxy maps the tier to a model
 // server-side so a signed-in user cannot aim the account's small premium daily
 // quota at their own batch.
@@ -133,8 +128,6 @@ export async function processWithHunyuanOCR(
     console.log(`[OCR Client] forceReprocess enabled. Bypassing cache for ${file.name}`);
   }
 
-
-
   // PDFs go as a `file` part, images as `image_url`. The vision `image_url`
   // field accepts png/jpeg/webp/gif only, so the PDFs this app has always
   // accepted at upload were being sent in a field that cannot carry them — every
@@ -200,54 +193,6 @@ export async function processWithHunyuanOCR(
   });
 
   if (!response.ok) {
-    console.warn(`[OCR Client] Proxy failed with status ${response.status}. Attempting direct fallback...`);
-    const isEscalation = tier === 'escalation';
-    const directKey = isEscalation ? import.meta.env.VITE_OCR_API_KEY : import.meta.env.VITE_HUNYUAN_API_KEY;
-    
-    if (directKey) {
-      const baseUrl = isEscalation ? "https://api.openai.com/v1" : "https://api.futureppo.top/v1";
-      const model = isEscalation ? "gpt-5.4" : "hunyuan-ocr";
-      
-      const upstreamBody = isEscalation ? {
-        model,
-        messages: requestBody.messages,
-        temperature: 0,
-        seed: 42,
-        response_format: requestBody.jsonObject ? { type: "json_object" } : undefined,
-      } : {
-        model,
-        messages: requestBody.messages,
-        temperature: 0,
-        seed: 42,
-      };
-
-      try {
-        const directResponse = await fetch(`${baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${directKey}`,
-            "Accept": "application/json"
-          },
-          body: JSON.stringify(upstreamBody),
-        });
-
-        if (directResponse.ok) {
-          const data = await directResponse.json();
-          const content = data.choices?.[0]?.message?.content || "";
-          const modelConfidence = extractModelConfidence(data);
-
-          try {
-            await localforage.setItem<CachedExtraction>(cacheKey, { content, modelConfidence });
-          } catch (err) {}
-
-          return parseOCRResult(content, mode, modelConfidence, imageQuality);
-        }
-      } catch (err) {
-        console.error("[OCR Client] Direct fallback also failed:", err);
-      }
-    }
-
     const raw = await response.text().catch(() => "");
     let detail = raw.slice(0, 200);
     try {

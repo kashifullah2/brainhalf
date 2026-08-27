@@ -20,6 +20,18 @@
 // costs one extra round trip and self-heals.
 // ---------------------------------------------------------------------------
 
+/**
+ * Default OpenAI model names, shared by the production proxy
+ * (functions/api/ocr.ts) and the dev proxy (vite.config.ts). Both import from
+ * here so the two cannot drift — the same reason buildModelParams is shared.
+ *
+ * The escalation tier runs only on below-threshold pages, so it can afford the
+ * flagship model; the no-Hunyuan fallback serves every page and stays on mini.
+ */
+export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1';
+export const DEFAULT_OPENAI_MODEL = 'gpt-5.4';
+export const DEFAULT_OPENAI_FALLBACK_MODEL = 'gpt-5.4-mini';
+
 /** Parameters the caller would *like* to send, before capability filtering. */
 export interface DesiredParams {
   temperature?: number;

@@ -445,6 +445,180 @@ export function calculateDocumentOverallConfidence(
   return Number(Math.max(0.05, Math.min(1.0, avgConf)).toFixed(2));
 }
 
+// ---------------------------------------------------------------------------
+// Cross-Field Mathematical Validation
+//
+// Checks arithmetic relationships between extracted fields so discrepancies
+// caused by vendor typos or blurred scans surface immediately rather than
+// after an accountant enters them into an ERP.
+// ---------------------------------------------------------------------------
+
+export interface MathWarning {
+  /** Human-readable explanation of the discrepancy. */
+  message: string;
+  /** Which fields are involved, so the UI can highlight them. */
+  involvedFields: string[];
+  /** The expected value, computed from the other fields. */
+  expected: string;
+  /** What the document actually says. */
+  actual: string;
+}
+
+/**
+ * Strips currency markers and grouping separators from a value and returns
+ * the underlying number, or NaN if the string is not numeric.
+ */
+function parseMoneyValue(raw: string): number {
+  if (!raw) return NaN;
+  let working = raw.trim().toLowerCase();
+
+  // Parenthesised negatives: (1,234.00)
+  let isNegated = working.startsWith('(') && working.endsWith(')');
+  if (isNegated) working = working.slice(1, -1).trim();
+
+  if (working.startsWith('-')) {
+    isNegated = true;
+  }
+  working = working.replace(/^[-+]/, '').trim();
+
+  // Strip known currency markers from either end.
+  for (const marker of CURRENCY_MARKERS) {
+    if (working.startsWith(marker)) {
+      working = working.slice(marker.length).trim();
+      break;
+    }
+    if (working.endsWith(marker)) {
+      working = working.slice(0, -marker.length).trim();
+      break;
+    }
+  }
+
+  if (working.startsWith('-')) {
+    isNegated = true;
+    working = working.replace(/^-/, '').trim();
+  }
+
+  if (!working) return NaN;
+
+  // Detect European notation (1.234,56) vs US notation (1,234.56).
+  const lastComma = working.lastIndexOf(',');
+  const lastDot = working.lastIndexOf('.');
+  if (lastComma > lastDot) {
+    // European: dots are grouping, comma is decimal
+    working = working.replace(/\./g, '').replace(',', '.');
+  } else {
+    // US / standard: commas are grouping
+    working = working.replace(/,/g, '').replace(/\s/g, '');
+  }
+
+  const num = Number(working);
+  return isNegated ? -num : num;
+}
+
+/**
+ * Finds a field by checking if any extracted field's normalised name contains
+ * one of the candidate tokens (whole-word). Returns the first match.
+ */
+function findFieldValue(
+  fields: Array<{ normalizedField: string; value: string; editedValue?: string | null }>,
+  candidates: string[],
+): { name: string; value: number } | null {
+  for (const field of fields) {
+    const tokens = field.normalizedField.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    for (const candidate of candidates) {
+      if (tokens.includes(candidate) || field.normalizedField.toLowerCase() === candidate) {
+        const raw = field.editedValue ?? field.value;
+        const num = parseMoneyValue(raw);
+        if (Number.isFinite(num)) {
+          return { name: field.normalizedField, value: num };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Validates arithmetic relationships between extracted fields.
+ *
+ * Currently checks:
+ *   1. Subtotal + Tax ≈ Total   (tolerance: ±$0.02 to allow rounding)
+ *   2. Qty × Unit Price ≈ Amount (for line-item style extractions)
+ *
+ * Returns an empty array when all checks pass or when the required fields
+ * are not present (non-invoice documents simply skip the check).
+ */
+export function validateFieldMath(
+  fields: Array<{ normalizedField: string; value: string; editedValue?: string | null }>,
+): MathWarning[] {
+  const warnings: MathWarning[] = [];
+  const TOLERANCE = 0.02; // Rounding tolerance in currency units
+
+  // --- Check 1: Subtotal + Tax - Discount ≈ Total ------------------------
+  const subtotal = findFieldValue(fields, ['subtotal', 'sub total']);
+  const tax = findFieldValue(fields, ['tax', 'vat', 'gst']);
+  const discount = findFieldValue(fields, ['discount']);
+  const total = findFieldValue(fields, ['total', 'amount due', 'grand total']);
+
+  if (subtotal && total) {
+    // If we have either tax or discount (or both), we can validate the total
+    if (tax || discount) {
+      const taxVal = tax ? tax.value : 0;
+      const discVal = discount ? discount.value : 0;
+      const expected = subtotal.value + taxVal - discVal;
+      const diff = Math.abs(expected - total.value);
+      
+      if (diff > TOLERANCE) {
+        const parts = [];
+        parts.push(`${subtotal.name} (${subtotal.value.toFixed(2)})`);
+        if (tax) parts.push(`+ ${tax.name} (${taxVal.toFixed(2)})`);
+        if (discount) parts.push(`− ${discount.name} (${discVal.toFixed(2)})`);
+        
+        warnings.push({
+          message: `${parts.join(' ')} = ${expected.toFixed(2)}, but ${total.name} is ${total.value.toFixed(2)} — difference of ${diff.toFixed(2)}.`,
+          involvedFields: [subtotal.name, tax?.name, discount?.name, total.name].filter(Boolean) as string[],
+          expected: expected.toFixed(2),
+          actual: total.value.toFixed(2),
+        });
+      }
+    }
+  }
+
+  // --- Check 3: Reasonable Tax Rate --------------------------------------
+  if (subtotal && tax && subtotal.value > 0) {
+    const rate = tax.value / subtotal.value;
+    // Over 40% tax is extremely rare and usually indicates a misread field
+    if (rate > 0.40 || rate < 0) {
+      warnings.push({
+        message: `The calculated tax rate is ${(rate * 100).toFixed(1)}%, which is unusually high or negative. Please verify the ${subtotal.name} and ${tax.name} values.`,
+        involvedFields: [subtotal.name, tax.name],
+        expected: '0 - 40%',
+        actual: `${(rate * 100).toFixed(1)}%`,
+      });
+    }
+  }
+
+  // --- Check 2: Qty × Unit Price ≈ Amount --------------------------------
+  const qty = findFieldValue(fields, ['qty', 'quantity']);
+  const unitPrice = findFieldValue(fields, ['unit price', 'price', 'rate']);
+  const amount = findFieldValue(fields, ['amount', 'line total']);
+
+  if (qty && unitPrice && amount) {
+    const expected = qty.value * unitPrice.value;
+    const diff = Math.abs(expected - amount.value);
+    if (diff > TOLERANCE) {
+      warnings.push({
+        message: `${qty.name} (${qty.value}) × ${unitPrice.name} (${unitPrice.value.toFixed(2)}) = ${expected.toFixed(2)}, but ${amount.name} is ${amount.value.toFixed(2)} — difference of ${diff.toFixed(2)}.`,
+        involvedFields: [qty.name, unitPrice.name, amount.name],
+        expected: expected.toFixed(2),
+        actual: amount.value.toFixed(2),
+      });
+    }
+  }
+
+  return warnings;
+}
+
 /**
  * Helper to calculate Shannon entropy of a string
  */

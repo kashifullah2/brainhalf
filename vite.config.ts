@@ -5,18 +5,55 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
+/**
+ * Radix packages that are pure internals — every widget pulls several of them,
+ * so they belong in one shared chunk rather than one chunk each.
+ */
+const RADIX_CORE = new Set([
+  'primitive',
+  'react-arrow',
+  'react-collection',
+  'react-compose-refs',
+  'react-context',
+  'react-direction',
+  'react-dismissable-layer',
+  'react-focus-guards',
+  'react-focus-scope',
+  'react-id',
+  'react-popper',
+  'react-portal',
+  'react-presence',
+  'react-primitive',
+  'react-roving-focus',
+  'react-slot',
+  'react-use-callback-ref',
+  'react-use-controllable-state',
+  'react-use-escape-keydown',
+  'react-use-effect-event',
+  'react-use-is-hydrated',
+  'react-use-layout-effect',
+  'react-use-previous',
+  'react-use-rect',
+  'react-use-size',
+  'react-visually-hidden',
+  'rect',
+  'number',
+]);
+
 // Shared with functions/api/ocr.ts so dev and production build the same upstream
 // body. Importing it is what keeps the two in step — a copy would drift.
 import {
   buildModelParams,
   retryWithoutRejectedParam,
+  DEFAULT_OPENAI_BASE_URL,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_FALLBACK_MODEL,
 } from './server/openai-params';
 
 // Graceful defaults — no longer crashes when env vars are missing.
 // .env is consulted as well as the shell, so PORT/BASE_PATH declared there are
 // actually honoured (previously only shell env was read).
-const rootDir = path.resolve(import.meta.dirname);
-const fileEnv = loadEnv(process.env.NODE_ENV || 'development', rootDir, '');
+const rootDir = path.resolve(import.meta.dirname);const fileEnv = loadEnv(process.env.NODE_ENV || 'development', rootDir, '');
 const port = Number(process.env.PORT || fileEnv.PORT) || 5173;
 const basePath = process.env.BASE_PATH || fileEnv.BASE_PATH || '/';
 
@@ -74,11 +111,11 @@ function devOcrProxy(): Plugin {
       // accepted as a fallback (where the deployment's existing key lives).
       const openaiKey = readEnv('OPENAI_API_KEY') || readEnv('OCR_API_KEY');
       const openaiBaseUrl = stripTrailingSlash(
-        readEnv('OPENAI_BASE_URL') || 'https://api.openai.com/v1',
+        readEnv('OPENAI_BASE_URL') || DEFAULT_OPENAI_BASE_URL,
       );
-      const openaiModel = readEnv('OPENAI_MODEL') || 'gpt-5.4';
+      const openaiModel = readEnv('OPENAI_MODEL') || DEFAULT_OPENAI_MODEL;
       // Cheap OpenAI model used on the default tier when no Hunyuan key is set.
-      const openaiFallbackModel = 'gpt-5.4-mini';
+      const openaiFallbackModel = DEFAULT_OPENAI_FALLBACK_MODEL;
 
       // Mirrors HUNYUAN_USER_AGENT in functions/api/ocr.ts: the upstream
       // rejects the default Node User-Agent, so a browser UA is sent instead.
@@ -314,7 +351,15 @@ export default defineConfig({
           if (id.includes('node_modules/lucide-react')) {
             return 'vendor-lucide';
           }
-          if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/class-variance-authority')) {
+          if (id.includes('node_modules/@radix-ui/')) {
+            // One chunk per Radix package. Lumping all of them together meant a
+            // page that opens an accordion also downloaded the select, menubar
+            // and toast implementations; the shared internals (compose-refs,
+            // primitive, portal, ...) still coalesce into a single core chunk.
+            const pkg = id.split('node_modules/@radix-ui/')[1].split('/')[0];
+            return RADIX_CORE.has(pkg) ? 'radix-core' : `radix-${pkg.replace('react-', '')}`;
+          }
+          if (id.includes('node_modules/class-variance-authority')) {
             return 'vendor-ui';
           }
           if (id.includes('node_modules/@tanstack')) {

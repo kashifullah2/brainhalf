@@ -64,7 +64,7 @@ describe('hashPassword', () => {
     expect(parts[1]).toBe('sha256');
     // The parameters live in the hash so they can be raised later without
     // invalidating everyone's password.
-    expect(parts[2]).toBe('100000x1');
+    expect(parts[2]).toBe('100000x6');
     expect(parts[3]).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(parts[4]).toMatch(/^[A-Za-z0-9_-]+$/);
   });
@@ -115,7 +115,7 @@ describe('verifyPassword', () => {
 
     expect(await verifyPassword('legacy-password', legacy)).toEqual({
       valid: true,
-      needsRehash: false,
+      needsRehash: true,
     });
     // A wrong password never asks for a rehash -- that would be a free oracle
     // telling an attacker the account exists and is on old parameters.

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRoute, Link } from "wouter";
 import {
   useGetBatch,
@@ -15,13 +15,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusDot } from "@/components/StatusDot";
+import { EmptyState, ListSkeleton } from "@/components/app";
 import { ConfidenceIndicator } from "@/components/ConfidenceIndicator";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeFieldLabel } from "@/lib/humanizeField";
+import { humanizeExtractionError } from "@/lib/humanize-error";
 import { getConfidenceThreshold } from "@/lib/review-queue-store";
 import { usePageTitle } from "@/lib/use-page-title";
+import { validateFieldMath, type MathWarning } from "@/lib/confidence-scorer";
 import {
-  ArrowLeft, FileText, FileImage, FileType,
+  ArrowLeft, FileText, FileImage, FileType, FileQuestion,
   Edit2, Check, X, AlertCircle, AlertTriangle, Loader2,
   ZoomIn, ZoomOut, Maximize
 } from "lucide-react";
@@ -112,6 +115,13 @@ export default function DocumentDetails() {
   const { data: docDetail } = useGetDocument(batchId, documentId);
   const ocrText = docDetail?.ocrText;
 
+  // Cross-field math validation: surfaces arithmetic discrepancies (e.g.,
+  // Subtotal + Tax ≠ Total) so users catch vendor typos or OCR errors.
+  const mathWarnings: MathWarning[] = useMemo(
+    () => (doc?.extractedFields ? validateFieldMath(doc.extractedFields) : []),
+    [doc?.extractedFields],
+  );
+
   const handleSaveEdit = async (normalizedField: string) => {
     if (!doc) return;
     setIsSaving(true);
@@ -135,16 +145,21 @@ export default function DocumentDetails() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center py-32">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <ListSkeleton rows={3} />;
   }
 
   if (!doc) {
     return (
-      <div className="text-center py-20 text-destructive font-bold text-xl">Document not found.</div>
+      <EmptyState
+        icon={FileQuestion}
+        title="We can't find that document"
+        body="It may have been deleted with its batch, or the link may be stale. The rest of the batch is untouched."
+        action={
+          <Button asChild className="h-12 rounded-full px-8 text-xs font-bold uppercase tracking-wide">
+            <Link href={`/app/batches/${batchId}`}>Back to the batch</Link>
+          </Button>
+        }
+      />
     );
   }
 
@@ -181,9 +196,13 @@ export default function DocumentDetails() {
           <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl border border-warning/40 bg-warning/8 text-warning shrink-0">
             <AlertTriangle className="h-5 w-5 shrink-0 text-warning" />
             <div>
-              <p className="text-sm font-extrabold uppercase tracking-wide">Possible Duplicate</p>
+              <p className="text-sm font-extrabold uppercase tracking-wide">You've uploaded this file before</p>
+              {/* Was "same invoice number, vendor, and total", which described a
+                  field comparison the server never does: server/batches.ts
+                  matches on content_hash, i.e. byte-identical files. */}
               <p className="text-xs font-medium text-warning/80 dark:text-warning/70 mt-0.5">
-                Another document with the same invoice number, vendor, and total already exists in your account.
+                It is byte-for-byte identical to another document in your account.
+                Re-reading it is fine — it just spends a second run.
               </p>
             </div>
           </div>
@@ -191,17 +210,28 @@ export default function DocumentDetails() {
 
         {/* Surface the stored extraction error; a failed document would
             otherwise render as an empty field list with no explanation. */}
-        {doc.status === "failed" && doc.error && (
-          <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl border border-destructive/40 bg-destructive/5 text-destructive shrink-0">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <div>
-              <p className="text-sm font-extrabold uppercase tracking-wide">Extraction failed</p>
-              <p className="text-xs font-medium mt-0.5 opacity-80">
-                {doc.error}
-              </p>
+        {doc.status === "failed" && (() => {
+          const human = humanizeExtractionError(doc.error);
+          return (
+            <div
+              className="flex shrink-0 items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 px-5 py-3.5 text-destructive"
+              title={doc.error ?? undefined}
+            >
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div className="space-y-0.5">
+                <p className="text-sm font-extrabold uppercase tracking-wide">
+                  {human.title}
+                </p>
+                <p className="text-xs font-medium opacity-80">{human.body}</p>
+                {human.operatorHint ? (
+                  <p className="pt-1 text-[11px] font-medium text-muted-foreground">
+                    {human.operatorHint}
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="flex flex-col lg:flex-row gap-8 min-h-0 flex-1">
           {/* LEFT: Document Preview */}
@@ -224,16 +254,17 @@ export default function DocumentDetails() {
                     <div className="absolute inset-0 flex items-center justify-center bg-muted/20 animate-pulse rounded-lg">
                       <div className="flex flex-col items-center text-muted-foreground">
                         <Loader2 className="h-10 w-10 animate-spin mb-4 opacity-50" />
-                        <span className="text-sm font-bold tracking-wider uppercase">Loading Preview...</span>
+                        <span className="text-sm font-bold tracking-wider uppercase">Fetching the original…</span>
                       </div>
                     </div>
                   )}
                   {imageError ? (
                     <div className="flex flex-col items-center justify-center text-muted-foreground w-full h-full p-8 border-2 border-dashed border-border/40 rounded-lg bg-muted/10">
                       <AlertTriangle className="h-16 w-16 mb-4 text-destructive/60" />
-                      <p className="font-bold text-lg text-foreground">Preview unavailable</p>
+                      <p className="font-bold text-lg text-foreground">Can't show the preview</p>
                       <p className="text-sm font-medium mt-2 max-w-xs text-center text-muted-foreground">
-                        The image preview could not be loaded from storage.
+                        The file is still in storage — it just would not render
+                        here. Open the original to see it.
                       </p>
                       <Button asChild variant="outline" size="sm" className="mt-6 rounded-full px-6 font-bold shadow-sm uppercase tracking-wider">
                         <a href={fileUrl} target="_blank" rel="noopener noreferrer">Open Original</a>
@@ -291,6 +322,25 @@ export default function DocumentDetails() {
               </TabsList>
               
               <TabsContent value="fields" className="flex-1 mt-6 outline-none min-h-0">
+                {/* Math validation warnings */}
+                {mathWarnings.length > 0 && (
+                  <div className="mb-4 space-y-2">
+                    {mathWarnings.map((w, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-3 px-4 py-3 rounded-2xl border border-warning/40 bg-warning/8 text-warning"
+                      >
+                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-xs font-extrabold uppercase tracking-wide">Math mismatch</p>
+                          <p className="text-xs font-medium text-warning/80 dark:text-warning/70 mt-0.5">
+                            {w.message}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <Card className="h-full flex flex-col shadow-sm border-border/60 rounded-3xl overflow-hidden">
                   <CardHeader className="py-5 border-b border-border/60 shrink-0 bg-muted/20">
                     <CardTitle className="text-base font-extrabold flex items-center justify-between text-foreground">
