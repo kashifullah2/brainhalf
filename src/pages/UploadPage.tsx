@@ -22,9 +22,6 @@ export default function UploadPage() {
     setLocation(`/app/batches/${batchId}`);
   };
 
-  // "Custom Prompt" and "Visual Q&A" are meaningless without a prompt, so
-  // Continue stays disabled until one is entered. Templates with custom base 
-  // also need a prompt.
   const isTemplate = mode.startsWith("template_");
   const templateObj = isTemplate ? templates?.find(t => `template_${t.id}` === mode) : undefined;
   const actualMode = isTemplate ? (templateObj?.baseMode || "custom") : mode;
@@ -47,7 +44,6 @@ export default function UploadPage() {
     },
     onProgress?: (progress: CreateBatchProgress) => void,
   ) => {
-    // If a template was used, increment its usage counter.
     if (data.mode.startsWith("template_")) {
       const id = parseInt(data.mode.replace("template_", ""), 10);
       if (!isNaN(id)) {
@@ -63,8 +59,6 @@ export default function UploadPage() {
       }
     }
     
-    // The backend expects the underlying mode (invoice, custom, vqa, etc.), 
-    // not "template_123". The customPrompt is what makes it unique.
     const resolvedMode = data.mode.startsWith("template_") 
       ? (templates?.find(t => `template_${t.id}` === data.mode)?.baseMode || "custom")
       : data.mode;
@@ -75,24 +69,20 @@ export default function UploadPage() {
     });
   };
 
-  // AppLayout's <main> supplies the container width and page padding; the old
-  // max-w-7xl/py-8 here doubled them.
   return (
-    <div className="relative flex flex-col flex-1 w-full">
-      {/* Futuristic background elements */}
+    <div className="relative flex flex-col flex-1 w-full max-w-6xl mx-auto">
       <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden">
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/5 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] rounded-full bg-accent/5 blur-[100px]" />
       </div>
 
       <PageHeader
-        eyebrow={<><Wand2 className="h-3.5 w-3.5" /> New extraction</>}
+        eyebrow={<><Wand2 className="h-3.5 w-3.5" /> New batch</>}
         title="What are we reading today?"
-        description="Pick the kind of document you have, then hand over the files. Two steps, no setup."
+        description="Pick the kind of document you have, then hand over the files."
         actions={
           <Button
             variant="outline"
-            className="h-12 rounded-full border-border/80 bg-card px-6 text-sm font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+            className="h-10 rounded-lg border-border/60 bg-card px-4 text-[13px] font-semibold shadow-sm transition-all hover:bg-muted"
             onClick={() => setLocation("/app")}
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -101,26 +91,22 @@ export default function UploadPage() {
         }
       />
 
-      {/* Persistent Progress Indicator */}
-      <div className="mb-8 flex items-center justify-between bg-card border border-border/40 p-5 rounded-2xl shadow-sm">
+      <div className="mb-6 flex items-center justify-between bg-card border border-border/60 p-4 rounded-xl shadow-sm">
         <div className="flex flex-col">
-          <span className="text-xs font-bold uppercase tracking-widest text-primary mb-1">Step {step} of 2</span>
-          <span className="text-lg font-bold text-foreground">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-primary mb-1">Step {step} of 2</span>
+          <span className="text-[15px] font-bold text-foreground">
             {step === 1 ? "Tell brainhalf what to look for" : "Hand over your documents"}
           </span>
-          <span className="mt-0.5 text-xs font-medium text-muted-foreground">
-            {step === 1
-              ? "Presets cover the usual suspects — or describe it yourself."
-              : "Drop them in together; each page is read on its own."}
+          <span className="text-[13px] text-muted-foreground mt-0.5">
+            {step === 1 ? "Presets cover the usual suspects — or describe it yourself." : "Drop them in together; each page is read on its own."}
           </span>
         </div>
         <div className="flex gap-2">
-          <div className={cn("h-2.5 w-16 rounded-full transition-colors duration-500", step >= 1 ? "bg-primary" : "bg-muted")} />
-          <div className={cn("h-2.5 w-16 rounded-full transition-colors duration-500", step >= 2 ? "bg-primary" : "bg-muted")} />
+          <div className={cn("h-1.5 w-12 rounded-full transition-colors duration-500", step >= 1 ? "bg-primary" : "bg-muted")} />
+          <div className={cn("h-1.5 w-12 rounded-full transition-colors duration-500", step >= 2 ? "bg-primary" : "bg-muted")} />
         </div>
       </div>
 
-      {/* Main Workspace: Wizard Steps */}
       <div className="w-full">
         {step === 1 ? (
           <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -136,34 +122,29 @@ export default function UploadPage() {
               onCustomPromptChange={setCustomPrompt}
               templates={templates}
             />
-            <div className="flex flex-col items-end gap-2 mt-6">
+            <div className="flex flex-col items-end gap-2 mt-4">
               <Button
                 onClick={() => setStep(2)}
                 disabled={!canContinue}
-                className="h-auto rounded-full px-10 py-4 text-sm font-bold uppercase tracking-wide shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="h-11 rounded-lg px-8 text-[14px] font-semibold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 Continue to upload
               </Button>
               {!canContinue && (
-                <p className="text-xs font-semibold text-muted-foreground">
+                <p className="text-[12px] font-medium text-muted-foreground">
                   {mode === "vqa" ? "Add at least one question to continue." : "Describe what to extract to continue."}
                 </p>
               )}
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-right-8 duration-500">
+          <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="flex justify-start">
-              <button
-                onClick={() => setStep(1)}
-                className="text-muted-foreground hover:text-foreground font-bold text-sm flex items-center gap-2 transition-colors"
-              >
+              <button onClick={() => setStep(1)} className="text-muted-foreground hover:text-foreground font-semibold text-[13px] flex items-center gap-1.5 transition-colors">
                 <ArrowLeft className="h-4 w-4" /> Back to mode selection
               </button>
             </div>
-
-            {/* Flat card, consistent with every other panel in the app. */}
-            <div className="bg-card border border-border/60 rounded-3xl p-4 sm:p-6 shadow-sm">
+            <div className="bg-card border border-border/60 rounded-xl p-4 sm:p-6 shadow-sm">
               <UploadFlow
                 key={mode}
                 mode={mode}
