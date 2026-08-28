@@ -8,6 +8,7 @@ import {
   useUpdateDocumentField,
   deleteDocument,
   useAppendBatch,
+  storageUrl,
   type CreateBatchProgress
 } from "@/lib/api-client";
 import { getConfidenceThreshold } from "@/lib/review-queue-store";
@@ -295,9 +296,7 @@ export default function BatchDetails() {
               <StatusChip status={batch.status} />
             </div>
             <p className="text-[13px] text-muted-foreground mt-1">
-              Started {formatDistanceToNow(new Date(batch.createdAt), { addSuffix: true })}
-              {" · "}
-              {batch.completedDocuments} of {batch.totalDocuments} read
+              {batch.totalDocuments} file{batch.totalDocuments !== 1 ? "s" : ""} · {batch.status === "completed" ? "completed" : "started"} {formatDistanceToNow(new Date(batch.createdAt), { addSuffix: true })}
             </p>
           </div>
         </div>
@@ -365,31 +364,20 @@ export default function BatchDetails() {
           
           {/* Toolbar */}
           <div className="p-3 border-b border-border/60 flex flex-col sm:flex-row gap-3 justify-between items-center bg-muted/20">
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search..."
-                className="pl-9 h-9 rounded-lg bg-background border-border/60 text-[13px]"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            {selectedRows.size > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] font-semibold text-muted-foreground pr-2">
-                  {selectedRows.size} selected
-                </span>
-                <Button size="sm" variant="outline" className="h-8 rounded-lg px-3 text-[12px]" onClick={handleBulkExport}>
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> Export
-                </Button>
-                <Button size="sm" variant="outline" className="h-8 rounded-lg px-3 text-[12px] border-destructive/30 text-destructive hover:bg-destructive/10" onClick={handleBulkDelete} disabled={isDeleting}>
-                  {isDeleting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1.5 h-3.5 w-3.5" />} Delete
-                </Button>
+            {batch.totalDocuments > 1 ? (
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search..."
+                  className="pl-9 h-9 rounded-lg bg-background border-border/60 text-[13px]"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
-            )}
+            ) : <div />}
           </div>
 
-          <div className="overflow-x-auto min-h-[400px]">
+          <div className="overflow-x-auto">
             {(() => {
               const cols = batch.columns || [];
               const docs = batch.documents || [];
@@ -397,9 +385,10 @@ export default function BatchDetails() {
                 <table className="w-full text-left border-collapse table-fixed min-w-[720px]">
                   <colgroup>
                     <col style={{ width: "48px" }} />
-                    <col style={{ width: "240px" }} />
+                    <col style={{ width: "260px" }} />
                     <col style={{ width: "120px" }} />
                     {cols.map((col) => <col key={col} style={{ width: "200px" }} />)}
+                    <col style={{ width: "40px" }} />
                   </colgroup>
                   <thead className="bg-muted/80 backdrop-blur-sm sticky top-0 z-20 shadow-sm border-b border-border/60">
                     <tr>
@@ -418,6 +407,7 @@ export default function BatchDetails() {
                           {humanizeFieldLabel(col)}
                         </th>
                       ))}
+                      <th className="px-2 py-3"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50 text-[13px]">
@@ -439,7 +429,7 @@ export default function BatchDetails() {
                         return (
                           <tr 
                             key={docId} 
-                            className={`bg-card hover:bg-muted/30 transition-colors cursor-pointer group ${isSelected ? "bg-primary/5" : ""} ${isDuplicate ? "bg-warning/5" : ""}`}
+                            className={`bg-card hover:bg-muted/50 transition-colors cursor-pointer group ${isSelected ? "bg-primary/5" : ""} ${isDuplicate ? "bg-warning/5" : ""}`}
                             onClick={(e) => {
                               if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON") return;
                               setSidePanelDocId(docId);
@@ -455,8 +445,19 @@ export default function BatchDetails() {
                               />
                             </td>
                             <td className="px-4 py-3 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <FileText className={`h-3.5 w-3.5 shrink-0 ${isDuplicate ? "text-warning" : "text-muted-foreground"}`} />
+                              <div className="flex items-center gap-2.5">
+                                {docInfo?.objectPath && docInfo?.contentType?.startsWith("image/") ? (
+                                  <img 
+                                    src={storageUrl(docInfo.objectPath)} 
+                                    className="h-8 w-8 rounded-md object-cover border border-border/50 shrink-0 bg-muted" 
+                                    loading="lazy"
+                                    alt=""
+                                  />
+                                ) : (
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border/50 bg-muted shrink-0">
+                                    <FileText className={`h-3.5 w-3.5 ${isDuplicate ? "text-warning" : "text-muted-foreground"}`} />
+                                  </div>
+                                )}
                                 <div className="min-w-0">
                                   <p className="truncate font-medium text-foreground group-hover:text-primary transition-colors" title={String(row.filename)}>{String(row.filename)}</p>
                                   {isDuplicate && <span className="text-[10px] font-semibold text-warning uppercase">Duplicate</span>}
@@ -504,7 +505,7 @@ export default function BatchDetails() {
                                   ) : (
                                     <div className="flex flex-col min-w-0 group/cell">
                                       <div className="flex items-start justify-between gap-1">
-                                        <span className={`truncate block overflow-hidden text-ellipsis ${corrected ? "text-foreground font-semibold" : "text-foreground"}`} title={val}>
+                                        <span className={`line-clamp-2 whitespace-pre-wrap break-words leading-relaxed text-xs ${corrected ? "text-foreground font-semibold" : "text-foreground"}`} title={val}>
                                           {val}
                                         </span>
                                         <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity" title="Double-click to edit">
@@ -512,14 +513,13 @@ export default function BatchDetails() {
                                         </div>
                                       </div>
                                       {corrected ? (
-                                        <span className="text-[10px] font-semibold text-success mt-0.5 flex items-center gap-1"><Pencil className="h-2.5 w-2.5" /> Edited</span>
+                                        <span className="text-[10px] font-semibold text-success mt-1 flex items-center gap-1"><Pencil className="h-2.5 w-2.5" /> Edited</span>
                                       ) : (
-                                        val !== "—" && confidence !== undefined && (
-                                          <div className="flex items-center gap-1 mt-1 max-w-[80px]">
-                                            <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                                              <div className={`h-full ${confidence >= threshold ? 'bg-success' : 'bg-amber-400'}`} style={{ width: `${Math.min(100, Math.max(0, confidence * 100))}%` }} />
-                                            </div>
-                                            <span className={`text-[9px] font-semibold ${confidence >= threshold ? 'text-success' : 'text-amber-500'}`}>{(confidence * 100).toFixed(0)}%</span>
+                                        val !== "—" && confidence !== undefined && confidence < threshold && (
+                                          <div className="mt-1 flex items-center">
+                                            <span className="rounded-sm bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600 dark:text-amber-500">
+                                              {(confidence * 100).toFixed(0)}% conf
+                                            </span>
                                           </div>
                                         )
                                       )}
@@ -528,6 +528,13 @@ export default function BatchDetails() {
                                 </td>
                               );
                             })}
+                            <td className="px-2 py-3 text-right">
+                              <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex h-6 w-6 items-center justify-center rounded bg-muted/60 text-muted-foreground">
+                                  <ArrowRight className="h-3 w-3" />
+                                </div>
+                              </div>
+                            </td>
                           </tr>
                         );
                       })
@@ -555,6 +562,25 @@ export default function BatchDetails() {
           </div>
         )}
       </div>
+
+      {/* ── Bulk action floating bar ────────────────────────── */}
+      {selectedRows.size > 0 && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-border/70 bg-card/95 px-3.5 py-2 shadow-xl backdrop-blur-md animate-in slide-in-from-bottom-5">
+          <span className="text-[12.5px] font-semibold text-foreground pr-1">{selectedRows.size} selected</span>
+          <div className="h-3.5 w-px bg-border/60" />
+          <button onClick={handleBulkExport} disabled={isDeleting} className="flex h-7 items-center gap-1 rounded-lg border border-border/60 bg-muted px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/80 disabled:opacity-50 transition-colors">
+            {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Export CSV
+          </button>
+          <div className="h-3.5 w-px bg-border/60" />
+          <button onClick={handleBulkDelete} disabled={isDeleting} className="flex h-7 items-center gap-1 rounded-lg border border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-950/40 px-2.5 text-[12px] font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/60 disabled:opacity-50 transition-colors">
+            {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete
+          </button>
+          <div className="h-3.5 w-px bg-border/60" />
+          <button onClick={() => setSelectedRows(new Set())} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
