@@ -7,17 +7,10 @@
 # Settings -> Environment variables, with the *_API_KEY names marked as Secrets.
 
 # Default OCR tier: required. api/ocr.ts returns 503 without it.
-HUNYUAN_API_KEY=sk-Yjj4t4DQNjdzXhGdfFXdIpa6sXKR6v0EqEfjXA4rdvOizlh3
+HUNYUAN_API_KEY=
 # Optional overrides; defaults live in code (functions/api/ocr.ts).
 HUNYUAN_BASE_URL=https://api.futureppo.top/v1
 HUNYUAN_MODEL=hunyuan-ocr
-
-# Escalation OCR tier: re-reads pages scored low by the default tier.
-# Optional — without it, escalation answers 503 and results keep the
-# default-tier reading. OCR_API_KEY is accepted as a legacy alias.
-OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-5.4-mini
 
 # Needed by /api/auth/google to validate the `aud` claim of the Google ID token.
 # Use the same value as VITE_GOOGLE_CLIENT_ID in .env.
