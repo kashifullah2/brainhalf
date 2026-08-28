@@ -1,8 +1,7 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/context/AuthContext";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { toast } from "@/hooks/use-toast";
+import { Navbar } from "@/components/layout/Navbar";
 import { getReviewQueueItems } from "@/lib/review-queue-store";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -98,25 +97,15 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
   const initials = initialsOf(name, email);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex flex-col min-h-screen bg-background">
+      <Navbar />
+      <div className="flex flex-1 overflow-hidden">
+        {/* ── Sidebar ─────────────────────────────────────────── */}
+        <aside
+          style={{ width: collapsed ? "64px" : "224px" }}
+          className="relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-in-out overflow-hidden z-10"
+        >
 
-      {/* ── Sidebar ─────────────────────────────────────────── */}
-      <aside
-        style={{ width: collapsed ? "64px" : "224px" }}
-        className="relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-in-out overflow-hidden"
-      >
-
-        {/* Logo row */}
-        <div className={`flex h-14 items-center border-b border-sidebar-border/60 transition-all duration-200 ${collapsed ? "justify-center px-0" : "gap-2.5 px-4"}`}>
-          <div className="flex shrink-0 h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-            <FileText className="h-3.5 w-3.5" />
-          </div>
-          {!collapsed && (
-            <span className="text-[15px] font-bold tracking-tight text-sidebar-foreground select-none whitespace-nowrap">
-              brain<span className="text-primary">half</span>
-            </span>
-          )}
-        </div>
 
         {/* Navigation */}
         <nav className="flex flex-1 flex-col gap-0.5 px-2 py-3 overflow-y-auto overflow-x-hidden">
@@ -212,58 +201,10 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
           </div>
         </nav>
 
-        {/* User footer */}
-        <div className="border-t border-sidebar-border/60 p-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className={`group flex h-10 w-full items-center gap-2.5 rounded-lg px-2 hover:bg-sidebar-accent transition-colors ${collapsed ? "justify-center px-0" : ""}`}>
-                <Avatar className="h-6 w-6 shrink-0 rounded-full ring-1 ring-border/50">
-                  <AvatarImage src={user?.picture || undefined} alt={name || "Avatar"} />
-                  <AvatarFallback className="rounded-full bg-primary/10 text-primary text-[10px] font-bold">{initials}</AvatarFallback>
-                </Avatar>
-                {!collapsed && (
-                  <>
-                    <div className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-[12.5px] font-semibold text-sidebar-foreground leading-tight">{name || "You"}</p>
-                      <p className="truncate text-[11px] text-sidebar-foreground/45 leading-tight">{email}</p>
-                    </div>
-                    <ChevronRight className="h-3 w-3 text-sidebar-foreground/30 shrink-0" />
-                  </>
-                )}
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 rounded-xl border-border/70 shadow-xl" align="end" side="right" sideOffset={8} forceMount>
-              <DropdownMenuLabel className="font-normal px-3 py-2.5">
-                <div className="flex items-center gap-2.5">
-                  <Avatar className="h-8 w-8 rounded-full">
-                    <AvatarImage src={user?.picture || undefined} alt={name || ""} />
-                    <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">{initials}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-foreground truncate">{name || "You"}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{email}</p>
-                  </div>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild className="cursor-pointer rounded-lg mx-1 text-[13px]">
-                <Link href="/app/settings" className="flex w-full items-center"><SettingsIcon className="mr-2 h-3.5 w-3.5" />Settings</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild className="cursor-pointer rounded-lg mx-1 text-[13px]">
-                <Link href="/app/settings/billing" className="flex w-full items-center"><CreditCard className="mr-2 h-3.5 w-3.5" />Billing</Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive rounded-lg mx-1 mb-1 text-[13px]">
-                <LogOut className="mr-2 h-3.5 w-3.5" />Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
         {/* Collapse toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-[52px] z-30 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background shadow-md text-muted-foreground hover:text-foreground hover:border-border/80 transition-all duration-150 hover:scale-110"
+          className="absolute -right-3 top-6 z-30 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background shadow-md text-muted-foreground hover:text-foreground hover:border-border/80 transition-all duration-150 hover:scale-110"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <PanelLeft className={`h-3 w-3 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`} />
@@ -271,50 +212,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
       </aside>
 
       {/* ── Main content ────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 min-w-0">
-
-        {/* Topbar */}
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-border/60 bg-background/90 backdrop-blur-sm px-5">
-          <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-            <Zap className="h-3.5 w-3.5 text-primary" />
-            <span className="font-semibold text-foreground/60 select-none">brainhalf</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <ThemeToggle />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="relative h-8 w-8 rounded-full border border-border/60 overflow-hidden hover:ring-2 hover:ring-primary/30 transition-all focus:outline-none"
-                  data-testid="button-user-menu"
-                  aria-label="Account menu"
-                >
-                  <Avatar className="h-full w-full">
-                    <AvatarImage src={user?.picture || undefined} alt={name || ""} />
-                    <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">{initials}</AvatarFallback>
-                  </Avatar>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-52 rounded-xl border-border/70 shadow-xl" align="end" forceMount>
-                <DropdownMenuLabel className="font-normal px-3 py-2">
-                  <p className="text-[13px] font-semibold text-foreground">{name || "You"}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{email}</p>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild className="cursor-pointer rounded-lg mx-1 text-[13px]">
-                  <Link href="/app/settings" className="flex w-full items-center"><SettingsIcon className="mr-2 h-3.5 w-3.5" />Settings</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild className="cursor-pointer rounded-lg mx-1 text-[13px]">
-                  <Link href="/app/settings/billing" className="flex w-full items-center"><CreditCard className="mr-2 h-3.5 w-3.5" />Billing</Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive rounded-lg mx-1 mb-1 text-[13px]">
-                  <LogOut className="mr-2 h-3.5 w-3.5" />Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </header>
-
+      <div className="flex flex-col flex-1 min-w-0 z-0">
         {/* Page */}
         <main className="flex-1 overflow-auto">
           <div className="w-full max-w-5xl mx-auto px-6 py-7">
@@ -323,5 +221,6 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
         </main>
       </div>
     </div>
+  </div>
   );
 });

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { FileText, LogOut, LayoutDashboard, Settings as SettingsIcon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Navbar() {
   const [, setLocation] = useLocation();
@@ -39,7 +40,7 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
       <div className="container max-w-7xl mx-auto flex h-16 md:h-20 items-center justify-between px-6 md:px-8">
         <div className="flex items-center gap-6 md:gap-10">
-          <Link href="/" className="flex items-center gap-3 group">
+          <Link href={isSignedIn ? "/app" : "/"} className="flex items-center gap-3 group">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/25 group-hover:scale-105 group-hover:shadow-lg transition-all duration-300">
               <FileText className="h-5 w-5" />
             </div>
@@ -63,6 +64,7 @@ export function Navbar() {
         </div>
         
         <div className="flex items-center gap-4 md:gap-6">
+          <ThemeToggle />
           {isSignedIn ? (
             <>
               <Link href="/app" className="text-sm font-bold text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
