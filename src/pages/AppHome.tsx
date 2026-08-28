@@ -320,25 +320,23 @@ export default function AppHome() {
                   />
 
                   {/* Thumbnail */}
-                  <div className="h-10 w-10 shrink-0 rounded-lg bg-muted border border-border/50 overflow-hidden flex items-center justify-center group-hover:border-border transition-colors">
-                    {batch.firstDocumentObjectPath ? (
-                      isImage ? (
-                        <img
-                          src={storageUrl(batch.firstDocumentObjectPath)}
-                          className="h-full w-full object-cover"
-                          alt=""
-                          loading="lazy"
-                          onError={(e) => { e.currentTarget.style.display = "none"; }}
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center">
-                          <FileText className="h-4 w-4 text-muted-foreground/60 mb-0.5" />
-                          <span className="text-[7.5px] font-bold text-muted-foreground uppercase">{batch.firstDocumentContentType?.split("/").pop()?.slice(0, 4) ?? "DOC"}</span>
-                        </div>
-                      )
-                    ) : (
-                      <FileType2 className="h-4 w-4 text-muted-foreground/50" />
-                    )}
+                  <div className="relative h-10 w-10 shrink-0 rounded-lg bg-muted border border-border/50 overflow-hidden flex items-center justify-center group-hover:border-border transition-colors">
+                    {/* Persistent Fallback */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted z-0">
+                      <FileText className="h-4 w-4 text-muted-foreground/60 mb-0.5" />
+                      <span className="text-[7.5px] font-bold text-muted-foreground uppercase">{batch.firstDocumentContentType?.split("/").pop()?.slice(0, 4) ?? "DOC"}</span>
+                    </div>
+
+                    {/* Image Layer */}
+                    {batch.firstDocumentObjectPath && isImage ? (
+                      <img
+                        src={storageUrl(batch.firstDocumentObjectPath)}
+                        className="absolute inset-0 h-full w-full object-cover z-10"
+                        alt=""
+                        loading="lazy"
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                    ) : null}
                   </div>
 
                   {/* Info */}

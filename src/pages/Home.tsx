@@ -25,8 +25,8 @@ import {
 // Everything static lives at module scope: the page then renders without
 // rebuilding a single array, and nothing here can go stale between renders.
 const STATS = [
-  { value: "0.84s", label: "Avg per page" },
-  { value: "99.4%", label: "Field accuracy" },
+  { value: "Zero", label: "Templates needed" },
+  { value: "100%", label: "Human verifiable" },
   { value: "25 MB", label: "Max file size" },
   { value: "3", label: "Export formats" },
 ];

@@ -3,9 +3,15 @@ import { Link } from "wouter";
 import { ArrowRight, CheckCircle2, FileCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type SampleTab = "invoice" | "receipt" | "academic";
+type SampleTab = "key_value" | "vqa" | "custom";
 
-const TABS: SampleTab[] = ["invoice", "receipt", "academic"];
+const TABS: SampleTab[] = ["key_value", "vqa", "custom"];
+
+const TAB_LABELS: Record<SampleTab, string> = {
+  key_value: "Key-Value",
+  vqa: "Visual Q&A",
+  custom: "Custom Prompt",
+};
 
 interface SampleField {
   label: string;
@@ -24,12 +30,12 @@ interface SampleDoc {
 
 // Static fixture data — kept at module scope so switching tabs never rebuilds it.
 const SAMPLE_DATA: Record<SampleTab, SampleDoc> = {
-  invoice: {
+  key_value: {
     title: "ACME Corp Invoice #INV-8902",
     vendor: "Acme Cloud Services",
     date: "Oct 24, 2026",
     total: "$1,450.00",
-    confidence: "99.4%",
+    confidence: "High",
     fields: [
       { label: "Invoice Number", value: "INV-8902", status: "Verified" },
       { label: "Vendor Name", value: "Acme Cloud Services", status: "Verified" },
@@ -38,32 +44,32 @@ const SAMPLE_DATA: Record<SampleTab, SampleDoc> = {
       { label: "Total Due", value: "$1,450.00", status: "Verified" },
     ],
   },
-  receipt: {
-    title: "Blue Bottle Coffee Receipt",
-    vendor: "Blue Bottle Roasters",
-    date: "Nov 02, 2026",
-    total: "$18.50",
-    confidence: "98.8%",
+  vqa: {
+    title: "Quarterly Report Q3",
+    vendor: "Internal",
+    date: "Sep 30, 2026",
+    total: "Q3 Summary",
+    confidence: "High",
     fields: [
-      { label: "Merchant", value: "Blue Bottle Roasters", status: "Verified" },
-      { label: "Payment Method", value: "Visa •••• 4242", status: "Verified" },
-      { label: "Items", value: "2x Oat Latte + Croissant", status: "Verified" },
-      { label: "Tip", value: "$3.00", status: "Verified" },
-      { label: "Total Paid", value: "$18.50", status: "Verified" },
+      { label: "Total Revenue?", value: "$4.2M", status: "Verified" },
+      { label: "Who signed?", value: "Jane Doe, CEO", status: "Verified" },
+      { label: "Key risk?", value: "Supply chain delays", status: "Verified" },
+      { label: "Targets met?", value: "Yes, exceeded by 12%", status: "Verified" },
+      { label: "Next review?", value: "Jan 15, 2027", status: "Verified" },
     ],
   },
-  academic: {
-    title: "Semester Transcript Marksheet",
-    vendor: "Stanford University",
-    date: "Jul 15, 2026",
-    total: "GPA 3.92",
-    confidence: "97.9%",
+  custom: {
+    title: "Handwritten Patient Intake",
+    vendor: "City Clinic",
+    date: "Aug 12, 2026",
+    total: "Intake Form",
+    confidence: "Medium",
     fields: [
-      { label: "Student Name", value: "Alex M. Johnson", status: "Verified" },
-      { label: "Roll Number", value: "CS-2026-881", status: "Verified" },
-      { label: "Subject Code", value: "CS340 Deep Learning", status: "Verified" },
-      { label: "Marks Obtained", value: "96 / 100", status: "Verified" },
-      { label: "Grade Result", value: "A+ (Pass)", status: "Verified" },
+      { label: "Patient Name", value: "Alex M. Johnson", status: "Verified" },
+      { label: "Symptoms", value: "Mild fever, cough", status: "Verified" },
+      { label: "Temperature", value: "99.8°F", status: "Verified" },
+      { label: "Heart Rate", value: "78 bpm", status: "Verified" },
+      { label: "Doctor Notes", value: "Rest & hydration", status: "Verified" },
     ],
   },
 };
@@ -100,13 +106,13 @@ export function HeroPreview() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1 rounded-lg capitalize transition-all ${
+              className={`px-3 py-1 rounded-lg transition-all ${
                 activeTab === tab
                   ? "bg-background text-foreground shadow-sm font-bold"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {tab}
+              {TAB_LABELS[tab]}
             </button>
           ))}
         </div>

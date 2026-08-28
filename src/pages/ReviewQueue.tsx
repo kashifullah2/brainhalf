@@ -110,22 +110,19 @@ export default function ReviewQueue() {
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Awaiting Review"
-          value={pendingItems.length}
+          value={isLoading ? "—" : pendingItems.length}
           icon={FileText}
-          tone="primary"
         />
         <StatCard
           label="Pending Field Verification"
-          value={pendingFields}
-          hint={totalFlaggedFields > 0 ? `of ${totalFlaggedFields} flagged` : undefined}
+          value={isLoading ? "—" : pendingFields}
+          hint={!isLoading && totalFlaggedFields > 0 ? `of ${totalFlaggedFields} flagged` : undefined}
           icon={AlertTriangle}
-          tone="warning"
         />
         <StatCard
           label="Routing Threshold"
           value={`${(threshold * 100).toFixed(0)}%`}
           icon={Sparkles}
-          tone="success"
         />
       </div>
 
@@ -134,7 +131,7 @@ export default function ReviewQueue() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}
-          title="Nothing needs you right now"
+          title="Queue's clear — brainhalf's caught up ☕"
           body={`Every field came back at or above your ${(threshold * 100).toFixed(0)}% threshold, so there is nothing to correct.`}
           action={
             <Button asChild className="h-10 rounded-lg px-6 text-[13px] font-semibold shadow-sm">
@@ -153,7 +150,7 @@ export default function ReviewQueue() {
 
             {pendingItems.length === 0 && (
               <Card className="rounded-xl border-border/60 bg-card p-6 text-center shadow-sm">
-                <p className="text-[14px] font-semibold text-foreground">All caught up.</p>
+                <p className="text-[14px] font-semibold text-foreground">Queue's clear — brainhalf's caught up ☕</p>
                 <p className="mt-1 text-[13px] text-muted-foreground">
                   Every flagged field on this list has been checked off.
                 </p>

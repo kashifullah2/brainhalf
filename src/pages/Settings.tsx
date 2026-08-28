@@ -296,10 +296,10 @@ export default function Settings() {
                             delete them.
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button variant="outline" disabled className="rounded-full font-bold uppercase text-xs">30 Days</Button>
-                          <Button variant="outline" disabled className="rounded-full font-bold uppercase text-xs">90 Days</Button>
-                          <Button variant="outline" disabled className="rounded-full font-bold uppercase text-xs">Indefinitely</Button>
+                        <div className="flex flex-wrap gap-2" title="Automated retention policies are on our roadmap.">
+                          <Button variant="outline" disabled className="rounded-full font-medium text-xs opacity-50 cursor-not-allowed">30 Days</Button>
+                          <Button variant="outline" disabled className="rounded-full font-medium text-xs opacity-50 cursor-not-allowed">90 Days</Button>
+                          <Button variant="outline" disabled className="rounded-full font-medium text-xs opacity-50 cursor-not-allowed">Indefinitely</Button>
                         </div>
                       </div>
 

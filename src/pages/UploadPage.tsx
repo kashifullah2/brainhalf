@@ -71,10 +71,6 @@ export default function UploadPage() {
 
   return (
     <div className="relative flex flex-col flex-1 w-full max-w-6xl mx-auto">
-      <div className="absolute inset-0 pointer-events-none -z-10 overflow-hidden">
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/5 blur-[120px]" />
-      </div>
-
       <PageHeader
         eyebrow={<><Wand2 className="h-3.5 w-3.5" /> New batch</>}
         title="What are we reading today?"
