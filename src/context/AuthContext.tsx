@@ -238,7 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const renderGoogleButton = useCallback((element: HTMLElement) => {
     const google = (window as any).google;
     if (GOOGLE_CLIENT_ID && google?.accounts?.id) {
-      const containerWidth = element.offsetWidth || element.parentElement?.offsetWidth || 350;
+      const containerWidth = element.getBoundingClientRect().width || element.parentElement?.getBoundingClientRect().width || 350;
       const validWidth = Math.max(200, Math.min(400, containerWidth));
 
       google.accounts.id.renderButton(element, {

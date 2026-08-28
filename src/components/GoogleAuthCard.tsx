@@ -337,12 +337,12 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
-              <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center justify-between">
                 <label className="text-[13px] font-semibold text-foreground">Password</label>
                 <button
                   type="button"
                   onClick={() => setCurrentMode("forgot-password")}
-                  className="text-[13px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm"
+                  className="text-[13px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm -mr-1"
                 >
                   Forgot password?
                 </button>
@@ -478,11 +478,6 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
         )}
       </div>
 
-      {/* Footer Trust badge */}
-      <div className="pt-5 border-t border-border/40 flex items-center justify-center gap-2 text-[11px] font-semibold text-muted-foreground">
-        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-        <span>Secured for brainhalf.com</span>
-      </div>
     </div>
   );
 }

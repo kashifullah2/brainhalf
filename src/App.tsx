@@ -56,26 +56,13 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const AUTH_FEATURES = [
   { label: "Extract data from any invoice or receipt", sub: "PDF, PNG, JPG, WEBP — all supported" },
-  { label: "5 extraction modes", sub: "Invoice, full text, table, key-value, receipt" },
-  { label: "Export in one click", sub: "CSV, Excel, or JSON — ready to use" },
+  { label: "4 extraction modes", sub: "Full Text, Key-Value, Visual Q&A, Custom Prompt" },
+  { label: "Export in one click", sub: "CSV, Excel, Markdown, or JSON — ready to use" },
 ];
 
 function AuthBrandPanel() {
   return (
-    <div className="flex flex-col justify-between h-full p-12 bg-[hsl(20,25%,11%)] text-white relative overflow-hidden">
-      {/* subtle warm glow */}
-      <div className="absolute -top-32 -left-32 w-[500px] h-[500px] rounded-full bg-primary/20 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-[300px] h-[300px] rounded-full bg-primary/10 blur-[80px] pointer-events-none" />
-      {/* Faint grid texture: gives the dark panel depth without another
-          gradient. Pure CSS, no asset. */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-[0.04]"
-        style={{
-          backgroundImage:
-            "linear-gradient(hsl(38,25%,94%) 1px, transparent 1px), linear-gradient(90deg, hsl(38,25%,94%) 1px, transparent 1px)",
-          backgroundSize: "44px 44px",
-        }}
-      />
+    <div className="flex flex-col justify-between h-full p-12 bg-zinc-950 text-zinc-50 relative overflow-hidden border-r border-zinc-900">
 
       {/* logo */}
       <div className="relative z-10 flex items-center gap-3">
@@ -91,14 +78,13 @@ function AuthBrandPanel() {
       {/* headline */}
       <div className="relative z-10 flex flex-col gap-8">
         <div>
-          <p className="text-[11px] font-bold tracking-widest uppercase text-primary/80 mb-4">Powered by BH Model 1</p>
           <h2 className="text-4xl xl:text-5xl font-extrabold leading-[1.15] tracking-tight text-white">
             Stop typing.<br />Start{" "}
-            <span className="bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">
+            <span className="text-primary">
               extracting.
             </span>
           </h2>
-          <p className="mt-5 text-white/50 text-base font-medium leading-relaxed max-w-xs">
+          <p className="mt-5 text-zinc-400 text-base font-medium leading-relaxed max-w-xs">
             Drop in documents and get clean, structured data out — no templates, no drawing boxes.
           </p>
         </div>
@@ -119,8 +105,8 @@ function AuthBrandPanel() {
       </div>
 
       {/* bottom quote */}
-      <div className="relative z-10 border-l-2 border-primary/40 pl-4">
-        <p className="text-xs text-white/30 font-medium leading-relaxed">
+      <div className="relative z-10 border-l-2 border-primary pl-4">
+        <p className="text-sm text-zinc-200 font-medium leading-relaxed italic">
           "We built this because we were tired of retyping invoices on Sundays."
         </p>
       </div>
