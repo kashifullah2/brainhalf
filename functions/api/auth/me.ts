@@ -23,12 +23,12 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({
   const session = await resolveSession(request, env);
 
   if (!session) {
-    return json({ user: null }, 200);
+    return json({ user: null, googleClientId: env.GOOGLE_CLIENT_ID }, 200);
   }
 
   const headers = session.refreshedToken
     ? { 'Set-Cookie': sessionCookie(request, session.refreshedToken) }
     : undefined;
 
-  return json({ user: session.user }, 200, headers);
+  return json({ user: session.user, googleClientId: env.GOOGLE_CLIENT_ID }, 200, headers);
 };

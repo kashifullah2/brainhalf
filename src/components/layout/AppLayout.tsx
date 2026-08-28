@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Navbar } from "@/components/layout/Navbar";
 import { getReviewQueueItems } from "@/lib/review-queue-store";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +47,7 @@ function initialsOf(name?: string, email?: string): string {
 export const AppLayout = React.memo(function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
+  const { toast } = useToast();
   const [collapsed, setCollapsed] = React.useState(false);
   const [queueCount, setQueueCount] = React.useState<number | null>(null);
 

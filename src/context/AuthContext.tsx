@@ -59,7 +59,7 @@ interface AuthContextType {
   isGoogleLoaded: boolean;
 }
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() || "";
+const FALLBACK_GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() || "";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -126,6 +126,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
+  const [dynamicClientId, setDynamicClientId] = useState<string>(FALLBACK_GOOGLE_CLIENT_ID);
+  
+  const GOOGLE_CLIENT_ID = dynamicClientId || FALLBACK_GOOGLE_CLIENT_ID;
 
   /**
    * Google Identity Services delivers its credential through a callback rather
@@ -177,8 +180,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           headers: { Accept: "application/json" },
         });
         if (response.ok) {
-          const data = (await response.json()) as { user: ServerUser | null };
-          if (!cancelled) setUser(data.user ? toProfile(data.user) : null);
+          const data = (await response.json()) as { user: ServerUser | null, googleClientId?: string };
+          if (!cancelled) {
+            setUser(data.user ? toProfile(data.user) : null);
+            if (data.googleClientId) {
+              setDynamicClientId(data.googleClientId);
+            }
+          }
         } else if (!cancelled) {
           setUser(null);
         }
@@ -225,7 +233,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     script.defer = true;
     script.onload = initialize;
     document.head.appendChild(script);
-  }, [handleCredentialResponse]);
+  }, [handleCredentialResponse, GOOGLE_CLIENT_ID]);
 
   const renderGoogleButton = useCallback((element: HTMLElement) => {
     const google = (window as any).google;
@@ -241,7 +249,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         shape: "rectangular",
       });
     }
-  }, []);
+  }, [GOOGLE_CLIENT_ID]);
 
   /**
    * Opens the Google prompt and resolves once the server has verified the
@@ -254,7 +262,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!GOOGLE_CLIENT_ID) {
           reject(
             new Error(
-              "Google sign-in is not configured. Set VITE_GOOGLE_CLIENT_ID.",
+              "Google sign-in is not configured. Add GOOGLE_CLIENT_ID to the backend environment variables.",
             ),
           );
           return;
@@ -285,8 +293,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
           }
           google.accounts.id.prompt((notification: any) => {
-            // One Tap can be suppressed (cookie settings, prior dismissal).
-            // Surface that instead of hanging forever.
             if (
               notification?.isNotDisplayed?.() ||
               notification?.isSkippedMoment?.()
@@ -310,7 +316,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           );
         }
       }),
-    [handleCredentialResponse],
+    [handleCredentialResponse, GOOGLE_CLIENT_ID],
   );
 
   const loginWithEmail = useCallback(async ({ email, password }: SignInData) => {
