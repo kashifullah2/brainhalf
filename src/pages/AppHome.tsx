@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/lib/use-page-title";
 import { sanitizeForExport } from "@/lib/utils";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
-import { greeting } from "@/components/app";
+import { greeting, StatCard } from "@/components/app";
 
 /* ── Helpers ─────────────────────────────────────────────── */
 function StatusChip({ status }: { status: string }) {
@@ -36,19 +36,7 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
-function StatCard({ label, value, icon: Icon, accent }: { label: string; value: string | number; icon: any; accent?: boolean }) {
-  return (
-    <div className={`flex flex-col gap-3 rounded-xl border p-4 ${accent ? "border-primary/20 bg-primary/5" : "border-border/60 bg-card"}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">{label}</span>
-        <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${accent ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-          <Icon className="h-3.5 w-3.5" />
-        </div>
-      </div>
-      <span className={`text-3xl font-bold tracking-tight ${accent ? "text-primary" : "text-foreground"}`}>{value}</span>
-    </div>
-  );
-}
+
 
 function SkeletonRow() {
   return (
@@ -210,10 +198,10 @@ export default function AppHome() {
       {/* ── Stats ──────────────────────────────────────────── */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Total Batches" value={stats.total} icon={FileText} />
-          <StatCard label="Documents" value={stats.docs} icon={BarChart3} />
-          <StatCard label="Completed" value={stats.done} icon={CheckCircle2} accent />
-          <StatCard label={stats.running > 0 ? "In Flight" : "Failed"} value={stats.running > 0 ? stats.running : stats.failed} icon={Activity} />
+          <StatCard label="Total Batches" value={stats.total} icon={FileText} tone="muted" />
+          <StatCard label="Documents" value={stats.docs} icon={BarChart3} tone="muted" />
+          <StatCard label="Completed" value={stats.done} icon={CheckCircle2} tone="success" />
+          <StatCard label={stats.running > 0 ? "In Flight" : "Failed"} value={stats.running > 0 ? stats.running : stats.failed} icon={Activity} tone={stats.running > 0 ? "primary" : stats.failed > 0 ? "warning" : "muted"} />
         </div>
       )}
 
@@ -364,14 +352,21 @@ export default function AppHome() {
 
                   {/* Thumbnail */}
                   <div className="h-10 w-10 shrink-0 rounded-lg bg-muted border border-border/50 overflow-hidden flex items-center justify-center group-hover:border-border transition-colors">
-                    {batch.firstDocumentObjectPath && isImage ? (
-                      <img
-                        src={storageUrl(batch.firstDocumentObjectPath)}
-                        className="h-full w-full object-cover"
-                        alt=""
-                        loading="lazy"
-                        onError={(e) => { e.currentTarget.style.display = "none"; }}
-                      />
+                    {batch.firstDocumentObjectPath ? (
+                      isImage ? (
+                        <img
+                          src={storageUrl(batch.firstDocumentObjectPath)}
+                          className="h-full w-full object-cover"
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center">
+                          <FileText className="h-4 w-4 text-muted-foreground/60 mb-0.5" />
+                          <span className="text-[7.5px] font-bold text-muted-foreground uppercase">{batch.firstDocumentContentType?.split("/").pop()?.slice(0, 4) ?? "DOC"}</span>
+                        </div>
+                      )
                     ) : (
                       <FileType2 className="h-4 w-4 text-muted-foreground/50" />
                     )}
