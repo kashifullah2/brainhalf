@@ -26,6 +26,7 @@ const BatchDetails = lazy(() => import("@/pages/BatchDetails"));
 const DocumentDetails = lazy(() => import("@/pages/DocumentDetails"));
 const ReviewQueue = lazy(() => import("@/pages/ReviewQueue"));
 const ReviewQueueDetail = lazy(() => import("@/pages/ReviewQueueDetail"));
+const TemplatesPage = lazy(() => import("@/pages/TemplatesPage"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -82,8 +83,8 @@ function AuthBrandPanel() {
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
         </div>
         <span className="text-xl tracking-tight">
-          <span className="font-normal text-white/80">brain</span>
-          <span className="font-extrabold text-primary">half</span>
+          <span className="font-normal text-white/80">Brain</span>
+          <span className="font-extrabold text-primary">Half</span>
         </span>
       </div>
 
@@ -243,6 +244,9 @@ function AppRoutes() {
         </Route>
         <Route path="/app/review-queue/:documentId">
           <AppGuard><ReviewQueueDetail /></AppGuard>
+        </Route>
+        <Route path="/app/templates">
+          <AppGuard><TemplatesPage /></AppGuard>
         </Route>
         <Route path="/app/settings">
           <AppGuard><Settings /></AppGuard>

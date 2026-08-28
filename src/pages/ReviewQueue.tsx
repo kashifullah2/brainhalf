@@ -131,7 +131,7 @@ export default function ReviewQueue() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={CheckCircle2}
-          title="Queue's clear — brainhalf's caught up ☕"
+          title="Queue's clear — BrainHalf's caught up ☕"
           body={`Every field came back at or above your ${(threshold * 100).toFixed(0)}% threshold, so there is nothing to correct.`}
           action={
             <Button asChild className="h-10 rounded-lg px-6 text-[13px] font-semibold shadow-sm">
@@ -150,7 +150,7 @@ export default function ReviewQueue() {
 
             {pendingItems.length === 0 && (
               <Card className="rounded-xl border-border/60 bg-card p-6 text-center shadow-sm">
-                <p className="text-[14px] font-semibold text-foreground">Queue's clear — brainhalf's caught up ☕</p>
+                <p className="text-[14px] font-semibold text-foreground">Queue's clear — BrainHalf's caught up ☕</p>
                 <p className="mt-1 text-[13px] text-muted-foreground">
                   Every flagged field on this list has been checked off.
                 </p>

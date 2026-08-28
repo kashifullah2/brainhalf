@@ -4,10 +4,13 @@ import { formatDistanceToNow } from "date-fns";
 import {
   Plus, FileType2, Loader2, ArrowUpRight, Trash2, Download,
   CheckSquare, Square, X, SlidersHorizontal, ArrowRight,
-  Sparkles, FileText, BarChart3, CheckCircle2, Activity
+  Sparkles, FileText, BarChart3, CheckCircle2, Activity,
+  Search, MoreHorizontal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PRESETS } from "@/components/UploadModal";
 import { useAuth } from "@/context/AuthContext";
 import { useListBatches, getBatch, deleteBatch, getListBatchesQueryKey, storageUrl } from "@/lib/api-client";
@@ -49,6 +52,7 @@ export default function AppHome() {
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBusy, setIsBusy] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterEngine, setFilterEngine] = useState("all");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
@@ -56,6 +60,13 @@ export default function AppHome() {
   const filteredBatches = useMemo(() => {
     if (!batches) return [];
     let r = [...batches];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      r = r.filter(b => 
+        b.id.toString().includes(q) || 
+        (b.firstDocumentContentType && b.firstDocumentContentType.toLowerCase().includes(q))
+      );
+    }
     if (filterStatus !== "all") r = r.filter((b) => b.status === filterStatus);
     if (filterEngine !== "all") r = r.filter((b) => b.engineType === filterEngine);
     r.sort((a, b) => sortOrder === "newest"
@@ -63,7 +74,7 @@ export default function AppHome() {
       : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
     return r;
-  }, [batches, filterStatus, filterEngine, sortOrder]);
+  }, [batches, searchQuery, filterStatus, filterEngine, sortOrder]);
 
   const allSelected = filteredBatches.length > 0 && selectedIds.size === filteredBatches.length;
   const isSelecting = selectedIds.size > 0;
@@ -103,8 +114,8 @@ export default function AppHome() {
     finally { setIsBusy(false); }
   };
 
-  const fetchSelected = async () => {
-    const ids = [...selectedIds];
+  const fetchSelected = async (overrideIds?: Set<number>) => {
+    const ids = [...(overrideIds || selectedIds)];
     const results: any[] = [];
     for (let i = 0; i < ids.length; i += 3) {
       results.push(...await Promise.all(ids.slice(i, i + 3).map(getBatch)));
@@ -125,27 +136,40 @@ export default function AppHome() {
     );
   };
 
-  const exportCSV = async () => {
-    if (!selectedIds.size) return; setIsBusy(true);
+  const exportCSV = async (overrideIds?: Set<number>) => {
+    const targetIds = overrideIds || selectedIds;
+    if (!targetIds.size) return; setIsBusy(true);
     try {
-      const list = await fetchSelected();
+      const list = await fetchSelected(targetIds);
       const data = buildExport(list);
-      const label = selectedIds.size === 1 ? `batch_${[...selectedIds][0]}` : `batches_export`;
+      const label = targetIds.size === 1 ? `batch_${[...targetIds][0]}` : `batches_export`;
       downloadBlob(new Blob([recordsToCsv(data)], { type: "text/csv;charset=utf-8;" }), `${label}.csv`);
       toast({ title: "CSV exported" });
     } catch (e: any) { toast({ title: "Export failed", description: e.message, variant: "destructive" }); }
     finally { setIsBusy(false); }
   };
 
-  const exportExcel = async () => {
-    if (!selectedIds.size) return; setIsBusy(true);
+  const exportExcel = async (overrideIds?: Set<number>) => {
+    const targetIds = overrideIds || selectedIds;
+    if (!targetIds.size) return; setIsBusy(true);
     try {
-      const list = await fetchSelected();
+      const list = await fetchSelected(targetIds);
       const data = buildExport(list);
-      const label = selectedIds.size === 1 ? `batch_${[...selectedIds][0]}` : `batches_export`;
+      const label = targetIds.size === 1 ? `batch_${[...targetIds][0]}` : `batches_export`;
       downloadBlob(recordsToXlsx(data, "Extracted Data"), `${label}.xlsx`);
       toast({ title: "Excel exported" });
     } catch (e: any) { toast({ title: "Export failed", description: e.message, variant: "destructive" }); }
+    finally { setIsBusy(false); }
+  };
+
+  const handleSingleDelete = async (id: number) => {
+    setIsBusy(true);
+    try {
+      await deleteBatch(id);
+      await queryClient.invalidateQueries({ queryKey: getListBatchesQueryKey() });
+      toast({ title: `Batch #${id} deleted` });
+      setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    } catch (e: any) { toast({ title: "Delete failed", description: e.message, variant: "destructive" }); }
     finally { setIsBusy(false); }
   };
 
@@ -192,11 +216,21 @@ export default function AppHome() {
 
       {/* ── Toolbar ────────────────────────────────────────── */}
       {batches && batches.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="relative w-full sm:w-56 shrink-0">
+              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search batches..."
+                className="h-8 pl-8 text-[12px] rounded-lg bg-card border-border/60 focus-visible:ring-1"
+              />
+            </div>
+            
             <button
               onClick={handleSelectAll}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors shrink-0"
             >
               {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
               {allSelected ? "Deselect all" : "Select all"}
@@ -226,10 +260,10 @@ export default function AppHome() {
               </SelectContent>
             </Select>
 
-            {(filterStatus !== "all" || filterEngine !== "all") && (
+            {(filterStatus !== "all" || filterEngine !== "all" || searchQuery !== "") && (
               <button
-                onClick={() => { setFilterStatus("all"); setFilterEngine("all"); }}
-                className="flex h-8 items-center gap-1 rounded-lg border border-border/60 px-2.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors bg-card"
+                onClick={() => { setFilterStatus("all"); setFilterEngine("all"); setSearchQuery(""); }}
+                className="flex h-8 items-center gap-1 rounded-lg border border-border/60 px-2.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors bg-card shrink-0"
               >
                 <X className="h-3 w-3" /> Clear
               </button>
@@ -275,7 +309,7 @@ export default function AppHome() {
           <div>
             <h3 className="text-base font-semibold text-foreground">No batches yet</h3>
             <p className="mt-1 text-[13px] text-muted-foreground max-w-xs">
-              Upload invoices, receipts, or any document and brainhalf will extract the data for you.
+              Upload invoices, receipts, or any document and BrainHalf will extract the data for you.
             </p>
           </div>
           <Button onClick={() => setLocation("/app/upload")} className="rounded-lg h-9 px-5 text-[13px] font-semibold shadow-sm">
@@ -367,8 +401,29 @@ export default function AppHome() {
                     </div>
                   </div>
 
-                  {/* Arrow */}
-                  <div className="shrink-0 flex items-center">
+                  {/* Actions */}
+                  <div className="shrink-0 flex items-center gap-0.5">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-muted transition-all focus:outline-none" onClick={(e) => e.stopPropagation()}>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40 rounded-xl" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenuItem onClick={() => exportCSV(new Set([batch.id]))}>
+                          <Download className="mr-2 h-4 w-4 text-muted-foreground" />
+                          Export CSV
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => exportExcel(new Set([batch.id]))}>
+                          <Download className="mr-2 h-4 w-4 text-muted-foreground" />
+                          Export Excel
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950" onClick={() => handleSingleDelete(batch.id)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete Batch
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 group-hover:text-muted-foreground group-hover:bg-muted transition-all">
                       <ArrowRight className="h-3.5 w-3.5" />
                     </div>

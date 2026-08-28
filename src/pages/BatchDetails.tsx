@@ -503,9 +503,14 @@ export default function BatchDetails() {
                                     </div>
                                   ) : (
                                     <div className="flex flex-col min-w-0 group/cell">
-                                      <span className={`truncate block overflow-hidden text-ellipsis ${corrected ? "text-foreground font-semibold" : "text-foreground"}`} title={val}>
-                                        {val}
-                                      </span>
+                                      <div className="flex items-start justify-between gap-1">
+                                        <span className={`truncate block overflow-hidden text-ellipsis ${corrected ? "text-foreground font-semibold" : "text-foreground"}`} title={val}>
+                                          {val}
+                                        </span>
+                                        <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity" title="Double-click to edit">
+                                          <Pencil className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+                                        </div>
+                                      </div>
                                       {corrected ? (
                                         <span className="text-[10px] font-semibold text-success mt-0.5 flex items-center gap-1"><Pencil className="h-2.5 w-2.5" /> Edited</span>
                                       ) : (

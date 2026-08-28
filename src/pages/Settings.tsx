@@ -11,10 +11,10 @@ import { useToast } from "@/hooks/use-toast";
 
 import { getConfidenceThreshold, setConfidenceThreshold } from "@/lib/review-queue-store";
 import { usePageTitle } from "@/lib/use-page-title";
-import { TemplatesSettings } from "@/components/TemplatesSettings";
+
 
 /** Valid tab slugs, also used to validate the :tab route parameter. */
-const TAB_IDS = ["organization", "templates", "security", "privacy", "team", "billing"];
+const TAB_IDS = ["organization", "security", "privacy", "team", "billing"];
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -87,7 +87,6 @@ export default function Settings() {
 
   const tabs = [
     { id: "organization", label: "Organization", icon: Building2 },
-    { id: "templates", label: "Saved Templates", icon: FileText },
     { id: "security", label: "Security", icon: Shield },
     { id: "privacy", label: "Data & Privacy", icon: Lock },
     { id: "team", label: "Team", icon: Users },
@@ -217,7 +216,7 @@ export default function Settings() {
                   </form>
                 )}
 
-                {activeTab === "templates" && <TemplatesSettings />}
+
 
                 {activeTab === "security" && (
                   <div className="space-y-6">

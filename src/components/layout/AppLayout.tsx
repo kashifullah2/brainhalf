@@ -77,6 +77,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
     { title: "Dashboard", url: "/app", icon: LayoutDashboard },
     { title: "Upload", url: "/app/upload", icon: UploadCloud },
     { title: "Review Queue", url: "/app/review-queue", icon: CheckSquare, badge: queueCount },
+    { title: "Templates", url: "/app/templates", icon: FileText },
   ];
 
   const accountItems: NavItem[] = [

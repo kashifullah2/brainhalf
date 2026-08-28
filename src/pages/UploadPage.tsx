@@ -91,7 +91,7 @@ export default function UploadPage() {
         <div className="flex flex-col">
           <span className="text-[11px] font-bold uppercase tracking-widest text-primary mb-1">Step {step} of 2</span>
           <span className="text-[15px] font-bold text-foreground">
-            {step === 1 ? "Tell brainhalf what to look for" : "Hand over your documents"}
+            {step === 1 ? "Tell BrainHalf what to look for" : "Hand over your documents"}
           </span>
           <span className="text-[13px] text-muted-foreground mt-0.5">
             {step === 1 ? "Presets cover the usual suspects — or describe it yourself." : "Drop them in together; each page is read on its own."}
