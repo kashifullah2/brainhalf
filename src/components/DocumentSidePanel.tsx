@@ -6,6 +6,7 @@ import { humanizeFieldLabel } from "@/lib/humanizeField";
 import { humanizeExtractionError } from "@/lib/humanize-error";
 import { getConfidenceThreshold } from "@/lib/review-queue-store";
 import { confidenceTone, ConfidenceIndicator } from "@/components/ConfidenceIndicator";
+import { storageUrl } from "@/lib/api-client";
 
 export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => void }) {
   // Same shared threshold as the table beside the panel, so both color the
@@ -35,8 +36,26 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
           <X className="h-4 w-4" />
         </Button>
       </div>
-      <ScrollArea className="flex-1 p-4">
-        <div className="space-y-6">
+      <div className="flex flex-1 overflow-hidden">
+        {/* Source Image Left Panel */}
+        {doc.storagePath ? (
+          <div className="hidden sm:flex w-1/2 border-r border-border/60 bg-muted/30 p-4 items-center justify-center">
+            <img 
+              src={storageUrl(doc.storagePath)} 
+              alt={doc.filename}
+              className="max-w-full max-h-full object-contain rounded-lg shadow-sm border border-border/40"
+              loading="lazy"
+            />
+          </div>
+        ) : (
+          <div className="hidden sm:flex w-1/2 border-r border-border/60 bg-muted/30 p-4 items-center justify-center">
+            <div className="text-muted-foreground text-sm font-medium">No preview available</div>
+          </div>
+        )}
+
+        {/* Extracted Fields Right Panel */}
+        <ScrollArea className="flex-1 p-5">
+          <div className="space-y-6">
           {/* Failed documents carry the extraction error; without it the
               field list would render empty with no explanation. The raw string
               stays available as a tooltip. */}
@@ -92,10 +111,11 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
                         </Button>
                       </div>
                     </div>
-                    <div className="text-[14px] text-foreground font-medium whitespace-pre-wrap break-words leading-relaxed">{field.editedValue ?? field.value ?? "—"}</div>
+                    <div className="text-[13px] text-foreground font-mono whitespace-pre-wrap break-words leading-relaxed">{field.editedValue ?? field.value ?? "—"}</div>
                   </div>
                 );
               })}
+            </div>
             </div>
             </div>
           ) : doc.status !== "failed" ? (
@@ -104,7 +124,8 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
             </p>
           ) : null}
         </div>
-      </ScrollArea>
+        </ScrollArea>
+      </div>
     </div>
   );
 }
