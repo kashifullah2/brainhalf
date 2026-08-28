@@ -25,6 +25,9 @@ name = "brainhalf"
 compatibility_date = "2026-08-01"
 pages_build_output_dir = "dist"
 
+[build]
+command = "npm run build"
+
 # The application database: users, sessions, batches, documents.
 # Local dev uses its own sqlite file under .wrangler/ keyed by database_name,
 # so nothing here touches production until --remote is passed.
