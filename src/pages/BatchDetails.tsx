@@ -555,13 +555,16 @@ export default function BatchDetails() {
             )}
           </div>
         </div>
-        
-        {sidePanelDocId && (
-          <div className="w-full xl:w-[400px] shrink-0 xl:sticky xl:top-20 animate-in slide-in-from-right-4 duration-200">
+      </div>
+
+      {sidePanelDocId && (
+        <>
+          <div className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSidePanelDocId(null)} />
+          <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[500px] xl:w-[600px] bg-background shadow-2xl border-l border-border/60 animate-in slide-in-from-right duration-300">
             <DocumentSidePanel doc={(batch.documents || []).find(d => d.id === sidePanelDocId)} onClose={() => setSidePanelDocId(null)} />
           </div>
-        )}
-      </div>
+        </>
+      )}
 
       {/* ── Bulk action floating bar ────────────────────────── */}
       {selectedRows.size > 0 && (
