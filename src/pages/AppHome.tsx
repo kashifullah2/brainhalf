@@ -17,24 +17,10 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { sanitizeForExport } from "@/lib/utils";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
 import { greeting, StatCard } from "@/components/app";
+import { StatusChip } from "@/components/StatusDot";
 
 /* ── Helpers ─────────────────────────────────────────────── */
-function StatusChip({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string; dot: string }> = {
-    completed: { label: "Done",       cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/50", dot: "bg-emerald-500" },
-    processing: { label: "Running",   cls: "bg-amber-50  text-amber-700  border-amber-200  dark:bg-amber-950/40  dark:text-amber-400  dark:border-amber-800/50",  dot: "bg-amber-500 animate-pulse"  },
-    queued:     { label: "Queued",    cls: "bg-amber-50  text-amber-700  border-amber-200  dark:bg-amber-950/40  dark:text-amber-400  dark:border-amber-800/50",  dot: "bg-amber-400 animate-pulse"  },
-    failed:     { label: "Failed",    cls: "bg-red-50    text-red-700    border-red-200    dark:bg-red-950/40    dark:text-red-400    dark:border-red-800/50",    dot: "bg-red-500"   },
-    partial:    { label: "Partial",   cls: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800/50", dot: "bg-orange-500" },
-  };
-  const s = map[status] ?? { label: status, cls: "bg-muted text-muted-foreground border-border/60", dot: "bg-muted-foreground" };
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${s.cls}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-      {s.label}
-    </span>
-  );
-}
+
 
 
 
@@ -66,7 +52,6 @@ export default function AppHome() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterEngine, setFilterEngine] = useState("all");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
-  const [showFilters, setShowFilters] = useState(false);
 
   const filteredBatches = useMemo(() => {
     if (!batches) return [];
@@ -207,75 +192,59 @@ export default function AppHome() {
 
       {/* ── Toolbar ────────────────────────────────────────── */}
       {batches && batches.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleSelectAll}
-            className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-          >
-            {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-            {allSelected ? "Deselect all" : "Select all"}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleSelectAll}
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+            >
+              {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+              {allSelected ? "Deselect all" : "Select all"}
+            </button>
 
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-medium transition-colors ${showFilters ? "border-primary/40 bg-primary/5 text-primary" : "border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-border"}`}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            Filters
-            {(filterStatus !== "all" || filterEngine !== "all") && (
-              <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-white">
-                {(filterStatus !== "all" ? 1 : 0) + (filterEngine !== "all" ? 1 : 0)}
-              </span>
-            )}
-          </button>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Select value={sortOrder} onValueChange={(v: "newest" | "oldest") => setSortOrder(v)}>
-              <SelectTrigger className="h-8 w-[120px] border-border/60 bg-card text-[12px] rounded-lg">
-                <SelectValue />
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-8 w-[130px] border-border/60 text-[12px] rounded-lg bg-card">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="newest">Newest first</SelectItem>
-                <SelectItem value="oldest">Oldest first</SelectItem>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="queued">Queued</SelectItem>
+                <SelectItem value="processing">Processing</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="partial">Partial</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
+
+            <Select value={filterEngine} onValueChange={setFilterEngine}>
+              <SelectTrigger className="h-8 w-[130px] border-border/60 text-[12px] rounded-lg bg-card">
+                <SelectValue placeholder="Engine" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All engines</SelectItem>
+                {PRESETS.map((p) => (<SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>))}
+              </SelectContent>
+            </Select>
+
+            {(filterStatus !== "all" || filterEngine !== "all") && (
+              <button
+                onClick={() => { setFilterStatus("all"); setFilterEngine("all"); }}
+                className="flex h-8 items-center gap-1 rounded-lg border border-border/60 px-2.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors bg-card"
+              >
+                <X className="h-3 w-3" /> Clear
+              </button>
+            )}
           </div>
 
-          {/* Expanded filters */}
-          {showFilters && (
-            <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-border/50 bg-card/80 px-3 py-2.5">
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="h-8 w-[130px] border-border/60 text-[12px] rounded-lg">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="queued">Queued</SelectItem>
-                  <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="partial">Partial</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={filterEngine} onValueChange={setFilterEngine}>
-                <SelectTrigger className="h-8 w-[130px] border-border/60 text-[12px] rounded-lg">
-                  <SelectValue placeholder="Engine" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All engines</SelectItem>
-                  {PRESETS.map((p) => (<SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>))}
-                </SelectContent>
-              </Select>
-              {(filterStatus !== "all" || filterEngine !== "all") && (
-                <button
-                  onClick={() => { setFilterStatus("all"); setFilterEngine("all"); }}
-                  className="flex h-8 items-center gap-1 rounded-lg border border-border/60 px-2.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <X className="h-3 w-3" /> Clear
-                </button>
-              )}
-            </div>
-          )}
+          <Select value={sortOrder} onValueChange={(v: "newest" | "oldest") => setSortOrder(v)}>
+            <SelectTrigger className="h-8 w-[120px] border-border/60 bg-card text-[12px] rounded-lg">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest first</SelectItem>
+              <SelectItem value="oldest">Oldest first</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 

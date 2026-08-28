@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { DocumentSidePanel } from "@/components/DocumentSidePanel";
 import { EmptyState, ListSkeleton } from "@/components/app";
-import { StatusDot } from "@/components/StatusDot";
+import { StatusDot, StatusChip } from "@/components/StatusDot";
 import { UploadFlow } from "@/components/UploadModal";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeFieldLabel } from "@/lib/humanizeField";
@@ -44,22 +44,7 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
 import { sanitizeForExport } from "@/lib/utils";
 
-function StatusChip({ status, title }: { status: string, title?: string }) {
-  const map: Record<string, { label: string; cls: string; dot: string }> = {
-    completed: { label: "Done",       cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/50", dot: "bg-emerald-500" },
-    processing: { label: "Running",   cls: "bg-amber-50  text-amber-700  border-amber-200  dark:bg-amber-950/40  dark:text-amber-400  dark:border-amber-800/50",  dot: "bg-amber-500 animate-pulse"  },
-    queued:     { label: "Queued",    cls: "bg-amber-50  text-amber-700  border-amber-200  dark:bg-amber-950/40  dark:text-amber-400  dark:border-amber-800/50",  dot: "bg-amber-400 animate-pulse"  },
-    failed:     { label: "Failed",    cls: "bg-red-50    text-red-700    border-red-200    dark:bg-red-950/40    dark:text-red-400    dark:border-red-800/50",    dot: "bg-red-500"   },
-    partial:    { label: "Partial",   cls: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800/50", dot: "bg-orange-500" },
-  };
-  const s = map[status] ?? { label: status, cls: "bg-muted text-muted-foreground border-border/60", dot: "bg-muted-foreground" };
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${s.cls}`} title={title}>
-      <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-      {s.label}
-    </span>
-  );
-}
+
 
 export default function BatchDetails() {
   const [, params] = useRoute("/app/batches/:batchId");
