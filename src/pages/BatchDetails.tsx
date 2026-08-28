@@ -26,6 +26,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -259,6 +261,19 @@ export default function BatchDetails() {
     toast({ title: "Copied to clipboard" });
   };
 
+  const handleExportMarkdown = () => {
+    if (!batch) return;
+    const cols = batch.columns || [];
+    const headers = ["Filename", "Status", ...cols.map(humanizeFieldLabel)];
+    let md = `| ${headers.join(" | ")} |\n| ${headers.map(() => "---").join(" | ")} |\n`;
+    filteredRows.forEach(row => {
+      const rowData = [row.filename, row.status, ...cols.map(col => sanitizeForExport(String(row[col] || "")).replace(/\|/g, "\\|"))];
+      md += `| ${rowData.join(" | ")} |\n`;
+    });
+    downloadBlob(new Blob([md], { type: "text/markdown;charset=utf-8;" }), `batch_${batch.id}_export.md`);
+    toast({ title: "Markdown exported" });
+  };
+
   if (isLoading) return <ListSkeleton rows={6} />;
 
   if (!batch) {
@@ -308,12 +323,19 @@ export default function BatchDetails() {
                 <Download className="mr-1.5 h-3.5 w-3.5" /> Export <ChevronDown className="ml-1 h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-44 rounded-xl">
-              <DropdownMenuItem onClick={handleExportCSV} className="rounded-lg text-[13px] cursor-pointer"><Download className="mr-2 h-3.5 w-3.5" /> CSV</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportExcel} className="rounded-lg text-[13px] cursor-pointer"><Download className="mr-2 h-3.5 w-3.5" /> Excel</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportJSON} className="rounded-lg text-[13px] cursor-pointer"><Download className="mr-2 h-3.5 w-3.5" /> JSON</DropdownMenuItem>
+            <DropdownMenuContent align="end" sideOffset={4} className="min-w-48 rounded-lg">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-widest pt-1.5 pb-1">File formats</DropdownMenuLabel>
+                <DropdownMenuItem onClick={handleExportCSV} className="rounded-md text-[13px] cursor-pointer"><FileText className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Export CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportExcel} className="rounded-md text-[13px] cursor-pointer"><FileText className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Export Excel</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportJSON} className="rounded-md text-[13px] cursor-pointer"><FileText className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Export JSON</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportMarkdown} className="rounded-md text-[13px] cursor-pointer"><FileText className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Export Markdown</DropdownMenuItem>
+              </DropdownMenuGroup>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleCopyClipboard} className="rounded-lg text-[13px] cursor-pointer"><Copy className="mr-2 h-3.5 w-3.5" /> Copy to clipboard</DropdownMenuItem>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-widest pt-1.5 pb-1">Clipboard</DropdownMenuLabel>
+                <DropdownMenuItem onClick={handleCopyClipboard} className="rounded-md text-[13px] cursor-pointer"><Copy className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Copy as TSV</DropdownMenuItem>
+              </DropdownMenuGroup>
             </DropdownMenuContent>
           </DropdownMenu>
 
