@@ -146,25 +146,6 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
   return (
     <SidebarProvider>
       <Sidebar variant="inset" collapsible="icon">
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" asChild tooltip="brainhalf">
-                <Link href="/app">
-                  <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm shadow-primary/25">
-                    <FileText className="size-4" />
-                  </div>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate text-base font-semibold tracking-tight">
-                      brain<span className="font-extrabold text-primary">half</span>
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">AI Extraction</span>
-                  </div>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
 
         <SidebarContent>
           <SidebarGroup>
@@ -177,12 +158,13 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
                       asChild
                       isActive={isActive(item)}
                       tooltip={item.title}
+                      className="h-11 rounded-xl transition-all duration-200 hover:bg-primary/5 hover:text-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:shadow-sm font-medium"
                     >
                       <Link href={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
+                        <item.icon className="!h-5 !w-5 opacity-80" />
+                        <span className="text-[15px]">{item.title}</span>
                         {item.title === "Review Queue" && queueCount !== null && (
-                          <SidebarMenuBadge className="bg-primary/10 text-primary">
+                          <SidebarMenuBadge className="ml-auto bg-primary/15 text-primary px-2 py-0.5 rounded-full text-xs font-bold">
                             {queueCount}
                           </SidebarMenuBadge>
                         )}
@@ -204,10 +186,11 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
                       asChild
                       isActive={isAccountActive(item)}
                       tooltip={item.title}
+                      className="h-11 rounded-xl transition-all duration-200 hover:bg-muted/80 data-[active=true]:bg-primary/5 data-[active=true]:text-primary font-medium"
                     >
                       <Link href={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
+                        <item.icon className="!h-5 !w-5 opacity-70" />
+                        <span className="text-[15px]">{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -224,20 +207,20 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
                 <DropdownMenuTrigger asChild>
                   <SidebarMenuButton
                     size="lg"
-                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-xl transition-all duration-200 hover:bg-muted/60 border border-transparent hover:border-border/40"
                     tooltip="Account"
                   >
-                    <Avatar className="h-8 w-8 rounded-lg">
+                    <Avatar className="h-9 w-9 rounded-full shadow-sm ring-1 ring-border/50">
                       <AvatarImage src={user?.picture || undefined} alt={name || "Your avatar"} />
-                      <AvatarFallback className="rounded-lg bg-sidebar-accent text-sidebar-foreground">
+                      <AvatarFallback className="rounded-full bg-primary/10 text-primary font-semibold">
                         {initials}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{name || "You"}</span>
-                      <span className="truncate text-xs text-muted-foreground">{email}</span>
+                    <div className="grid flex-1 text-left text-sm leading-tight ml-2">
+                      <span className="truncate font-semibold text-[15px] text-foreground/90">{name || "You"}</span>
+                      <span className="truncate text-xs text-muted-foreground/80">{email}</span>
                     </div>
-                    <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
+                    <ChevronsUpDown className="ml-auto size-4 text-muted-foreground/60" />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -293,12 +276,17 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
             aligned with the page container at every breakpoint. */}
         <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-2 border-b border-border/40 bg-background/80 backdrop-blur-md px-4 md:px-6 lg:px-8">
           <div className="flex w-full max-w-7xl mx-auto items-center gap-2">
-            <SidebarTrigger className="-ml-2" />
-            {/* A tiny "where you are" cue: the workspace the current page belongs to. */}
-            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
-              <span className="h-1 w-1 rounded-full bg-primary/60" />
-              <span>Workspace</span>
-            </div>
+            <SidebarTrigger className="-ml-2 text-muted-foreground hover:text-foreground transition-colors" />
+            <Link href="/app" className="flex items-center gap-2.5 hover:opacity-85 transition-opacity ml-1">
+              <div className="flex aspect-square size-8 shrink-0 items-center justify-center rounded-[0.4rem] bg-primary text-primary-foreground shadow-sm shadow-primary/20">
+                <FileText className="size-4" />
+              </div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl font-medium tracking-tight">
+                  brain<span className="font-extrabold text-primary">half</span>
+                </span>
+              </div>
+            </Link>
             <div className="ml-auto flex items-center gap-2">
               <ThemeToggle />
               <DropdownMenu>

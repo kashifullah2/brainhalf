@@ -55,13 +55,10 @@ const DEFAULT_HUNYUAN_MODEL = "hunyuan-ocr";
 /**
  * The upstream rejects the default Cloudflare-Workers User-Agent, which is what
  * originally forced a browser-side direct call (and the key leak that came with
- * it). Sending an ordinary browser User-Agent lets the server call it directly.
- * If this ever stops working, the default tier fails server-side — do NOT fix it
- * by reintroducing a browser-direct path; a browser cannot hold a credential.
+ * it). Sending an ordinary browser User-Agent triggered Cloudflare Bot Fight Mode.
+ * Using a custom server User-Agent avoids both issues.
  */
-const HUNYUAN_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+const HUNYUAN_USER_AGENT = "BrainHalf-OCR-Backend/1.0";
 
 // --- Escalation tier: OpenAI -------------------------------------------------
 // Defaults live in server/openai-params.ts, shared with the dev proxy in
@@ -327,7 +324,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
           data = await upstream.json();
         } catch (error) {
           console.error("[api/ocr] provider returned 200 with a non-JSON body:", error);
-          return fail("The OCR service returned an unreadable response.", 502);
+          return fail("The OCR service returned an unreadable response.", 503);
         }
 
         // Quota accounting. The daily allowances are the binding constraint on
@@ -385,7 +382,9 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
       // problem, which is what 502 means. This matches the dev proxy in
       // vite.config.ts. 413 is the exception: that one really is about the
       // caller's document.
-      const status = upstream.status === 413 ? 413 : 502;
+      // We use 503 instead of 502 because Cloudflare Pages intercepts 502
+      // and replaces it with a generic HTML/text error page, breaking the JSON response.
+      const status = upstream.status === 413 ? 413 : 503;
 
       return json({
         error: `OCR provider returned HTTP ${upstream.status}`,
@@ -399,12 +398,12 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
       return json({
         error: "Could not reach the OCR service.",
         details: reason.slice(0, MAX_ERROR_DETAIL_CHARS),
-      }, 502);
+      }, 503);
     }
   }
 
   // Only reachable if the retry loop exhausted its attempts without returning,
   // which would mean a 400 was recoverable twice over. Defensive, not expected.
   console.error("[api/ocr] exhausted upstream attempts without a usable response.");
-  return fail("Could not reach the OCR service.", 502);
+  return fail("Could not reach the OCR service.", 503);
 };

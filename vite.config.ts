@@ -117,11 +117,7 @@ function devOcrProxy(): Plugin {
       // Cheap OpenAI model used on the default tier when no Hunyuan key is set.
       const openaiFallbackModel = DEFAULT_OPENAI_FALLBACK_MODEL;
 
-      // Mirrors HUNYUAN_USER_AGENT in functions/api/ocr.ts: the upstream
-      // rejects the default Node User-Agent, so a browser UA is sent instead.
-      const hunyuanUserAgent =
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-        '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+      const hunyuanUserAgent = 'BrainHalf-OCR-Backend/1.0';
 
       if (!hunyuanKey) {
         server.config.logger.warn(
@@ -271,7 +267,7 @@ function devOcrProxy(): Plugin {
               // Same mapping as production (functions/api/ocr.ts): a vendor status
               // is not the caller's status. Only 413 is genuinely about the
               // caller's document.
-              const status = upstream.status === 413 ? 413 : 502;
+              const status = upstream.status === 413 ? 413 : 503;
               return send(status, {
                 error: `OCR service error (${upstream.status}).`,
                 details: text.slice(0, 500),
@@ -292,12 +288,12 @@ function devOcrProxy(): Plugin {
               `[dev-ocr-proxy] fetch failed: ${String(error)}` +
                 (cause?.code ? ` (cause: ${cause.code})` : ''),
             );
-            return send(502, { error: 'Could not reach the OCR service.' });
+            return send(503, { error: 'Could not reach the OCR service.' });
           }
         }
 
         // Only reachable if a 400 was judged recoverable twice. Defensive.
-        return send(502, { error: 'Could not reach the OCR service.' });
+        return send(503, { error: 'Could not reach the OCR service.' });
       });
     },
   };
