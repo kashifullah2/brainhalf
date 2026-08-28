@@ -67,30 +67,7 @@ export const PRESETS: Preset[] = [
     description: "Finds every labeled field on any document — printed forms, scans, checkboxes and all.",
     extracts: ["All fields", "Empty fields", "Checkboxes"],
   },
-  {
-    id: "table",
-    label: "Table",
-    icon: Table2,
-    tagline: "Grids & sheets",
-    description: "Extracts rows and columns from price lists, schedules, and comparison sheets.",
-    extracts: ["Cells", "Headers", "Totals"],
-  },
-  {
-    id: "handwriting",
-    label: "Handwriting & Notes",
-    icon: PenLine,
-    tagline: "Cursive & print",
-    description: "Reads handwritten letters, sticky notes, journal entries, and classroom notes — even messy cursive.",
-    extracts: ["Full text", "Author guess", "Language"],
-  },
-  {
-    id: "multilingual",
-    label: "Multilingual",
-    icon: Globe,
-    tagline: "Any language",
-    description: "Detects and transcribes text in Arabic, Chinese, Hindi, Japanese, Korean, Urdu, and 50+ other scripts.",
-    extracts: ["Language", "Script", "Translation", "Original text"],
-  },
+
   {
     id: "custom",
     label: "Custom Prompt",
