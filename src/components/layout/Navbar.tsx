@@ -38,7 +38,7 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
-      <div className="container max-w-7xl mx-auto flex h-16 md:h-20 items-center justify-between px-6 md:px-8">
+      <div className={`flex h-16 md:h-20 items-center justify-between px-6 md:px-8 ${isSignedIn ? "w-full" : "container max-w-7xl mx-auto"}`}>
         <div className="flex items-center gap-6 md:gap-10">
           <Link href={isSignedIn ? "/app" : "/"} className="flex items-center gap-3 group">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/25 group-hover:scale-105 group-hover:shadow-lg transition-all duration-300">

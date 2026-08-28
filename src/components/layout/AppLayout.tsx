@@ -216,8 +216,8 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
       {/* ── Main content ────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 z-0">
         {/* Page */}
-        <main className="flex-1 overflow-auto">
-          <div className="w-full max-w-5xl mx-auto px-6 py-7">
+        <main className="flex-1 overflow-auto bg-muted/10">
+          <div className="w-full max-w-7xl px-6 md:px-8 py-7">
             {children}
           </div>
         </main>

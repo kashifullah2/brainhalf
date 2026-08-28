@@ -83,7 +83,7 @@ export default function ReviewQueue() {
   );
 
   return (
-    <div className="flex flex-col flex-1 w-full max-w-7xl mx-auto">
+    <div className="flex flex-col flex-1 w-full">
       <PageHeader
         eyebrow={<><CheckSquare className="h-3.5 w-3.5" /> Human in the loop</>}
         title="Second pair of eyes"
