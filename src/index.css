@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Inter:wght@300..800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
@@ -51,6 +51,7 @@
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
   --font-sans: var(--app-font-sans);
+  --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
 
   --radius-sm: calc(var(--radius) - 4px);
@@ -85,17 +86,17 @@
 
 /* ─── Light theme ────────────────────────────────────────── */
 :root {
-  --background: 0 0% 98%;
-  --foreground: 220 20% 12%;
-  --border: 220 14% 90%;
+  --background: 40 33% 98%;
+  --foreground: 25 20% 15%;
+  --border: 35 15% 90%;
 
-  --card: 0 0% 100%;
-  --card-foreground: 220 20% 12%;
-  --card-border: 220 14% 91%;
+  --card: 40 33% 99%;
+  --card-foreground: 25 20% 15%;
+  --card-border: 35 15% 91%;
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 220 20% 12%;
-  --popover-border: 220 14% 90%;
+  --popover: 40 33% 99%;
+  --popover-foreground: 25 20% 15%;
+  --popover-border: 35 15% 90%;
 
   --primary: 20 92% 52%;
   --primary-foreground: 0 0% 100%;
@@ -121,16 +122,17 @@
   --input: 220 14% 90%;
   --ring: 20 92% 52%;
 
-  --sidebar-background: 220 20% 97%;
-  --sidebar-foreground: 220 20% 16%;
+  --sidebar-background: 40 33% 96%;
+  --sidebar-foreground: 25 20% 15%;
   --sidebar-primary: 20 92% 52%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 14% 92%;
-  --sidebar-accent-foreground: 220 20% 16%;
-  --sidebar-border: 220 14% 88%;
+  --sidebar-accent: 35 15% 92%;
+  --sidebar-accent-foreground: 25 20% 15%;
+  --sidebar-border: 35 15% 88%;
   --sidebar-ring: 20 92% 52%;
 
   --app-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --app-font-serif: 'Fraunces', Georgia, serif;
   --app-font-mono: 'JetBrains Mono', monospace;
   --radius: 0.75rem;
 
@@ -140,17 +142,17 @@
 
 /* ─── Dark theme ─────────────────────────────────────────── */
 .dark {
-  --background: 222 18% 9%;
-  --foreground: 220 14% 92%;
-  --border: 220 14% 18%;
+  --background: 25 15% 10%;
+  --foreground: 40 10% 92%;
+  --border: 25 10% 18%;
 
-  --card: 222 18% 12%;
-  --card-foreground: 220 14% 92%;
-  --card-border: 220 14% 18%;
+  --card: 25 15% 12%;
+  --card-foreground: 40 10% 92%;
+  --card-border: 25 10% 18%;
 
-  --popover: 222 18% 12%;
-  --popover-foreground: 220 14% 92%;
-  --popover-border: 220 14% 18%;
+  --popover: 25 15% 12%;
+  --popover-foreground: 40 10% 92%;
+  --popover-border: 25 10% 18%;
 
   --primary: 20 92% 56%;
   --primary-foreground: 0 0% 100%;
@@ -176,13 +178,13 @@
   --input: 220 14% 18%;
   --ring: 20 92% 56%;
 
-  --sidebar-background: 222 20% 7%;
-  --sidebar-foreground: 220 14% 88%;
+  --sidebar-background: 25 15% 8%;
+  --sidebar-foreground: 40 10% 90%;
   --sidebar-primary: 20 92% 56%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 14% 13%;
-  --sidebar-accent-foreground: 220 14% 88%;
-  --sidebar-border: 220 14% 14%;
+  --sidebar-accent: 25 10% 14%;
+  --sidebar-accent-foreground: 40 10% 90%;
+  --sidebar-border: 25 10% 16%;
   --sidebar-ring: 20 92% 56%;
 }
 

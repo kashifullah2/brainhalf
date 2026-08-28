@@ -36,11 +36,11 @@ export function PageHeader({
     <div className="mb-10 flex flex-wrap items-end justify-between gap-x-8 gap-y-5 border-b border-border/40 pb-8">
       <div className="min-w-0 grow basis-[min(100%,26rem)] space-y-3">
         {eyebrow ? (
-          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-primary">
+          <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="text-balance text-3xl font-extrabold tracking-tight text-foreground md:text-4xl lg:text-5xl">
+        <h1 className="text-balance text-3xl font-serif font-medium tracking-tight text-foreground md:text-4xl lg:text-5xl">
           {title}
         </h1>
         {description ? (
