@@ -105,7 +105,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
         {/* ── Sidebar ─────────────────────────────────────────── */}
         <aside
           style={{ width: collapsed ? "64px" : "224px" }}
-          className="relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-in-out overflow-hidden z-10"
+          className="relative flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-in-out z-10"
         >
 
 
