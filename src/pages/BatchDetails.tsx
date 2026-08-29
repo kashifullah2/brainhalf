@@ -582,7 +582,7 @@ export default function BatchDetails() {
       {sidePanelDocId && (
         <>
           <div className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSidePanelDocId(null)} />
-          <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[500px] xl:w-[600px] bg-background shadow-2xl border-l border-border/60 animate-in slide-in-from-right duration-300">
+          <div className="fixed inset-y-0 right-0 z-50 w-full sm:w-[600px] xl:w-[800px] bg-background shadow-2xl border-l border-border/60 animate-in slide-in-from-right duration-300">
             <DocumentSidePanel doc={(batch.documents || []).find(d => d.id === sidePanelDocId)} onClose={() => setSidePanelDocId(null)} />
           </div>
         </>
