@@ -151,7 +151,7 @@ export default function Settings() {
 
                     <div className="space-y-6">
                       <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        <label className="text-[13px] font-semibold text-foreground">
                           Organization Name
                         </label>
                         <Input
@@ -166,7 +166,7 @@ export default function Settings() {
                         </p>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        <label className="text-[13px] font-semibold text-foreground">
                           Contact Email
                         </label>
                         <Input
@@ -182,7 +182,7 @@ export default function Settings() {
                       </div>
 
                       <div className="space-y-2 pt-2 border-t border-border/40">
-                        <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                        <label className="text-[13px] font-semibold text-foreground">
                           How sure should brainhalf be before it asks you?
                         </label>
                         <div className="flex items-center gap-4">
@@ -237,7 +237,7 @@ export default function Settings() {
                           <span className="font-bold text-foreground">Two-Factor Authentication</span>
                           <span className="text-sm font-medium text-muted-foreground">Coming soon.</span>
                         </div>
-                        <Button variant="outline" disabled className="rounded-full font-bold uppercase text-xs">
+                        <Button variant="outline" disabled className="rounded-full font-semibold text-xs">
                           Coming soon
                         </Button>
                       </div>
@@ -247,7 +247,7 @@ export default function Settings() {
                           <span className="font-bold text-foreground">Single Sign-On (SSO)</span>
                           <span className="text-sm font-medium text-muted-foreground">Coming soon.</span>
                         </div>
-                        <Button variant="outline" disabled className="rounded-full font-bold uppercase text-xs">
+                        <Button variant="outline" disabled className="rounded-full font-semibold text-xs">
                           Coming soon
                         </Button>
                       </div>
@@ -263,7 +263,7 @@ export default function Settings() {
                           variant="outline"
                           onClick={handleSignOut}
                           disabled={isSigningOut}
-                          className="rounded-full font-bold uppercase text-xs shrink-0"
+                          className="rounded-full font-semibold text-xs shrink-0"
                         >
                           {isSigningOut ? (
                             <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
@@ -324,7 +324,7 @@ export default function Settings() {
                           single-user.
                         </p>
                       </div>
-                      <Button disabled variant="outline" className="rounded-full font-bold uppercase text-xs">
+                      <Button disabled variant="outline" className="rounded-full font-semibold text-xs">
                         Coming soon
                       </Button>
                     </div>
@@ -347,7 +347,7 @@ export default function Settings() {
                             </span>
                           </div>
                         </div>
-                        <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[11px] font-extrabold uppercase tracking-widest shrink-0">
+                        <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[11px] font-semibold shrink-0">
                           Owner
                         </span>
                       </div>

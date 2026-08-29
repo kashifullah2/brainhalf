@@ -142,10 +142,10 @@ export default function DocumentDetails() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground truncate max-w-xl" title={doc.filename}>{doc.filename}</h1>
           <div className="flex items-center gap-3 mt-1.5">
             <StatusChip status={doc.status} />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{doc.contentType}</span>
+            <span className="text-[12px] font-semibold text-muted-foreground">{doc.contentType}</span>
             {doc.overallConfidence !== undefined && (
               <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-card border border-border/60">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Score</span>
+                <span className="text-[11px] font-semibold text-muted-foreground">Score</span>
                 <ConfidenceIndicator value={doc.overallConfidence} threshold={threshold} />
               </div>
             )}
@@ -284,7 +284,7 @@ export default function DocumentDetails() {
                           >
                             <div className="flex justify-between items-start mb-1.5">
                               <div className="flex items-center gap-2">
-                                <span className={`text-[11px] font-semibold uppercase tracking-wide transition-colors ${isHovered || isEditing ? 'text-primary' : 'text-muted-foreground'}`}>
+                                <span className={`text-[12px] font-semibold transition-colors ${isHovered || isEditing ? 'text-primary' : 'text-muted-foreground'}`}>
                                   {humanizeFieldLabel(field.normalizedField)}
                                 </span>
                                 {hasCorrection && <Badge variant="outline" className="text-[10px] font-semibold h-4 px-1.5 bg-success/10 text-success border-success/20">Edited</Badge>}

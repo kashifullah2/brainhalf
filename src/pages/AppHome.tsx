@@ -183,7 +183,7 @@ export default function AppHome() {
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
             <Sparkles className="h-3 w-3 text-primary" />
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-primary">
+            <span className="text-[13px] font-medium text-primary">
               {greeting()}{firstName ? `, ${firstName}` : ""}
             </span>
           </div>

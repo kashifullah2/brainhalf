@@ -116,9 +116,9 @@ function AuthBrandPanel() {
 
 function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-[100dvh] flex">
+    <div className="min-h-[100dvh] flex items-stretch">
       {/* Brand panel — desktop only */}
-      <div className="hidden lg:flex lg:w-[42%] xl:w-[38%] shrink-0 flex-col min-h-[100dvh]">
+      <div className="hidden lg:flex lg:w-[42%] xl:w-[38%] shrink-0 flex-col h-[100dvh] sticky top-0">
         <AuthBrandPanel />
       </div>
 

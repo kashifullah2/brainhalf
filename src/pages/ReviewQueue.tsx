@@ -143,7 +143,7 @@ export default function ReviewQueue() {
         <div className="space-y-6">
           <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
-              <h2 className="text-[12px] font-bold uppercase tracking-widest text-muted-foreground">
+              <h2 className="text-[14px] font-semibold text-foreground">
                 Documents Awaiting Review ({pendingItems.length})
               </h2>
             </div>
@@ -180,7 +180,7 @@ export default function ReviewQueue() {
                               {item.document.filename}
                             </h3>
                             <Link href={`/app/batches/${item.batchId}`}>
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-[10px] font-bold uppercase tracking-wider hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer border border-transparent hover:border-primary/20">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-muted-foreground text-[11px] font-semibold hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer border border-transparent hover:border-primary/20">
                                 <Layers className="h-3 w-3" /> Batch #{item.batchId}
                               </span>
                             </Link>
@@ -236,7 +236,7 @@ export default function ReviewQueue() {
 
           {verifiedItems.length > 0 && (
             <div className="space-y-3 pt-4">
-              <h2 className="px-1 text-[12px] font-bold uppercase tracking-widest text-muted-foreground">
+              <h2 className="px-1 text-[14px] font-semibold text-foreground">
                 Verified ({verifiedItems.length})
               </h2>
               <div className="space-y-3">
@@ -259,7 +259,7 @@ export default function ReviewQueue() {
                               {item.document.filename}
                             </h3>
                             <Link href={`/app/batches/${item.batchId}`}>
-                              <span className="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success transition-colors hover:bg-success/20">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/20 px-2 py-0.5 text-[11px] font-semibold text-success transition-colors hover:bg-success/20">
                                 <Layers className="h-3 w-3" /> Batch #{item.batchId}
                               </span>
                             </Link>

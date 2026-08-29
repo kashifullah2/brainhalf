@@ -199,7 +199,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                 <label className="text-[13px] font-semibold text-foreground">First Name</label>
                 <Input
                   type="text"
-                  placeholder="John"
+                  placeholder=""
                   value={firstName}
                   onChange={(e) => { setFirstName(e.target.value); if(errors.firstName) setErrors({...errors, firstName: ""}) }}
                   className={`h-11 rounded-xl bg-card font-medium text-sm transition-colors ${errors.firstName ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
@@ -210,7 +210,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                 <label className="text-[13px] font-semibold text-foreground">Last Name</label>
                 <Input
                   type="text"
-                  placeholder="Doe"
+                  placeholder=""
                   value={lastName}
                   onChange={(e) => { setLastName(e.target.value); if(errors.lastName) setErrors({...errors, lastName: ""}) }}
                   className={`h-11 rounded-xl bg-card font-medium text-sm transition-colors ${errors.lastName ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
@@ -220,11 +220,11 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
-              <label className="text-[13px] font-semibold text-foreground">Work Email</label>
+              <label className="text-[13px] font-semibold text-foreground">Email</label>
               <Input
                 type="email"
                 maxLength={255}
-                placeholder="name@brainhalf.com"
+                placeholder="name@example.com"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); if(errors.email) setErrors({...errors, email: ""}) }}
                 className={`h-11 rounded-xl bg-card font-medium text-sm truncate transition-colors ${errors.email ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
@@ -263,6 +263,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
               <div className="h-1 w-full bg-muted rounded-full mt-1.5 overflow-hidden flex">
                 <div className={`h-full ${passwordStrength.width} ${passwordStrength.color} transition-all duration-300 ease-out`} />
               </div>
+              {password.length === 0 && <p className="text-[11px] text-muted-foreground mt-1 font-medium">Use 10+ characters with a mix of letters, numbers & symbols.</p>}
               {errors.password && <span className="text-[11px] font-semibold text-destructive">{errors.password}</span>}
             </div>
 
@@ -275,6 +276,11 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   placeholder="Confirm your password"
                   value={confirmPassword}
                   onChange={(e) => { setConfirmPassword(e.target.value); if(errors.confirmPassword) setErrors({...errors, confirmPassword: ""}) }}
+                  onBlur={() => {
+                    if (confirmPassword.length > 0 && password !== confirmPassword) {
+                      setErrors({...errors, confirmPassword: "Passwords do not match"});
+                    }
+                  }}
                   className={`h-11 rounded-xl bg-card font-medium text-sm pr-10 truncate transition-colors ${passwordsMismatch || errors.confirmPassword ? 'border-destructive focus-visible:ring-destructive' : passwordsMatch ? 'border-emerald-500/50 focus-visible:ring-emerald-500' : 'border-border/80 focus:border-primary'}`}
                 />
                 
@@ -307,12 +313,8 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   onCheckedChange={(checked) => { setAgreedToLicense(!!checked); if(errors.agreedToLicense) setErrors({...errors, agreedToLicense: ""}) }}
                   className={`mt-0.5 rounded shadow-sm w-4 h-4 shrink-0 transition-colors ${errors.agreedToLicense ? 'border-destructive bg-destructive/10' : ''}`}
                 />
-                <label htmlFor="license-agree" className="text-xs font-medium leading-relaxed text-muted-foreground cursor-pointer select-none">
-                  {/* These were href="#" placeholders — a consent checkbox whose
-                      terms could not be read. Open in a new tab so the
-                      half-filled form is not lost. */}
-                  I agree with the <a href="/terms" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="font-semibold text-foreground underline hover:text-primary transition-colors">Terms of Service</a> and{" "}
-                  <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="font-semibold text-foreground underline hover:text-primary transition-colors">Privacy Policy</a> for brainhalf.com
+                <label htmlFor="license-agree" className="text-xs font-medium leading-normal text-muted-foreground cursor-pointer select-none max-w-[280px]">
+                  I agree with the <a href="/terms" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="font-semibold text-foreground underline hover:text-primary transition-colors">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="font-semibold text-foreground underline hover:text-primary transition-colors">Privacy Policy</a>
                 </label>
               </div>
               {errors.agreedToLicense && <p className="text-[11px] font-semibold text-destructive pl-7">{errors.agreedToLicense}</p>}

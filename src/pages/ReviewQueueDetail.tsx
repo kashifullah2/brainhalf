@@ -44,7 +44,7 @@ function HotkeyHintBar() {
     <div className="flex items-center gap-4 flex-wrap px-4 py-2.5 border-t border-border/40 bg-muted/10 text-muted-foreground shrink-0">
       <div className="flex items-center gap-1.5">
         <Keyboard className="h-3.5 w-3.5 text-primary/60" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-primary/60">Shortcuts</span>
+        <span className="text-[12px] font-semibold text-primary/80">Shortcuts</span>
       </div>
       <div className="flex items-center gap-1">
         <Kbd>J</Kbd><Kbd>K</Kbd>
@@ -264,7 +264,7 @@ export default function ReviewQueueDetail() {
               <h1 className="text-[20px] font-extrabold text-foreground truncate max-w-md" title={doc.filename}>
                 {doc.filename}
               </h1>
-              <Badge variant="outline" className="rounded-md font-bold uppercase text-[10px] tracking-widest bg-warning/10 text-warning border-warning/20">
+              <Badge variant="outline" className="rounded-md font-semibold text-[11px] bg-warning/10 text-warning border-warning/20">
                 Batch #{batchId}
               </Badge>
             </div>
@@ -332,7 +332,7 @@ export default function ReviewQueueDetail() {
                 <Sparkles className="h-4 w-4 text-warning" />
                 Low-Confidence Fields
               </CardTitle>
-              <span className="text-[10px] font-bold text-muted-foreground bg-background px-2.5 py-0.5 rounded border shadow-sm uppercase tracking-widest">
+              <span className="text-[11px] font-semibold text-muted-foreground bg-background px-2.5 py-0.5 rounded border shadow-sm">
                 {reviewedCount} / {flaggedFields.length} Verified
               </span>
             </CardHeader>
@@ -370,17 +370,17 @@ export default function ReviewQueueDetail() {
                     onClick={() => setFocusedFieldIndex(index)}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-foreground">
+                      <span className="text-[13px] font-semibold text-foreground">
                         {humanizeFieldLabel(field.normalizedField)}
                       </span>
                       <div className="flex items-center gap-2">
                         {isFocused && !isResolved && (
-                          <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                          <span className="text-[11px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded">
                             Focused
                           </span>
                         )}
                         {isResolved ? (
-                          <Badge variant="outline" className="rounded text-[10px] font-bold uppercase tracking-widest bg-success/10 text-success border-success/20 py-0 h-5">
+                          <Badge variant="outline" className="rounded text-[11px] font-semibold bg-success/10 text-success border-success/20 py-0 h-5">
                             {res.status}
                           </Badge>
                         ) : (

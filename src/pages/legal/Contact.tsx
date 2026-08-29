@@ -133,7 +133,7 @@ export default function Contact() {
             />
           </div>
 
-          <Button type="submit" disabled={isBusy} className="h-12 w-full sm:w-auto self-end px-8 rounded-full shadow-sm text-sm font-bold uppercase tracking-wide">
+          <Button type="submit" disabled={isBusy} className="h-12 w-full sm:w-auto self-end px-8 rounded-full shadow-sm text-sm font-semibold">
             {isBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
             {isBusy ? "Sending…" : "Send message"}
           </Button>

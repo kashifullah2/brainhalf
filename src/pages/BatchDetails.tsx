@@ -325,7 +325,7 @@ export default function BatchDetails() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={4} className="min-w-48 rounded-lg">
               <DropdownMenuGroup>
-                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-widest pt-1.5 pb-1">File formats</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground pt-1.5 pb-1">File formats</DropdownMenuLabel>
                 <DropdownMenuItem onClick={handleExportCSV} className="rounded-md text-[13px] cursor-pointer"><FileText className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Export CSV</DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExportExcel} className="rounded-md text-[13px] cursor-pointer"><FileText className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Export Excel</DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExportJSON} className="rounded-md text-[13px] cursor-pointer"><FileText className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Export JSON</DropdownMenuItem>
@@ -333,7 +333,7 @@ export default function BatchDetails() {
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-widest pt-1.5 pb-1">Clipboard</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground pt-1.5 pb-1">Clipboard</DropdownMenuLabel>
                 <DropdownMenuItem onClick={handleCopyClipboard} className="rounded-md text-[13px] cursor-pointer"><Copy className="mr-2 h-3.5 w-3.5 text-muted-foreground" /> Copy as TSV</DropdownMenuItem>
               </DropdownMenuGroup>
             </DropdownMenuContent>
@@ -422,10 +422,10 @@ export default function BatchDetails() {
                           onChange={toggleSelectAll}
                         />
                       </th>
-                      <th className="px-4 py-3 whitespace-nowrap text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Document</th>
-                      <th className="px-4 py-3 whitespace-nowrap text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Status</th>
+                      <th className="px-4 py-3 whitespace-nowrap text-[12px] font-semibold text-muted-foreground">Document</th>
+                      <th className="px-4 py-3 whitespace-nowrap text-[12px] font-semibold text-muted-foreground">Status</th>
                       {cols.map((col) => (
-                        <th key={col} className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis text-[11px] font-semibold tracking-wide text-muted-foreground uppercase" title={humanizeFieldLabel(col)}>
+                        <th key={col} className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis text-[12px] font-semibold text-muted-foreground" title={humanizeFieldLabel(col)}>
                           {humanizeFieldLabel(col)}
                         </th>
                       ))}
@@ -482,7 +482,7 @@ export default function BatchDetails() {
                                 )}
                                 <div className="min-w-0">
                                   <p className="truncate font-medium text-foreground group-hover:text-primary transition-colors" title={String(row.filename)}>{String(row.filename)}</p>
-                                  {isDuplicate && <span className="text-[10px] font-semibold text-warning uppercase">Duplicate</span>}
+                                  {isDuplicate && <span className="text-[11px] font-medium text-warning">Duplicate</span>}
                                 </div>
                               </div>
                             </td>

@@ -17,7 +17,7 @@ export default function NotFound() {
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Button
               asChild
-              className="h-11 rounded-full px-6 text-xs font-bold uppercase tracking-wide"
+              className="h-11 rounded-full px-6 text-sm font-semibold"
             >
               <Link href="/app">
                 <ArrowLeft className="mr-2 h-4 w-4" /> Back to dashboard
@@ -26,7 +26,7 @@ export default function NotFound() {
             <Button
               asChild
               variant="outline"
-              className="h-11 rounded-full border-border/60 px-6 text-xs font-bold uppercase tracking-wide"
+              className="h-11 rounded-full border-border/60 px-6 text-sm font-semibold"
             >
               <Link href="/contact">Tell us what you were after</Link>
             </Button>

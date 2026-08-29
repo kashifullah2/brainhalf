@@ -89,7 +89,7 @@ export default function UploadPage() {
 
       <div className="mb-6 flex items-center justify-between bg-card border border-border/60 p-4 rounded-xl shadow-sm">
         <div className="flex flex-col">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-primary mb-1">Step {step} of 2</span>
+          <span className="text-[13px] font-medium text-primary mb-1">Step {step} of 2</span>
           <span className="text-[15px] font-bold text-foreground">
             {step === 1 ? "Tell BrainHalf what to look for" : "Hand over your documents"}
           </span>
