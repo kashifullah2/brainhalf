@@ -79,7 +79,7 @@ const SAMPLE_DATA: Record<SampleTab, SampleDoc> = {
  * parsed, verified fields. Tab state is fully local to this widget.
  */
 export function HeroPreview() {
-  const [activeTab, setActiveTab] = useState<SampleTab>("invoice");
+  const [activeTab, setActiveTab] = useState<SampleTab>("key_value");
   const current = SAMPLE_DATA[activeTab];
 
   return (
