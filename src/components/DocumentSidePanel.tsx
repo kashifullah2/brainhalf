@@ -116,6 +116,7 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
                 );
               })}
             </div>
+            </div>
           ) : doc.ocrText ? (
             <div>
               <h4 className="text-[13px] font-semibold text-foreground mb-4">Transcription</h4>
