@@ -38,10 +38,10 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
       </div>
       <div className="flex flex-1 overflow-hidden">
         {/* Source Image Left Panel */}
-        {doc.storagePath ? (
+        {doc.objectPath ? (
           <div className="hidden sm:flex w-1/2 border-r border-border/60 bg-muted/30 p-4 items-center justify-center">
             <img 
-              src={storageUrl(doc.storagePath)} 
+              src={storageUrl(doc.objectPath)} 
               alt={doc.filename}
               className="max-w-full max-h-full object-contain rounded-lg shadow-sm border border-border/40"
               loading="lazy"
@@ -116,7 +116,24 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
                 );
               })}
             </div>
-            </div>
+          ) : doc.ocrText ? (
+            <div>
+              <h4 className="text-[13px] font-semibold text-foreground mb-4">Transcription</h4>
+              <div className="p-3 rounded-xl border border-border/40 bg-card hover:border-border/80 transition-colors group">
+                <div className="flex justify-end mb-2">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" 
+                    onClick={() => navigator.clipboard.writeText(doc.ocrText ?? "")}
+                  >
+                    <Copy className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </div>
+                <div className="text-[13px] text-foreground font-mono whitespace-pre-wrap break-words leading-relaxed">
+                  {doc.ocrText}
+                </div>
+              </div>
             </div>
           ) : doc.status !== "failed" ? (
             <p className="rounded-2xl border border-dashed border-border/60 p-4 text-center text-xs font-semibold text-muted-foreground">
