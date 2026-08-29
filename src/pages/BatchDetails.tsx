@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AutoResizingTextarea } from "@/components/ui/auto-resizing-textarea";
 import {
-  ArrowLeft, Search, Loader2, Download, Copy, FileText,
+  ArrowLeft, ArrowRight, Search, Loader2, Download, Copy, FileText,
   ChevronDown, Pencil, AlertTriangle, Trash2, Check, X
 } from "lucide-react";
 import {
