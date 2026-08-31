@@ -86,7 +86,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
   const resetUrl = `${origin}/reset-password?token=${token}`;
 
   const serviceId = env.EMAILJS_SERVICE_ID || env.VITE_EMAILJS_SERVICE_ID;
-  const templateId = env.EMAILJS_TEMPLATE_ID || env.VITE_EMAILJS_TEMPLATE_ID;
+  const templateId = env.EMAILJS_PWD_TEMPLATE_ID || env.VITE_EMAILJS_PWD_TEMPLATE_ID || env.EMAILJS_TEMPLATE_ID || env.VITE_EMAILJS_TEMPLATE_ID;
   const publicKey = env.EMAILJS_PUBLIC_KEY || env.VITE_EMAILJS_PUBLIC_KEY;
 
   if (serviceId && templateId && publicKey) {

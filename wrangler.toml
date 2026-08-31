@@ -75,4 +75,5 @@ binding = "OCR_QUEUE"
 [vars]
 EMAILJS_SERVICE_ID = "service_lrarlse"
 EMAILJS_TEMPLATE_ID = "template_rrzz09f"
+EMAILJS_PWD_TEMPLATE_ID = "template_pwdza0h"
 EMAILJS_PUBLIC_KEY = "eZLBkV1mt6FU6gTjF"

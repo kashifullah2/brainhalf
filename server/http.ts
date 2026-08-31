@@ -46,9 +46,11 @@ export interface AppEnv {
   /** EmailJS parameters for password reset mail delivery. */
   EMAILJS_SERVICE_ID?: string;
   EMAILJS_TEMPLATE_ID?: string;
+  EMAILJS_PWD_TEMPLATE_ID?: string;
   EMAILJS_PUBLIC_KEY?: string;
   VITE_EMAILJS_SERVICE_ID?: string;
   VITE_EMAILJS_TEMPLATE_ID?: string;
+  VITE_EMAILJS_PWD_TEMPLATE_ID?: string;
   VITE_EMAILJS_PUBLIC_KEY?: string;
   /** Background processing queue for OCR */
   OCR_QUEUE?: Queue<any>;
