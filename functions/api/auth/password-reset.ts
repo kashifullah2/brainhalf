@@ -95,6 +95,8 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Origin': origin,
+          'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         },
         body: JSON.stringify({
           service_id: serviceId,
