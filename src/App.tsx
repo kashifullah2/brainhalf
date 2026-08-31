@@ -191,7 +191,7 @@ function AppRoutes() {
         <Route path="/sign-up/*?" component={SignUpPage} />
         {/* The address emailed by functions/api/auth/password-reset.ts. Without
             this route the reset link landed on the 404 page. */}
-        <Route path="/reset-password">
+        <Route path="/reset-password/*?">
           <AuthLayout>
             <ResetPassword />
           </AuthLayout>
