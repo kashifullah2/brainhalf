@@ -50,6 +50,8 @@ export interface AppEnv {
   VITE_EMAILJS_SERVICE_ID?: string;
   VITE_EMAILJS_TEMPLATE_ID?: string;
   VITE_EMAILJS_PUBLIC_KEY?: string;
+  /** Background processing queue for OCR */
+  OCR_QUEUE?: Queue<any>;
 }
 
 const SECURITY_HEADERS: Record<string, string> = {

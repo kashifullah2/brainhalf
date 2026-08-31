@@ -91,6 +91,25 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
     nextPosition,
   );
 
+  let asyncProcessing = false;
+  if (env.OCR_QUEUE) {
+    try {
+      const messages = created.map(doc => ({
+        body: {
+          batchId,
+          documentId: doc.id,
+          userId: auth.user.id,
+        }
+      }));
+      for (let i = 0; i < messages.length; i += 100) {
+        await env.OCR_QUEUE.sendBatch(messages.slice(i, i + 100));
+      }
+      asyncProcessing = true;
+    } catch (err) {
+      console.error("[api/batches/documents] Error sending to OCR_QUEUE:", err);
+    }
+  }
+
   // Recompute from the documents instead of guessing which prior statuses need
   // bumping. The hand-rolled version only handled 'completed' and 'failed', so a
   // 'partial' batch stayed 'partial' after an append and the UI never started
@@ -106,6 +125,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
       mode: batch.engine_type,
       prompt: batch.prompt ?? undefined,
       documents: created,
+      asyncProcessing,
     },
     201,
     authHeaders(auth),

@@ -116,5 +116,25 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
 
   const created = await insertDocuments(env, auth.user.id, batchId, incoming, 0);
 
-  return json({ id: batchId, documents: created }, 201, authHeaders(auth));
+  let asyncProcessing = false;
+  if (env.OCR_QUEUE) {
+    try {
+      const messages = created.map(doc => ({
+        body: {
+          batchId,
+          documentId: doc.id,
+          userId: auth.user.id,
+        }
+      }));
+      // SendBatch allows up to 100 messages at a time
+      for (let i = 0; i < messages.length; i += 100) {
+        await env.OCR_QUEUE.sendBatch(messages.slice(i, i + 100));
+      }
+      asyncProcessing = true;
+    } catch (err) {
+      console.error("[api/batches] Error sending to OCR_QUEUE:", err);
+    }
+  }
+
+  return json({ id: batchId, documents: created, asyncProcessing }, 201, authHeaders(auth));
 };

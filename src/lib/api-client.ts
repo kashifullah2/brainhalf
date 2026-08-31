@@ -289,6 +289,7 @@ export interface CreateBatchProgress {
 interface CreatedBatch {
   id: number;
   documents: Array<{ id: number; filename: string; position: number }>;
+  asyncProcessing?: boolean;
 }
 
 export interface CreateBatchInput {
@@ -431,6 +432,16 @@ export async function createBatch(
 
   const total = created.documents.length;
   let failedCount = 0;
+
+  if (created.asyncProcessing) {
+    onProgress?.({
+      current: total,
+      total,
+      filename: "Processing in background...",
+      status: "completed",
+    });
+    return { id: created.id, failedCount: 0 };
+  }
 
   // Fetched once for the batch, not per document: it is an account-level setting
   // that cannot change mid-run, so a request per page would be a round trip for
@@ -575,6 +586,7 @@ interface AppendedBatch {
    */
   prompt?: string;
   documents: Array<{ id: number; filename: string; position: number }>;
+  asyncProcessing?: boolean;
 }
 
 export async function appendBatch(
@@ -596,6 +608,16 @@ export async function appendBatch(
 
   const total = created.documents.length;
   let failedCount = 0;
+
+  if (created.asyncProcessing) {
+    onProgress?.({
+      current: total,
+      total,
+      filename: "Processing in background...",
+      status: "completed",
+    });
+    return { id: created.id, failedCount: 0 };
+  }
 
   // The batch's stored instructions win over anything the caller passed, so
   // appended documents are read exactly like the ones already in the batch.

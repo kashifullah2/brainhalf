@@ -1,0 +1,22 @@
+name = "brainhalf-processor"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+
+# We bind the same database and storage as the Pages app
+[[d1_databases]]
+binding = "DB"
+database_name = "brainhalf-ocr-db"
+database_id = "dea61974-e734-4bf6-9532-c1e6ef61620b"
+
+[[r2_buckets]]
+binding = "DOCUMENTS"
+bucket_name = "brainhalf-storage"
+
+# Consume from the Queue
+[[queues.consumers]]
+queue = "brainhalf-ocr-queue"
+# Adjust batch sizing for concurrency (each batch contains up to 10 messages)
+max_batch_size = 10
+max_batch_timeout = 5
+# Number of max concurrent retries for a failed message
+max_retries = 3
