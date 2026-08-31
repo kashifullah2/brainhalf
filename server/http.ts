@@ -43,6 +43,13 @@ export interface AppEnv {
   VITE_GOOGLE_CLIENT_ID?: string;
   /** Cloudflare Email Service binding, used for password reset mail. */
   EMAIL?: { send: (message: unknown) => Promise<unknown> };
+  /** EmailJS parameters for password reset mail delivery. */
+  EMAILJS_SERVICE_ID?: string;
+  EMAILJS_TEMPLATE_ID?: string;
+  EMAILJS_PUBLIC_KEY?: string;
+  VITE_EMAILJS_SERVICE_ID?: string;
+  VITE_EMAILJS_TEMPLATE_ID?: string;
+  VITE_EMAILJS_PUBLIC_KEY?: string;
 }
 
 const SECURITY_HEADERS: Record<string, string> = {

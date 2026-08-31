@@ -293,7 +293,7 @@ export default function Settings() {
                           type="text"
                           placeholder="Your company name"
                           disabled
-                          className="h-11"
+                          className="h-11 bg-muted/60 text-muted-foreground/80 cursor-not-allowed border-dashed"
                         />
                         <p className="text-caption text-muted-foreground font-semibold mt-1">
                           Organization profiles arrive with team accounts.
@@ -310,7 +310,7 @@ export default function Settings() {
                           value={user?.email ?? ""}
                           readOnly
                           disabled
-                          className="h-11"
+                          className="h-11 bg-muted/60 text-muted-foreground/80 cursor-not-allowed border-dashed"
                         />
                         <p className="text-caption text-muted-foreground font-semibold mt-1">
                           Primary billing and administrative contact.
@@ -337,7 +337,7 @@ export default function Settings() {
                             style={{ ["--range-fill" as string]: `${((threshold - 0.5) / 0.45) * 100}%` }}
                             className="flex-1 cursor-pointer"
                           />
-                          <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 font-data text-body font-semibold tabular-nums text-primary">
+                          <span className="inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 font-data text-body font-semibold tabular-nums text-primary leading-none shrink-0">
                             {(threshold * 100).toFixed(0)}%
                           </span>
                         </div>

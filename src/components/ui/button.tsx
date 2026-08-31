@@ -4,46 +4,37 @@ import { cn } from '@/lib/utils';
 import { cva, type VariantProps } from 'class-variance-authority';
 
 /**
- * Hover and press states come from `.hover-elevate` / `.active-elevate-2`,
- * defined as custom utilities at the bottom of src/index.css — a translucent
- * state layer in the button's own text colour rather than a hover colour per
- * variant, so one rule covers filled, outline and ghost on the page, a card or
- * the sidebar, in either theme.
- *
- * The base radius is `rounded-lg`, which matches `--radius`. It was
- * `rounded-md`, and 105 call sites across the product passed `rounded-lg` to
- * override it — the default was simply the wrong one.
+ * Premium "Pro" Button System:
+ * - Micro-elevations on hover with inset top light-refraction highlights
+ * - Vibrant gradient accents for high-impact visual depth
+ * - Active press scale feedback
+ * - Modern pill geometry with crisp typography
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-body font-medium transition-colors' +
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-body-sm font-semibold transition-all duration-200 ease-out' +
     ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background' +
-    // 60, not 50: on the light canvas a disabled outline button at half
-    // opacity was near-invisible rather than legibly unavailable.
-    ' disabled:pointer-events-none disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-60' +
+    ' disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50' +
     ' [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0' +
-    ' hover-elevate active-elevate-2',
+    ' active:scale-[0.98] active:translate-y-0',
   {
     variants: {
       variant: {
-        default: 'border border-primary-border bg-primary text-primary-foreground',
-        // `border-destructive-border` set a colour with no width class beside
-        // it, so destructive buttons drew no border at all.
+        default:
+          'bg-gradient-to-r from-primary via-primary/95 to-indigo-600 dark:from-primary dark:via-primary dark:to-indigo-500 text-primary-foreground border border-primary-border/40 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25),0_2px_8px_-1px_rgba(37,99,235,0.35)] hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35),0_6px_20px_-3px_rgba(37,99,235,0.45)] hover:-translate-y-0.5',
         destructive:
-          'border border-destructive-border bg-destructive text-destructive-foreground shadow-sm',
-        // Uses the theme border so the outline stays visible in both light and
-        // dark modes. The previous fixed rgba() was nearly invisible on the
-        // light canvas.
-        outline: 'border border-border shadow-xs active:shadow-none',
-        secondary: 'border border-secondary-border bg-secondary text-secondary-foreground',
-        // Transparent border keeps ghost buttons on the same optical size as
-        // their bordered siblings, so a toolbar does not jog by 2px.
-        ghost: 'border border-transparent',
-        link: 'text-primary underline-offset-4 hover:underline',
+          'bg-gradient-to-r from-destructive to-rose-600 text-destructive-foreground border border-destructive-border/40 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.25),0_2px_8px_-1px_rgba(225,29,72,0.35)] hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35),0_6px_20px_-3px_rgba(225,29,72,0.45)] hover:-translate-y-0.5',
+        outline:
+          'border border-border/80 bg-background/90 text-foreground shadow-xs hover:bg-accent/80 hover:text-accent-foreground hover:border-primary/40 hover:shadow-sm hover:-translate-y-0.5',
+        secondary:
+          'border border-secondary-border/70 bg-secondary/80 text-secondary-foreground shadow-xs hover:bg-secondary hover:text-foreground hover:border-secondary-border hover:shadow-sm hover:-translate-y-0.5',
+        ghost:
+          'border border-transparent text-foreground/80 hover:bg-accent/70 hover:text-accent-foreground',
+        link: 'text-primary underline-offset-4 hover:underline font-semibold',
       },
       size: {
-        default: 'min-h-9 px-4 py-2',
-        sm: 'min-h-8 px-3 text-label',
-        lg: 'min-h-10 px-6',
+        default: 'h-10 px-5 py-2',
+        sm: 'h-8 px-3.5 text-label',
+        lg: 'h-12 px-7 text-body font-bold',
         icon: 'h-9 w-9',
       },
     },

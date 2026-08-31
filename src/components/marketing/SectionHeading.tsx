@@ -18,9 +18,13 @@ interface SectionHeadingProps {
  */
 export function SectionHeading({ eyebrow, title, subtitle }: SectionHeadingProps) {
   return (
-    <div className="mx-auto mb-12 max-w-2xl space-y-3 text-center">
-      {eyebrow ? <MarginNote className="mb-4">{eyebrow}</MarginNote> : null}
-      <h2 className="animate-fade-up text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+    <div className="mx-auto mb-12 max-w-2xl space-y-4 text-center">
+      {eyebrow ? (
+        <div className="flex justify-center">
+          <MarginNote>{eyebrow}</MarginNote>
+        </div>
+      ) : null}
+      <h2 className="animate-fade-up text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
         {title}
       </h2>
       {subtitle ? (

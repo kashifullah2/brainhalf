@@ -61,14 +61,14 @@ const FEATURES = [
   },
   {
     icon: ShieldCheck,
-    tone: "success" as const,
+    tone: "primary" as const,
     title: "Verify with a double-click",
     body: "Every value sits beside the page it came from, with a confidence score attached. Double-click any cell to correct it inline — your edit is kept separately, so the original reading stays auditable.",
     footer: "Instant inline editor",
   },
   {
     icon: Download,
-    tone: "warning" as const,
+    tone: "primary" as const,
     title: "Export to CSV, Excel & JSON",
     body: "Export single batches or bulk-export multiple document runs to clean CSV, formatted Excel spreadsheets, or structured JSON in one click.",
     footer: "Sanitized & injection-safe",
@@ -94,36 +94,35 @@ export default function Home() {
             className="pointer-events-none absolute inset-0 -z-10"
             style={{
               background:
-                "radial-gradient(1200px 600px at 70% 10%, hsl(var(--primary) / 0.12), transparent 60%), " +
-                "radial-gradient(900px 500px at 20% 80%, hsl(var(--accent) / 0.35), transparent 55%)",
+                "radial-gradient(1200px 600px at 70% 10%, hsl(var(--primary) / 0.10), transparent 60%), " +
+                "radial-gradient(900px 500px at 20% 80%, hsl(var(--accent) / 0.25), transparent 55%)",
             }}
           />
           <div className="container mx-auto max-w-7xl px-6 md:px-8">
-            <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
-              <div className="flex flex-col space-y-8 text-left lg:col-span-6">
+            <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-10">
+              {/* Hero text column — slightly narrower so the card reads
+                  as clearly secondary/supporting (#5). */}
+              <div className="flex flex-col space-y-7 text-left lg:col-span-5">
                 <div
                   className="animate-fade-up inline-flex items-center gap-2 self-start rounded-full border border-primary/25 bg-primary/10 px-3.5 py-1.5 text-caption font-semibold text-primary"
                   style={{ animationDelay: "0ms" }}
                 >
-                  <Sparkles className="h-3.5 w-3.5" /> AI-Powered Document
-                  Intelligence
+                  <Sparkles className="h-3.5 w-3.5" /> AI-Powered Extraction
                 </div>
 
-                {/* One colour on the emphasis, not a three-stop gradient
-                    clipped to the text: the gradient washed the middle of the
-                    phrase out to near-invisible on the light canvas, and it was
-                    the only gradient text in the product. */}
                 <h1
-                  className="animate-fade-up text-4xl font-semibold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-[3.5rem]"
+                  className="animate-fade-up text-4xl font-extrabold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-[3.25rem]"
                   style={{ animationDelay: "80ms" }}
                 >
                   Turn stacks of invoices into{" "}
-                  <span className="text-primary">structured data</span> in
-                  seconds.
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/70">
+                    structured data
+                  </span>{" "}
+                  in seconds.
                 </h1>
 
                 <p
-                  className="animate-fade-up max-w-xl text-body-lg leading-relaxed text-muted-foreground sm:text-body-xl"
+                  className="animate-fade-up max-w-lg text-body-lg font-medium leading-relaxed text-muted-foreground"
                   style={{ animationDelay: "160ms" }}
                 >
                   Brainhalf automatically extracts fields, line items, and
@@ -132,23 +131,27 @@ export default function Home() {
                 </p>
 
                 <div
-                  className="animate-fade-up flex flex-col items-stretch gap-4 pt-2 sm:flex-row sm:items-center"
+                  className="animate-fade-up flex flex-col items-stretch gap-3 pt-2 sm:flex-row sm:items-center"
                   style={{ animationDelay: "240ms" }}
                 >
-                  <Button asChild size="lg" className="text-body font-semibold">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="h-11 px-7 text-body font-bold shadow-md"
+                  >
                     <Link href="/app/upload">
-                      <Upload className="h-4 w-4" /> Start extracting — free
+                      <Upload className="mr-1.5 h-4 w-4" /> Start extracting — free
                     </Link>
                   </Button>
 
                   <Button
                     asChild
-                    variant="secondary"
+                    variant="outline"
                     size="lg"
-                    className="font-semibold"
+                    className="h-11 px-7 text-body font-bold bg-background"
                   >
                     <Link href="/sign-in">
-                      I already have an account <ArrowRight className="h-4 w-4" />
+                      I have an account <ArrowRight className="ml-1.5 h-4 w-4" />
                     </Link>
                   </Button>
                 </div>
@@ -156,22 +159,27 @@ export default function Home() {
                 <TrustSignals items={TRUST} />
               </div>
 
+              {/* Hero card — takes more space so it reads as the visual
+                  anchor, while the text column leads (#5). */}
               <div
-                className="animate-fade-up lg:col-span-6"
+                className="animate-fade-up lg:col-span-7"
                 style={{ animationDelay: "200ms" }}
               >
                 <HeroPreview />
               </div>
             </div>
 
-            <div className="mt-16">
+            <div className="mt-12">
               <StatsBand stats={STATS} />
             </div>
           </div>
         </section>
 
-        {/* How it works */}
-        <section id="how-it-works" className="w-full scroll-mt-24 py-16 md:py-20">
+        {/* How it works — scroll-mt accounts for the sticky header (#1) */}
+        <section
+          id="how-it-works"
+          className="w-full scroll-mt-[calc(var(--header-h)+2rem)] py-12 md:py-16"
+        >
           <div className="container mx-auto max-w-7xl px-6 md:px-8">
             <SectionHeading
               eyebrow="01 / how it works"
@@ -187,8 +195,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Features, FAQ, closing CTA */}
-        <section className="w-full border-t border-border/40 bg-muted/30 py-20">
+        {/* Features, FAQ, closing CTA — `isolate` creates its own stacking
+            context so nothing from the hero bleeds through (#2). */}
+        <section className="isolate w-full border-t border-border/40 bg-muted/30 py-16 md:py-20">
           <div className="container mx-auto max-w-7xl px-6 md:px-8">
             <SectionHeading
               eyebrow="02 / what you get"
@@ -204,26 +213,24 @@ export default function Home() {
 
             <FaqSection />
 
-            {/* A bordered panel on the page's own surface. This was a
-                gradient slab with a 400px blurred orange disc floating over it
-                — decoration that cost a compositing layer and said nothing. */}
+            {/* Closing CTA panel */}
             <div className="relative mt-16 overflow-hidden rounded-2xl border border-border bg-card p-8 text-center shadow-lg shadow-primary/5 sm:p-12">
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/40 via-primary/80 to-primary/40"
               />
               <div className="relative z-10 space-y-5">
-                <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                   Ready to stop typing invoice data?
                 </h2>
-                <p className="mx-auto max-w-xl text-body text-muted-foreground">
+                <p className="mx-auto max-w-xl text-body-lg font-medium text-muted-foreground">
                   Upload a receipt, pick a preset, and see what comes back. No card,
                   no setup, no sales call.
                 </p>
-                <Button asChild size="lg" className="text-body font-semibold">
+                <Button asChild size="lg" className="h-11 px-7 text-body font-bold shadow-md">
                   <Link href="/app/upload">
                     Upload your first document
-                    <ArrowRight className="h-4 w-4 shrink-0" />
+                    <ArrowRight className="ml-1.5 h-4 w-4 shrink-0" />
                   </Link>
                 </Button>
               </div>

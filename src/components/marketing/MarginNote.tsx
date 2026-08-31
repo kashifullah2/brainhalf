@@ -15,10 +15,10 @@ export function MarginNote({
   className?: string;
 }) {
   return (
-    <p
-      className={`font-data text-caption uppercase tracking-[0.14em] text-primary ${className}`}
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 font-data text-caption font-semibold uppercase tracking-wider text-primary dark:bg-primary/20 dark:text-primary dark:border-primary/40 shadow-xs ${className}`}
     >
       {children}
-    </p>
+    </span>
   );
 }

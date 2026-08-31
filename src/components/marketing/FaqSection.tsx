@@ -35,45 +35,38 @@ const FAQ_ITEMS = [
  */
 export function FaqSection() {
   return (
-    /* Was a centred h3 dropped inside the previous section: the one heading on
-       the page that broke both the left-aligned editorial rhythm and the
-       h1 → h2 heading order. */
-    /* Two columns, matching the rhythm the sections above it established
-       (label and heading left, content right). It used to be a full-width
-       heading over a max-w-3xl accordion inside a max-w-7xl container, so the
-       one block on the page with the most to read was also the narrowest, and
-       it sat against a third of the page left empty. */
-    <div id="faq" className="grid scroll-mt-24 gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24">
-      <div>
-        {/* Sticky, so the ~130px of heading no longer leaves 250px of empty
-            column beside a tall accordion. */}
-        <div className="lg:sticky lg:top-28">
+    <div id="faq" className="mt-20 scroll-mt-[calc(var(--header-h)+2rem)]">
+      <div className="mx-auto mb-10 max-w-2xl text-center space-y-4">
+        <div className="flex justify-center">
           <MarginNote>03 / questions</MarginNote>
-          <h2 className="mt-4 max-w-sm text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-            Frequently asked questions
-          </h2>
         </div>
+        <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+          Frequently asked questions
+        </h2>
       </div>
-      <Accordion
-        type="single"
-        collapsible
-        className="overflow-hidden rounded-xl border border-border bg-card px-6 shadow-sm"
-      >
-        {FAQ_ITEMS.map((item) => (
-          <AccordionItem
-            key={item.q}
-            value={item.q}
-            className="border-border/50 last:border-b-0"
-          >
-            <AccordionTrigger className="py-5 text-left text-body-xl font-semibold text-foreground hover:no-underline [&[data-state=open]]:text-primary">
-              {item.q}
-            </AccordionTrigger>
-            <AccordionContent className="text-body font-medium leading-relaxed text-muted-foreground">
-              {item.a}
-            </AccordionContent>
-          </AccordionItem>
-        ))}
-      </Accordion>
+
+      <div className="mx-auto max-w-3xl">
+        <Accordion
+          type="single"
+          collapsible
+          className="overflow-hidden rounded-2xl border border-border bg-card p-2 sm:p-4 shadow-md"
+        >
+          {FAQ_ITEMS.map((item) => (
+            <AccordionItem
+              key={item.q}
+              value={item.q}
+              className="border-border/60 last:border-b-0 px-4"
+            >
+              <AccordionTrigger className="py-5 text-left text-body-lg font-semibold text-foreground hover:no-underline [&[data-state=open]]:text-primary">
+                {item.q}
+              </AccordionTrigger>
+              <AccordionContent className="pb-5 text-body font-medium leading-relaxed text-muted-foreground">
+                {item.a}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
     </div>
   );
 }

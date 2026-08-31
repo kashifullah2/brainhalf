@@ -29,6 +29,8 @@ interface SampleDoc {
 }
 
 // Static fixture data — kept at module scope so switching tabs never rebuilds it.
+// Titles shortened to fit without truncation (#10).
+// Statuses vary to reduce "Verified" repetition (#9).
 const SAMPLE_DATA: Record<SampleTab, SampleDoc> = {
   key_value: {
     title: "ACME Corp Invoice #INV-8902",
@@ -59,7 +61,7 @@ const SAMPLE_DATA: Record<SampleTab, SampleDoc> = {
     ],
   },
   custom: {
-    title: "Handwritten Patient Intake",
+    title: "Patient Intake Form",
     vendor: "City Clinic",
     date: "Aug 12, 2026",
     total: "Intake Form",
@@ -68,7 +70,7 @@ const SAMPLE_DATA: Record<SampleTab, SampleDoc> = {
       { label: "Patient Name", value: "R. Mwangi", status: "Verified" },
       { label: "Symptoms", value: "Mild fever, cough", status: "Verified" },
       { label: "Temperature", value: "99.8°F", status: "Verified" },
-      { label: "Heart Rate", value: "78 bpm", status: "Verified" },
+      { label: "Heart Rate", value: "78 bpm", status: "Review" },
       { label: "Doctor Notes", value: "Rest & hydration", status: "Verified" },
     ],
   },
@@ -77,16 +79,12 @@ const SAMPLE_DATA: Record<SampleTab, SampleDoc> = {
 /**
  * The sample extraction shown beside the hero copy. The tabs are real — they
  * switch between three fixtures — and the fixtures are labelled as samples.
- *
- * It used to present itself as a "LIVE EXTRACTION PREVIEW" with three macOS
- * traffic lights, a pulsing green dot and a "Processed in 0.84s" footer. None
- * of that was true: no document is being read, and the timing was invented. A
- * preview that claims to be live is a claim the page cannot support, so it now
- * says what it is.
  */
 export function HeroPreview() {
   const [activeTab, setActiveTab] = useState<SampleTab>("key_value");
   const current = SAMPLE_DATA[activeTab];
+
+  const isHighConfidence = current.confidence === "High";
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-xl shadow-primary/5">
@@ -133,8 +131,7 @@ export function HeroPreview() {
               <FileCheck className="h-3.5 w-3.5 shrink-0" />
               <span className="truncate">{current.title}</span>
             </p>
-            {/* Stand-in for page content. Static: an animate-pulse here read as
-                a load that never finished. */}
+            {/* Stand-in for page content. */}
             <div aria-hidden className="space-y-2 pt-1">
               <div className="h-2.5 w-3/4 rounded-full bg-foreground/15" />
               <div className="h-2 w-full rounded-full bg-foreground/10" />
@@ -145,34 +142,59 @@ export function HeroPreview() {
               Total: {current.total}
             </p>
           </div>
+          {/* Confidence badge (#7) — use green for High, amber for Medium */}
           <p className="flex items-center justify-between border-t border-border/50 pt-3 text-caption font-medium text-muted-foreground">
             <span>Confidence</span>
-            <span className="font-semibold text-success">{current.confidence}</span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-micro font-bold ${
+                isHighConfidence
+                  ? "bg-success/15 text-success"
+                  : "bg-warning/15 text-warning"
+              }`}
+            >
+              {isHighConfidence && <Check className="h-3 w-3" />}
+              {current.confidence}
+            </span>
           </p>
         </div>
 
-        {/* The fields side */}
-        <ul className="space-y-2 sm:col-span-7">
-          {current.fields.map((field, i) => (
-            <li
-              key={`${activeTab}-${field.label}`}
-              className="animate-fade-up flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background p-2.5"
-              style={{ animationDelay: `${300 + i * 60}ms` }}
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-caption font-medium text-muted-foreground">
-                  {field.label}
-                </p>
-                <p className="mt-0.5 truncate font-data text-body-sm font-semibold text-foreground">
-                  {field.value}
-                </p>
-              </div>
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-micro font-semibold text-success">
-                <Check className="h-3 w-3" /> {field.status}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {/* The fields side — shows a summary count instead of
+            individual Verified badges to reduce visual noise (#9). */}
+        <div className="sm:col-span-7 space-y-2">
+          {/* Summary: "5/5 fields verified" */}
+          <div className="flex items-center justify-between rounded-lg bg-success/10 px-3 py-1.5">
+            <span className="text-caption font-semibold text-success">
+              {current.fields.filter((f) => f.status === "Verified").length}/{current.fields.length} fields verified
+            </span>
+            <Check className="h-3.5 w-3.5 text-success" />
+          </div>
+
+          <ul className="space-y-2">
+            {current.fields.map((field, i) => (
+              <li
+                key={`${activeTab}-${field.label}`}
+                className="animate-fade-up flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background p-2.5"
+                style={{ animationDelay: `${300 + i * 60}ms` }}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-caption font-medium text-muted-foreground">
+                    {field.label}
+                  </p>
+                  <p className="mt-0.5 truncate font-data text-body-sm font-semibold text-foreground">
+                    {field.value}
+                  </p>
+                </div>
+                {field.status === "Verified" ? (
+                  <Check className="h-4 w-4 shrink-0 text-success" />
+                ) : (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-micro font-semibold text-warning">
+                    {field.status}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-col items-start justify-between gap-3 border-t border-border/50 pt-4 sm:flex-row sm:items-center">

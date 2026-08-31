@@ -4,7 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   Plus, Loader2, Trash2, Download,
   CheckSquare, Square, X, ArrowRight,
-  FileCheck2, FileText, BarChart3, CheckCircle2, Activity,
+  FileCheck2, FileText, BarChart3, CheckCircle2, Activity, AlertTriangle,
   Search, MoreHorizontal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -285,14 +285,14 @@ export default function AppHome() {
       {/* ── Stats ──────────────────────────────────────────── */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Total Batches" value={stats.total} icon={FileText} tone="muted" />
-          <StatCard label="Documents" value={stats.docs} icon={BarChart3} tone="muted" />
+          <StatCard label="Total Batches" value={stats.total} icon={FileText} tone="primary" />
+          <StatCard label="Documents" value={stats.docs} icon={BarChart3} tone="primary" />
           <StatCard label="Completed" value={stats.done} icon={CheckCircle2} tone="success" />
           <StatCard
             label={stats.running > 0 ? "In Flight" : "Failed"}
             value={stats.running > 0 ? stats.running : stats.failed}
-            icon={Activity}
-            tone={stats.running > 0 ? "primary" : stats.failed > 0 ? "warning" : "muted"}
+            icon={stats.running > 0 ? Activity : AlertTriangle}
+            tone={stats.running > 0 ? "primary" : stats.failed > 0 ? "destructive" : "muted"}
           />
         </div>
       )}

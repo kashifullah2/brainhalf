@@ -79,12 +79,12 @@ const AUTH_FEATURES = [
  */
 function AuthBrandPanel() {
   return (
-    <div className="flex h-full flex-col justify-center gap-10 border-r border-border/10 bg-inverse p-12 text-inverse-foreground">
+    <div className="flex h-full flex-col justify-center gap-10 border-r border-border/60 bg-muted/40 p-12 text-foreground">
       <div>
-        <h2 className="max-w-sm text-4xl font-semibold leading-tight tracking-tight xl:text-5xl">
+        <h2 className="max-w-sm text-4xl font-bold leading-tight tracking-tight text-foreground xl:text-5xl">
           Stop typing.<br />Start <span className="text-primary">extracting.</span>
         </h2>
-        <p className="mt-5 max-w-xs text-body-lg text-inverse-foreground/60">
+        <p className="mt-5 max-w-xs text-body-lg text-muted-foreground">
           Drop in documents and get clean, structured data out — no templates, no
           drawing boxes.
         </p>
@@ -95,14 +95,14 @@ function AuthBrandPanel() {
           <li key={f.label} className="flex items-start gap-3">
             <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <div>
-              <p className="text-body-sm font-semibold">{f.label}</p>
-              <p className="mt-0.5 text-caption text-inverse-foreground/50">{f.sub}</p>
+              <p className="text-body-sm font-semibold text-foreground">{f.label}</p>
+              <p className="mt-0.5 text-caption text-muted-foreground">{f.sub}</p>
             </div>
           </li>
         ))}
       </ul>
 
-      <p className="max-w-xs border-l-2 border-primary pl-4 text-body-sm leading-relaxed text-inverse-foreground/70">
+      <p className="max-w-xs border-l-2 border-primary pl-4 text-body-sm leading-relaxed text-muted-foreground">
         We built this because we were tired of retyping invoices on Sundays.
       </p>
     </div>

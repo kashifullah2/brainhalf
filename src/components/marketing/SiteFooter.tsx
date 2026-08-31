@@ -1,5 +1,4 @@
 import { Link } from "wouter";
-import { FileText } from "lucide-react";
 
 import { openAnalyticsConsentSettings } from "@/components/analytics-consent";
 
@@ -28,15 +27,20 @@ export function SiteFooter() {
       <div className="container mx-auto max-w-7xl px-6 md:px-8">
         <div className="mb-12 grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-4">
           <div className="col-span-1 space-y-4 sm:col-span-2">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-                <FileText className="h-4 w-4" />
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-border/60 dark:ring-white/30">
+                <img
+                  src="/apple-touch-icon.png"
+                  alt="BrainHalf Logo"
+                  className="h-full w-full object-contain rounded-md"
+                />
               </div>
-              <span className="text-xl font-semibold tracking-tight">
-                brain<span className="font-bold text-primary">half</span>
+              <span className="text-2xl font-bold tracking-tight text-foreground">
+                <span className="font-semibold text-foreground">brain</span>
+                <span className="font-extrabold text-primary">half</span>
               </span>
             </div>
-            <p className="max-w-xs text-body font-medium leading-relaxed text-muted-foreground">
+            <p className="max-w-xs text-body font-medium leading-relaxed text-foreground/70">
               Automate your data entry workflows. Turn messy stacks of vendor
               receipts and invoices into clean, structured data instantly.
             </p>

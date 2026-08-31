@@ -80,10 +80,10 @@ function DuplicateFlag() {
         <span
           tabIndex={0}
           onClick={(event) => event.stopPropagation()}
-          className="inline-flex cursor-help items-center gap-1 rounded text-caption font-medium text-warning underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex cursor-help items-center gap-1 rounded-md px-1.5 py-0.5 text-caption font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 transition-colors hover:bg-amber-500/25 focus-visible:ring-2 focus-visible:ring-ring"
         >
+          <Info className="h-3 w-3 shrink-0" aria-hidden="true" />
           Duplicate
-          <Info className="h-3 w-3" aria-hidden="true" />
         </span>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-64">

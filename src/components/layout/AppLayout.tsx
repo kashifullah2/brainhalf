@@ -158,7 +158,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
           )}
         >
           {/* Navigation */}
-          <nav className="flex flex-1 flex-col gap-0.5 px-2 py-3 overflow-y-auto overflow-x-hidden">
+          <nav className="flex flex-1 flex-col gap-0.5 px-2 py-3 pb-8 overflow-y-auto overflow-x-hidden">
             {/* Section label */}
             {!isRail && (
               <p className="px-2 pt-1 pb-2 text-micro font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/40 select-none">

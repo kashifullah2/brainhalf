@@ -18,8 +18,8 @@ interface FeatureCardProps {
  */
 const TONES = {
   primary: "bg-primary/10 text-primary",
-  success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
+  success: "bg-primary/10 text-primary",
+  warning: "bg-primary/10 text-primary",
 } as const;
 
 /** A feature: what it does, in a sentence, with the claim it supports. */
@@ -139,7 +139,7 @@ export function StatsBand({ stats }: { stats: Stat[] }) {
           <dd className="order-1 font-data text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             {stat.value}
           </dd>
-          <dt className="order-2 mt-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          <dt className="order-2 mt-1.5 text-caption font-semibold tracking-wide text-muted-foreground">
             {stat.label}
           </dt>
         </div>

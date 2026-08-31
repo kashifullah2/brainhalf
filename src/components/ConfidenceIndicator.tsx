@@ -20,20 +20,25 @@ export function confidenceTone(value: number, threshold: number): ConfidenceTone
 }
 
 const TONE_CLASSES: Record<ConfidenceTone, { bar: string; text: string; chip: string }> = {
-  success: { bar: "bg-success", text: "text-success", chip: "bg-success/12 text-success" },
-  warning: { bar: "bg-warning", text: "text-warning", chip: "bg-warning/12 text-warning" },
+  success: {
+    bar: "bg-success",
+    text: "text-success",
+    chip: "bg-success/15 text-success dark:bg-success/20 dark:text-success border border-success/30",
+  },
+  warning: {
+    bar: "bg-warning",
+    text: "text-amber-700 dark:text-amber-400",
+    chip: "bg-amber-500/15 text-amber-800 dark:bg-amber-400/20 dark:text-amber-300 border border-amber-500/30",
+  },
   destructive: {
     bar: "bg-destructive",
     text: "text-destructive",
-    chip: "bg-destructive/12 text-destructive",
+    chip: "bg-destructive/15 text-destructive dark:bg-destructive/25 dark:text-destructive border border-destructive/30",
   },
 };
 
 /**
- * The inline "88% conf" chip. BatchDetails and DocumentSidePanel each carried
- * their own copy — one `rounded-sm`, one `rounded`, both hardcoding an amber
- * that the palette does not contain — and neither reacted to a score dropping
- * below the unreliable floor.
+ * The inline "88% conf" chip.
  */
 export function ConfidenceBadge({
   value,
@@ -48,7 +53,7 @@ export function ConfidenceBadge({
   const pct = Math.round(Math.min(100, Math.max(0, value * 100)));
   return (
     <span
-      className={`shrink-0 rounded px-1.5 py-0.5 font-data text-micro font-semibold tabular-nums ${TONE_CLASSES[tone].chip} ${className}`}
+      className={`inline-flex items-center shrink-0 rounded-md px-2 py-0.5 font-data text-caption font-semibold tabular-nums leading-none ${TONE_CLASSES[tone].chip} ${className}`}
       title={
         value >= threshold
           ? `Above your ${Math.round(threshold * 100)}% review threshold`

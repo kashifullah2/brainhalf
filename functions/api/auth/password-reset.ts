@@ -85,7 +85,40 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
   const origin = new URL(request.url).origin;
   const resetUrl = `${origin}/reset-password?token=${token}`;
 
-  if (env.EMAIL) {
+  const serviceId = env.EMAILJS_SERVICE_ID || env.VITE_EMAILJS_SERVICE_ID;
+  const templateId = env.EMAILJS_TEMPLATE_ID || env.VITE_EMAILJS_TEMPLATE_ID;
+  const publicKey = env.EMAILJS_PUBLIC_KEY || env.VITE_EMAILJS_PUBLIC_KEY;
+
+  if (serviceId && templateId && publicKey) {
+    try {
+      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          service_id: serviceId,
+          template_id: templateId,
+          user_id: publicKey,
+          template_params: {
+            to_email: email,
+            email: email,
+            user_email: email,
+            reset_url: resetUrl,
+            message: `Reset your password by clicking here: ${resetUrl}`,
+            subject: 'Reset your brainhalf password',
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('[auth/password-reset] EmailJS send failed:', res.status, text);
+      }
+    } catch (error) {
+      console.error('[auth/password-reset] EmailJS error:', error);
+    }
+  } else if (env.EMAIL) {
     try {
       await env.EMAIL.send({
         to: email,
@@ -100,9 +133,8 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
       console.error('[auth/password-reset] send failed:', error);
     }
   } else {
-    // No EMAIL binding (local dev): log the link instead of silently doing
-    // nothing, so the flow is testable.
-    console.warn(`[auth/password-reset] no EMAIL binding. Reset URL: ${resetUrl}`);
+    // No email configuration: log the reset link for development testing.
+    console.warn(`[auth/password-reset] no email service configured. Reset URL: ${resetUrl}`);
   }
 
   return acknowledged;

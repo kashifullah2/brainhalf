@@ -1,7 +1,6 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import {
-  FileText,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -63,14 +62,18 @@ function Wordmark({ href }: { href: string }) {
     <Link
       href={href}
       aria-label="BrainHalf home"
-      className="flex shrink-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className="flex shrink-0 items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background group"
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-        <FileText className="h-[18px] w-[18px]" />
-      </span>
-      <span className="text-xl tracking-tight text-foreground">
-        <span className="font-medium">brain</span>
-        <span className="font-bold text-primary">half</span>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-border/60 dark:ring-white/30 transition-transform group-hover:scale-105">
+        <img
+          src="/apple-touch-icon.png"
+          alt="BrainHalf Logo"
+          className="h-full w-full object-contain rounded-md"
+        />
+      </div>
+      <span className="text-2xl tracking-tight text-foreground">
+        <span className="font-semibold text-foreground">brain</span>
+        <span className="font-extrabold text-primary">half</span>
       </span>
     </Link>
   );
@@ -204,7 +207,7 @@ export function Navbar() {
       <header
         /* One height for every route, published as --header-h so AppLayout's
            sticky offsets read it instead of restating 4rem / 5rem. */
-        className="sticky top-0 z-50 h-[var(--header-h)] w-full border-b border-border/60 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/70"
+        className="sticky top-0 z-50 h-[var(--header-h)] w-full border-b border-border/60 bg-background/95 backdrop-blur-lg supports-[backdrop-filter]:bg-background/85"
       >
       <div className="mx-auto flex h-full w-full items-center justify-between gap-3 px-4 md:px-6">
         <div className="flex min-w-0 items-center gap-3 lg:gap-8">

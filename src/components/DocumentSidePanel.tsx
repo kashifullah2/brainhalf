@@ -15,19 +15,15 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
   if (!doc) return null;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-card">
+    <div className="flex h-full flex-col overflow-hidden bg-card border-l border-border/80 shadow-2xl">
       <div className="flex items-start justify-between p-5 border-b border-border/60 bg-muted/10 shrink-0">
         <div className="flex flex-col min-w-0 pr-4">
           <h3 className="text-body-xl font-semibold text-foreground truncate" title={doc.filename}>{doc.filename}</h3>
           <div className="flex items-center gap-2 mt-1.5">
-            {/* Muted grey said "71% overall confidence" in the same tone it
-                would have said 99%. Below the account's threshold this is the
-                number the panel was opened to check, so it carries the warning
-                colour the flagged fields below it already use. */}
             <span
               className={`text-label font-medium ${
                 doc.overallConfidence !== undefined && doc.overallConfidence < threshold
-                  ? "text-warning"
+                  ? "text-amber-600 dark:text-amber-400 font-semibold"
                   : "text-muted-foreground"
               }`}
             >
@@ -37,7 +33,7 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
             </span>
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-lg shrink-0 hover:bg-muted/50 -mr-1">
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close document details" className="h-8 w-8 rounded-lg shrink-0 hover:bg-muted/50 -mr-1">
           <X className="h-4 w-4" />
         </Button>
       </div>

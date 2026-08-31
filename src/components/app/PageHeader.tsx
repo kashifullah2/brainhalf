@@ -79,7 +79,7 @@ export function PageHeader({
           ) : null}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1
-              className={`text-balance font-serif font-medium tracking-tight text-foreground ${TITLE_SIZE[size]} ${titleClassName}`}
+              className={`text-balance font-sans font-bold tracking-tight text-foreground ${TITLE_SIZE[size]} ${titleClassName}`}
             >
               {title}
             </h1>
