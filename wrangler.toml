@@ -67,3 +67,12 @@ bucket_name = "brainhalf-storage"
 # that needs an account and a credential, so it is left open rather than
 # guessed at.
 # ---------------------------------------------------------------------------
+
+[[queues.producers]]
+queue = "brainhalf-ocr-queue"
+binding = "OCR_QUEUE"
+
+[vars]
+EMAILJS_SERVICE_ID = "service_lrarlse"
+EMAILJS_TEMPLATE_ID = "template_rrzz09f"
+EMAILJS_PUBLIC_KEY = "eZLBkV1mt6FU6gTjF"
