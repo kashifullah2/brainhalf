@@ -87,7 +87,17 @@ export default function Home() {
     <div className="flex min-h-[calc(100dvh-var(--header-h))] flex-col bg-background text-foreground">
       <main id="main-content" className="flex-1">
         {/* Hero */}
-        <section className="relative w-full py-16 md:py-24 lg:py-28">
+        <section className="relative w-full overflow-hidden py-16 md:py-24 lg:py-28">
+          {/* Soft ambient glow behind the hero — visible in both themes. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-10"
+            style={{
+              background:
+                "radial-gradient(1200px 600px at 70% 10%, hsl(var(--primary) / 0.12), transparent 60%), " +
+                "radial-gradient(900px 500px at 20% 80%, hsl(var(--accent) / 0.35), transparent 55%)",
+            }}
+          />
           <div className="container mx-auto max-w-7xl px-6 md:px-8">
             <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
               <div className="flex flex-col space-y-8 text-left lg:col-span-6">
@@ -197,20 +207,26 @@ export default function Home() {
             {/* A bordered panel on the page's own surface. This was a
                 gradient slab with a 400px blurred orange disc floating over it
                 — decoration that cost a compositing layer and said nothing. */}
-            <div className="mt-16 space-y-5 rounded-xl border border-border bg-card p-8 text-center shadow-sm sm:p-12">
-              <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                Ready to stop typing invoice data?
-              </h2>
-              <p className="mx-auto max-w-xl text-body text-muted-foreground">
-                Upload a receipt, pick a preset, and see what comes back. No card,
-                no setup, no sales call.
-              </p>
-              <Button asChild size="lg" className="text-body font-semibold">
-                <Link href="/app/upload">
-                  Upload your first document
-                  <ArrowRight className="h-4 w-4 shrink-0" />
-                </Link>
-              </Button>
+            <div className="relative mt-16 overflow-hidden rounded-2xl border border-border bg-card p-8 text-center shadow-lg shadow-primary/5 sm:p-12">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/40 via-primary/80 to-primary/40"
+              />
+              <div className="relative z-10 space-y-5">
+                <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                  Ready to stop typing invoice data?
+                </h2>
+                <p className="mx-auto max-w-xl text-body text-muted-foreground">
+                  Upload a receipt, pick a preset, and see what comes back. No card,
+                  no setup, no sales call.
+                </p>
+                <Button asChild size="lg" className="text-body font-semibold">
+                  <Link href="/app/upload">
+                    Upload your first document
+                    <ArrowRight className="h-4 w-4 shrink-0" />
+                  </Link>
+                </Button>
+              </div>
             </div>
           </div>
         </section>

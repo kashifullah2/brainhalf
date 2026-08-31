@@ -31,10 +31,10 @@ export function FeatureCard({
   footer,
 }: FeatureCardProps) {
   return (
-    <div className="flex h-full flex-col justify-between gap-6 rounded-xl border border-border bg-card p-7 shadow-sm">
-      <div className="space-y-4">
+    <div className="group flex h-full flex-col justify-between gap-6 rounded-2xl border border-border bg-card p-7 shadow-sm transition-shadow duration-300 hover:shadow-md">
+      <div className="space-y-5">
         <div
-          className={`flex h-11 w-11 items-center justify-center rounded-lg ${TONES[tone]}`}
+          className={`flex h-12 w-12 items-center justify-center rounded-xl shadow-sm ring-1 ring-black/5 ${TONES[tone]}`}
         >
           <Icon className="h-5 w-5" />
         </div>
@@ -77,14 +77,15 @@ export function StepCard({
 }: StepCardProps) {
   return (
     <div
-      className="animate-fade-up space-y-4 rounded-xl border border-border bg-card p-7 shadow-sm"
+      className="group animate-fade-up relative space-y-5 overflow-hidden rounded-2xl border border-border bg-card p-7 shadow-sm transition-shadow duration-300 hover:shadow-md"
       style={{ animationDelay: `${index * 100}ms`, animationFillMode: "both" }}
     >
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/60 via-primary to-primary/40" />
       <div className="flex items-center justify-between gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm ring-1 ring-primary/10">
           <Icon className="h-5 w-5" />
         </div>
-        <span className="font-data text-caption font-semibold text-muted-foreground">
+        <span className="font-data text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           {step}
         </span>
       </div>
@@ -120,22 +121,27 @@ interface Stat {
 /** Compact metric strip used between the hero and the explainer sections. */
 export function StatsBand({ stats }: { stats: Stat[] }) {
   return (
-    <dl className="grid grid-cols-2 divide-border/60 rounded-xl border border-border bg-card shadow-sm sm:grid-cols-4 sm:divide-x">
+    <dl className="relative grid grid-cols-2 divide-border/40 overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-primary/5 sm:grid-cols-4 sm:divide-x">
+      {/* Subtle warm top highlight for depth. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
+      />
       {stats.map((stat, i) => (
         /* flex-col is what makes the `order` below mean anything. Without it
            these were block children, `order` was inert, and every cell rendered
            its label above its number — the reverse of the intent. */
         <div
           key={stat.label}
-          className="animate-fade-up flex flex-col px-4 py-5 text-center"
+          className="animate-fade-up relative flex flex-col px-4 py-6 text-center"
           style={{ animationDelay: `${i * 80}ms` }}
         >
-          <dt className="order-2 mt-1 text-caption font-medium text-muted-foreground">
-            {stat.label}
-          </dt>
           <dd className="order-1 font-data text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             {stat.value}
           </dd>
+          <dt className="order-2 mt-1.5 text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            {stat.label}
+          </dt>
         </div>
       ))}
     </dl>

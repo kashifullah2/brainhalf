@@ -89,7 +89,12 @@ export function HeroPreview() {
   const current = SAMPLE_DATA[activeTab];
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-md">
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-xl shadow-primary/5">
+      {/* Soft top glow for depth. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/40 via-primary/80 to-primary/40"
+      />
       {/* Header: what this is, and which mode is on show */}
       <div className="mb-4 flex flex-col justify-between gap-3 border-b border-border/50 pb-4 sm:flex-row sm:items-center">
         <p className="flex items-center gap-2 text-caption font-semibold text-muted-foreground">
