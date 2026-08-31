@@ -27,6 +27,7 @@ export interface UserProfile {
   firstName?: string;
   lastName?: string;
   email: string;
+  /** The provider's profile image URL, or "" when there is none. */
   picture: string;
   givenName?: string;
 }
@@ -81,11 +82,50 @@ function toProfile(user: ServerUser): UserProfile {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
-    picture:
-      user.pictureUrl ||
-      `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`,
+    /**
+     * Empty when Google did not supply one, and deliberately not a generated
+     * avatar. The fallback used to be
+     * `api.dicebear.com/...?seed=<the user's email address>`, which sent every
+     * signed-in user's plaintext email to a third party on every page load, for a
+     * cartoon. Both places that render this (`Navbar`, `Settings`) already have an
+     * `AvatarFallback` that draws the user's initials locally.
+     */
+    picture: user.pictureUrl ?? "",
     givenName: user.firstName,
   };
+}
+
+/**
+ * Shown when `fetch` itself rejects. That is a TypeError raised before any
+ * response exists — offline, DNS, a dropped connection, a blocked request, or
+ * (locally) `pnpm dev:api` no longer listening. Its message is the browser's
+ * own "Failed to fetch", which is what the sign-out button used to put in a
+ * toast: "Could not sign out — Failed to fetch" told the user nothing about
+ * what to do. src/lib/api-client.ts already normalises this for the data API;
+ * the auth calls went straight to `fetch` and leaked it.
+ */
+const UNREACHABLE = "Could not reach the server. Check your connection.";
+
+/**
+ * The single door every auth request goes through. Always sends the session
+ * cookie, always asks for JSON, and turns a transport failure into a message
+ * worth showing. Returns the Response untouched — status handling belongs to
+ * the caller, which is the only one that knows what a 401 means for it.
+ */
+async function authFetch(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(apiUrl(path), {
+      ...init,
+      // Send and accept the session cookie.
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        ...((init?.headers as Record<string, string> | undefined) ?? {}),
+      },
+    });
+  } catch {
+    throw new Error(UNREACHABLE);
+  }
 }
 
 /**
@@ -93,11 +133,9 @@ function toProfile(user: ServerUser): UserProfile {
  * callers can surface it directly.
  */
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(apiUrl(path), {
+  const response = await authFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // Send and accept the session cookie.
-    credentials: "same-origin",
     body: JSON.stringify(body),
   });
 
@@ -175,10 +213,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
-        const response = await fetch(apiUrl("/auth/me"), {
-          credentials: "same-origin",
-          headers: { Accept: "application/json" },
-        });
+        const response = await authFetch("/auth/me");
         if (response.ok) {
           const data = (await response.json()) as { user: ServerUser | null, googleClientId?: string };
           if (!cancelled) {
@@ -212,7 +247,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     const initialize = () => {
-      const google = (window as any).google;
+      const google = window.google;
       if (!google?.accounts?.id) return;
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
@@ -236,7 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [handleCredentialResponse, GOOGLE_CLIENT_ID]);
 
   const renderGoogleButton = useCallback((element: HTMLElement) => {
-    const google = (window as any).google;
+    const google = window.google;
     if (GOOGLE_CLIENT_ID && google?.accounts?.id) {
       const containerWidth = element.getBoundingClientRect().width || element.parentElement?.getBoundingClientRect().width || 350;
       const validWidth = Math.max(200, Math.min(400, containerWidth));
@@ -268,7 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const google = (window as any).google;
+        const google = window.google;
         if (!google?.accounts?.id) {
           reject(
             new Error(
@@ -292,7 +327,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               login_hint: emailHint,
             });
           }
-          google.accounts.id.prompt((notification: any) => {
+          google.accounts.id.prompt((notification) => {
             if (
               notification?.isNotDisplayed?.() ||
               notification?.isSkippedMoment?.()
@@ -362,7 +397,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     // Stop Google from silently re-authenticating on the next page load.
-    const google = (window as any).google;
+    const google = window.google;
     if (GOOGLE_CLIENT_ID && google?.accounts?.id) {
       google.accounts.id.disableAutoSelect();
     }
@@ -376,16 +411,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // user straight back in, and on a shared machine so would the next person.
     // Refusing to clear on failure is the honest outcome. The caller surfaces
     // the error and the user can try again.
-    const response = await fetch(apiUrl("/auth/logout"), {
-      method: "POST",
-      credentials: "same-origin",
-    });
+    const response = await authFetch("/auth/logout", { method: "POST" });
     if (!response.ok) {
-      throw new Error(`Could not sign out (${response.status}).`);
+      throw new Error(`The server refused the request (${response.status}).`);
     }
 
     setUser(null);
-  }, []);
+    // GOOGLE_CLIENT_ID is read above, so it belongs in the dependency list --
+    // without it this closure keeps whatever value was current on first render and
+    // stops calling disableAutoSelect() once the id arrives from /auth/me.
+  }, [GOOGLE_CLIENT_ID]);
 
   return (
     <AuthContext.Provider

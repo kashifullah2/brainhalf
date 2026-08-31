@@ -1,6 +1,8 @@
 import { Link } from "wouter";
 import { FileText } from "lucide-react";
 
+import { openAnalyticsConsentSettings } from "@/components/analytics-consent";
+
 const LINK_GROUPS = [
   {
     heading: "Product",
@@ -34,7 +36,7 @@ export function SiteFooter() {
                 brain<span className="font-bold text-primary">half</span>
               </span>
             </div>
-            <p className="max-w-xs text-sm font-medium leading-relaxed text-muted-foreground">
+            <p className="max-w-xs text-body font-medium leading-relaxed text-muted-foreground">
               Automate your data entry workflows. Turn messy stacks of vendor
               receipts and invoices into clean, structured data instantly.
             </p>
@@ -42,10 +44,10 @@ export function SiteFooter() {
 
           {LINK_GROUPS.map((group) => (
             <div key={group.heading} className="space-y-4">
-              <h4 className="text-sm font-bold uppercase tracking-wide text-foreground">
+              <h4 className="text-micro font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 {group.heading}
               </h4>
-              <ul className="space-y-3 text-sm font-medium text-muted-foreground">
+              <ul className="space-y-3 text-body font-medium text-muted-foreground">
                 {group.links.map((link) => (
                   <li key={link.href}>
                     <Link
@@ -61,11 +63,26 @@ export function SiteFooter() {
           ))}
         </div>
 
-        <div className="flex flex-col items-center justify-between gap-4 border-t border-border/40 pt-8 text-xs font-medium text-muted-foreground sm:flex-row">
+        <div className="flex flex-col items-center justify-between gap-4 border-t border-border/40 pt-8 text-label font-medium text-muted-foreground sm:flex-row">
           <span>© 2026 brainhalf. All rights reserved.</span>
-          <span>
-            AI document extraction for invoices, receipts &amp; documents.
-          </span>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+            {/* Withdrawing consent has to be as easy as giving it, and there was
+                no control anywhere in the product to do it -- the banner asked
+                once and never came back. */}
+            <button
+              type="button"
+              onClick={openAnalyticsConsentSettings}
+              className="font-medium underline-offset-4 transition-colors hover:text-primary hover:underline"
+            >
+              Cookie settings
+            </button>
+            <span aria-hidden="true" className="hidden sm:inline">
+              ·
+            </span>
+            <span>
+              AI document extraction for invoices, receipts &amp; documents.
+            </span>
+          </div>
         </div>
       </div>
     </footer>

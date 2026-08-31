@@ -1,5 +1,22 @@
 import { useEffect } from "react";
 
+/**
+ * The description index.html ships with, captured once before any route has had a
+ * chance to overwrite it.
+ *
+ * Only some routes pass a `description`, and the ones that did not simply left
+ * whatever the previous route had set -- so navigating from the landing page to
+ * Settings and back out to /terms served the homepage's description on a page it
+ * does not describe. Restoring this is what makes the tag reflect the current
+ * route rather than the last route that cared.
+ */
+const DEFAULT_DESCRIPTION =
+  typeof document === "undefined"
+    ? ""
+    : (document
+        .querySelector<HTMLMetaElement>('meta[name="description"]')
+        ?.content ?? "");
+
 export interface SeoOptions {
   title: string;
   description?: string;
@@ -18,15 +35,16 @@ export function usePageSeo({ title, description, canonicalPath, noindex = false 
       document.title = title;
     }
 
-    // 2. Meta Description
-    if (description) {
+    // 2. Meta Description — set it, or put the document default back.
+    const resolvedDescription = description || DEFAULT_DESCRIPTION;
+    if (resolvedDescription) {
       let metaDesc = document.querySelector<HTMLMetaElement>('meta[name="description"]');
       if (!metaDesc) {
         metaDesc = document.createElement("meta");
         metaDesc.name = "description";
         document.head.appendChild(metaDesc);
       }
-      metaDesc.content = description;
+      metaDesc.content = resolvedDescription;
     }
 
     // 3. Canonical Tag

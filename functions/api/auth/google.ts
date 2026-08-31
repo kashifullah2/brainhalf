@@ -52,11 +52,19 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
     return fail('Missing Google credential.', 400);
   }
 
-  const clientId = (
-    env.GOOGLE_CLIENT_ID ||
-    env.VITE_GOOGLE_CLIENT_ID ||
-    '645594415031-qvf264s8235c1ahueop2ker2idcoda23.apps.googleusercontent.com'
-  ).trim();
+  // No literal fallback. A client ID baked into the source is configuration
+  // pretending to be a default: it silently keeps working after the real value is
+  // rotated or the project is redeployed against a different Google client, and
+  // the `aud` check -- the thing that stops a token minted for another
+  // application being accepted here -- then validates against the wrong audience.
+  const clientId = (env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  if (!clientId) {
+    // A deployment problem, not a credential problem. Reporting it as 401 would
+    // send the user back to the sign-in screen over something no amount of
+    // signing in can fix.
+    console.error('[auth/google] GOOGLE_CLIENT_ID is not set on this deployment.');
+    return fail('Google sign-in is not configured on this deployment.', 503);
+  }
 
   let identity;
   try {

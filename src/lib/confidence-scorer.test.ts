@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { calculateFieldConfidence, validateFieldMath } from './confidence-scorer';
+import {
+  calculateFieldConfidence,
+  extractModelConfidence,
+  validateFieldMath,
+} from './confidence-scorer';
 
 /**
  * These cases come from real extractions in the deployed app, where clean values
@@ -174,5 +178,70 @@ describe('validateFieldMath — cross-field arithmetic', () => {
     expect(warnings[0].expected).toBe('90.00');
     expect(warnings[0].actual).toBe('80.00');
     expect(warnings[0].involvedFields).toContain('Discount');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A missing model signal must not read as a confident one.
+//
+// extractModelConfidence() used to return a hardcoded 0.92 when the provider gave
+// no logprobs and no self-reported score -- which is the normal case on the default
+// OCR tier and in `fulltext` mode, not an edge case. 0.92 clears the 0.80 review
+// threshold, so unmeasured documents were never flagged and never escalated.
+// ---------------------------------------------------------------------------
+describe('extractModelConfidence — absent signals', () => {
+  it('returns null when the response carries no certainty at all', () => {
+    expect(extractModelConfidence({ choices: [{ message: { content: '{}' } }] })).toBeNull();
+    expect(extractModelConfidence({})).toBeNull();
+    expect(extractModelConfidence(null)).toBeNull();
+  });
+
+  it('returns null rather than a number for empty logprobs', () => {
+    expect(
+      extractModelConfidence({ choices: [{ logprobs: { content: [] } }] }),
+    ).toBeNull();
+  });
+
+  it('averages token probabilities when logprobs are present', () => {
+    const score = extractModelConfidence({
+      choices: [{ logprobs: { content: [{ logprob: 0 }, { logprob: 0 }] } }],
+    });
+    // exp(0) === 1 for both tokens.
+    expect(score).toBe(1);
+  });
+
+  it('uses a self-reported confidence when the provider supplies one', () => {
+    expect(extractModelConfidence({ choices: [{ confidence: 0.4 }] })).toBe(0.4);
+  });
+});
+
+describe('calculateFieldConfidence — scoring without a model signal', () => {
+  it('does not inflate a clean field to the old fabricated baseline', () => {
+    const withSignal = calculateFieldConfidence('Vendor', 'Northwind Supply Co', 0.92);
+    const without = calculateFieldConfidence('Vendor', 'Northwind Supply Co', null);
+    expect(withSignal.modelScore).toBe(0.92);
+    expect(without.modelScore).toBeNull();
+    // Renormalised over pattern + quality only, so it is not simply the same number.
+    expect(without.score).not.toBe(withSignal.score);
+  });
+
+  // NOTE: ConfidenceDetails.flags is returned but nothing renders it yet -- every
+  // caller reads only `.score`. Surfacing the flags needs a column on
+  // document_fields, so it is tracked separately as a feature.
+  it('records the absence in the flags', () => {
+    const result = calculateFieldConfidence('Vendor', 'Acme', null);
+    expect(result.flags.some((f) => f.includes('No model certainty signal'))).toBe(true);
+  });
+
+  it('still scores a bad extraction low with no model signal to prop it up', () => {
+    // This is the case the fabricated 0.92 used to rescue: garbage that the
+    // pattern and quality checks both reject.
+    const result = calculateFieldConfidence('Vendor', 'aaaaaaaaaaaa', null);
+    expect(result.score).toBeLessThan(0.8);
+  });
+
+  it('keeps an illegible value under any sane review threshold', () => {
+    const result = calculateFieldConfidence('Total', '[ILLEGIBLE]', null);
+    expect(result.score).toBeLessThan(0.5);
   });
 });

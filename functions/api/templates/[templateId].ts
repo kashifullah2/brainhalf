@@ -4,65 +4,17 @@
 
 import { fail, json, readJson, type AppEnv } from '../../../server/http';
 import { authHeaders, requireSession } from '../../../server/guard';
-
-const MAX_NAME_LENGTH = 100;
-const MAX_PROMPT_LENGTH = 4000;
-const MAX_DESCRIPTION_LENGTH = 500;
-const MAX_EXPECTED_FIELDS_LENGTH = 1000;
-
-const ALLOWED_MODES = new Set([
-  'invoice', 'receipt', 'fulltext', 'keyvalue', 'table',
-  'handwriting', 'multilingual', 'custom', 'vqa',
-]);
-
-interface TemplateRow {
-  id: number;
-  user_id: string;
-  name: string;
-  base_mode: string;
-  prompt: string | null;
-  description: string | null;
-  expected_fields: string | null;
-  use_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface TemplateDto {
-  id: number;
-  name: string;
-  baseMode: string;
-  prompt: string | null;
-  description: string | null;
-  expectedFields: string[];
-  useCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-function toDto(row: TemplateRow): TemplateDto {
-  return {
-    id: row.id,
-    name: row.name,
-    baseMode: row.base_mode,
-    prompt: row.prompt,
-    description: row.description,
-    expectedFields: row.expected_fields
-      ? row.expected_fields.split(',').map((s) => s.trim()).filter(Boolean)
-      : [],
-    useCount: row.use_count,
-    createdAt: `${row.created_at.replace(' ', 'T')}Z`,
-    updatedAt: `${row.updated_at.replace(' ', 'T')}Z`,
-  };
-}
-
-function cleanStr(value: unknown, max: number): string {
-  return typeof value === 'string' ? value.trim().slice(0, max) : '';
-}
-
-// ---------------------------------------------------------------------------
-// PATCH /api/templates/:templateId — update a template
-// ---------------------------------------------------------------------------
+import { enforceRateLimit, userIdentity } from '../../../server/rate-limit';
+import {
+  ALLOWED_MODES,
+  MAX_NAME_LENGTH,
+  MAX_PROMPT_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_EXPECTED_FIELDS_LENGTH,
+  cleanTemplateStr,
+  toDto,
+  type TemplateRow,
+} from '../../../server/templates';
 
 interface UpdateBody {
   name?: unknown;
@@ -77,7 +29,9 @@ export const onRequestPatch: PagesFunction<AppEnv> = async ({ params, request, e
   if (auth instanceof Response) return auth;
 
   const templateId = Number(params.templateId);
-  if (!Number.isFinite(templateId) || templateId < 1) {
+  // Integer, not merely finite: `1.5` passed the old check and then matched no row,
+  // so a malformed id surfaced as "not found" instead of "not valid".
+  if (!Number.isInteger(templateId) || templateId < 1) {
     return fail('Invalid template ID.', 400);
   }
 
@@ -91,17 +45,17 @@ export const onRequestPatch: PagesFunction<AppEnv> = async ({ params, request, e
   if (!existing) return fail('Template not found.', 404);
 
   const body = await readJson<UpdateBody>(request);
-  const name = cleanStr(body?.name, MAX_NAME_LENGTH) || existing.name;
-  const baseMode = cleanStr(body?.baseMode, 30) || existing.base_mode;
+  const name = cleanTemplateStr(body?.name, MAX_NAME_LENGTH) || existing.name;
+  const baseMode = cleanTemplateStr(body?.baseMode, 30) || existing.base_mode;
   if (!ALLOWED_MODES.has(baseMode)) {
     return fail(`Invalid base mode "${baseMode}".`, 400);
   }
 
   const prompt = body?.prompt !== undefined
-    ? (cleanStr(body.prompt, MAX_PROMPT_LENGTH) || null)
+    ? (cleanTemplateStr(body.prompt, MAX_PROMPT_LENGTH) || null)
     : existing.prompt;
   const description = body?.description !== undefined
-    ? (cleanStr(body.description, MAX_DESCRIPTION_LENGTH) || null)
+    ? (cleanTemplateStr(body.description, MAX_DESCRIPTION_LENGTH) || null)
     : existing.description;
 
   let expectedFieldsStr = existing.expected_fields;
@@ -141,7 +95,9 @@ export const onRequestDelete: PagesFunction<AppEnv> = async ({ params, request, 
   if (auth instanceof Response) return auth;
 
   const templateId = Number(params.templateId);
-  if (!Number.isFinite(templateId) || templateId < 1) {
+  // Integer, not merely finite: `1.5` passed the old check and then matched no row,
+  // so a malformed id surfaced as "not found" instead of "not valid".
+  if (!Number.isInteger(templateId) || templateId < 1) {
     return fail('Invalid template ID.', 400);
   }
 
@@ -167,9 +123,21 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ params, request, en
   if (auth instanceof Response) return auth;
 
   const templateId = Number(params.templateId);
-  if (!Number.isFinite(templateId) || templateId < 1) {
+  // Integer, not merely finite: `1.5` passed the old check and then matched no row,
+  // so a malformed id surfaced as "not found" instead of "not valid".
+  if (!Number.isInteger(templateId) || templateId < 1) {
     return fail('Invalid template ID.', 400);
   }
+
+  // Incrementing use_count is cheap, but an unbounded POST is a write amplification
+  // vector. Cap it like other lightweight mutations.
+  const limited = await enforceRateLimit(
+    env,
+    `templates/${templateId}/use`,
+    userIdentity(auth.user.id),
+    { limit: 60, windowSeconds: 60 },
+  );
+  if (limited) return limited;
 
   await env.DB.prepare(
     `UPDATE extraction_templates

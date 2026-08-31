@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
-  ArrowLeft,
   Check,
   X,
   CheckCircle2,
@@ -10,9 +9,13 @@ import {
   Save,
   Sparkles,
   Keyboard,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmptyState, ListSkeleton } from "@/components/app";
+import { useConfidenceThreshold } from "@/hooks/use-confidence-threshold";
+import { BackLink, EmptyState, ErrorState, ListSkeleton, PageHeader } from "@/components/app";
 import { AutoResizingTextarea } from "@/components/ui/auto-resizing-textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +26,6 @@ import {
   getFlaggedDocument,
   saveFieldResolution,
   getFieldResolutions,
-  getConfidenceThreshold,
   FlaggedDocument
 } from "@/lib/review-queue-store";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -33,7 +35,7 @@ import { useReviewHotkeys } from "@/hooks/use-review-hotkeys";
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-[4px] border border-border/60 bg-muted/60 px-1.5 text-[10px] font-bold text-muted-foreground shadow-sm select-none">
+    <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-[4px] border border-border/60 bg-muted/60 px-1.5 text-micro font-semibold text-muted-foreground shadow-sm select-none">
       {children}
     </kbd>
   );
@@ -44,31 +46,31 @@ function HotkeyHintBar() {
     <div className="flex items-center gap-4 flex-wrap px-4 py-2.5 border-t border-border/40 bg-muted/10 text-muted-foreground shrink-0">
       <div className="flex items-center gap-1.5">
         <Keyboard className="h-3.5 w-3.5 text-primary/60" />
-        <span className="text-[12px] font-semibold text-primary/80">Shortcuts</span>
+        <span className="text-label font-semibold text-primary/80">Shortcuts</span>
       </div>
       <div className="flex items-center gap-1">
         <Kbd>J</Kbd><Kbd>K</Kbd>
-        <span className="text-[10px] font-semibold">Navigate</span>
+        <span className="text-micro font-semibold">Navigate</span>
       </div>
       <div className="flex items-center gap-1">
         <Kbd>A</Kbd>
-        <span className="text-[10px] font-semibold">Approve</span>
+        <span className="text-micro font-semibold">Approve</span>
       </div>
       <div className="flex items-center gap-1">
         <Kbd>E</Kbd>
-        <span className="text-[10px] font-semibold">Save Edit</span>
+        <span className="text-micro font-semibold">Save Edit</span>
       </div>
       <div className="flex items-center gap-1">
         <Kbd>R</Kbd>
-        <span className="text-[10px] font-semibold">Reject</span>
+        <span className="text-micro font-semibold">Reject</span>
       </div>
       <div className="flex items-center gap-1">
         <Kbd>⇧A</Kbd>
-        <span className="text-[10px] font-semibold">Approve All</span>
+        <span className="text-micro font-semibold">Approve All</span>
       </div>
       <div className="flex items-center gap-1">
         <Kbd>Esc</Kbd>
-        <span className="text-[10px] font-semibold">Back</span>
+        <span className="text-micro font-semibold">Back</span>
       </div>
     </div>
   );
@@ -82,19 +84,22 @@ export default function ReviewQueueDetail() {
   usePageTitle("Review document · BrainHalf", { noindex: true });
 
   const [item, setItem] = useState<FlaggedDocument | null>(null);
-  const [threshold, setThreshold] = useState<number>(0.80);
+  const threshold = useConfidenceThreshold();
   const [resolutions, setResolutions] = useState<Record<string, any>>({});
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
+  // Kept separate from `item`: a failed fetch and a document that is no
+  // longer in the queue both leave `item` null, and they need to say very
+  // different things to the person looking at the screen.
+  const [loadError, setLoadError] = useState<Error | null>(null);
   const [focusedFieldIndex, setFocusedFieldIndex] = useState(0);
 
   const fieldCardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const loadData = async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
-      const thresh = await getConfidenceThreshold();
-      setThreshold(thresh);
       const match = await getFlaggedDocument(documentId);
       
       if (match) {
@@ -114,7 +119,7 @@ export default function ReviewQueueDetail() {
         setFieldValues(initialVals);
       }
     } catch (err) {
-      console.error("Failed to load review item:", err);
+      setLoadError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setIsLoading(false);
     }
@@ -173,10 +178,10 @@ export default function ReviewQueueDetail() {
           setFocusedFieldIndex(nextUnresolved);
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: "Action failed",
-        description: err.message,
+        description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
       throw err;
@@ -229,6 +234,16 @@ export default function ReviewQueueDetail() {
     return <ListSkeleton rows={3} />;
   }
 
+  if (loadError) {
+    return (
+      <ErrorState
+        title="Could not load this document"
+        body="Nothing has been changed. Your review decisions so far are saved."
+        onRetry={() => void loadData()}
+      />
+    );
+  }
+
   if (!item || !doc) {
     return (
       <EmptyState
@@ -236,7 +251,7 @@ export default function ReviewQueueDetail() {
         title="Nothing left to review here"
         body="This document has either been fully verified already or was removed from the queue."
         action={
-          <Button asChild variant="outline" className="h-10 rounded-lg px-6 text-[13px] font-semibold">
+          <Button asChild variant="outline">
             <Link href="/app/review-queue">Back to the queue</Link>
           </Button>
         }
@@ -244,55 +259,55 @@ export default function ReviewQueueDetail() {
     );
   }
 
-  const fileUrl = storageUrl(doc.objectPath);
+  // Failed docs may have no stored file; objectPath is null in that case.
+  // storageUrl(null) silently becomes "/api/storage/null" — guard it here.
+  const fileUrl: string | null = doc.objectPath ? storageUrl(doc.objectPath) : null;
   const reviewedCount = flaggedFields.filter((f) => resolutions[`${doc.id}_${f.normalizedField}`]).length;
   const isComplete = reviewedCount === flaggedFields.length;
 
   return (
     <div className="flex flex-col gap-5 h-[calc(100vh-8rem)]">
       {/* Top Bar */}
-      <div className="flex items-center justify-between shrink-0 border-b border-border/40 pb-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild className="rounded-lg h-10 w-10 bg-card border border-border/40 hover:bg-muted/50 transition-colors">
-            <Link href="/app/review-queue">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-          </Button>
-
-          <div className="flex flex-col">
-            <div className="flex items-center gap-3">
-              <h1 className="text-[20px] font-extrabold text-foreground truncate max-w-md" title={doc.filename}>
-                {doc.filename}
-              </h1>
-              <Badge variant="outline" className="rounded-md font-semibold text-[11px] bg-warning/10 text-warning border-warning/20">
-                Batch #{batchId}
-              </Badge>
-            </div>
-            <p className="text-[12px] font-medium text-muted-foreground mt-1">
+      <div className="shrink-0">
+        <PageHeader
+          className="mb-0"
+          size="detail"
+          back={<BackLink href="/app/review-queue" label="Back to review queue" />}
+          title={doc.filename}
+          titleClassName="truncate"
+          titleAdornment={
+            /* This chip was gold here and neutral grey on the queue listing —
+               the same batch reference in two colours on adjacent screens. */
+            <Badge variant="neutral" className="font-data">
+              Batch #{batchId}
+            </Badge>
+          }
+          description={
+            <>
               {flaggedFields.length} field{flaggedFields.length > 1 ? "s" : ""} came
-              back under {(threshold * 100).toFixed(0)}% — worth a glance.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handleApproveAll}
-            disabled={isComplete}
-            variant="outline"
-            className="rounded-lg font-semibold text-[13px] h-9 gap-1.5 border-border/60 hover:bg-success/10 hover:text-success"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            Approve All
-          </Button>
-
-          <Button
-            onClick={() => setLocation("/app/review-queue")}
-            className="rounded-lg font-semibold text-[13px] h-9 px-5 shadow-sm"
-          >
-            {isComplete ? "Done — Back to Queue" : "Save & Continue"}
-          </Button>
-        </div>
+              back under <span className="font-data">{(threshold * 100).toFixed(0)}%</span> — worth a glance.
+            </>
+          }
+          actions={
+            <>
+              <Button
+                onClick={handleApproveAll}
+                disabled={isComplete}
+                variant="outline"
+                className="gap-1.5 rounded-lg font-semibold"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Approve All
+              </Button>
+              <Button
+                onClick={() => setLocation("/app/review-queue")}
+                className="rounded-lg px-5 font-semibold shadow-sm"
+              >
+                {isComplete ? "Done — Back to Queue" : "Save & Continue"}
+              </Button>
+            </>
+          }
+        />
       </div>
 
       {/* Main Workspace */}
@@ -300,27 +315,79 @@ export default function ReviewQueueDetail() {
         {/* LEFT: Zoomable Source Image */}
         <div className="flex-1 flex flex-col min-h-0 border border-border/60 rounded-xl overflow-hidden bg-muted/20 shadow-sm relative">
           <div className="px-4 py-3 border-b border-border/60 bg-card/80 backdrop-blur-sm flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-2 font-bold text-[13px] text-foreground">
+            <div className="flex items-center gap-2 font-semibold text-body-sm text-foreground">
               <FileText className="h-4 w-4 text-primary" />
               Source Inspection
             </div>
-            <span className="text-[11px] font-medium text-muted-foreground">Pinch/Scroll to Zoom</span>
+            <span className="text-caption font-medium text-muted-foreground">Scroll or pinch to zoom</span>
           </div>
 
           <div className="flex-1 overflow-auto flex items-center justify-center p-4 relative min-h-[300px]">
-            <TransformWrapper initialScale={1} minScale={0.5} maxScale={4} centerOnInit>
-              <div className="relative w-full h-full bg-muted/5 rounded-lg overflow-hidden flex items-center justify-center">
-                <TransformComponent wrapperClass="w-full h-full !flex items-center justify-center" contentClass="w-full h-full !flex items-center justify-center relative">
-                  <div className="relative inline-block max-w-full max-h-full shadow-md bg-white">
-                    <img
-                      src={fileUrl}
-                      alt={doc.filename}
-                      className="max-w-full max-h-[70vh] object-contain block"
-                    />
+            {fileUrl ? (
+              <TransformWrapper initialScale={1} minScale={0.5} maxScale={4} centerOnInit>
+                {/* Render prop, so the zoom controls can reach the transform. The
+                    panel used to offer only the words "Pinch/Scroll to Zoom":
+                    discoverable if you happen to try it, and unusable with a
+                    trackpad-less mouse or by keyboard. */}
+                {({ zoomIn, zoomOut, resetTransform }) => (
+                  <div className="relative w-full h-full bg-muted/5 rounded-lg overflow-hidden flex items-center justify-center">
+                    <TransformComponent wrapperClass="w-full h-full !flex items-center justify-center" contentClass="w-full h-full !flex items-center justify-center relative">
+                      <div className="relative inline-block max-w-full max-h-full shadow-md bg-white">
+                        <img
+                          src={fileUrl}
+                          alt={doc.filename}
+                          className="max-w-full max-h-[70vh] object-contain block"
+                        />
+                      </div>
+                    </TransformComponent>
+
+                    {/* stopPropagation on pointer-down: without it the wrapper
+                        reads a press on a button as the start of a pan. */}
+                    <div
+                      className="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-lg border border-border/60 bg-card/95 p-1 shadow-md backdrop-blur-sm"
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-md"
+                        aria-label="Zoom out"
+                        title="Zoom out"
+                        onClick={() => zoomOut()}
+                      >
+                        <ZoomOut className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-md"
+                        aria-label="Fit to panel"
+                        title="Fit to panel"
+                        onClick={() => resetTransform()}
+                      >
+                        <Maximize2 className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-md"
+                        aria-label="Zoom in"
+                        title="Zoom in"
+                        onClick={() => zoomIn()}
+                      >
+                        <ZoomIn className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
-                </TransformComponent>
+                )}
+              </TransformWrapper>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-muted-foreground p-8 border border-dashed border-border/40 rounded-xl bg-muted/10 w-full h-full">
+                <FileText className="h-10 w-10 mb-3 text-muted-foreground/30" />
+                <p className="text-body-sm font-semibold text-foreground">No file stored</p>
+                <p className="text-label mt-1 text-center text-muted-foreground">This document has no source image to inspect.</p>
               </div>
-            </TransformWrapper>
+            )}
           </div>
         </div>
 
@@ -328,11 +395,11 @@ export default function ReviewQueueDetail() {
         <div className="w-full lg:w-[440px] flex flex-col min-h-0 shrink-0">
           <Card className="h-full flex flex-col shadow-sm border-border/60 rounded-xl overflow-hidden bg-card">
             <CardHeader className="py-3 px-4 border-b border-border/60 shrink-0 bg-muted/20 flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-[14px] font-bold flex items-center gap-2 text-foreground">
+              <CardTitle className="text-body font-semibold flex items-center gap-2 text-foreground">
                 <Sparkles className="h-4 w-4 text-warning" />
                 Low-Confidence Fields
               </CardTitle>
-              <span className="text-[11px] font-semibold text-muted-foreground bg-background px-2.5 py-0.5 rounded border shadow-sm">
+              <span className="text-caption font-semibold text-muted-foreground bg-background px-2.5 py-0.5 rounded border shadow-sm">
                 {reviewedCount} / {flaggedFields.length} Verified
               </span>
             </CardHeader>
@@ -370,21 +437,21 @@ export default function ReviewQueueDetail() {
                     onClick={() => setFocusedFieldIndex(index)}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[13px] font-semibold text-foreground">
+                      <span className="text-body-sm font-semibold text-foreground">
                         {humanizeFieldLabel(field.normalizedField)}
                       </span>
                       <div className="flex items-center gap-2">
                         {isFocused && !isResolved && (
-                          <span className="text-[11px] font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                          <span className="text-caption font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded">
                             Focused
                           </span>
                         )}
                         {isResolved ? (
-                          <Badge variant="outline" className="rounded text-[11px] font-semibold bg-success/10 text-success border-success/20 py-0 h-5">
+                          <Badge variant="outline" className="rounded text-caption font-semibold bg-success/10 text-success border-success/20 py-0 h-5">
                             {res.status}
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className={`rounded text-[10px] font-mono font-bold py-0 h-5 ${isRed ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-warning/10 text-warning border-warning/20"}`}>
+                          <Badge variant="outline" className={`rounded text-micro font-data font-semibold py-0 h-5 ${isRed ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-warning/10 text-warning border-warning/20"}`}>
                             {(conf * 100).toFixed(0)}% Conf
                           </Badge>
                         )}
@@ -397,7 +464,7 @@ export default function ReviewQueueDetail() {
                       placeholder="Enter corrected value..."
                       minRows={1}
                       maxRows={6}
-                      className="font-medium text-[13px] rounded-lg bg-background border-border/60 focus-visible:ring-primary/40 p-2 min-h-[36px]"
+                      className="font-medium text-body-sm rounded-lg bg-background border-border/60 focus-visible:ring-primary/40 p-2 min-h-[36px]"
                     />
 
                     <div className="flex items-center justify-end gap-2 mt-3">
@@ -405,7 +472,7 @@ export default function ReviewQueueDetail() {
                         size="sm"
                         variant="outline"
                         onClick={() => handleAction(field.normalizedField, "rejected")}
-                        className="h-7 rounded-md px-2.5 text-[11px] font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive border-border/40"
+                        className="h-7 rounded-md px-2.5 text-caption font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive border-border/40"
                       >
                         <X className="mr-1 h-3 w-3" /> Reject
                       </Button>
@@ -414,7 +481,7 @@ export default function ReviewQueueDetail() {
                         size="sm"
                         variant="outline"
                         onClick={() => handleAction(field.normalizedField, "corrected")}
-                        className="h-7 rounded-md px-2.5 text-[11px] font-semibold text-primary hover:bg-primary/10 border-border/40"
+                        className="h-7 rounded-md px-2.5 text-caption font-semibold text-primary hover:bg-primary/10 border-border/40"
                       >
                         <Save className="mr-1 h-3 w-3" /> Save Edit
                       </Button>
@@ -422,7 +489,7 @@ export default function ReviewQueueDetail() {
                       <Button
                         size="sm"
                         onClick={() => handleAction(field.normalizedField, "approved")}
-                        className="h-7 rounded-md px-3 text-[11px] font-semibold bg-success hover:bg-success/90 text-white shadow-sm"
+                        className="h-7 rounded-md px-3 text-caption font-semibold bg-success hover:bg-success/90 text-success-foreground shadow-sm"
                       >
                         <Check className="mr-1 h-3 w-3" /> Approve
                       </Button>

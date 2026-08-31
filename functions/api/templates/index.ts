@@ -12,61 +12,24 @@
 
 import { fail, json, readJson, type AppEnv } from '../../../server/http';
 import { authHeaders, requireSession } from '../../../server/guard';
+import {
+  ALLOWED_MODES,
+  MAX_TEMPLATES,
+  MAX_NAME_LENGTH,
+  MAX_PROMPT_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_EXPECTED_FIELDS_LENGTH,
+  cleanTemplateStr,
+  toDto,
+  type TemplateRow,
+} from '../../../server/templates';
 
-const MAX_TEMPLATES = 50;
-const MAX_NAME_LENGTH = 100;
-const MAX_PROMPT_LENGTH = 4000;
-const MAX_DESCRIPTION_LENGTH = 500;
-const MAX_EXPECTED_FIELDS_LENGTH = 1000;
-
-const ALLOWED_MODES = new Set([
-  'invoice', 'receipt', 'fulltext', 'keyvalue', 'table',
-  'handwriting', 'multilingual', 'custom', 'vqa',
-]);
-
-interface TemplateRow {
-  id: number;
-  user_id: string;
-  name: string;
-  base_mode: string;
-  prompt: string | null;
-  description: string | null;
-  expected_fields: string | null;
-  use_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface TemplateDto {
-  id: number;
-  name: string;
-  baseMode: string;
-  prompt: string | null;
-  description: string | null;
-  expectedFields: string[];
-  useCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-function toDto(row: TemplateRow): TemplateDto {
-  return {
-    id: row.id,
-    name: row.name,
-    baseMode: row.base_mode,
-    prompt: row.prompt,
-    description: row.description,
-    expectedFields: row.expected_fields
-      ? row.expected_fields.split(',').map((s) => s.trim()).filter(Boolean)
-      : [],
-    useCount: row.use_count,
-    createdAt: `${row.created_at.replace(' ', 'T')}Z`,
-    updatedAt: `${row.updated_at.replace(' ', 'T')}Z`,
-  };
-}
-
-function cleanStr(value: unknown, max: number): string {
-  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+interface CreateBody {
+  name?: unknown;
+  baseMode?: unknown;
+  prompt?: unknown;
+  description?: unknown;
+  expectedFields?: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,29 +51,21 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
 // ---------------------------------------------------------------------------
 // POST /api/templates — create a new template
 // ---------------------------------------------------------------------------
-interface CreateBody {
-  name?: unknown;
-  baseMode?: unknown;
-  prompt?: unknown;
-  description?: unknown;
-  expectedFields?: unknown;
-}
-
 export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => {
   const auth = await requireSession(request, env);
   if (auth instanceof Response) return auth;
 
   const body = await readJson<CreateBody>(request);
-  const name = cleanStr(body?.name, MAX_NAME_LENGTH);
+  const name = cleanTemplateStr(body?.name, MAX_NAME_LENGTH);
   if (!name) return fail('Template name is required.', 400);
 
-  const baseMode = cleanStr(body?.baseMode, 30) || 'custom';
+  const baseMode = cleanTemplateStr(body?.baseMode, 30) || 'custom';
   if (!ALLOWED_MODES.has(baseMode)) {
     return fail(`Invalid base mode "${baseMode}".`, 400);
   }
 
-  const prompt = cleanStr(body?.prompt, MAX_PROMPT_LENGTH) || null;
-  const description = cleanStr(body?.description, MAX_DESCRIPTION_LENGTH) || null;
+  const prompt = cleanTemplateStr(body?.prompt, MAX_PROMPT_LENGTH) || null;
+  const description = cleanTemplateStr(body?.description, MAX_DESCRIPTION_LENGTH) || null;
 
   let expectedFieldsStr: string | null = null;
   if (Array.isArray(body?.expectedFields)) {

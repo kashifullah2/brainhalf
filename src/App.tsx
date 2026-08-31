@@ -1,9 +1,12 @@
 import React, { Suspense, lazy } from "react";
+import { Check } from "lucide-react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { Navbar } from "@/components/layout/Navbar";
+import { MobileNavProvider } from "@/components/layout/mobile-nav";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { AnalyticsConsent } from "@/components/analytics-consent";
 import { Toaster } from "@/components/ui/toaster";
@@ -33,10 +36,14 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center min-h-[60vh] w-full">
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-[60vh] w-full items-center justify-center"
+    >
       <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Loading page...</span>
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <span className="text-body-sm text-muted-foreground">Loading…</span>
       </div>
     </div>
   );
@@ -60,87 +67,68 @@ const AUTH_FEATURES = [
   { label: "Export in one click", sub: "CSV, Excel, Markdown, or JSON — ready to use" },
 ];
 
+/**
+ * The dark half of the auth screen. It says what the product does, once, to
+ * someone who may have arrived straight at /sign-up.
+ *
+ * The lockup that used to sit at the top of this panel is gone: the header now
+ * renders on the auth routes too, so there were two wordmarks stacked 40px
+ * apart. Colours come from the `inverse` token pair rather than a hardcoded
+ * zinc ramp, which is what made this the one surface in the product that looked
+ * the same in dark mode as in light and cool where everything else is warm.
+ */
 function AuthBrandPanel() {
   return (
-    <div className="flex flex-col justify-between h-full p-12 bg-zinc-950 text-zinc-50 relative overflow-hidden border-r border-zinc-900">
-
-      {/* logo */}
-      <div className="relative z-10 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-lg shadow-primary/30">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        </div>
-        <span className="text-xl tracking-tight">
-          <span className="font-normal text-white/80">Brain</span>
-          <span className="font-extrabold text-primary">Half</span>
-        </span>
-      </div>
-
-      {/* headline */}
-      <div className="relative z-10 flex flex-col gap-8">
-        <div>
-          <h2 className="text-4xl xl:text-5xl font-extrabold leading-[1.15] tracking-tight text-white">
-            Stop typing.<br />Start{" "}
-            <span className="text-primary">
-              extracting.
-            </span>
-          </h2>
-          <p className="mt-5 text-zinc-400 text-base font-medium leading-relaxed max-w-xs">
-            Drop in documents and get clean, structured data out — no templates, no drawing boxes.
-          </p>
-        </div>
-
-        <ul className="flex flex-col gap-4">
-          {AUTH_FEATURES.map((f) => (
-            <li key={f.label} className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary ring-1 ring-primary/30">
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white/90">{f.label}</p>
-                <p className="text-xs text-white/40 mt-0.5 font-medium">{f.sub}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* bottom quote */}
-      <div className="relative z-10 border-l-2 border-primary pl-4">
-        <p className="text-sm text-zinc-200 font-medium leading-relaxed italic">
-          "We built this because we were tired of retyping invoices on Sundays."
+    <div className="flex h-full flex-col justify-center gap-10 border-r border-border/10 bg-inverse p-12 text-inverse-foreground">
+      <div>
+        <h2 className="max-w-sm text-4xl font-semibold leading-tight tracking-tight xl:text-5xl">
+          Stop typing.<br />Start <span className="text-primary">extracting.</span>
+        </h2>
+        <p className="mt-5 max-w-xs text-body-lg text-inverse-foreground/60">
+          Drop in documents and get clean, structured data out — no templates, no
+          drawing boxes.
         </p>
       </div>
+
+      <ul className="flex flex-col gap-5">
+        {AUTH_FEATURES.map((f) => (
+          <li key={f.label} className="flex items-start gap-3">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div>
+              <p className="text-body-sm font-semibold">{f.label}</p>
+              <p className="mt-0.5 text-caption text-inverse-foreground/50">{f.sub}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <p className="max-w-xs border-l-2 border-primary pl-4 text-body-sm leading-relaxed text-inverse-foreground/70">
+        We built this because we were tired of retyping invoices on Sundays.
+      </p>
     </div>
   );
 }
 
+/**
+ * Heights subtract the header rather than filling the viewport: the bar is a
+ * sibling above this subtree now, so `100dvh` here meant the brand panel ran a
+ * header's worth past the bottom of the screen and the form side always had
+ * 64px of scroll it did not need.
+ *
+ * The mobile logo bar this used to carry is gone for the same reason — the
+ * header renders on /sign-in and /sign-up too.
+ */
 function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-[100dvh] flex items-stretch">
+    <div className="flex min-h-[calc(100dvh-var(--header-h))] items-stretch">
       {/* Brand panel — desktop only */}
-      <div className="hidden lg:flex lg:w-[42%] xl:w-[38%] shrink-0 flex-col h-[100dvh] sticky top-0">
+      <div className="sticky top-[var(--header-h)] hidden h-[calc(100dvh-var(--header-h))] shrink-0 flex-col lg:flex lg:w-[42%] xl:w-[38%]">
         <AuthBrandPanel />
       </div>
 
       {/* Form side — full-width on mobile */}
-      <div className="flex-1 flex flex-col min-h-[100dvh] bg-background">
-        {/* Mobile-only logo bar */}
-        <div className="lg:hidden flex items-center gap-3 px-6 py-5 border-b border-border/40">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          </div>
-          <span className="text-lg tracking-tight">
-            <span className="font-normal text-foreground/70">brain</span>
-            <span className="font-extrabold text-primary">half</span>
-          </span>
-        </div>
-
-        {/* Centered form */}
-        <div className="flex-1 flex items-center justify-center px-6 py-12">
-          <div className="w-full max-w-[400px]">
-            {children}
-          </div>
-        </div>
+      <div className="flex flex-1 flex-col items-center justify-center bg-background px-6 py-12">
+        <div className="w-full max-w-[400px]">{children}</div>
       </div>
     </div>
   );
@@ -273,9 +261,19 @@ function App() {
         <AuthProvider>
           <QueryClientProvider client={queryClient}>
             <TooltipProvider>
-              <RoutedErrorBoundary>
-                <AppRoutes />
-              </RoutedErrorBoundary>
+              {/* Wraps both the header and the routes because the drawer's
+                  trigger lives in one and the drawer itself in the other. */}
+              <MobileNavProvider>
+                {/* One header for every route. It used to be mounted inside
+                    Home only, so the entire signed-in application, both legal
+                    pages, /reset-password and the 404 screen had no header at
+                    all — no theme toggle, no account menu, and no way to sign
+                    out except the one button buried in Settings › Security. */}
+                <Navbar />
+                <RoutedErrorBoundary>
+                  <AppRoutes />
+                </RoutedErrorBoundary>
+              </MobileNavProvider>
               <Toaster />
               <AnalyticsConsent />
             </TooltipProvider>

@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Inter:wght@300..800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
@@ -41,6 +40,17 @@
   --color-warning: hsl(var(--warning));
   --color-warning-foreground: hsl(var(--warning-foreground));
 
+  /* The edge of a filled control. `border-primary-border` and its siblings
+     were already referenced by buttonVariants and the Settings tab list; with
+     no token behind them the base `* { @apply border-border }` rule won, so an
+     orange button drew a pale grey hairline. */
+  --color-inverse: hsl(var(--inverse));
+  --color-inverse-foreground: hsl(var(--inverse-foreground));
+
+  --color-primary-border: hsl(var(--primary-border));
+  --color-secondary-border: hsl(var(--secondary-border));
+  --color-destructive-border: hsl(var(--destructive-border));
+
   --color-sidebar: hsl(var(--sidebar-background));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-primary: hsl(var(--sidebar-primary));
@@ -54,6 +64,37 @@
   --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
 
+  /* ─── Type scale ──────────────────────────────────────────
+     Named by role, not by size, so a call site says what a piece of text IS
+     and the scale decides how big that is. Every step is paired with its own
+     line-height: Tailwind emits `--text-<name>--line-height` alongside the
+     size, which is also what StatCard reads to reserve two label lines.
+
+     These seven steps were used in ~450 places before any of them existed as
+     a token, so every one of those elements inherited 16px from the body and
+     the product had no type hierarchy at all. */
+  --text-micro: 0.6875rem;         /* 11px — badge counts, file-type stamps */
+  --text-micro--line-height: 0.875rem;
+  --text-micro--letter-spacing: 0.01em;
+
+  --text-caption: 0.75rem;         /* 12px — table meta, helper text */
+  --text-caption--line-height: 1rem;
+
+  --text-label: 0.8125rem;         /* 13px — form labels, toolbar controls */
+  --text-label--line-height: 1.125rem;
+
+  --text-body-sm: 0.875rem;        /* 14px — secondary copy, list subtitles */
+  --text-body-sm--line-height: 1.25rem;
+
+  --text-body: 0.9375rem;          /* 15px — the default. Also set on <body>. */
+  --text-body--line-height: 1.375rem;
+
+  --text-body-lg: 1.0625rem;       /* 17px — lead paragraphs, empty-state titles */
+  --text-body-lg--line-height: 1.625rem;
+
+  --text-body-xl: 1.25rem;         /* 20px — section intros */
+  --text-body-xl--line-height: 1.75rem;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -64,51 +105,42 @@
   --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.06), 0 2px 4px -1px rgba(0,0,0,0.04);
   --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -2px rgba(0,0,0,0.03);
   --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.10), 0 10px 10px -5px rgba(0,0,0,0.04);
-  --shadow-glow: 0 0 0 1px rgba(249,115,22,0.15), 0 4px 24px -4px rgba(249,115,22,0.3);
 
+  /* The one entrance animation in the product. `fade-in` and `slide-up` were
+     declared here with no call site anywhere. */
   --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-fade-in: fade-in 0.3s ease both;
-  --animate-slide-up: slide-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 
   @keyframes fade-up {
     from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
-  @keyframes slide-up {
-    from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 }
 
 /* ─── Light theme ────────────────────────────────────────── */
 :root {
-  --background: 40 33% 98%;
-  --foreground: 25 20% 15%;
-  --border: 35 15% 90%;
+  --background: 40 30% 97%;
+  --foreground: 25 22% 12%;
+  --border: 35 12% 86%;
 
-  --card: 40 33% 99%;
-  --card-foreground: 25 20% 15%;
-  --card-border: 35 15% 91%;
+  --card: 40 30% 99%;
+  --card-foreground: 25 22% 12%;
+  --card-border: 35 12% 88%;
 
-  --popover: 40 33% 99%;
-  --popover-foreground: 25 20% 15%;
-  --popover-border: 35 15% 90%;
+  --popover: 40 30% 99%;
+  --popover-foreground: 25 22% 12%;
+  --popover-border: 35 12% 86%;
 
   --primary: 20 92% 52%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 220 14% 95%;
-  --secondary-foreground: 220 20% 20%;
+  --secondary: 220 14% 94%;
+  --secondary-foreground: 220 20% 18%;
 
-  --muted: 220 12% 95%;
-  --muted-foreground: 220 12% 46%;
+  --muted: 220 12% 94%;
+  --muted-foreground: 220 12% 42%;
 
-  --accent: 38 95% 52%;
-  --accent-foreground: 0 0% 100%;
+  --accent: 35 18% 91%;
+  --accent-foreground: 25 22% 12%;
 
   --destructive: 0 84% 58%;
   --destructive-foreground: 0 0% 100%;
@@ -119,25 +151,38 @@
   --warning: 38 90% 44%;
   --warning-foreground: 0 0% 100%;
 
-  --input: 220 14% 90%;
+  --input: 220 14% 88%;
   --ring: 20 92% 52%;
 
-  --sidebar-background: 40 33% 96%;
-  --sidebar-foreground: 25 20% 15%;
+  --sidebar-background: 40 30% 96%;
+  --sidebar-foreground: 25 22% 12%;
   --sidebar-primary: 20 92% 52%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 35 15% 92%;
-  --sidebar-accent-foreground: 25 20% 15%;
-  --sidebar-border: 35 15% 88%;
+  --sidebar-accent: 35 12% 90%;
+  --sidebar-accent-foreground: 25 22% 12%;
+  --sidebar-border: 35 12% 86%;
   --sidebar-ring: 20 92% 52%;
+
+  --inverse: 25 18% 9%;
+  --inverse-foreground: 40 20% 95%;
+
+  --primary-border: 20 92% 44%;
+  --secondary-border: 220 14% 84%;
+  --destructive-border: 0 84% 49%;
+
+  /* The header is one bar at one height on every route. Published here so
+     AppLayout's sticky offset and viewport maths read it instead of restating
+     it — they were already reading it before it existed, which left every
+     `calc(100dvh - var(--header-h))` invalid and silently ignored. */
+  --header-h: 4rem;
 
   --app-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --app-font-serif: 'Fraunces', Georgia, serif;
   --app-font-mono: 'JetBrains Mono', monospace;
   --radius: 0.75rem;
 
-  --button-outline: rgba(0,0,0,0.08);
-  --badge-outline: rgba(0,0,0,0.05);
+  --button-outline: rgba(0,0,0,0.14);
+  --badge-outline: rgba(0,0,0,0.08);
 }
 
 /* ─── Dark theme ─────────────────────────────────────────── */
@@ -163,8 +208,8 @@
   --muted: 220 14% 16%;
   --muted-foreground: 220 10% 56%;
 
-  --accent: 38 92% 56%;
-  --accent-foreground: 0 0% 100%;
+  --accent: 25 12% 18%;
+  --accent-foreground: 40 10% 92%;
 
   --destructive: 0 84% 62%;
   --destructive-foreground: 0 0% 100%;
@@ -186,6 +231,13 @@
   --sidebar-accent-foreground: 40 10% 90%;
   --sidebar-border: 25 10% 16%;
   --sidebar-ring: 20 92% 56%;
+
+  --inverse: 25 18% 7%;
+  --inverse-foreground: 40 20% 95%;
+
+  --primary-border: 20 92% 46%;
+  --secondary-border: 220 14% 24%;
+  --destructive-border: 0 84% 52%;
 }
 
 /* ─── Base layer ─────────────────────────────────────────── */
@@ -197,12 +249,20 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--app-font-sans);
+    /* The default step, stated once. Without it every element carrying one of
+       the semantic type classes fell back to the browser's 16px. */
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
     font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  /* Display headings only. The serif was previously applied to h1 through h6,
+     which put a high-contrast display face on 13px card titles and empty-state
+     headings — it read as decoration there, not hierarchy. Small headings use
+     the UI sans; anything that genuinely wants the serif asks for `font-serif`. */
+  h1, h2 {
     font-family: var(--app-font-serif);
   }
 
@@ -211,14 +271,28 @@
     accent-color: hsl(var(--primary));
   }
 
+  /* --range-fill is set inline by whoever owns the value (Settings passes the
+     confidence threshold as a percentage). Before this the track was a flat
+     grey bar with a lone dot on it, so the control gave no read of where the
+     value sat within its range. The fallback keeps an unset slider sane. */
   input[type='range'] {
     -webkit-appearance: none;
     appearance: none;
     height: 0.375rem;
     border-radius: 999px;
-    background: hsl(var(--muted));
+    background:
+      linear-gradient(
+        to right,
+        hsl(var(--primary)) var(--range-fill, 0%),
+        hsl(var(--muted)) var(--range-fill, 0%)
+      );
     border: 1px solid hsl(var(--border));
     cursor: pointer;
+  }
+
+  input[type='range']:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 
   input[type='range']::-webkit-slider-thumb {
@@ -262,8 +336,65 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .animate-fade-up, .animate-fade-in, .animate-slide-up {
+    .animate-fade-up {
       animation: none;
     }
+  }
+}
+
+/* ─── Custom utilities ───────────────────────────────────── */
+
+/**
+ * Numeric and identifier text: batch numbers, confidence percentages, counts,
+ * progress fractions. Monospaced with tabular figures so a column of numbers
+ * lines up and a value that changes in place does not shift its neighbours.
+ */
+@utility font-data {
+  font-family: var(--app-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/**
+ * The interaction state layer for buttons.
+ *
+ * One translucent overlay in the button's own text colour, rather than a hover
+ * colour per variant: on a filled button `currentColor` is the light
+ * foreground, so it lifts; on outline and ghost it is the dark foreground, so
+ * it settles. That is why the same two classes cover filled, outline and ghost
+ * on the page, the card and the sidebar, in both themes.
+ *
+ * buttonVariants has referenced these two class names all along with nothing
+ * behind them, which is why no button in the product responded to a pointer.
+ */
+@utility hover-elevate {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-color: currentColor;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  &:hover::after {
+    opacity: 0.08;
+  }
+}
+
+/** Pressed state. Pairs with hover-elevate, which owns the overlay. */
+@utility active-elevate-2 {
+  &:active::after {
+    opacity: 0.14;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-elevate::after {
+    transition: none;
   }
 }

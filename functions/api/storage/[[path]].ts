@@ -38,7 +38,11 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({
 
   if (!owned) return fail('Not found.', 404);
 
-  const object = await env.DOCUMENTS.get(objectPath);
+  // Passing the request headers lets R2 evaluate If-None-Match / If-Modified-Since
+  // itself. When the client's copy is current it returns the object without a
+  // body and we answer 304 instead of streaming the page image again — these are
+  // the largest responses the app serves, and the batch list requests one per row.
+  const object = await env.DOCUMENTS.get(objectPath, { onlyIf: request.headers });
   if (!object) return fail('Not found.', 404);
 
   const headers = new Headers();
@@ -50,5 +54,9 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({
   // These are user-supplied files; never let one execute in our origin.
   headers.set('Content-Security-Policy', "default-src 'none'; sandbox");
 
-  return new Response(object.body, { headers });
+  // No body means the precondition matched.
+  const body = 'body' in object ? object.body : null;
+  if (!body) return new Response(null, { status: 304, headers });
+
+  return new Response(body, { headers });
 };

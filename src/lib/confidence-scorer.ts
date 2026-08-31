@@ -17,7 +17,8 @@ export interface ImageQualityMetrics {
 
 export interface ConfidenceDetails {
   score: number; // 0.0 to 1.0
-  modelScore: number;
+  /** Null when the provider returned no certainty signal for this extraction. */
+  modelScore: number | null;
   patternScore: number;
   qualityScore: number;
   flags: string[];
@@ -108,9 +109,20 @@ export async function analyzeImageQuality(file: File): Promise<ImageQualityMetri
 }
 
 /**
- * Extracts average token probability from OpenAI/Hunyuan API logprobs if available.
+ * The model's own certainty, or null when the provider did not give us one.
+ *
+ * This used to return a hardcoded 0.92 in that case, which was not a default so
+ * much as a fabrication with consequences. The default OCR tier does not support
+ * logprobs, and `fulltext` mode asks for plain text rather than a JSON object
+ * carrying `_overall_confidence` -- so 0.92 was the *normal* outcome, not an edge
+ * case. It sits above the 0.80 review threshold, so those documents were never
+ * flagged and never escalated: the "human in the loop" gate silently disengaged
+ * on exactly the documents nothing had measured.
+ *
+ * Null propagates. calculateFieldConfidence() drops the model dimension and
+ * scores on the signals that do exist, rather than blending in a guess.
  */
-export function extractModelConfidence(apiResponse: any): number {
+export function extractModelConfidence(apiResponse: any): number | null {
   try {
     const choice = apiResponse?.choices?.[0];
     const logprobs = choice?.logprobs?.content;
@@ -136,7 +148,8 @@ export function extractModelConfidence(apiResponse: any): number {
     console.warn("Logprob extraction error:", e);
   }
 
-  return 0.92; // Default baseline model confidence
+  // No logprobs and no self-reported score. Say so instead of inventing one.
+  return null;
 }
 
 /**
@@ -247,16 +260,23 @@ function looksLikeMoney(value: string): boolean {
 export function calculateFieldConfidence(
   fieldName: string,
   value: string | null | undefined,
-  rawModelConfidence: number = 0.92,
+  rawModelConfidence: number | null = null,
   imageQuality?: ImageQualityMetrics
 ): ConfidenceDetails {
   const flags: string[] = [];
   const strVal = String(value ?? "").trim();
 
   // ---------------------------------------------------------------------------
-  // 1. Model Certainty Signal (Weight: 35%)
+  // 1. Model Certainty Signal (Weight: 35%, or 0% when there is no signal)
   // ---------------------------------------------------------------------------
-  let modelScore = Math.max(0.05, Math.min(1.0, rawModelConfidence));
+  const modelScore =
+    rawModelConfidence === null
+      ? null
+      : Math.max(0.05, Math.min(1.0, rawModelConfidence));
+
+  if (modelScore === null) {
+    flags.push("No model certainty signal — scored on pattern and image quality only");
+  }
 
   // ---------------------------------------------------------------------------
   // 2. Pattern & Semantic Type Validation (Weight: 40%)
@@ -405,10 +425,26 @@ export function calculateFieldConfidence(
   qualityScore = Math.max(0, qualityScore);
 
   // ---------------------------------------------------------------------------
-  // Blend Scores: 35% Model, 40% Pattern, 25% Quality
+  // Blend: 35% model, 40% pattern, 25% quality.
+  //
+  // With no model signal the remaining two are renormalised over their own weight
+  // (0.40 + 0.25 = 0.65) rather than a placeholder being blended in for the third.
+  // Substituting a number for a measurement that was never taken is what produced
+  // a fabricated 0.92 on every unmeasured document; weighting on what is actually
+  // known keeps the score meaningful and keeps a genuinely bad extraction low.
   // ---------------------------------------------------------------------------
+  const MODEL_WEIGHT = 0.35;
+  const PATTERN_WEIGHT = 0.40;
+  const QUALITY_WEIGHT = 0.25;
+
   const finalScore = Number(
-    (modelScore * 0.35 + patternScore * 0.40 + qualityScore * 0.25).toFixed(2)
+    (modelScore === null
+      ? (patternScore * PATTERN_WEIGHT + qualityScore * QUALITY_WEIGHT) /
+        (PATTERN_WEIGHT + QUALITY_WEIGHT)
+      : modelScore * MODEL_WEIGHT +
+        patternScore * PATTERN_WEIGHT +
+        qualityScore * QUALITY_WEIGHT
+    ).toFixed(2)
   );
 
   return {

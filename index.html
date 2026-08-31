@@ -7,8 +7,8 @@
     <meta name="description" content="BrainHalf automatically extracts fields, line items, and totals from invoices, receipts, forms, and transcripts using AI data extraction with BH Model 1. No templates required. Export to CSV, Excel & JSON instantly." />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="author" content="BrainHalf" />
-    <meta name="theme-color" content="#fdfbf7" />
-    <meta name="theme-color" content="#1e1815" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fbf9f5" />
+    <meta name="theme-color" content="#1d1815" media="(prefers-color-scheme: dark)" />
     <!-- Dynamic canonical tag managed by usePageSeo in React -->
     
     <!-- Alternate spellings / brand variations -->
@@ -70,7 +70,7 @@
         "AI-powered invoice document extraction",
         "Receipt data capture and parsing",
         "Handwriting recognition (cursive, print, mixed)",
-        "Multilingual document extraction (50+ languages)",
+        "Multilingual document extraction with English translation",
         "Visual Question Answering (VQA)",
         "Custom extraction schemas",
         "Batch document processing",
@@ -104,7 +104,7 @@
           "name": "Which file types does BrainHalf support?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "JPG, PNG, WEBP and PDF, up to 25 MB per file. Photos, scans and exported PDFs all work."
+            "text": "PDFs up to 14 MB and images (JPG, PNG, WEBP) up to 25 MB. A PDF is sent to the model whole, which is what makes its limit the lower of the two; photos and scans are resized in your browser first."
           }
         },
         {
@@ -112,7 +112,7 @@
           "name": "Do I need to build a template for every document layout?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. Pick a preset such as Invoice, Receipt, Table or Handwriting, or write a custom prompt. The extraction engine reads each page directly, so new vendors and layouts work without any setup."
+            "text": "No. Pick a preset — Invoice, Receipt, Table, Key-Value, Handwriting, Multilingual or Full Text — or write your own prompt. The extraction engine reads each page directly, so new vendors and layouts work without any setup."
           }
         },
         {
@@ -136,7 +136,7 @@
           "name": "Is my data kept private?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Documents and extracted data are tied to your account only, and you can delete them at any time from Settings → Data & Privacy. Details are in our privacy policy."
+            "text": "Documents and extracted data are tied to your account only. Delete any batch from your dashboard, or the whole account from Settings \u2192 Data & Privacy, and the documents, extracted fields and stored files go with it immediately. You can also download everything as JSON first. Details are in our privacy policy."
           }
         }
       ]
@@ -144,8 +144,17 @@
     </script>
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Requested here, not via `@import url(...)` in index.css: an @import
+         makes the font CSS a serial round trip behind our own stylesheet.
+         Keep this list identical to the --app-font-* stacks in index.css. -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400..700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    />
   </head>
   <body>
     <noscript>

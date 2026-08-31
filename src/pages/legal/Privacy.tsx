@@ -1,4 +1,5 @@
-import React from "react";
+import { Link } from "wouter";
+
 import { LegalLayout } from "./LegalLayout";
 
 export default function PrivacyPolicy() {
@@ -31,7 +32,7 @@ export default function PrivacyPolicy() {
       <p>You have the full right to delete your data at any time. Simply use the bulk delete feature within the app to permanently erase your batches from your browser, or contact us to delete your authentication account.</p>
 
       <h2>5. Contact Us</h2>
-      <p>If you have any questions or concerns regarding this Privacy Policy, please reach out via our <a href="/contact">Contact Page</a>.</p>
+      <p>If you have any questions or concerns regarding this Privacy Policy, please reach out via our <Link href="/contact">Contact Page</Link>.</p>
     </LegalLayout>
   );
 }

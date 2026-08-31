@@ -5,6 +5,10 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
+    // There is no linter in this project, so the compiler is what keeps
+    // unused imports and dead locals out. Nineteen of them had accumulated.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

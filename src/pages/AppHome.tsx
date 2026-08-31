@@ -1,45 +1,51 @@
-import { useState, useCallback, useMemo } from "react";
-import { useLocation, Link } from "wouter";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import {
-  Plus, FileType2, Loader2, ArrowUpRight, Trash2, Download,
-  CheckSquare, Square, X, SlidersHorizontal, ArrowRight,
-  Sparkles, FileText, BarChart3, CheckCircle2, Activity,
+  Plus, Loader2, Trash2, Download,
+  CheckSquare, Square, X, ArrowRight,
+  FileCheck2, FileText, BarChart3, CheckCircle2, Activity,
   Search, MoreHorizontal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PRESETS } from "@/components/UploadModal";
 import { useAuth } from "@/context/AuthContext";
-import { useListBatches, getBatch, deleteBatch, getListBatchesQueryKey, storageUrl } from "@/lib/api-client";
+import {
+  useListBatches,
+  getBatch,
+  deleteBatch,
+  getListBatchesQueryKey,
+  isBatchStalled,
+  storageUrl,
+  type BatchSummary,
+} from "@/lib/api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/lib/use-page-title";
 import { sanitizeForExport } from "@/lib/utils";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
-import { greeting, StatCard } from "@/components/app";
-import { StatusChip } from "@/components/StatusDot";
+import { EmptyState, ErrorState, ListSkeleton, PageHeader, StatCard, greeting } from "@/components/app";
+import { StatusBadge } from "@/components/StatusBadge";
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
+const tOf = (v?: string) => (v ? new Date(v).getTime() || 0 : 0);
 
-
-
-function SkeletonRow() {
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 animate-pulse">
-      <div className="h-4 w-4 rounded bg-muted shrink-0" />
-      <div className="h-10 w-10 rounded-lg bg-muted shrink-0" />
-      <div className="flex-1 space-y-2">
-        <div className="h-3 w-28 rounded-full bg-muted" />
-        <div className="h-2.5 w-40 rounded-full bg-muted" />
-      </div>
-      <div className="hidden sm:block h-1.5 w-28 rounded-full bg-muted" />
-    </div>
-  );
+function timeAgo(ts?: string) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ""; // FIX: bad dates no longer crash the row
+  return formatDistanceToNow(d, { addSuffix: true });
 }
+
+type BusyAction = "csv" | "excel" | "delete" | null;
 
 /* ── Page ────────────────────────────────────────────────── */
 export default function AppHome() {
@@ -47,31 +53,59 @@ export default function AppHome() {
   const { toast } = useToast();
   usePageTitle("Dashboard · BrainHalf", { noindex: true });
   const queryClient = useQueryClient();
-  const { data: batches, isLoading, error } = useListBatches();
   const { user } = useAuth();
 
+  // Poll while anything is queued or processing, so the list actually moves
+  // without the user reloading; idle lists cost nothing.
+  const { data: batches, isLoading, error } = useListBatches({
+    query: {
+      // Poll only while something is actually moving. A batch whose tab went away
+      // stays 'processing' for good, so counting it as in-flight meant polling the
+      // dashboard every four seconds forever. Open the batch to resume it.
+      refetchInterval: (query) =>
+        query.state.data?.some(
+          (b) =>
+            (b.status === "processing" || b.status === "queued") && !isBatchStalled(b),
+        )
+          ? 4000
+          : false,
+    },
+  });
+
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [isBusy, setIsBusy] = useState(false);
+  // FIX: per-action busy state — one shared flag spun all three buttons at once
+  const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterEngine, setFilterEngine] = useState("all");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  // FIX: permanent delete now goes through a confirmation dialog
+  const [pendingDelete, setPendingDelete] = useState<{ ids: number[]; label: string } | null>(null);
+
+  // FIX: prune ids that no longer exist instead of keeping zombie selections
+  useEffect(() => {
+    if (!batches) return;
+    const alive = new Set(batches.map((b: BatchSummary) => b.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => alive.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [batches]);
 
   const filteredBatches = useMemo(() => {
     if (!batches) return [];
     let r = [...batches];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      r = r.filter(b => 
-        b.id.toString().includes(q) || 
+      r = r.filter((b: BatchSummary) =>
+        b.id.toString().includes(q) ||
         (b.firstDocumentContentType && b.firstDocumentContentType.toLowerCase().includes(q))
       );
     }
-    if (filterStatus !== "all") r = r.filter((b) => b.status === filterStatus);
-    if (filterEngine !== "all") r = r.filter((b) => b.engineType === filterEngine);
-    r.sort((a, b) => sortOrder === "newest"
-      ? new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    if (filterStatus !== "all") r = r.filter((b: BatchSummary) => b.status === filterStatus);
+    if (filterEngine !== "all") r = r.filter((b: BatchSummary) => b.engineType === filterEngine);
+    r.sort((a: BatchSummary, b: BatchSummary) =>
+      sortOrder === "newest" ? tOf(b.createdAt) - tOf(a.createdAt) : tOf(a.createdAt) - tOf(b.createdAt)
     );
     return r;
   }, [batches, searchQuery, filterStatus, filterEngine, sortOrder]);
@@ -82,95 +116,126 @@ export default function AppHome() {
 
   const stats = useMemo(() => {
     if (!batches?.length) return null;
-    const docs = batches.reduce((n: number, b: any) => n + (b.totalDocuments ?? 0), 0);
-    const done = batches.filter((b: any) => b.status === "completed").length;
-    const running = batches.filter((b: any) => ["processing","queued"].includes(b.status)).length;
-    const failed = batches.filter((b: any) => b.status === "failed").length;
+    const docs = batches.reduce((n: number, b: BatchSummary) => n + (b.totalDocuments ?? 0), 0);
+    const done = batches.filter((b: BatchSummary) => b.status === "completed").length;
+    const running = batches.filter((b: BatchSummary) => ["processing", "queued"].includes(b.status)).length;
+    const failed = batches.filter((b: BatchSummary) => b.status === "failed").length;
     return { total: batches.length, docs, done, running, failed };
   }, [batches]);
 
-  const toggleSelect = useCallback((id: number, e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
   }, []);
 
   const handleSelectAll = () => {
-    if (!filteredBatches) return;
-    setSelectedIds(selectedIds.size === filteredBatches.length ? new Set() : new Set(filteredBatches.map((b: any) => b.id)));
+    if (!filteredBatches.length) return;
+    setSelectedIds(allSelected ? new Set() : new Set(filteredBatches.map((b: BatchSummary) => b.id)));
   };
 
-  const handleBulkDelete = async () => {
-    if (!selectedIds.size) return;
-    setIsBusy(true);
-    const ids = [...selectedIds];
+  // FIX: "Clear" used to leave the search text behind, so it looked broken
+  const clearFilters = () => {
+    setFilterStatus("all");
+    setFilterEngine("all");
+    setSearchQuery("");
+  };
+
+  const performDelete = async () => {
+    const ids = pendingDelete?.ids ?? [];
+    if (!ids.length) return;
+    setBusyAction("delete");
     try {
       for (let i = 0; i < ids.length; i += 3) {
-        await Promise.all(ids.slice(i, i + 3).map(deleteBatch));
+        await Promise.all(ids.slice(i, i + 3).map((id) => deleteBatch(id)));
       }
       await queryClient.invalidateQueries({ queryKey: getListBatchesQueryKey() });
-      setSelectedIds(new Set());
-      toast({ title: `${ids.length} batch${ids.length > 1 ? "es" : ""} deleted` });
-    } catch (e: any) { toast({ title: "Delete failed", description: e.message, variant: "destructive" }); }
-    finally { setIsBusy(false); }
-  };
-
-  const fetchSelected = async (overrideIds?: Set<number>) => {
-    const ids = [...(overrideIds || selectedIds)];
-    const results: any[] = [];
-    for (let i = 0; i < ids.length; i += 3) {
-      results.push(...await Promise.all(ids.slice(i, i + 3).map(getBatch)));
+      setSelectedIds(prev => {
+        const n = new Set(prev);
+        ids.forEach((id) => n.delete(id));
+        return n;
+      });
+      toast({
+        title: `${ids.length} batch${ids.length > 1 ? "es" : ""} deleted`,
+        description: "Gone for good — extraction results went with them.",
+      });
+    } catch (e) {
+      toast({ title: "Delete failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setBusyAction(null);
+      setPendingDelete(null);
     }
-    return results.map((b, i) => ({ id: ids[i], columns: b.columns, rows: b.rows }));
   };
 
-  const buildExport = (list: Array<{ id: number; columns: string[]; rows: any[] }>) => {
+  const fetchSelected = async (ids: number[]) => {
+    const byId = new Map<number, { columns: string[]; rows: Record<string, unknown>[] }>();
+    for (let i = 0; i < ids.length; i += 3) {
+      const chunk = ids.slice(i, i + 3);
+      const res = await Promise.all(chunk.map((id) => getBatch(id)));
+      // FIX: results aligned to ids via a map — chunk-index math was fragile
+      chunk.forEach((id, j) => byId.set(id, res[j]));
+    }
+    return ids.map((id) => ({
+      id,
+      columns: byId.get(id)?.columns ?? [],
+      rows: byId.get(id)?.rows ?? [],
+    }));
+  };
+
+  const buildExport = (list: Array<{ id: number; columns: string[]; rows: Record<string, unknown>[] }>) => {
     const cols = new Set<string>();
     list.forEach(({ columns }) => columns.forEach(c => cols.add(c)));
     const allCols = [...cols];
     return list.flatMap(({ id, rows }) =>
       rows.map(row => {
-        const r: Record<string, string> = { Batch: String(id), Filename: String(row.filename ?? ""), Status: String(row.status ?? "") };
-        allCols.forEach(c => r[c.replace(/_/g, " ")] = sanitizeForExport(String(row[c] ?? "")));
+        // The filename is user-controlled. Unsanitized it reaches Excel as a live
+        // formula -- see sanitizeForExport in src/lib/utils.ts.
+        const rowRecord = row as Record<string, unknown>;
+        const r: Record<string, string> = {
+          Batch: String(id),
+          Filename: sanitizeForExport(String(rowRecord.filename ?? "")),
+          Status: sanitizeForExport(String(rowRecord.status ?? "")),
+        };
+        allCols.forEach(c => {
+          r[c.replace(/_/g, " ")] = sanitizeForExport(String(rowRecord[c] ?? ""));
+        });
         return r;
       })
     );
   };
 
-  const exportCSV = async (overrideIds?: Set<number>) => {
+  const doExport = async (kind: "csv" | "excel", overrideIds?: Set<number>) => {
     const targetIds = overrideIds || selectedIds;
-    if (!targetIds.size) return; setIsBusy(true);
+    const ids = [...targetIds];
+    if (!ids.length || busyAction) return;
+    setBusyAction(kind);
     try {
-      const list = await fetchSelected(targetIds);
+      const list = await fetchSelected(ids);
       const data = buildExport(list);
-      const label = targetIds.size === 1 ? `batch_${[...targetIds][0]}` : `batches_export`;
-      downloadBlob(new Blob([recordsToCsv(data)], { type: "text/csv;charset=utf-8;" }), `${label}.csv`);
-      toast({ title: "CSV exported" });
-    } catch (e: any) { toast({ title: "Export failed", description: e.message, variant: "destructive" }); }
-    finally { setIsBusy(false); }
+      const label = ids.length === 1 ? `batch_${ids[0]}` : `batches_export`;
+      if (kind === "csv") {
+        downloadBlob(new Blob([recordsToCsv(data)], { type: "text/csv;charset=utf-8;" }), `${label}.csv`);
+        toast({ title: "CSV exported" });
+      } else {
+        downloadBlob(recordsToXlsx(data, "Extracted Data"), `${label}.xlsx`);
+        toast({ title: "Excel exported" });
+      }
+    } catch (e) {
+      toast({ title: "Export failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setBusyAction(null);
+    }
   };
 
-  const exportExcel = async (overrideIds?: Set<number>) => {
-    const targetIds = overrideIds || selectedIds;
-    if (!targetIds.size) return; setIsBusy(true);
-    try {
-      const list = await fetchSelected(targetIds);
-      const data = buildExport(list);
-      const label = targetIds.size === 1 ? `batch_${[...targetIds][0]}` : `batches_export`;
-      downloadBlob(recordsToXlsx(data, "Extracted Data"), `${label}.xlsx`);
-      toast({ title: "Excel exported" });
-    } catch (e: any) { toast({ title: "Export failed", description: e.message, variant: "destructive" }); }
-    finally { setIsBusy(false); }
-  };
+  const exportCSV = (overrideIds?: Set<number>) => doExport("csv", overrideIds);
+  const exportExcel = (overrideIds?: Set<number>) => doExport("excel", overrideIds);
 
-  const handleSingleDelete = async (id: number) => {
-    setIsBusy(true);
-    try {
-      await deleteBatch(id);
-      await queryClient.invalidateQueries({ queryKey: getListBatchesQueryKey() });
-      toast({ title: `Batch #${id} deleted` });
-      setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
-    } catch (e: any) { toast({ title: "Delete failed", description: e.message, variant: "destructive" }); }
-    finally { setIsBusy(false); }
+  const handleBulkDelete = () => {
+    if (!selectedIds.size || busyAction) return;
+    const n = selectedIds.size;
+    setPendingDelete({ ids: [...selectedIds], label: `${n} batch${n > 1 ? "es" : ""}` });
   };
 
   const firstName = user?.name?.split(" ")[0] ?? "";
@@ -179,30 +244,43 @@ export default function AppHome() {
     <div className={`flex flex-col gap-6 ${isSelecting ? "pb-24" : ""}`}>
 
       {/* ── Header ─────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <Sparkles className="h-3 w-3 text-primary" />
-            <span className="text-[13px] font-medium text-primary">
+      <PageHeader
+        eyebrow={
+          <>
+            <FileCheck2 className="h-3.5 w-3.5 text-primary" />
+            <span className="text-primary">
               {greeting()}{firstName ? `, ${firstName}` : ""}
             </span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Your batches</h1>
-          {stats && (
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              {stats.total} run{stats.total !== 1 ? "s" : ""} · {stats.docs} doc{stats.docs !== 1 ? "s" : ""}
-              {stats.running > 0 && <span className="text-amber-600 dark:text-amber-400"> · {stats.running} running</span>}
-              {stats.failed > 0 && <span className="text-red-500"> · {stats.failed} failed</span>}
-            </p>
-          )}
-        </div>
-        <Button
-          onClick={() => setLocation("/app/upload")}
-          className="h-9 shrink-0 rounded-lg px-4 text-[13px] font-semibold shadow-sm hover:shadow-md hover:-translate-y-px transition-all"
-        >
-          <Plus className="mr-1.5 h-3.5 w-3.5" />New Batch
-        </Button>
-      </div>
+          </>
+        }
+        title="Your batches"
+        /* "4 runs · 4 docs" sat directly above a "Total Batches 4" card and a
+           "Documents 4" card. The stat row owns the totals; this line is for the
+           part of the picture the row cannot show — whether anything needs
+           attention right now. */
+        description={
+          stats && (stats.running > 0 || stats.failed > 0) ? (
+            <>
+              {stats.running > 0 && (
+                <span className="text-warning">
+                  {stats.running} still running
+                </span>
+              )}
+              {stats.running > 0 && stats.failed > 0 && " · "}
+              {stats.failed > 0 && (
+                <span className="text-destructive">
+                  {stats.failed} failed
+                </span>
+              )}
+            </>
+          ) : undefined
+        }
+        actions={
+          <Button onClick={() => setLocation("/app/upload")} className="rounded-lg px-4 font-semibold shadow-sm">
+            <Plus className="h-4 w-4" />New Batch
+          </Button>
+        }
+      />
 
       {/* ── Stats ──────────────────────────────────────────── */}
       {stats && (
@@ -210,7 +288,12 @@ export default function AppHome() {
           <StatCard label="Total Batches" value={stats.total} icon={FileText} tone="muted" />
           <StatCard label="Documents" value={stats.docs} icon={BarChart3} tone="muted" />
           <StatCard label="Completed" value={stats.done} icon={CheckCircle2} tone="success" />
-          <StatCard label={stats.running > 0 ? "In Flight" : "Failed"} value={stats.running > 0 ? stats.running : stats.failed} icon={Activity} tone={stats.running > 0 ? "primary" : stats.failed > 0 ? "warning" : "muted"} />
+          <StatCard
+            label={stats.running > 0 ? "In Flight" : "Failed"}
+            value={stats.running > 0 ? stats.running : stats.failed}
+            icon={Activity}
+            tone={stats.running > 0 ? "primary" : stats.failed > 0 ? "warning" : "muted"}
+          />
         </div>
       )}
 
@@ -220,24 +303,24 @@ export default function AppHome() {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <div className="relative w-full sm:w-56 shrink-0">
               <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input 
+              <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search batches..."
-                className="h-8 pl-8 text-[12px] rounded-lg bg-card border-border/60 focus-visible:ring-1"
+                className="h-8 pl-8 text-label rounded-lg bg-card border-border/60 focus-visible:ring-1"
               />
             </div>
-            
+
             <button
               onClick={handleSelectAll}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors shrink-0"
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-border/60 bg-card px-3 text-label font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors shrink-0"
             >
               {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
               {allSelected ? "Deselect all" : "Select all"}
             </button>
 
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="h-8 w-[130px] border-border/60 text-[12px] rounded-lg bg-card">
+              <SelectTrigger className="h-8 w-[130px] border-border/60 text-label rounded-lg bg-card">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -251,19 +334,21 @@ export default function AppHome() {
             </Select>
 
             <Select value={filterEngine} onValueChange={setFilterEngine}>
-              <SelectTrigger className="h-8 w-[130px] border-border/60 text-[12px] rounded-lg bg-card">
+              <SelectTrigger className="h-8 w-[130px] border-border/60 text-label rounded-lg bg-card">
                 <SelectValue placeholder="Engine" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All engines</SelectItem>
-                {PRESETS.map((p) => (<SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>))}
+                {PRESETS.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
             {(filterStatus !== "all" || filterEngine !== "all" || searchQuery !== "") && (
               <button
-                onClick={() => { setFilterStatus("all"); setFilterEngine("all"); setSearchQuery(""); }}
-                className="flex h-8 items-center gap-1 rounded-lg border border-border/60 px-2.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors bg-card shrink-0"
+                onClick={clearFilters}
+                className="flex h-8 items-center gap-1 rounded-lg border border-border/60 px-2.5 text-label text-muted-foreground hover:text-foreground transition-colors bg-card shrink-0"
               >
                 <X className="h-3 w-3" /> Clear
               </button>
@@ -271,7 +356,7 @@ export default function AppHome() {
           </div>
 
           <Select value={sortOrder} onValueChange={(v: "newest" | "oldest") => setSortOrder(v)}>
-            <SelectTrigger className="h-8 w-[120px] border-border/60 bg-card text-[12px] rounded-lg">
+            <SelectTrigger className="h-8 w-[120px] border-border/60 bg-card text-label rounded-lg">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -284,84 +369,82 @@ export default function AppHome() {
 
       {/* ── List ───────────────────────────────────────────── */}
       {isLoading ? (
-        <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
-          {[0, 1, 2, 3].map(i => <SkeletonRow key={i} />)}
-        </div>
+        <ListSkeleton />
       ) : error ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-8 text-center">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
-            <X className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="font-semibold text-foreground text-sm">Could not load batches</p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">Nothing was lost — try again in a moment.</p>
-          </div>
-          <Button variant="outline" size="sm" className="rounded-lg text-[13px]" onClick={() => queryClient.invalidateQueries({ queryKey: getListBatchesQueryKey() })}>
-            Try again
-          </Button>
-        </div>
+        <ErrorState
+          title="Could not load your batches"
+          body="Nothing was lost — try again in a moment."
+          onRetry={() => queryClient.refetchQueries({ queryKey: getListBatchesQueryKey() })}
+        />
       ) : !batches?.length ? (
-        /* Empty state */
-        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-border/60 bg-card/40 py-20 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-card text-muted-foreground shadow-sm">
-            <FileText className="h-6 w-6" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-foreground">No batches yet</h3>
-            <p className="mt-1 text-[13px] text-muted-foreground max-w-xs">
-              Upload invoices, receipts, or any document and BrainHalf will extract the data for you.
-            </p>
-          </div>
-          <Button onClick={() => setLocation("/app/upload")} className="rounded-lg h-9 px-5 text-[13px] font-semibold shadow-sm">
-            <Plus className="mr-1.5 h-3.5 w-3.5" />Start extraction
-          </Button>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="No batches yet"
+          body="Upload invoices, receipts, or any document and BrainHalf will extract the data for you."
+          action={
+            <Button onClick={() => setLocation("/app/upload")}>
+              <Plus className="h-4 w-4" />
+              Start extraction
+            </Button>
+          }
+        />
       ) : filteredBatches.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-border/50 bg-card/60 py-14 text-center">
-          <p className="font-medium text-sm text-foreground">No results for these filters</p>
-          <button onClick={() => { setFilterStatus("all"); setFilterEngine("all"); }} className="text-[13px] text-primary hover:underline">
-            Clear filters
-          </button>
-        </div>
+        <EmptyState
+          inset
+          icon={Search}
+          title="No batches match these filters"
+          body="Widen the search, or clear the filters to see everything again."
+          action={
+            <Button variant="outline" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          }
+        />
       ) : (
         <div className="rounded-xl border border-border/60 bg-card overflow-hidden shadow-sm">
           <div className="divide-y divide-border/50">
-            {filteredBatches.map((batch: any, idx: number) => {
+            {filteredBatches.map((batch: BatchSummary) => {
               const isSelected = selectedIds.has(batch.id);
               const progress = batch.totalDocuments > 0 ? (batch.completedDocuments / batch.totalDocuments) * 100 : 0;
               const isImage = batch.firstDocumentContentType?.startsWith("image/");
-              const engineLabel = engineLabels.get(batch.engineType) ?? batch.engineType ?? "—";
+              const engineLabel = engineLabels.get(batch.engineType ?? "") ?? batch.engineType ?? "—";
 
               return (
                 <div
                   key={batch.id}
                   className={`group flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors duration-100
                     ${isSelected ? "bg-primary/5 dark:bg-primary/10" : "hover:bg-muted/40"}
-                    ${idx === 0 ? "" : ""}
                   `}
                   onClick={(e) => {
-                    if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).closest("button")) return;
+                    const t = e.target as HTMLElement;
+                    if (t.tagName === "INPUT" || t.closest("button")) return;
+                    // FIX: while selecting, row clicks toggle selection
+                    // instead of throwing the selection away to navigate
+                    if (isSelecting) {
+                      toggleSelect(batch.id);
+                      return;
+                    }
                     setLocation(`/app/batches/${batch.id}`);
                   }}
                 >
                   {/* Checkbox */}
                   <input
                     type="checkbox"
+                    aria-label={`Select batch #${batch.id}`}
                     className="h-3.5 w-3.5 rounded border-border/60 shrink-0 cursor-pointer accent-primary"
                     checked={isSelected}
-                    onChange={(e) => toggleSelect(batch.id, e as any)}
+                    onChange={() => toggleSelect(batch.id)}
                     onClick={(e) => e.stopPropagation()}
                   />
 
                   {/* Thumbnail */}
                   <div className="relative h-10 w-10 shrink-0 rounded-lg bg-muted border border-border/50 overflow-hidden flex items-center justify-center group-hover:border-border transition-colors">
-                    {/* Persistent Fallback */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted z-0">
                       <FileText className="h-4 w-4 text-muted-foreground/60 mb-0.5" />
-                      <span className="text-[7.5px] font-bold text-muted-foreground uppercase">{batch.firstDocumentContentType?.split("/").pop()?.slice(0, 4) ?? "DOC"}</span>
+                      <span className="text-micro font-semibold uppercase text-muted-foreground">
+                        {batch.firstDocumentContentType?.split("/").pop()?.slice(0, 4) ?? "DOC"}
+                      </span>
                     </div>
-
-                    {/* Image Layer */}
                     {batch.firstDocumentObjectPath && isImage ? (
                       <img
                         src={storageUrl(batch.firstDocumentObjectPath)}
@@ -376,36 +459,57 @@ export default function AppHome() {
                   {/* Info */}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[13.5px] font-semibold text-foreground">Batch #{batch.id}</span>
-                      <span className="rounded-md border border-border/50 bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">{engineLabel}</span>
-                      <StatusChip status={batch.status} />
+                      <span className="text-body-sm font-data font-semibold text-foreground">Batch #{batch.id}</span>
+                      <span className="rounded-md border border-border/50 bg-muted px-1.5 py-px text-micro font-medium text-muted-foreground">
+                        {engineLabel}
+                      </span>
+                      <StatusBadge status={batch.status} />
                     </div>
-                    <p className="text-[12px] text-muted-foreground mt-0.5">
-                      {formatDistanceToNow(new Date(batch.createdAt), { addSuffix: true })}
+                    <p className="text-label text-muted-foreground mt-0.5">
+                      {timeAgo(batch.createdAt) || "just now"}
                     </p>
                   </div>
 
-                  {/* Progress */}
-                  <div className="hidden sm:flex flex-col gap-1 w-32 shrink-0">
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-muted-foreground font-medium">Progress</span>
-                      <span className={`font-semibold ${progress === 100 ? "text-emerald-600 dark:text-emerald-400" : batch.status === "failed" ? "text-red-500" : "text-foreground"}`}>
-                        {batch.completedDocuments}/{batch.totalDocuments}
-                      </span>
-                    </div>
-                    <div className="h-1 w-full rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${progress === 100 ? "bg-emerald-500" : batch.status === "failed" ? "bg-red-400" : "bg-primary"}`}
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
+                  {/* The bar appears only while there is progress left to
+                      make. Every finished batch used to carry a full green track
+                      under the word "Progress" — four identical 100% bars down
+                      the list, saying nothing that the "Done" badge had not. */}
+                  <div className="hidden w-28 shrink-0 flex-col gap-1.5 sm:flex">
+                    <span
+                      className={`text-right font-data text-caption font-semibold ${
+                        batch.status === "failed"
+                          ? "text-destructive"
+                          : progress === 100
+                            ? "text-muted-foreground"
+                            : "text-foreground"
+                      }`}
+                    >
+                      {batch.completedDocuments}/{batch.totalDocuments} docs
+                    </span>
+                    {progress < 100 && (
+                      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            batch.status === "failed" ? "bg-destructive/70" : "bg-primary"
+                          }`}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}
                   <div className="shrink-0 flex items-center gap-0.5">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 hover:text-foreground hover:bg-muted transition-all focus:outline-none" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          aria-label={`Actions for batch #${batch.id}`}
+                          /* focus:outline-none with nothing in its place: this
+                             row-actions trigger was reachable by keyboard and
+                             showed no focus state at all. */
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 transition-all hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <MoreHorizontal className="h-4 w-4" />
                         </button>
                       </DropdownMenuTrigger>
@@ -418,13 +522,20 @@ export default function AppHome() {
                           <Download className="mr-2 h-4 w-4 text-muted-foreground" />
                           Export Excel
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950" onClick={() => handleSingleDelete(batch.id)}>
+                        {/* FIX: routes through confirm dialog — was delete on first click */}
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                          onClick={() => setPendingDelete({ ids: [batch.id], label: `Batch #${batch.id}` })}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Delete Batch
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 group-hover:text-muted-foreground group-hover:bg-muted transition-all">
+                    <div
+                      aria-hidden
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/40 transition-colors group-hover:text-muted-foreground"
+                    >
                       <ArrowRight className="h-3.5 w-3.5" />
                     </div>
                   </div>
@@ -437,25 +548,72 @@ export default function AppHome() {
 
       {/* ── Bulk action floating bar ────────────────────────── */}
       {isSelecting && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-border/70 bg-card/95 px-3.5 py-2 shadow-xl backdrop-blur-md">
-          <span className="text-[12.5px] font-semibold text-foreground pr-1">{selectedIds.size} selected</span>
-          <div className="h-3.5 w-px bg-border/60" />
-          <button onClick={exportCSV} disabled={isBusy} className="flex h-7 items-center gap-1 rounded-lg border border-border/60 bg-muted px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/80 disabled:opacity-50 transition-colors">
-            {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} CSV
-          </button>
-          <button onClick={exportExcel} disabled={isBusy} className="flex h-7 items-center gap-1 rounded-lg border border-border/60 bg-muted px-2.5 text-[12px] font-medium text-foreground hover:bg-muted/80 disabled:opacity-50 transition-colors">
-            {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Excel
-          </button>
-          <div className="h-3.5 w-px bg-border/60" />
-          <button onClick={handleBulkDelete} disabled={isBusy} className="flex h-7 items-center gap-1 rounded-lg border border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-950/40 px-2.5 text-[12px] font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/60 disabled:opacity-50 transition-colors">
-            {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete
-          </button>
-          <div className="h-3.5 w-px bg-border/60" />
-          <button onClick={() => setSelectedIds(new Set())} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+        <div className="fixed inset-x-4 bottom-4 z-50 mx-auto flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-2 rounded-xl border border-border bg-card/95 px-3.5 py-2 shadow-lg backdrop-blur-md sm:bottom-5">
+          <span className="pr-1 text-label font-semibold text-foreground">{selectedIds.size} selected</span>
+          <div className="hidden h-3.5 w-px bg-border/60 sm:block" />
+          <Button
+            onClick={() => exportCSV()}
+            disabled={!!busyAction}
+            variant="secondary"
+            size="sm"
+            className="h-7 gap-1 rounded-lg px-2.5 [&_svg]:size-3"
+          >
+            {busyAction === "csv" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} CSV
+          </Button>
+          <Button
+            onClick={() => exportExcel()}
+            disabled={!!busyAction}
+            variant="secondary"
+            size="sm"
+            className="h-7 gap-1 rounded-lg px-2.5 [&_svg]:size-3"
+          >
+            {busyAction === "excel" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />} Excel
+          </Button>
+          <div className="hidden h-3.5 w-px bg-border/60 sm:block" />
+          <Button
+            onClick={handleBulkDelete}
+            disabled={!!busyAction}
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 rounded-lg border-destructive/30 bg-destructive/10 px-2.5 text-destructive [&_svg]:size-3"
+          >
+            {busyAction === "delete" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Delete
+          </Button>
+          <div className="hidden h-3.5 w-px bg-border/60 sm:block" />
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            aria-label="Clear selection"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
+
+      {/* ── Delete confirmation (single + bulk share this) ──── */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {pendingDelete?.label}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The batch and everything extracted from it will be permanently deleted. No undo, no recovery.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive"
+              onClick={(e) => {
+                e.preventDefault(); // keep dialog open while deleting
+                performDelete();
+              }}
+            >
+              {busyAction === "delete" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

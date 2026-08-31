@@ -35,7 +35,24 @@ import {
   retryWithoutRejectedParam,
   usedTokens,
 } from '../../server/openai-params';
+import {
+  MAX_CUSTOM_PROMPT_CHARS,
+  OCR_DOCUMENT_TYPES,
+  buildUpstreamRequest,
+  isOcrMode,
+  type OcrMode,
+} from '../../server/ocr-prompts';
 
+/**
+ * 20 MB, and it is the binding constraint on PDF size rather than an arbitrary
+ * round number: the document arrives base64-encoded inside this JSON body, which
+ * costs 1.34x, and raising this is not free -- decoding the body into a JS string
+ * and JSON.parsing it are two more copies again, against a 128 MB isolate.
+ *
+ * src/lib/upload-limits.ts derives the 14 MB PDF cap from this value, and
+ * functions/api/storage/upload.ts enforces it before a byte is stored. Change one
+ * and change all three.
+ */
 const MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB
 const MAX_ERROR_DETAIL_CHARS = 500;
 const UPSTREAM_TIMEOUT_MS = 60_000;
@@ -71,22 +88,43 @@ import {
 
 type Tier = 'default' | 'escalation';
 
-interface ChatMessage {
-  role: string;
-  content: any[];
+/**
+ * What a caller may send.
+ *
+ * It used to be a `messages` array, forwarded upstream verbatim -- so this
+ * endpoint was general purpose LLM access on the account's budget, reachable by
+ * anyone with a session. The caller now names a mode and supplies a document; the
+ * prompt is built server-side in server/ocr-prompts.ts from values checked
+ * against a fixed list. Nothing in this body reaches the model as instructions.
+ */
+interface OcrRequestBody {
+  tier?: unknown;
+  mode?: unknown;
+  customPrompt?: unknown;
+  document?: {
+    contentType?: unknown;
+    dataUrl?: unknown;
+    filename?: unknown;
+  };
+  /** Rejected, not ignored. See the check in the handler. */
+  messages?: unknown;
 }
 
-interface OcrRequestBody {
-  messages?: ChatMessage[];
-  temperature?: number;
-  seed?: number;
-  /**
-   * Whether the caller's prompt asks for a JSON *object*. Only the OpenAI tier
-   * uses this (response_format=json_object); the Hunyuan tier ignores it.
-   */
-  jsonObject?: boolean;
-  tier?: string;
+/** The parts of the upstream call a provider body is assembled from. */
+interface UpstreamInput {
+  messages: Array<{ role: string; content: unknown[] }>;
+  jsonObject: boolean;
 }
+
+/**
+ * Fixed rather than caller-supplied. Both were read off the request body, which
+ * gave a caller two knobs on billed behaviour for no reason -- the prompts want
+ * deterministic output, which is what these values are for.
+ */
+const UPSTREAM_TEMPERATURE = 0;
+const UPSTREAM_SEED = 42;
+
+const ALLOWED_DOCUMENT_TYPES: ReadonlySet<string> = new Set(OCR_DOCUMENT_TYPES);
 
 /**
  * Everything needed to call one provider. The two providers share the
@@ -100,7 +138,7 @@ interface Provider {
   /** Extra headers for the upstream call (e.g. the Hunyuan UA workaround). */
   extraHeaders: Record<string, string>;
   /** Builds the provider-specific request body. */
-  buildBody: (body: OcrRequestBody) => Record<string, unknown>;
+  buildBody: (input: UpstreamInput) => Record<string, unknown>;
   /**
    * Whether to run the strip-rejected-param-and-retry loop. Only the OpenAI
    * tier sends the optional parameters that a model might reject by name.
@@ -137,14 +175,14 @@ function resolveProvider(env: AppEnv, tier: Tier): Provider | Response {
       extraHeaders: {},
       // logprobs is what makes confidence scoring real on this tier. The dev
       // proxy in vite.config.ts must send the same, or dev and prod disagree.
-      buildBody: (body) => ({
+      buildBody: (input) => ({
         model,
-        messages: body.messages,
+        messages: input.messages,
         ...buildModelParams(model, {
-          temperature: body.temperature ?? 0,
-          seed: body.seed ?? 42,
+          temperature: UPSTREAM_TEMPERATURE,
+          seed: UPSTREAM_SEED,
           logprobs: true,
-          jsonObject: body.jsonObject === true,
+          jsonObject: input.jsonObject,
           maxCompletionTokens: MAX_COMPLETION_TOKENS,
         }),
       }),
@@ -166,11 +204,11 @@ function resolveProvider(env: AppEnv, tier: Tier): Provider | Response {
       // The minimal body the Hunyuan endpoint is known to accept. It does not
       // support logprobs / response_format, so confidence on this tier comes
       // from the _overall_confidence value the prompt asks the model to return.
-      buildBody: (body) => ({
+      buildBody: (input) => ({
         model: hunyuanModel,
-        messages: body.messages,
-        temperature: body.temperature ?? 0,
-        seed: body.seed ?? 42,
+        messages: input.messages,
+        temperature: UPSTREAM_TEMPERATURE,
+        seed: UPSTREAM_SEED,
       }),
       retryOnReject: false,
     };
@@ -190,14 +228,14 @@ function resolveProvider(env: AppEnv, tier: Tier): Provider | Response {
       key: fallbackKey,
       model: fallbackModel,
       extraHeaders: {},
-      buildBody: (body) => ({
+      buildBody: (input) => ({
         model: fallbackModel,
-        messages: body.messages,
+        messages: input.messages,
         ...buildModelParams(fallbackModel, {
-          temperature: body.temperature ?? 0,
-          seed: body.seed ?? 42,
+          temperature: UPSTREAM_TEMPERATURE,
+          seed: UPSTREAM_SEED,
           logprobs: true,
-          jsonObject: body.jsonObject === true,
+          jsonObject: input.jsonObject,
           maxCompletionTokens: MAX_COMPLETION_TOKENS,
         }),
       }),
@@ -236,9 +274,17 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
   // content-length is a claim, not a fact: it can be absent on a chunked upload
   // or simply wrong. Check the declared size first as a cheap rejection, then
   // check what actually arrived, before parsing 20 MB of JSON.
+  // Names the cause. "Document too large." on its own was indistinguishable from
+  // a provider problem, and the file it referred to had already uploaded cleanly.
+  const tooLarge = () =>
+    fail(
+      "This document is too large to extract. PDFs must be under 14 MB, because the whole file is sent to the model.",
+      413,
+    );
+
   const declaredLength = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
-    return fail("Document too large.", 413);
+    return tooLarge();
   }
 
   let rawBody: ArrayBuffer;
@@ -250,7 +296,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
   }
 
   if (rawBody.byteLength > MAX_BODY_BYTES) {
-    return fail("Document too large.", 413);
+    return tooLarge();
   }
 
   let body: OcrRequestBody;
@@ -260,9 +306,60 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
     return fail("Request body must be valid JSON.", 400);
   }
 
-  if (!Array.isArray(body?.messages) || body.messages.length === 0) {
-    return fail("Request must include a non-empty `messages` array.", 400);
+  // A `messages` array is refused outright rather than ignored. Accepting one was
+  // the whole vulnerability, and a client still sending it is a stale deploy that
+  // should fail loudly rather than have its prompt silently replaced.
+  if (body.messages !== undefined) {
+    return fail(
+      "This endpoint no longer accepts a `messages` array. Send { mode, document } instead.",
+      400,
+    );
   }
+
+  if (!isOcrMode(body.mode)) {
+    return fail("Unknown or missing extraction mode.", 400);
+  }
+  const mode: OcrMode = body.mode;
+
+  // The user's own instructions are the ONE piece of caller text that reaches the
+  // model, and only inside the delimited block server/ocr-prompts.ts puts it in.
+  const customPrompt =
+    typeof body.customPrompt === 'string' && body.customPrompt.trim()
+      ? body.customPrompt.trim().slice(0, MAX_CUSTOM_PROMPT_CHARS)
+      : undefined;
+
+  const documentInput = body.document;
+  if (!documentInput || typeof documentInput !== 'object') {
+    return fail("Request must include a `document`.", 400);
+  }
+
+  const contentType =
+    typeof documentInput.contentType === 'string' ? documentInput.contentType : '';
+  if (!ALLOWED_DOCUMENT_TYPES.has(contentType)) {
+    return fail(
+      `Unsupported document type (${contentType || 'unknown'}). Use JPG, PNG, WEBP, or PDF.`,
+      415,
+    );
+  }
+
+  const dataUrl = typeof documentInput.dataUrl === 'string' ? documentInput.dataUrl : '';
+  // Must be inline base64, never a URL. A remote address here would have the
+  // provider fetch whatever the caller named, on our credential.
+  if (!dataUrl.startsWith(`data:${contentType};base64,`) || dataUrl.length < 32) {
+    return fail("`document.dataUrl` must be a base64 data URL matching the declared type.", 400);
+  }
+
+  const filename =
+    typeof documentInput.filename === 'string'
+      ? documentInput.filename.slice(0, 255)
+      : 'document';
+
+  // Everything sent upstream is built here, from the values checked above.
+  const upstream = buildUpstreamRequest(mode, customPrompt, {
+    contentType,
+    dataUrl,
+    filename,
+  });
 
   // Anything other than the exact string "escalation" is the default tier. A
   // typo or a hostile value costs the caller quality, never premium quota.
@@ -296,7 +393,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
     if (escalationLimited) return escalationLimited;
   }
 
-  let upstreamBody = provider.buildBody(body);
+  let upstreamBody = provider.buildBody(upstream);
 
   // Up to two attempts, but only the OpenAI tier ever uses the second: it is
   // the only one that sends optional parameters a model might reject by name.
@@ -319,7 +416,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
       });
 
       if (upstream.ok) {
-        let data: any;
+        let data: unknown;
         try {
           data = await upstream.json();
         } catch (error) {
@@ -338,7 +435,8 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
         // A response cut off at the token ceiling is truncated mid-JSON. The
         // client's parser will fail on it and report a failed extraction, which
         // looks identical to a provider outage unless this is logged.
-        if (data?.choices?.[0]?.finish_reason === 'length') {
+        const choices = (data as { choices?: Array<{ finish_reason?: unknown }> } | null)?.choices;
+        if (choices?.[0]?.finish_reason === 'length') {
           console.error(
             `[api/ocr] response hit max_completion_tokens (${MAX_COMPLETION_TOKENS}); JSON is likely truncated.`,
           );
@@ -374,31 +472,35 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
         `[api/ocr] provider=${provider.name} HTTP ${upstream.status}: ${detail || upstream.statusText}`,
       );
 
-      // The upstream status is NOT forwarded verbatim. A vendor 401 is not the
-      // caller's 401: the client's error handler reads 401 as "your session has
-      // expired" and signs the user out, so an expired *vendor* key used to log
-      // everybody out. A 429 read as the caller's rate limit was equally wrong.
-      // Anything that describes our relationship with the provider is a gateway
-      // problem, which is what 502 means. This matches the dev proxy in
-      // vite.config.ts. 413 is the exception: that one really is about the
-      // caller's document.
-      // We use 503 instead of 502 because Cloudflare Pages intercepts 502
-      // and replaces it with a generic HTML/text error page, breaking the JSON response.
-      const status = upstream.status === 413 ? 413 : 503;
+      // 413 is the one upstream status that really is about the caller's document.
+      if (upstream.status === 413) return tooLarge();
 
-      return json({
-        error: `OCR provider returned HTTP ${upstream.status}`,
-        details: detail || upstream.statusText,
-      }, status);
+      // Neither the vendor's status nor its message is forwarded.
+      //
+      // The status, because a vendor 401 is not the caller's 401: the client reads
+      // 401 as "your session has expired" and signs the user out, so an expired
+      // *vendor* key used to log everybody out, and a vendor 429 read as the
+      // caller's own rate limit. Anything describing our relationship with the
+      // provider is a gateway problem. 503 rather than 502 because Cloudflare Pages
+      // replaces a 502 with its own HTML error page, which breaks the JSON contract.
+      //
+      // The message, because it is the vendor's prose about our account: it has
+      // named models, endpoints, quota states and billing conditions. It is logged
+      // above, where an operator can read it, and not returned to a browser.
+      return fail(
+        "The extraction service could not read this document. Try again in a moment.",
+        503,
+      );
 
-    } catch (error: any) {
-      const reason = error?.message || String(error);
-      console.error(`[api/ocr] provider=${provider.name} unreachable: ${reason}`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      // Logged, not returned: a transport failure message can carry the upstream
+      // hostname and the shape of our egress.
+      console.error(
+        `[api/ocr] provider=${provider.name} unreachable: ${reason.slice(0, MAX_ERROR_DETAIL_CHARS)}`,
+      );
 
-      return json({
-        error: "Could not reach the OCR service.",
-        details: reason.slice(0, MAX_ERROR_DETAIL_CHARS),
-      }, 503);
+      return fail("Could not reach the extraction service. Try again in a moment.", 503);
     }
   }
 

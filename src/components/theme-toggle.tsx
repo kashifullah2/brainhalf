@@ -41,12 +41,12 @@ export function ThemeToggle() {
           <DropdownMenuItem
             key={option.value}
             onClick={() => setTheme(option.value)}
-            className="cursor-pointer rounded-lg text-sm font-semibold"
+            className="cursor-pointer rounded-lg text-body font-semibold"
           >
             <option.icon className="mr-2 h-4 w-4" />
             {option.label}
             {theme === option.value && (
-              <span className="ml-auto text-xs font-bold text-primary">•</span>
+              <span className="ml-auto text-label font-semibold text-primary">•</span>
             )}
           </DropdownMenuItem>
         ))}

@@ -1,5 +1,10 @@
 import type { ComponentType, ReactNode } from "react";
 
+/**
+ * The icon tile's tint. Every caller already passed a `tone`; the prop was
+ * accepted, destructured and then never used, so a "Failed" card and a
+ * "Completed" card were rendered identically and this table was dead.
+ */
 const TONES = {
   primary: "bg-primary/10 text-primary",
   warning: "bg-warning/10 text-warning",
@@ -16,7 +21,16 @@ interface StatCardProps {
   tone?: keyof typeof TONES;
 }
 
-/** One number, named. Used in rows of three or four across the app pages. */
+/**
+ * One number, named. Used in rows of three or four across the app pages.
+ *
+ * Heights are equalised by the grid, not by reserving space: `h-full` plus
+ * `mt-auto` on the value means a row of cards whose labels all fit on one line
+ * is one line tall, and a row where one label wraps grows all four together
+ * with the numbers still sharing a baseline. The previous version reserved two
+ * label lines unconditionally, so every card in the product carried ~22px of
+ * dead space above its number whether it needed it or not.
+ */
 export function StatCard({
   label,
   value,
@@ -25,19 +39,22 @@ export function StatCard({
   tone = "primary",
 }: StatCardProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        {/* min-h reserves the second line so the numbers in a row share a
-            baseline whether or not a label wraps. */}
-        <span className="text-sm font-medium text-muted-foreground line-clamp-2">
+    <div className="flex h-full flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-body-sm font-medium text-muted-foreground">
           {label}
         </span>
-        <Icon className="h-4 w-4 text-muted-foreground/50" />
+        <span
+          aria-hidden
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${TONES[tone]}`}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </span>
       </div>
-      <div className="text-4xl font-serif text-foreground">
+      <div className="mt-auto flex flex-wrap items-baseline gap-x-2 font-serif text-3xl text-foreground">
         {value}
         {hint ? (
-          <span className="ml-2 font-sans text-sm font-medium text-muted-foreground">
+          <span className="font-sans text-body-sm font-medium text-muted-foreground">
             {hint}
           </span>
         ) : null}

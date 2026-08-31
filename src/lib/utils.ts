@@ -7,13 +7,20 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Sanitizes strings for CSV/Excel export to prevent formula injection attacks.
- * If a string starts with a formula character (=, +, -, @), it prepends a single quote.
+ * Neutralises spreadsheet formula injection in exported values.
+ *
+ * A cell whose first character is one of `= + - @` is evaluated as a formula by
+ * Excel, Sheets and LibreOffice, so an extracted value -- or a filename -- of
+ * `=HYPERLINK("http://evil","click")` becomes a live link in whoever opens the
+ * export. Prefixing an apostrophe forces the cell to text.
+ *
+ * TAB and CR are guarded as well: spreadsheets strip leading control characters
+ * before deciding whether a cell is a formula, so `\t=1+1` is evaluated exactly
+ * like `=1+1` while sailing past a check that only looks at index 0.
  */
+const FORMULA_LEAD = /^[\t\r\n ]*[=+\-@]/;
+
 export function sanitizeForExport(value: unknown): string {
   const str = String(value ?? "");
-  if (/^[=+\-@]/.test(str)) {
-    return "'" + str;
-  }
-  return str;
+  return FORMULA_LEAD.test(str) ? `'${str}` : str;
 }

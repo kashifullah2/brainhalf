@@ -6,32 +6,44 @@
 // else in the browser bundle — a VITE_-prefixed secret is inlined into the
 // published JavaScript and readable by anyone with DevTools.
 //
-// The caller selects a *tier*, not a model. The proxy maps the tier to a model
-// server-side so a signed-in user cannot aim the account's small premium daily
-// quota at their own batch.
+// This file no longer composes what the model is sent. It names a *tier* and a
+// *mode* and hands over the document; the prompt, the document part and the
+// sampling parameters are built in server/ocr-prompts.ts. Two reasons:
+//
+//   - the proxy maps a tier to a model server-side, so a signed-in user cannot
+//     aim the account's small premium daily quota at their own batch;
+//   - it used to build the whole `messages` array here and the proxy forwarded it
+//     verbatim, which made /api/ocr general purpose LLM access on the account's
+//     budget for anyone holding a session.
 // ---------------------------------------------------------------------------
 
 import localforage from "localforage";
-import { 
-  calculateFieldConfidence, 
-  calculateDocumentOverallConfidence,
+import { apiRequest } from "./api-client";
+import {
+  calculateFieldConfidence,
   analyzeImageQuality,
   extractModelConfidence,
-  ImageQualityMetrics
+  ImageQualityMetrics,
 } from "./confidence-scorer";
 
 /**
  * Same-origin path to our OCR proxy, resolved against the deployment base so
  * the app keeps working when hosted under a sub-path (BASE_PATH=/foo/).
  */
-const OCR_PROXY_URL = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/ocr`;
+/** apiRequest resolves this against the deployment base; see lib/api-paths.ts. */
+const OCR_PROXY_PATH = "/ocr";
 
-// Drop caches from older schema versions. v4 added the model tier to the key and
-// began storing the model's real confidence alongside the content, so a v3 entry
-// cannot be reused: it would report a fabricated 0.92.
+// Drop caches from older schema versions.
+//
+// v4 added the model tier to the key and stored the model's confidence alongside
+// the content. v5 exists because that stored value could still be the hardcoded
+// 0.92 that extractModelConfidence() used to return when the provider gave no
+// signal at all -- a number above the review threshold, on documents nothing had
+// measured. Those entries have to go, or the fix would not reach anything already
+// cached.
 localforage.keys().then((keys) => {
   keys.forEach((key) => {
-    if (key.startsWith("ocr_cache_") && !key.startsWith("ocr_cache_v4_")) {
+    if (key.startsWith("ocr_cache_") && !key.startsWith("ocr_cache_v5_")) {
       localforage.removeItem(key);
     }
   });
@@ -88,7 +100,8 @@ export type OcrTier = 'default' | 'escalation';
  */
 interface CachedExtraction {
   content: string;
-  modelConfidence: number;
+  /** Null when the provider returned no certainty signal for this extraction. */
+  modelConfidence: number | null;
 }
 
 export async function processWithHunyuanOCR(
@@ -101,94 +114,68 @@ export async function processWithHunyuanOCR(
   // Convert file to Base64
   const base64Data = await fileToBase64(file);
 
-  // Construct prompt based on mode
-  const systemPrompt = getPromptForMode(mode, customPrompt);
-
   // Analyze client-side image quality (resolution, contrast, edge blur)
   const imageQuality = await analyzeImageQuality(file);
 
   const isPdf = file.type === "application/pdf";
 
+  /**
+   * Read the type back out of the data URL rather than off the File.
+   *
+   * fileToBase64 re-encodes images as JPEG, so a PNG upload arrives here as
+   * `data:image/jpeg;base64,...`. The server checks that the declared type and the
+   * data URL agree, and it is the URL that is telling the truth.
+   */
+  const declaredType = /^data:([^;]+);base64,/.exec(base64Data)?.[1] ?? file.type;
+
   // The tier is part of the cache key. The premium tier exists to produce a
   // *better* reading of the same bytes, so sharing one entry between tiers would
   // either serve the worse result or silently discard the better one.
-  const cacheKey = `ocr_cache_v4_${tier}_${mode}_${await hashString(base64Data)}`;
+  const cacheKey = `ocr_cache_v5_${tier}_${mode}_${await hashString(base64Data)}`;
 
   if (!forceReprocess) {
     try {
       const cached = await localforage.getItem<CachedExtraction>(cacheKey);
       if (cached?.content) {
-        console.log(`[OCR Client] Cache hit for ${file.name} (${mode}, ${tier})`);
         return parseOCRResult(cached.content, mode, cached.modelConfidence, imageQuality);
       }
     } catch (err) {
       console.warn("Failed to read from OCR cache:", err);
     }
-  } else {
-    console.log(`[OCR Client] forceReprocess enabled. Bypassing cache for ${file.name}`);
   }
 
-  // PDFs go as a `file` part, images as `image_url`. The vision `image_url`
-  // field accepts png/jpeg/webp/gif only, so the PDFs this app has always
-  // accepted at upload were being sent in a field that cannot carry them — every
-  // PDF failed mid-batch as an unexplained "extraction failed".
-  const documentPart = isPdf
-    ? {
-        type: "file",
-        file: {
-          filename: file.name || "document.pdf",
-          file_data: base64Data,
-        },
-      }
-    : {
-        type: "image_url",
-        image_url: {
-          url: base64Data,
-          // "high" tiles the image rather than reading it in one downsampled
-          // pass, which is the difference between reading a dense invoice and
-          // guessing at it. It costs more input tokens per page — see the quota
-          // notes in .env.example.
-          detail: "high",
-        },
-      };
-
+  /**
+   * What the server is asked for. Notably NOT a `messages` array.
+   *
+   * This used to compose the whole upstream conversation here -- system prompt,
+   * document part, temperature, seed, response format -- and /api/ocr forwarded it
+   * verbatim. That made the endpoint general purpose LLM access on the account's
+   * budget for anyone holding a session. The prompt, the document part and the
+   * sampling parameters are all built server-side now, in server/ocr-prompts.ts,
+   * from a mode checked against a fixed list.
+   *
+   * There is still no `model` field: the proxy resolves the model from `tier`, so a
+   * caller cannot aim the small premium daily quota at their own batch.
+   */
   const requestBody = {
-    // Deliberately no `model` field. The proxy resolves the model from `tier`,
-    // because a model name accepted from the browser would let any signed-in
-    // caller point the account's small premium daily quota at their own batch.
     tier,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: systemPrompt },
-          documentPart,
-        ],
-      },
-    ],
-    temperature: 0.0, // Force deterministic output
-    seed: 42, // Fix seed to eliminate run-to-run variance
-    // Two conditions must both hold to constrain the reply to a JSON object.
-    //
-    // 1. `table` mode asks for a JSON *array*, but response_format=json_object
-    //    requires a top-level object and parseOCRResult branches on
-    //    Array.isArray for that mode. Constraining it would break table output.
-    // 2. The provider rejects response_format=json_object outright unless the
-    //    prompt itself mentions JSON. Every prompt in getPromptForMode does say
-    //    "JSON", but `custom` mode interpolates text the user wrote, so this is
-    //    checked rather than assumed — an unmet invariant here would fail every
-    //    request in that mode with an error about the prompt, not the format.
-    jsonObject: mode !== "table" && /json/i.test(systemPrompt),
+    mode,
+    // The one piece of caller text that reaches the model, and only inside the
+    // delimited block the server's prompt builder puts it in.
+    customPrompt,
+    document: {
+      contentType: declaredType,
+      dataUrl: base64Data,
+      filename: file.name || (isPdf ? "document.pdf" : "document"),
+    },
   };
 
   // One request, to our own origin. There is no direct-to-provider fallback: a
   // browser cannot hold a credential, so the previous fallback published the
   // provider key to anyone who opened DevTools. A proxy failure is an error.
-  const response = await fetch(OCR_PROXY_URL, {
+  const response = await apiRequest(OCR_PROXY_PATH, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(requestBody),
   });
 
@@ -197,7 +184,10 @@ export async function processWithHunyuanOCR(
     let detail = raw.slice(0, 200);
     try {
       const parsedError = JSON.parse(raw) as OcrProxyError;
-      detail = parsedError.details || parsedError.error || detail;
+      // `details` only exists in development. Production deliberately returns a
+      // single user-facing `error` and logs the provider's own wording server-side,
+      // because that wording describes our account rather than this document.
+      detail = parsedError.error || parsedError.details || detail;
     } catch {
       // Not JSON, so the raw prefix above is the best detail available.
     }
@@ -205,9 +195,12 @@ export async function processWithHunyuanOCR(
     // native PDF input, every PDF fails while every image succeeds. An
     // unqualified "extraction failed" hides that pattern completely.
     const pdfHint = isPdf
-      ? " — this file is a PDF, which the configured model may not accept"
+      ? " This file is a PDF, which the configured model may not accept."
       : "";
-    throw new Error(`OCR processing failed (${response.status})${pdfHint}: ${detail}`);
+    // The server's sentence leads; the status is context, not the headline.
+    throw new Error(
+      `${detail || "Extraction failed."}${pdfHint} (HTTP ${response.status})`,
+    );
   }
 
   const data = await response.json();
@@ -281,50 +274,6 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function getPromptForMode(mode: string, customPrompt?: string): string {
-  const antiHallucination = `Do NOT hallucinate or guess unreadable text. If a word or field is blurry, low-quality, or ambiguous, output "[ILLEGIBLE]".`;
-  switch (mode) {
-    case "invoice":
-      return `Perform detailed OCR extraction on this invoice document. ${antiHallucination} Extract the following fields into JSON object format: "Invoice #", "Vendor", "Dates", "Subtotal", "Tax", "Total", "Payment status". Also include an "_overall_confidence" key (float between 0.0 and 1.0) indicating your certainty. Return ONLY a valid JSON object.`;
-    case "receipt":
-      return `Perform detailed OCR extraction on this receipt document. ${antiHallucination} Extract fields: "Merchant", "Line items", "Tax", "Tip", "Total", "Payment method". Also include an "_overall_confidence" key (float 0.0 to 1.0). Return ONLY a valid JSON object.`;
-    case "table":
-      return `Extract all tabular schedule or grid data from this document. ${antiHallucination} Return a JSON array of objects representing rows and column headers.`;
-    case "keyvalue":
-      return `Extract all visible label-value pairs from this form. ${antiHallucination} Return a JSON object with key-value mappings. Also include an "_overall_confidence" key (float 0.0 to 1.0).`;
-    case "handwriting":
-      return `This image contains handwritten text (cursive, print, or mixed). Carefully transcribe ALL handwritten content, preserving paragraph structure and line breaks. ${antiHallucination} Return ONLY a valid JSON object with these keys:
-- "text": The full handwritten text transcribed verbatim, preserving line breaks.
-- "writing_style": One of "cursive", "print", "mixed", or "block letters".
-- "language": The detected language of the handwriting.
-- "legibility": One of "clear", "mostly readable", "difficult", or "poor".
-- "_overall_confidence": A float between 0.0 and 1.0 representing your transcription certainty.`;
-    case "multilingual":
-      return `This image may contain text in one or more non-English languages or scripts. ${antiHallucination} First, detect the language(s) and script(s) present. Then transcribe ALL visible text in the original language verbatim. Finally, provide an English translation. Return ONLY a valid JSON object with these keys:
-- "detected_languages": An array of detected language names (e.g. ["Arabic", "English"]).
-- "detected_scripts": An array of script names (e.g. ["Arabic", "Latin"]).
-- "original_text": The full text transcribed verbatim in the original language, preserving line breaks.
-- "english_translation": An accurate English translation of the full text.
-- "_overall_confidence": A float between 0.0 and 1.0 representing your transcription certainty.`;
-    case "vqa":
-      if (customPrompt && customPrompt.trim().length > 0) {
-        return `You are a visual question answering AI. Look at this image carefully and answer the following question(s) based ONLY on what you can see:\n<question>\n${customPrompt.trim()}\n</question>\n\n${antiHallucination}\n\nCRITICAL OUTPUT RULES:\n1. Return ONLY a valid, parseable JSON object.\n2. Do NOT wrap your output in markdown code blocks.\n3. Do NOT output any conversational preamble.\n4. Answer each question as a separate key-value pair in the JSON.\n5. If the answer cannot be determined from the image, set the value to "Cannot determine from image".\n6. Include an "_overall_confidence" key (float 0.0 to 1.0).`;
-      }
-      return `You are a visual question answering AI. Look at this image carefully and provide a detailed analysis. ${antiHallucination} Return ONLY a valid JSON object with these keys:\n- "document_type": What type of document or image this is.\n- "key_information": The most important information visible.\n- "visual_elements": Description of visual elements (logos, stamps, signatures, photos).\n- "text_summary": A concise summary of all visible text.\n- "_overall_confidence": A float between 0.0 and 1.0.`;
-    case "custom":
-      if (customPrompt && customPrompt.trim().length > 0) {
-        return `You are a highly precise data extraction AI. Follow these user extraction instructions strictly:\n<user_instructions>\n${customPrompt.trim()}\n</user_instructions>\n\n${antiHallucination}\n\nCRITICAL OUTPUT RULES:\n1. Return ONLY a valid, parseable JSON object.\n2. Do NOT wrap your output in markdown code blocks (e.g., no \`\`\`json). Output the raw curly braces directly.\n3. Do NOT output any conversational preamble, greetings, or explanations.\n4. If a specifically requested field is completely missing from the document, set its value to null.\n5. Include an "_overall_confidence" key (float 0.0 to 1.0) indicating your certainty.`;
-      }
-      // Fallback if the user left the prompt empty
-      return `You are a highly precise data extraction AI. Extract all relevant information from this document.\n\n${antiHallucination}\n\nCRITICAL OUTPUT RULES:\n1. Return ONLY a valid, parseable JSON object with key-value pairs.\n2. Do NOT wrap your output in markdown code blocks.\n3. Do NOT output any conversational preamble.\n4. Include an "_overall_confidence" key (float 0.0 to 1.0).`;
-    case "fulltext":
-    default:
-      return `Perform OCR text extraction and visual analysis on this image. ${antiHallucination} Return ONLY a valid JSON object with these keys:
-- "image_description": A concise visual summary describing what the image depicts (e.g., object, visual appearance, document type, layout, colors).
-- "text": All visible printed or written text transcribed verbatim from the image, preserving line breaks. Do NOT mix the image description into this text key.
-- "confidence": A float between 0.0 and 1.0 representing your overall transcription certainty.`;
-  }
-}
 
 /**
  * Keys the model uses to report its own certainty. They are signals, not
@@ -432,7 +381,12 @@ function splitPreambleFromText(text: string): { descFromText?: string; cleanText
 export function parseOCRResult(
   content: string, 
   mode?: string,
-  rawModelConfidence: number = 0.92,
+  /**
+   * The provider's certainty, or null when it gave none. Null is not a synonym
+   * for "high": calculateFieldConfidence() drops the model dimension for it and
+   * scores on pattern and image quality alone.
+   */
+  rawModelConfidence: number | null = null,
   imageQuality?: ImageQualityMetrics
 ): HunyuanOCRResponse {
   let fields: HunyuanOCRResponse["fields"] = [];
@@ -481,7 +435,10 @@ export function parseOCRResult(
       const { descFromText, cleanText } = splitPreambleFromText(String(rawTextContent));
       const finalDescription = rawDescription ? String(rawDescription) : descFromText;
       const finalExtractedText = cleanText || String(rawTextContent);
-      const confScore = typeof parsedObj.confidence === "number" ? parsedObj.confidence : rawModelConfidence;
+      // A `confidence` key the model actually emitted is a real signal; falling
+      // back to rawModelConfidence keeps null as null.
+      const confScore =
+        typeof parsedObj.confidence === "number" ? parsedObj.confidence : rawModelConfidence;
 
       const fieldsList: HunyuanOCRResponse["fields"] = [];
 
@@ -517,7 +474,7 @@ export function parseOCRResult(
       };
     }
 
-    let globalConfidence = rawModelConfidence;
+    let globalConfidence: number | null = rawModelConfidence;
 
     if (Array.isArray(parsed)) {
       // Table mode: one row per array entry, each flattened so nested cells
@@ -543,7 +500,7 @@ export function parseOCRResult(
         }
       }
 
-      fields = ordered.map(([key, strVal], index) => {
+      fields = ordered.map(([key, strVal]) => {
         const confDetails = calculateFieldConfidence(key, strVal, globalConfidence, imageQuality);
         return {
           normalizedField: key,

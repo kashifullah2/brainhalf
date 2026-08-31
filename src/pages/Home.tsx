@@ -1,5 +1,4 @@
 import { Link } from "wouter";
-import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
@@ -27,8 +26,8 @@ import {
 const STATS = [
   { value: "Zero", label: "Templates needed" },
   { value: "100%", label: "Human verifiable" },
-  { value: "25 MB", label: "Max file size" },
-  { value: "3", label: "Export formats" },
+  { value: "14/25 MB", label: "Max PDF / image size" },
+  { value: "4", label: "Export formats" },
 ];
 
 const STEPS = [
@@ -36,7 +35,7 @@ const STEPS = [
     icon: Upload,
     step: "Step 1",
     title: "Upload your documents",
-    body: "Drag and drop JPG, PNG, WEBP or PDF files — up to 25 MB each. Process a single scan or a whole stack in one batch.",
+    body: "Drag and drop JPG, PNG, WEBP or PDF files — PDFs up to 14 MB, images up to 25 MB. Process a single scan or a whole stack in one batch.",
   },
   {
     icon: SlidersHorizontal,
@@ -62,9 +61,9 @@ const FEATURES = [
   },
   {
     icon: ShieldCheck,
-    tone: "emerald" as const,
+    tone: "success" as const,
     title: "Verify with a double-click",
-    body: "We highlight exactly where data was found on your document. Double-click any field cell to edit or correct values instantly right inside the browser.",
+    body: "Every value sits beside the page it came from, with a confidence score attached. Double-click any cell to correct it inline — your edit is kept separately, so the original reading stays auditable.",
     footer: "Instant inline editor",
   },
   {
@@ -85,39 +84,36 @@ export default function Home() {
   );
 
   return (
-    <div className="flex min-h-[100dvh] flex-col overflow-hidden bg-background text-foreground">
-      <Navbar />
-
-      <main className="flex-1">
-        {/* Background ambient lighting */}
-        <div className="pointer-events-none absolute left-1/2 top-0 -z-10 h-[600px] w-full max-w-7xl -translate-x-1/2 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,hsla(20,90%,60%,0.15),transparent_70%)]" />
-
+    <div className="flex min-h-[calc(100dvh-var(--header-h))] flex-col bg-background text-foreground">
+      <main id="main-content" className="flex-1">
         {/* Hero */}
         <section className="relative w-full py-16 md:py-24 lg:py-28">
           <div className="container mx-auto max-w-7xl px-6 md:px-8">
             <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-8">
               <div className="flex flex-col space-y-8 text-left lg:col-span-6">
                 <div
-                  className="animate-fade-up inline-flex items-center gap-2 self-start rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-bold text-primary shadow-sm"
+                  className="animate-fade-up inline-flex items-center gap-2 self-start rounded-full border border-primary/25 bg-primary/10 px-3.5 py-1.5 text-caption font-semibold text-primary"
                   style={{ animationDelay: "0ms" }}
                 >
                   <Sparkles className="h-3.5 w-3.5" /> AI-Powered Document
                   Intelligence
                 </div>
 
+                {/* One colour on the emphasis, not a three-stop gradient
+                    clipped to the text: the gradient washed the middle of the
+                    phrase out to near-invisible on the light canvas, and it was
+                    the only gradient text in the product. */}
                 <h1
-                  className="animate-fade-up text-4xl font-extrabold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-[3.6rem]"
+                  className="animate-fade-up text-4xl font-semibold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-[3.5rem]"
                   style={{ animationDelay: "80ms" }}
                 >
                   Turn stacks of invoices into{" "}
-                  <span className="bg-gradient-to-r from-primary via-warning to-primary bg-clip-text text-transparent">
-                    structured data
-                  </span>{" "}
-                  in seconds.
+                  <span className="text-primary">structured data</span> in
+                  seconds.
                 </h1>
 
                 <p
-                  className="animate-fade-up max-w-xl text-base font-medium leading-relaxed text-muted-foreground sm:text-lg"
+                  className="animate-fade-up max-w-xl text-body-lg leading-relaxed text-muted-foreground sm:text-body-xl"
                   style={{ animationDelay: "160ms" }}
                 >
                   Brainhalf automatically extracts fields, line items, and
@@ -129,24 +125,20 @@ export default function Home() {
                   className="animate-fade-up flex flex-col items-stretch gap-4 pt-2 sm:flex-row sm:items-center"
                   style={{ animationDelay: "240ms" }}
                 >
-                  <Button
-                    asChild
-                    size="lg"
-                    className="h-13 rounded-2xl px-8 text-base font-bold shadow-lg shadow-primary/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/35"
-                  >
+                  <Button asChild size="lg" className="text-body font-semibold">
                     <Link href="/app/upload">
-                      <Upload className="mr-2 h-5 w-5" /> Start Processing Free
+                      <Upload className="h-4 w-4" /> Start extracting — free
                     </Link>
                   </Button>
 
                   <Button
                     asChild
-                    variant="outline"
+                    variant="secondary"
                     size="lg"
-                    className="h-13 rounded-2xl border-border/80 bg-card px-8 text-base font-bold transition-all hover:bg-muted"
+                    className="font-semibold"
                   >
-                    <Link href="/app">
-                      Explore Dashboard <ArrowRight className="ml-2 h-4 w-4" />
+                    <Link href="/sign-in">
+                      I already have an account <ArrowRight className="h-4 w-4" />
                     </Link>
                   </Button>
                 </div>
@@ -172,17 +164,12 @@ export default function Home() {
         <section id="how-it-works" className="w-full scroll-mt-24 py-16 md:py-20">
           <div className="container mx-auto max-w-7xl px-6 md:px-8">
             <SectionHeading
+              eyebrow="01 / how it works"
               title="From scan to spreadsheet in three steps"
               subtitle="No templates, no training data, no integration project."
             />
 
-            <div className="relative grid gap-8 md:grid-cols-3">
-              {/* Connector behind the icon row — visible only in the gaps
-                  between the (opaque) cards, so the steps read as a sequence. */}
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-x-8 top-[4.25rem] -z-10 hidden h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent md:block"
-              />
+            <div className="grid gap-6 md:grid-cols-3">
               {STEPS.map((step, i) => (
                 <StepCard key={step.step} index={i} {...step} />
               ))}
@@ -194,11 +181,12 @@ export default function Home() {
         <section className="w-full border-t border-border/40 bg-muted/30 py-20">
           <div className="container mx-auto max-w-7xl px-6 md:px-8">
             <SectionHeading
-              title="Designed for speed, clarity, and human review."
+              eyebrow="02 / what you get"
+              title="Built for speed, clarity, and human review"
               subtitle="Everything you need to turn raw images and PDFs into pristine structured records."
             />
 
-            <div className="grid gap-8 md:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-3">
               {FEATURES.map((feature) => (
                 <FeatureCard key={feature.title} {...feature} />
               ))}
@@ -206,25 +194,20 @@ export default function Home() {
 
             <FaqSection />
 
-            <div className="relative mt-16 space-y-6 overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 via-warning/10 to-primary/5 p-8 text-center sm:p-12">
-              <div className="pointer-events-none absolute -top-24 left-1/2 h-[400px] w-[400px] -translate-x-1/2 rounded-full bg-primary/15 blur-[100px]" />
-              <h3 className="relative text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
-                Ready to stop manually typing invoice data?
-              </h3>
-              <p className="relative mx-auto max-w-xl text-sm font-medium text-muted-foreground sm:text-base">
-                Try Brainhalf right now in your browser. Upload sample receipts,
-                test extraction schemas, and export clean data instantly.
+            {/* A bordered panel on the page's own surface. This was a
+                gradient slab with a 400px blurred orange disc floating over it
+                — decoration that cost a compositing layer and said nothing. */}
+            <div className="mt-16 space-y-5 rounded-xl border border-border bg-card p-8 text-center shadow-sm sm:p-12">
+              <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                Ready to stop typing invoice data?
+              </h2>
+              <p className="mx-auto max-w-xl text-body text-muted-foreground">
+                Upload a receipt, pick a preset, and see what comes back. No card,
+                no setup, no sales call.
               </p>
-              <Button
-                asChild
-                size="lg"
-                className="relative h-auto min-h-[52px] whitespace-normal rounded-2xl px-6 py-3.5 text-center text-base font-bold shadow-lg shadow-primary/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/35 sm:px-8"
-              >
-                <Link
-                  href="/app/upload"
-                  className="flex items-center justify-center gap-2"
-                >
-                  <span>Start Uploading Documents</span>
+              <Button asChild size="lg" className="text-body font-semibold">
+                <Link href="/app/upload">
+                  Upload your first document
                   <ArrowRight className="h-4 w-4 shrink-0" />
                 </Link>
               </Button>

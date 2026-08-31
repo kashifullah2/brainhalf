@@ -8,15 +8,12 @@
 // failures.
 // ---------------------------------------------------------------------------
 
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
+import type { UseQueryOptions } from "@tanstack/react-query";
 
 import { apiUrl } from "./api-paths";
-import {
-  processWithHunyuanOCR,
-  parseOCRResult,
-  type HunyuanOCRResponse,
-} from "./ocr-client";
-import { analyzeImageQuality } from "./confidence-scorer";
+import { processWithHunyuanOCR, type HunyuanOCRResponse } from "./ocr-client";
 import { calculateDocumentOverallConfidence } from "./confidence-scorer";
 
 // ---------------------------------------------------------------------------
@@ -55,6 +52,8 @@ export interface BatchSummary {
   id: number;
   status: string;
   createdAt: string;
+  /** Last change to the batch. See isBatchStalled. */
+  updatedAt: string;
   totalDocuments: number;
   completedDocuments: number;
   failedDocuments: number;
@@ -94,14 +93,26 @@ export class ApiError extends Error {
   }
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
+/**
+ * The transport door for every client call to our own API.
+ *
+ * Exported because it was not, and so each caller reimplemented the parts it
+ * remembered. `fetch` rejects with a TypeError when the request never reached
+ * the server — offline, DNS, a dropped connection, the dev server no longer
+ * listening — and a caller that does not catch that shows the user the
+ * browser's own "Failed to fetch". That is exactly how the sign-out button came
+ * to report `Could not sign out — Failed to fetch`.
+ *
+ * Returns the raw Response: status handling belongs to the caller, which is the
+ * only one that knows what a 404 or a 401 means for it.
+ */
+export async function apiRequest(path: string, init?: RequestInit): Promise<Response> {
   try {
-    response = await fetch(apiUrl(path), {
+    return await fetch(apiUrl(path), {
       ...init,
+      // Send and accept the session cookie.
       credentials: "same-origin",
       headers: {
-        "Content-Type": "application/json",
         Accept: "application/json",
         ...((init?.headers as Record<string, string>) ?? {}),
       },
@@ -113,6 +124,16 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       0,
     );
   }
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await apiRequest(path, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...((init?.headers as Record<string, string>) ?? {}),
+    },
+  });
 
   const raw = await response.text();
   let parsed: unknown = null;
@@ -165,14 +186,31 @@ export function getGetDocumentQueryKey(batchId: number, documentId: number) {
 // Read hooks
 // ---------------------------------------------------------------------------
 
-export function useListBatches() {
+/**
+ * Extra React Query options a caller may pass — `refetchInterval`, `enabled`,
+ * `select`. `queryKey` and `queryFn` are owned by the hook, so overriding them
+ * would silently detach a component from the cache entry everything else
+ * invalidates.
+ *
+ * This was `Record<string, unknown>`, which accepts anything and infers
+ * nothing: every one of the four call sites had to be written `as any`, and a
+ * mistyped `refetchInterval` callback would have compiled.
+ */
+type QueryOverrides<TData> = Omit<
+  UseQueryOptions<TData, Error, TData>,
+  "queryKey" | "queryFn"
+>;
+
+export function useListBatches(options?: { query?: QueryOverrides<BatchSummary[]> }) {
+  const queryOpts = options?.query ?? {};
   return useQuery<BatchSummary[]>({
     queryKey: getListBatchesQueryKey(),
     queryFn: () => apiFetch<BatchSummary[]>("/batches"),
+    ...queryOpts,
   });
 }
 
-export function useGetBatch(batchId: number, options?: { query?: Record<string, unknown> }) {
+export function useGetBatch(batchId: number, options?: { query?: QueryOverrides<BatchDetail> }) {
   const queryOpts = options?.query ?? {};
   return useQuery<BatchDetail>({
     queryKey: getGetBatchQueryKey(batchId),
@@ -197,7 +235,7 @@ export async function getBatch(batchId: number): Promise<BatchDetail> {
 export function useGetDocument(
   batchId: number,
   documentId: number,
-  options?: { query?: Record<string, unknown> },
+  options?: { query?: QueryOverrides<Document> },
 ) {
   const queryOpts = options?.query ?? {};
   return useQuery<Document>({
@@ -375,6 +413,12 @@ export async function createBatch(
     method: "POST",
     body: JSON.stringify({
       mode: input.mode,
+      // Persisted on the batch so a later "Add files" re-reads the SAME
+      // instructions. This was omitted, so `batches.prompt` -- the whole point of
+      // migration 0005 -- was always NULL, and appending to a custom / VQA /
+      // template batch silently fell through to the generic fallback prompt in
+      // getPromptForMode(). Two extraction schemas in one batch, no warning.
+      customPrompt: input.customPrompt,
       documents: input.documents.map((doc) => ({
         filename: doc.filename,
         objectPath: doc.objectPath,
@@ -486,7 +530,22 @@ async function reportFailure(
   }
 }
 
+/**
+ * Extraction writes rows into two places the UI reads separately: the batch
+ * list, and the review queue that collects every field that came back under the
+ * account's confidence threshold. Neither mutation invalidated anything, so
+ * finishing a batch left the sidebar's "Review Queue" badge showing the count
+ * from before the upload — a badge reading 2 next to a page listing 3 documents
+ * awaiting review, until the 60s stale window lapsed AND something else
+ * happened to trigger a refetch.
+ */
+function invalidateAfterExtraction(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: getListBatchesQueryKey() });
+  void queryClient.invalidateQueries({ queryKey: ["review-queue"] });
+}
+
 export function useCreateBatch() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       data,
@@ -495,6 +554,7 @@ export function useCreateBatch() {
       data: CreateBatchInput;
       onProgress?: (progress: CreateBatchProgress) => void;
     }) => createBatch(data, onProgress),
+    onSuccess: () => invalidateAfterExtraction(queryClient),
   });
 }
 
@@ -508,6 +568,12 @@ export interface AppendBatchInput {
 interface AppendedBatch {
   id: number;
   mode: string;
+  /**
+   * The prompt stored on the batch. Server-authoritative on purpose: the caller
+   * may pass a `customPrompt`, but the batch's own instructions are what its
+   * existing documents were read with, and appending must not diverge from them.
+   */
+  prompt?: string;
   documents: Array<{ id: number; filename: string; position: number }>;
 }
 
@@ -530,6 +596,10 @@ export async function appendBatch(
 
   const total = created.documents.length;
   let failedCount = 0;
+
+  // The batch's stored instructions win over anything the caller passed, so
+  // appended documents are read exactly like the ones already in the batch.
+  const effectivePrompt = created.prompt ?? input.customPrompt;
 
   // Fetched once for the batch, not per document: it is an account-level setting
   // that cannot change mid-run, so a request per page would be a round trip for
@@ -565,7 +635,7 @@ export async function appendBatch(
         local.rawFile,
         created.mode,
         input.forceReprocess ?? false,
-        input.customPrompt,
+        effectivePrompt,
         confidenceThreshold,
       );
 
@@ -607,6 +677,7 @@ export async function appendBatch(
 }
 
 export function useAppendBatch() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       data,
@@ -615,6 +686,12 @@ export function useAppendBatch() {
       data: AppendBatchInput;
       onProgress?: (progress: CreateBatchProgress) => void;
     }) => appendBatch(data, onProgress),
+    onSuccess: (_result, variables) => {
+      invalidateAfterExtraction(queryClient);
+      void queryClient.invalidateQueries({
+        queryKey: getGetBatchQueryKey(variables.data.batchId),
+      });
+    },
   });
 }
 
@@ -622,13 +699,140 @@ export function useAppendBatch() {
 // Document mutations
 // ---------------------------------------------------------------------------
 
+/**
+ * Re-downloads a document's original bytes from our storage endpoint.
+ *
+ * This is what makes re-extraction possible at all after a page reload. The
+ * upload flow keeps the browser's `File` in memory and hands it to
+ * `createBatch`, so once the tab is gone so is the only copy the client had --
+ * which is why a failed document used to be permanently failed. R2 still holds
+ * the bytes and /api/storage serves them to their owner, so the client can get
+ * them back and run extraction again.
+ */
+async function fetchOriginalFile(
+  objectPath: string,
+  filename: string,
+  contentType: string,
+): Promise<File> {
+  const response = await fetch(storageUrl(objectPath), {
+    credentials: "same-origin",
+  }).catch(() => {
+    throw new ApiError(
+      "Could not reach the server to fetch the original file.",
+      0,
+    );
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      response.status === 404
+        ? "The original file is no longer in storage, so it cannot be read again."
+        : `Could not fetch the original file (${response.status}).`,
+      response.status,
+    );
+  }
+
+  const blob = await response.blob();
+  // R2 records the type it was stored with; fall back to the database's copy.
+  const type = blob.type || contentType || "application/octet-stream";
+  return new File([blob], filename, { type });
+}
+
+export interface RetryDocumentInput {
+  batchId: number;
+  documentId: number;
+  filename: string;
+  contentType: string;
+  /** Extraction preset the batch was created with. */
+  mode: string;
+  /** The batch's stored custom instructions, when it has any. */
+  customPrompt?: string;
+}
+
+/**
+ * Runs one document through extraction again, end to end.
+ *
+ * There was no way to do this. The endpoint existed, a `useRetryDocument` hook
+ * existed, and nothing in the UI imported it -- so every transient provider
+ * failure was permanent and the only recourse was to delete the document and
+ * upload it again.
+ *
+ * `forceReprocess` is true unconditionally: the point of a retry is to not be
+ * handed the cached result that failed, and the cache is keyed on the bytes,
+ * which have not changed.
+ *
+ * A failure here is reported to .../failure rather than left alone. Otherwise a
+ * retry that fails leaves the document at 'queued', and a queued document with
+ * nothing running holds its whole batch at 'processing' forever.
+ */
+export async function retryDocument(input: RetryDocumentInput): Promise<void> {
+  const { batchId, documentId } = input;
+
+  const reset = await apiFetch<{ ok: true; objectPath: string | null }>(
+    `/batches/${batchId}/documents/${documentId}/retry`,
+    { method: "POST" },
+  );
+
+  if (!reset.objectPath) {
+    const message =
+      "This document has no stored file, so it cannot be read again. Upload it once more.";
+    await reportFailure(batchId, documentId, message);
+    throw new ApiError(message, 409);
+  }
+
+  try {
+    const file = await fetchOriginalFile(
+      reset.objectPath,
+      input.filename,
+      input.contentType,
+    );
+
+    const threshold = await resolveConfidenceThreshold();
+    const { result, overallConfidence } = await extractWithEscalation(
+      file,
+      input.mode,
+      true,
+      input.customPrompt,
+      threshold,
+    );
+
+    await apiFetch(`/batches/${batchId}/documents/${documentId}/result`, {
+      method: "POST",
+      body: JSON.stringify({
+        ocrText: result.rawText,
+        overallConfidence,
+        fields: result.fields.map((field) => ({
+          normalizedField: field.normalizedField,
+          originalLabel: field.originalLabel,
+          value: field.value,
+          confidence: field.confidence,
+        })),
+      }),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Extraction failed.";
+    await reportFailure(batchId, documentId, message);
+    throw error;
+  }
+}
+
 export function useRetryDocument() {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ batchId, documentId }: { batchId: number; documentId: number }) =>
-      apiFetch<{ ok: true; objectPath: string | null }>(
-        `/batches/${batchId}/documents/${documentId}/retry`,
-        { method: "POST" },
-      ),
+    mutationFn: (input: RetryDocumentInput) => retryDocument(input),
+    // Both outcomes change what the batch view and the review queue should show,
+    // so refresh on either. onSettled rather than onSuccess: a retry that ends in
+    // a recorded failure has still changed the document's status and its error.
+    onSettled: (_data, _error, variables) => {
+      invalidateAfterExtraction(queryClient);
+      void queryClient.invalidateQueries({
+        queryKey: getGetBatchQueryKey(variables.batchId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: getGetDocumentQueryKey(variables.batchId, variables.documentId),
+      });
+    },
   });
 }
 
@@ -684,6 +888,14 @@ export async function deleteDocument(
 // Storage
 // ---------------------------------------------------------------------------
 
+// Re-exported so callers keep importing batch helpers from one place. The
+// implementation lives in ./batch-status, which has no dependencies.
+export {
+  BATCH_STALL_AFTER_MS,
+  isBatchInFlight,
+  isBatchStalled,
+} from "./batch-status";
+
 /** URL for fetching a stored document back (thumbnails, viewer). */
 export function storageUrl(objectPath: string): string {
   const key = objectPath.startsWith("/") ? objectPath.slice(1) : objectPath;
@@ -703,6 +915,86 @@ export async function updateSettings(confidenceThreshold: number): Promise<void>
     method: "PATCH",
     body: JSON.stringify({ confidenceThreshold }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Account data
+//
+// A right of access and a right to erasure, neither of which existed. Settings
+// promised retention control and offered none.
+// ---------------------------------------------------------------------------
+
+/**
+ * Downloads everything the account holds as a JSON file.
+ *
+ * Streamed to a blob rather than parsed: this is the user's own archive, and there
+ * is nothing to be gained from walking it through the JS heap first.
+ */
+export async function downloadAccountExport(): Promise<void> {
+  const response = await apiRequest("/account/export");
+  if (!response.ok) {
+    let message = `Could not build the export (${response.status}).`;
+    try {
+      const parsed = (await response.json()) as { error?: string };
+      if (parsed.error) message = parsed.error;
+    } catch {
+      // Keep the status-based message.
+    }
+    throw new ApiError(message, response.status);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `brainhalf-export-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export interface AccountDeletionProgress {
+  complete: boolean;
+  objectsDeleted: number;
+}
+
+/**
+ * Erases the account.
+ *
+ * The endpoint deletes stored files in bounded batches and answers
+ * `complete: false` while any remain -- it will not remove the account row until
+ * the bytes are gone, because those rows are the only record of the object keys.
+ * So this calls until it is told the work is finished, reporting progress as it
+ * goes, rather than leaving a half-erased account behind.
+ */
+export async function deleteAccount(
+  confirmEmail: string,
+  onProgress?: (progress: AccountDeletionProgress) => void,
+): Promise<number> {
+  /** Bounded so a server that never reports completion cannot spin forever. */
+  const MAX_ROUNDS = 20;
+  let objectsDeleted = 0;
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const result = await apiFetch<AccountDeletionProgress>("/account", {
+      method: "DELETE",
+      body: JSON.stringify({ confirmEmail }),
+    });
+
+    objectsDeleted += result.objectsDeleted ?? 0;
+    onProgress?.({ complete: result.complete, objectsDeleted });
+
+    if (result.complete) return objectsDeleted;
+  }
+
+  throw new ApiError(
+    "Deletion is taking longer than expected. Some data may remain — contact support.",
+    500,
+  );
 }
 
 // ---------------------------------------------------------------------------

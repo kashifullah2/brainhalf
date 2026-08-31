@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ShieldCheck, ArrowRight, Eye, EyeOff, CheckCircle2, AlertCircle, Mail, XCircle } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, AlertCircle, Loader2, Mail, XCircle } from "lucide-react";
 
 interface AuthCardProps {
   mode?: "sign-in" | "sign-up" | "forgot-password";
@@ -20,13 +20,13 @@ function getPasswordStrength(pass: string) {
   if (/[^A-Za-z0-9]/.test(pass)) score += 1;
 
   if (score <= 2) return { score: 1, text: "Weak", color: "bg-destructive", width: "w-1/3" };
-  if (score === 3 || score === 4) return { score: 2, text: "Good", color: "bg-yellow-500", width: "w-2/3" };
-  return { score: 3, text: "Strong", color: "bg-emerald-500", width: "w-full" };
+  if (score === 3 || score === 4) return { score: 2, text: "Good", color: "bg-warning", width: "w-2/3" };
+  return { score: 3, text: "Strong", color: "bg-success", width: "w-full" };
 }
 
 export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps) {
   const [, setLocation] = useLocation();
-  const { loginWithGoogle, loginWithEmail, signupWithEmail, resetPassword, renderGoogleButton, clientId, isGoogleLoaded, isSignedIn, isLoading } = useAuth();
+  const { loginWithEmail, signupWithEmail, resetPassword, renderGoogleButton, clientId, isGoogleLoaded, isSignedIn, isLoading } = useAuth();
   
   const [currentMode, setCurrentMode] = useState<"sign-in" | "sign-up" | "forgot-password">(initialMode);
   
@@ -37,7 +37,6 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreedToLicense, setAgreedToLicense] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false); // Fixed: default to false for privacy/security
 
   // UI States
   const [showPassword, setShowPassword] = useState(false);
@@ -73,19 +72,6 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
       renderGoogleButton(googleBtnContainerRef.current);
     }
   }, [clientId, renderGoogleButton]);
-
-  const handleGoogleLogin = async () => {
-    setTopErrorMsg(null);
-    setIsSubmitting(true);
-    try {
-      await loginWithGoogle(email || undefined);
-      setLocation("/app");
-    } catch (err: any) {
-      setTopErrorMsg(err.message || "Failed to sign in with Google");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const validateSignUp = () => {
     const newErrors: Record<string, string> = {};
@@ -162,12 +148,12 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
     <div className="flex flex-col gap-6 w-full">
       {/* Header */}
       <div className="space-y-1.5 text-center sm:text-left">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           {currentMode === "sign-in" && "Welcome back"}
           {currentMode === "sign-up" && "Create an account"}
           {currentMode === "forgot-password" && "Reset password"}
         </h1>
-        <p className="text-sm font-medium text-muted-foreground">
+        <p className="text-body font-medium text-muted-foreground">
           {currentMode === "sign-in" && "Your batches are right where you left them."}
           {currentMode === "sign-up" && "Free while we build the paid plans. No card, no sales call."}
           {currentMode === "forgot-password" && "Tell us the email you signed up with and we'll send a reset link."}
@@ -176,15 +162,15 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
 
       {/* Top-Level Error / Success Notifications */}
       {topErrorMsg && (
-        <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1">
+        <div className="p-3.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-label font-semibold flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{topErrorMsg}</span>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1">
-          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+        <div className="flex items-start gap-2.5 rounded-lg border border-success/25 bg-success/10 p-3.5 text-caption font-semibold text-success animate-in fade-in slide-in-from-top-1">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
@@ -196,59 +182,73 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-foreground">First Name</label>
+                <label htmlFor="signup-first-name" className="text-body-sm font-semibold text-foreground">First Name</label>
                 <Input
+                  id="signup-first-name"
                   type="text"
-                  placeholder=""
+                  autoComplete="given-name"
+                  aria-invalid={!!errors.firstName}
+                  aria-describedby={errors.firstName ? "signup-first-name-error" : undefined}
                   value={firstName}
                   onChange={(e) => { setFirstName(e.target.value); if(errors.firstName) setErrors({...errors, firstName: ""}) }}
-                  className={`h-11 rounded-xl bg-card font-medium text-sm transition-colors ${errors.firstName ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
+                  className={`h-11 ${errors.firstName ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
-                {errors.firstName && <span className="text-[11px] font-semibold text-destructive">{errors.firstName}</span>}
+                {errors.firstName && <span id="signup-first-name-error" className="text-caption font-semibold text-destructive">{errors.firstName}</span>}
               </div>
               <div className="space-y-1.5">
-                <label className="text-[13px] font-semibold text-foreground">Last Name</label>
+                <label htmlFor="signup-last-name" className="text-body-sm font-semibold text-foreground">Last Name</label>
                 <Input
+                  id="signup-last-name"
                   type="text"
-                  placeholder=""
+                  autoComplete="family-name"
+                  aria-invalid={!!errors.lastName}
+                  aria-describedby={errors.lastName ? "signup-last-name-error" : undefined}
                   value={lastName}
                   onChange={(e) => { setLastName(e.target.value); if(errors.lastName) setErrors({...errors, lastName: ""}) }}
-                  className={`h-11 rounded-xl bg-card font-medium text-sm transition-colors ${errors.lastName ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
+                  className={`h-11 ${errors.lastName ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
-                {errors.lastName && <span className="text-[11px] font-semibold text-destructive">{errors.lastName}</span>}
+                {errors.lastName && <span id="signup-last-name-error" className="text-caption font-semibold text-destructive">{errors.lastName}</span>}
               </div>
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
-              <label className="text-[13px] font-semibold text-foreground">Email</label>
+              <label htmlFor="signup-email" className="text-body-sm font-semibold text-foreground">Email</label>
               <Input
+                id="signup-email"
                 type="email"
+                autoComplete="email"
                 maxLength={255}
                 placeholder="name@example.com"
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? "signup-email-error" : undefined}
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); if(errors.email) setErrors({...errors, email: ""}) }}
-                className={`h-11 rounded-xl bg-card font-medium text-sm truncate transition-colors ${errors.email ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
+                className={`h-11 truncate ${errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
-              {errors.email && <span className="text-[11px] font-semibold text-destructive">{errors.email}</span>}
+              {errors.email && <span id="signup-email-error" className="text-caption font-semibold text-destructive">{errors.email}</span>}
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
-              <label className="text-[13px] font-semibold text-foreground flex justify-between">
+              <label htmlFor="signup-password" className="flex justify-between text-body-sm font-semibold text-foreground">
                 Password
                 {password.length > 0 && (
-                  <span className={`text-[11px] font-bold ${passwordStrength.text === 'Weak' ? 'text-destructive' : passwordStrength.text === 'Good' ? 'text-yellow-600 dark:text-yellow-500' : 'text-emerald-500'}`}>
+                  <span className={`text-caption font-semibold ${passwordStrength.text === 'Weak' ? 'text-destructive' : passwordStrength.text === 'Good' ? 'text-warning' : 'text-success'}`}>
                     {passwordStrength.text}
                   </span>
                 )}
               </label>
               <div className="relative w-full">
                 <Input
+                  id="signup-password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
                   maxLength={128}
                   placeholder="Create a strong password"
+                  aria-invalid={!!errors.password}
+                  aria-describedby={errors.password ? "signup-password-error" : "signup-password-hint"}
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); if(errors.password) setErrors({...errors, password: ""}) }}
-                  className={`h-11 rounded-xl bg-card font-medium text-sm pr-10 truncate transition-colors ${errors.password ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
+                  className={`h-11 truncate pr-10 ${errors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
                 <button
                   type="button"
@@ -263,17 +263,21 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
               <div className="h-1 w-full bg-muted rounded-full mt-1.5 overflow-hidden flex">
                 <div className={`h-full ${passwordStrength.width} ${passwordStrength.color} transition-all duration-300 ease-out`} />
               </div>
-              {password.length === 0 && <p className="text-[11px] text-muted-foreground mt-1 font-medium">Use 10+ characters with a mix of letters, numbers & symbols.</p>}
-              {errors.password && <span className="text-[11px] font-semibold text-destructive">{errors.password}</span>}
+              {password.length === 0 && <p id="signup-password-hint" className="mt-1 text-caption text-muted-foreground">Use 10+ characters with a mix of letters, numbers and symbols.</p>}
+              {errors.password && <span id="signup-password-error" className="text-caption font-semibold text-destructive">{errors.password}</span>}
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
-              <label className="text-[13px] font-semibold text-foreground">Confirm Password</label>
+              <label htmlFor="signup-confirm-password" className="text-body-sm font-semibold text-foreground">Confirm Password</label>
               <div className="relative w-full">
                 <Input
+                  id="signup-confirm-password"
                   type={showConfirmPassword ? "text" : "password"}
+                  autoComplete="new-password"
                   maxLength={128}
                   placeholder="Confirm your password"
+                  aria-invalid={passwordsMismatch || !!errors.confirmPassword}
+                  aria-describedby={errors.confirmPassword ? "signup-confirm-password-error" : undefined}
                   value={confirmPassword}
                   onChange={(e) => { setConfirmPassword(e.target.value); if(errors.confirmPassword) setErrors({...errors, confirmPassword: ""}) }}
                   onBlur={() => {
@@ -281,12 +285,12 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                       setErrors({...errors, confirmPassword: "Passwords do not match"});
                     }
                   }}
-                  className={`h-11 rounded-xl bg-card font-medium text-sm pr-10 truncate transition-colors ${passwordsMismatch || errors.confirmPassword ? 'border-destructive focus-visible:ring-destructive' : passwordsMatch ? 'border-emerald-500/50 focus-visible:ring-emerald-500' : 'border-border/80 focus:border-primary'}`}
+                  className={`h-11 truncate pr-10 ${passwordsMismatch || errors.confirmPassword ? 'border-destructive focus-visible:ring-destructive' : passwordsMatch ? 'border-success/60 focus-visible:ring-success' : ''}`}
                 />
                 
                 {/* Status Indicator */}
                 <div className="absolute right-9 top-1/2 -translate-y-1/2 flex items-center pr-2 pointer-events-none z-10">
-                  {passwordsMatch && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+                  {passwordsMatch && <CheckCircle2 className="h-4 w-4 text-success" />}
                   {passwordsMismatch && <XCircle className="w-4 h-4 text-destructive" />}
                 </div>
 
@@ -299,7 +303,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {errors.confirmPassword && <span className="text-[11px] font-semibold text-destructive">{errors.confirmPassword}</span>}
+              {errors.confirmPassword && <span id="signup-confirm-password-error" className="text-caption font-semibold text-destructive">{errors.confirmPassword}</span>}
             </div>
 
             <hr className="my-2 border-border/40" />
@@ -313,11 +317,11 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   onCheckedChange={(checked) => { setAgreedToLicense(!!checked); if(errors.agreedToLicense) setErrors({...errors, agreedToLicense: ""}) }}
                   className={`mt-0.5 rounded shadow-sm w-4 h-4 shrink-0 transition-colors ${errors.agreedToLicense ? 'border-destructive bg-destructive/10' : ''}`}
                 />
-                <label htmlFor="license-agree" className="text-xs font-medium leading-normal text-muted-foreground cursor-pointer select-none max-w-[280px]">
+                <label htmlFor="license-agree" className="text-label font-medium leading-normal text-muted-foreground cursor-pointer select-none max-w-[280px]">
                   I agree with the <a href="/terms" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="font-semibold text-foreground underline hover:text-primary transition-colors">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="font-semibold text-foreground underline hover:text-primary transition-colors">Privacy Policy</a>
                 </label>
               </div>
-              {errors.agreedToLicense && <p className="text-[11px] font-semibold text-destructive pl-7">{errors.agreedToLicense}</p>}
+              {errors.agreedToLicense && <p className="text-caption font-semibold text-destructive pl-7">{errors.agreedToLicense}</p>}
             </div>
           </>
         )}
@@ -326,37 +330,45 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
         {currentMode === "sign-in" && (
           <>
             <div className="space-y-1.5 w-full overflow-hidden">
-              <label className="text-[13px] font-semibold text-foreground">Work Email</label>
+              <label htmlFor="signin-email" className="text-body-sm font-semibold text-foreground">Email</label>
               <Input
+                id="signin-email"
                 type="email"
+                autoComplete="email"
                 maxLength={255}
-                placeholder="name@brainhalf.com"
+                placeholder="name@example.com"
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? "signin-email-error" : undefined}
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); if(errors.email) setErrors({...errors, email: ""}) }}
-                className={`h-11 rounded-xl bg-card font-medium text-sm truncate transition-colors ${errors.email ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
+                className={`h-11 truncate ${errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
-              {errors.email && <span className="text-[11px] font-semibold text-destructive">{errors.email}</span>}
+              {errors.email && <span id="signin-email-error" className="text-caption font-semibold text-destructive">{errors.email}</span>}
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
-              <div className="flex items-center justify-between">
-                <label className="text-[13px] font-semibold text-foreground">Password</label>
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="signin-password" className="min-w-0 truncate text-body-sm font-semibold text-foreground">Password</label>
                 <button
                   type="button"
                   onClick={() => setCurrentMode("forgot-password")}
-                  className="text-[13px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm -mr-1"
+                  className="shrink-0 rounded-sm text-body-sm font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Forgot password?
                 </button>
               </div>
               <div className="relative w-full">
                 <Input
+                  id="signin-password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   maxLength={128}
                   placeholder="Enter your password"
+                  aria-invalid={!!errors.password}
+                  aria-describedby={errors.password ? "signin-password-error" : undefined}
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); if(errors.password) setErrors({...errors, password: ""}) }}
-                  className={`h-11 rounded-xl bg-card font-medium text-sm pr-10 truncate transition-colors ${errors.password ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
+                  className={`h-11 truncate pr-10 ${errors.password ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
                 <button
                   type="button"
@@ -367,35 +379,31 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {errors.password && <span className="text-[11px] font-semibold text-destructive">{errors.password}</span>}
+              {errors.password && <span id="signin-password-error" className="text-caption font-semibold text-destructive">{errors.password}</span>}
             </div>
 
-            <div className="flex items-center gap-2 pt-2">
-              <Checkbox
-                id="remember-me"
-                checked={rememberMe}
-                onCheckedChange={(checked) => setRememberMe(!!checked)}
-                className="rounded shadow-sm w-4 h-4"
-              />
-              <label htmlFor="remember-me" className="text-xs font-semibold text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">
-                Remember me on this browser
-              </label>
-            </div>
+            <p className="pt-1 text-caption text-muted-foreground">
+              You will stay signed in on this browser for 30 days.
+            </p>
           </>
         )}
 
         {/* FORGOT PASSWORD FIELDS */}
         {currentMode === "forgot-password" && (
           <div className="space-y-1.5">
-            <label className="text-[13px] font-semibold text-foreground">Account Email</label>
+            <label htmlFor="reset-email" className="text-body-sm font-semibold text-foreground">Account Email</label>
             <Input
+              id="reset-email"
               type="email"
-              placeholder="name@brainhalf.com"
+              autoComplete="email"
+              placeholder="name@example.com"
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? "reset-email-error" : undefined}
               value={email}
               onChange={(e) => { setEmail(e.target.value); if(errors.email) setErrors({...errors, email: ""}) }}
-              className={`h-11 rounded-xl bg-card font-medium text-sm transition-colors ${errors.email ? 'border-destructive focus-visible:ring-destructive' : 'border-border/80 focus:border-primary'}`}
+              className={`h-11 ${errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
             />
-            {errors.email && <span className="text-[11px] font-semibold text-destructive">{errors.email}</span>}
+            {errors.email && <span id="reset-email-error" className="text-caption font-semibold text-destructive">{errors.email}</span>}
           </div>
         )}
 
@@ -403,10 +411,10 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
         <Button
           type="submit"
           disabled={isSubmitDisabled}
-          className={`w-full h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-sm shadow-md shadow-primary/20 transition-all flex items-center justify-center gap-2 mt-4 ${isSubmitDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className="mt-4 h-11 w-full text-body font-semibold"
         >
           {isSubmitting ? (
-            <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <>
               {currentMode === "sign-in" && <span>Sign In</span>}
@@ -424,8 +432,8 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
           {/* Divider */}
           <div className="relative flex items-center justify-center">
             <div className="border-t border-border/60 w-full" />
-            <span className="bg-background px-4 text-[11px] font-bold tracking-widest text-muted-foreground uppercase absolute top-1/2 -translate-y-1/2">
-              Or continue with
+            <span className="absolute top-1/2 -translate-y-1/2 bg-background px-4 text-caption font-medium text-muted-foreground">
+              or continue with
             </span>
           </div>
 
@@ -433,7 +441,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
           <div className="w-full flex flex-col gap-3 items-center justify-center">
             <div className="relative w-full min-h-[44px] flex justify-center">
               {(!isGoogleLoaded || isLoading) && (
-                <div className="absolute inset-0 w-full h-[44px] rounded-xl bg-card border border-border/80 flex items-center justify-center animate-pulse shadow-sm">
+                <div className="absolute inset-0 flex h-[44px] w-full items-center justify-center rounded-lg border border-border bg-card shadow-sm">
                   <div className="flex gap-3 items-center">
                     <div className="w-5 h-5 rounded-full bg-muted-foreground/20" />
                     <div className="w-32 h-3 rounded-full bg-muted-foreground/20" />
@@ -447,11 +455,11 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
       )}
 
       {/* Footer Navigation Links */}
-      <div className="pt-3 text-center text-[13px] font-medium text-muted-foreground">
+      <div className="pt-3 text-center text-body-sm font-medium text-muted-foreground">
         {currentMode === "sign-in" && (
           <p>
             Don't have an account?{" "}
-            <Link href="/sign-up" onClick={() => setCurrentMode("sign-up")} className="font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">
+            <Link href="/sign-up" onClick={() => setCurrentMode("sign-up")} className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">
               Create account
             </Link>
           </p>
@@ -460,7 +468,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
         {currentMode === "sign-up" && (
           <p>
             Already have an account?{" "}
-            <Link href="/sign-in" onClick={() => setCurrentMode("sign-in")} className="font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">
+            <Link href="/sign-in" onClick={() => setCurrentMode("sign-in")} className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm">
               Sign in
             </Link>
           </p>
@@ -472,7 +480,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
             <button
               type="button"
               onClick={() => setCurrentMode("sign-in")}
-              className="font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm"
+              className="font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm"
             >
               Back to Sign in
             </button>

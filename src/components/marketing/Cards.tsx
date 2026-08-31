@@ -1,30 +1,28 @@
-import { CheckCircle2 } from "lucide-react";
+import { Check } from "lucide-react";
 
 interface FeatureCardProps {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   body: string;
-  /** Tailwind color token driving icon tile + footer accent, e.g. "primary". */
-  tone?: "primary" | "emerald" | "warning";
+  /** Which accent the icon tile and footer line carry. */
+  tone?: "primary" | "success" | "warning";
   footer: string;
 }
 
+/**
+ * `emerald` used to be one of these tones, spelled as raw
+ * `bg-emerald-500/10 text-emerald-600 dark:text-emerald-400` — a cool green in
+ * a warm palette, and the only place in the product that named a Tailwind
+ * colour instead of a token. It is the `success` token now, which is the same
+ * green the status badges and confidence meters already use.
+ */
 const TONES = {
-  primary: {
-    tile: "bg-primary/10 text-primary",
-    footer: "text-primary",
-  },
-  emerald: {
-    tile: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    footer: "text-emerald-600 dark:text-emerald-400",
-  },
-  warning: {
-    tile: "bg-warning/10 text-warning",
-    footer: "text-warning",
-  },
+  primary: "bg-primary/10 text-primary",
+  success: "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
 } as const;
 
-/** Bento feature card with an icon tile and a hairline-separated footer strip. */
+/** A feature: what it does, in a sentence, with the claim it supports. */
 export function FeatureCard({
   icon: Icon,
   title,
@@ -32,23 +30,23 @@ export function FeatureCard({
   tone = "primary",
   footer,
 }: FeatureCardProps) {
-  const t = TONES[tone];
   return (
-    <div className="flex h-full flex-col justify-between space-y-6 rounded-3xl border border-border/60 bg-card p-8 shadow-sm transition-all hover:shadow-md">
+    <div className="flex h-full flex-col justify-between gap-6 rounded-xl border border-border bg-card p-7 shadow-sm">
       <div className="space-y-4">
         <div
-          className={`flex h-12 w-12 items-center justify-center rounded-2xl font-bold ${t.tile}`}
+          className={`flex h-11 w-11 items-center justify-center rounded-lg ${TONES[tone]}`}
         >
-          <Icon className="h-6 w-6" />
+          <Icon className="h-5 w-5" />
         </div>
-        <h3 className="text-xl font-bold text-foreground">{title}</h3>
-        <p className="font-medium text-sm leading-relaxed text-muted-foreground">
+        <h3 className="text-body-xl font-semibold text-foreground">{title}</h3>
+        <p className="text-body-sm leading-relaxed text-muted-foreground">
           {body}
         </p>
       </div>
-      <div className="flex items-center border-t border-border/40 pt-4 text-xs font-bold">
-        <span className={t.footer}>{footer}</span>
-      </div>
+      <p className="flex items-center gap-1.5 border-t border-border/50 pt-4 text-caption font-semibold text-muted-foreground">
+        <Check className="h-3.5 w-3.5 shrink-0 text-success" />
+        {footer}
+      </p>
     </div>
   );
 }
@@ -62,7 +60,14 @@ interface StepCardProps {
   index?: number;
 }
 
-/** How-it-works step card: numbered step label, lift-on-hover, icon zoom. */
+/**
+ * One step of the explainer.
+ *
+ * The lift-on-hover and the icon that scaled to 110% are gone: three cards that
+ * are not clickable should not behave like buttons, and the movement was the
+ * loudest thing on a page whose job is to explain a sequence. The step label
+ * was `uppercase tracking-widest`, which the rest of the product stopped doing.
+ */
 export function StepCard({
   icon: Icon,
   step,
@@ -72,22 +77,19 @@ export function StepCard({
 }: StepCardProps) {
   return (
     <div
-      className="group animate-fade-up space-y-4 rounded-3xl border border-border/60 bg-card p-8 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-md"
-      style={{
-        animationDelay: `${index * 100}ms`,
-        animationFillMode: "both",
-      }}
+      className="animate-fade-up space-y-4 rounded-xl border border-border bg-card p-7 shadow-sm"
+      style={{ animationDelay: `${index * 100}ms`, animationFillMode: "both" }}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary transition-transform duration-300 group-hover:scale-110">
-          <Icon className="h-6 w-6" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="h-5 w-5" />
         </div>
-        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="font-data text-caption font-semibold text-muted-foreground">
           {step}
         </span>
       </div>
-      <h3 className="text-xl font-bold text-foreground">{title}</h3>
-      <p className="text-sm font-medium leading-relaxed text-muted-foreground">
+      <h3 className="text-body-xl font-semibold text-foreground">{title}</h3>
+      <p className="text-body-sm leading-relaxed text-muted-foreground">
         {body}
       </p>
     </div>
@@ -97,12 +99,12 @@ export function StepCard({
 export function TrustSignals({ items }: { items: string[] }) {
   return (
     <ul
-      className="animate-fade-up flex flex-wrap items-center gap-4 pt-4 text-xs font-semibold text-muted-foreground sm:gap-6"
+      className="animate-fade-up flex flex-wrap items-center gap-x-6 gap-y-2 pt-2 text-caption font-semibold text-muted-foreground"
       style={{ animationDelay: "320ms" }}
     >
       {items.map((text) => (
-        <li key={text} className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+        <li key={text} className="flex items-center gap-1.5">
+          <Check className="h-3.5 w-3.5 shrink-0 text-success" />
           <span>{text}</span>
         </li>
       ))}
@@ -118,17 +120,20 @@ interface Stat {
 /** Compact metric strip used between the hero and the explainer sections. */
 export function StatsBand({ stats }: { stats: Stat[] }) {
   return (
-    <dl className="grid grid-cols-2 divide-border/50 rounded-3xl border border-border/60 bg-card/60 p-2 shadow-sm backdrop-blur sm:grid-cols-4 sm:divide-x">
+    <dl className="grid grid-cols-2 divide-border/60 rounded-xl border border-border bg-card shadow-sm sm:grid-cols-4 sm:divide-x">
       {stats.map((stat, i) => (
+        /* flex-col is what makes the `order` below mean anything. Without it
+           these were block children, `order` was inert, and every cell rendered
+           its label above its number — the reverse of the intent. */
         <div
           key={stat.label}
-          className="animate-fade-up px-4 py-5 text-center"
+          className="animate-fade-up flex flex-col px-4 py-5 text-center"
           style={{ animationDelay: `${i * 80}ms` }}
         >
-          <dt className="order-2 mt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <dt className="order-2 mt-1 text-caption font-medium text-muted-foreground">
             {stat.label}
           </dt>
-          <dd className="order-1 font-mono text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">
+          <dd className="order-1 font-data text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             {stat.value}
           </dd>
         </div>

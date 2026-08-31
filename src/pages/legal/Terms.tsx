@@ -1,4 +1,3 @@
-import React from "react";
 import { LegalLayout } from "./LegalLayout";
 
 export default function TermsOfService() {

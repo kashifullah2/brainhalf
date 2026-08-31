@@ -16,7 +16,11 @@
 #   cloudflareinsights.com   Where that beacon posts its RUM data
 #   fonts.googleapis.com     Font stylesheet, @import'ed from src/index.css
 #   fonts.gstatic.com        The font files themselves
-#   api.dicebear.com         Fallback avatars in AuthContext
+#   api.emailjs.com          Contact-form delivery from the browser
+#
+# frame-src carries 'self' so src/pages/DocumentDetails.tsx can frame a stored PDF
+# from /api/storage. Note object-src stays 'none': <object>/<embed> are a plugin
+# surface we have no use for, and an <iframe> covers the same need.
 #   lh3.googleusercontent.com Google profile pictures
 #
 # Two notes for whoever edits this next:
@@ -28,11 +32,23 @@
 #    application/ld+json is never executed, and crawlers parse the HTML without
 #    applying CSP. Do not add 'unsafe-inline' to script-src to silence it.
 #
-# 2. connect-src now includes OCR vendor origins (https://api.futureppo.top 
-#    and https://api.openai.com) to allow the browser-side fallback path to work
-#    when Cloudflare Pages times out the proxy request.
+# 2. connect-src lists ONLY origins the browser still talks to directly. It used
+#    to also carry https://api.futureppo.top, https://api.openai.com and
+#    https://*.amazonaws.com, for a "browser-side fallback" that reached the OCR
+#    vendors from the page. That path no longer exists -- src/lib/ocr-client.ts
+#    states outright that there is no direct-to-provider fallback, because a
+#    browser cannot hold the credential. Leaving the origins here kept open the
+#    exact channel the key-leak fix closed: with an XSS, a page could have posted
+#    every extracted document straight out to them. Do not re-add a vendor origin
+#    unless the browser genuinely calls it.
+#
+# 3. api.emailjs.com is required by the /contact form (src/pages/legal/Contact.tsx).
+#    It was missing, so the browser blocked every submission -- and because
+#    /api/contact answers 503 without an EMAIL binding, that left the product with
+#    no working contact channel at all. Remove this origin only together with the
+#    EmailJS dependency.
 /*
-  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.googletagmanager.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://api.dicebear.com https://lh3.googleusercontent.com https://www.googletagmanager.com; connect-src 'self' https://accounts.google.com https://www.google-analytics.com https://*.google-analytics.com https://cloudflareinsights.com https://api.futureppo.top https://api.openai.com https://*.amazonaws.com; frame-src https://accounts.google.com; worker-src 'self' blob:; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.googletagmanager.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://lh3.googleusercontent.com https://www.googletagmanager.com; connect-src 'self' https://accounts.google.com https://www.google-analytics.com https://*.google-analytics.com https://cloudflareinsights.com https://api.emailjs.com; frame-src 'self' https://accounts.google.com; worker-src 'self' blob:; upgrade-insecure-requests
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
@@ -45,5 +61,5 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-/index.html
+/*.html
   Cache-Control: no-cache

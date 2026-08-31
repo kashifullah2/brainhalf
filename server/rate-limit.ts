@@ -81,6 +81,47 @@ const MAX_WINDOW_SECONDS = 86400;
 /** Roughly one second in every PRUNE_EVERY also runs the cleanup. */
 const PRUNE_EVERY = 50;
 
+// ---------------------------------------------------------------------------
+// In-isolate fallback, used only when the database counter is unavailable.
+//
+// The D1 failure path returned null -- fail open -- on the reasoning that a
+// transient database problem should not take down login, signup and OCR at once.
+// That reasoning still holds, but "fail open" meant every limit in the product
+// vanished simultaneously for the duration, on exactly the endpoints where the
+// limit is load-bearing: verifying a password is 600,000 PBKDF2 iterations, and
+// /api/ocr spends real money upstream.
+//
+// A module-level counter is not a correct rate limiter -- Pages Functions run
+// across many isolates and each keeps its own, so the effective limit is the
+// configured one multiplied by however many isolates are warm. It is, however,
+// bounded, which is the entire difference from unlimited. It only ever runs while
+// D1 is failing.
+// ---------------------------------------------------------------------------
+
+interface LocalCounter {
+  windowStart: number;
+  count: number;
+}
+
+/** Bounded so a flood of distinct identities cannot grow this without limit. */
+const MAX_LOCAL_BUCKETS = 5_000;
+const localCounters = new Map<string, LocalCounter>();
+
+function countLocally(bucket: string, windowStart: number): number {
+  const existing = localCounters.get(bucket);
+  if (existing && existing.windowStart === windowStart) {
+    existing.count += 1;
+    return existing.count;
+  }
+
+  // Wholesale clear rather than an eviction policy: this map only exists during a
+  // database outage, and the cheapest correct answer is to start the window again.
+  if (localCounters.size >= MAX_LOCAL_BUCKETS) localCounters.clear();
+
+  localCounters.set(bucket, { windowStart, count: 1 });
+  return 1;
+}
+
 /**
  * Per-IP identity. Cloudflare sets CF-Connecting-IP on every edge request and a
  * client cannot suppress it, so null here means we are not running behind the
@@ -129,11 +170,15 @@ export async function enforceRateLimit(
       .first<{ count: number }>();
     count = row?.count ?? 1;
   } catch (error) {
-    // Fail open, loudly. Failing closed would turn a transient database problem
-    // into a total outage of login, signup and OCR at once, which is a worse
-    // outcome than briefly not throttling.
-    console.error(`[rate-limit] counter failed for ${route}:`, error);
-    return null;
+    // Degrade, loudly, rather than disappear. Failing fully closed would turn a
+    // transient database problem into a total outage of login, signup and OCR at
+    // once; failing fully open removed every limit in the product at the same
+    // moment. The in-isolate counter is the middle: still bounded, just looser.
+    console.error(
+      `[rate-limit] database counter failed for ${route}; falling back to the in-isolate counter:`,
+      error,
+    );
+    count = countLocally(bucket, windowStart);
   }
 
   if (count > rule.limit) {

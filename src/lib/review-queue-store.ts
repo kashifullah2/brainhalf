@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import {
+  apiRequest,
   approveFlaggedFields,
   getSettings,
   updateSettings,
@@ -19,7 +20,26 @@ import {
   type Document,
   type ExtractedField,
 } from "./api-client";
-import { apiUrl } from "./api-paths";
+
+/**
+ * Fired on `window` after anything in this module changes the queue.
+ *
+ * AppLayout has listened for this since the sidebar badge was moved behind
+ * React Query, and its comment said the store dispatched it "after every
+ * add/update/delete". The store never did. So approving a document's fields
+ * left the badge showing the pre-approval count until the 60s stale window
+ * lapsed AND something else happened to trigger a refetch — and with
+ * `refetchOnWindowFocus: false` set globally, often much longer than that.
+ *
+ * The constant lives here rather than in AppLayout because the dependency only
+ * runs one way: the layout imports the store, never the reverse.
+ */
+export const QUEUE_CHANGED_EVENT = "review-queue:changed";
+
+function notifyQueueChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(QUEUE_CHANGED_EVENT));
+}
 
 export interface FieldResolution {
   documentId: number;
@@ -38,16 +58,42 @@ export interface FlaggedDocument {
   reviewedCount: number;
 }
 
+/**
+ * A document is *awaiting review* while any of its flagged fields is still
+ * unresolved. Every count the UI shows about the queue derives from this one
+ * predicate, because they used to disagree.
+ *
+ * The sidebar badge counted `items.length` — every document holding a
+ * below-threshold field, including the ones already fully verified — while the
+ * "Awaiting Review" stat and the "Documents Awaiting Review" heading counted
+ * only the unresolved ones. A queue with two unresolved documents and one
+ * verified showed a badge of 3 next to a page that said 2, with nothing
+ * anywhere to explain the difference. A nav badge means "this much is waiting
+ * for you", so the unresolved count is the honest one and this is now the only
+ * place that decides it.
+ */
+export function isAwaitingReview(item: FlaggedDocument): boolean {
+  return item.reviewedCount < item.totalFlaggedCount;
+}
+
 interface QueuePage {
   limit: number;
   offset: number;
   hasMore: boolean;
 }
 
-interface ReviewQueueResponse {
+export interface ReviewQueueResponse {
   threshold: number;
   items: FlaggedDocument[];
   page?: QueuePage;
+}
+
+export interface QueueTotalsResponse {
+  threshold: number;
+  awaiting: number;
+  flaggedDocuments: number;
+  flaggedFields: number;
+  pendingFields: number;
 }
 
 interface QueueQuery {
@@ -67,17 +113,16 @@ const PAGE_SIZE = 100;
  */
 const MAX_PAGES = 50;
 
-async function fetchQueue(query: QueueQuery = {}): Promise<ReviewQueueResponse> {
+export async function fetchQueue(query: QueueQuery = {}): Promise<ReviewQueueResponse> {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) search.set(key, String(value));
   }
   const qs = search.toString();
 
-  const response = await fetch(apiUrl(`/review-queue${qs ? `?${qs}` : ""}`), {
-    credentials: "same-origin",
-    headers: { Accept: "application/json" },
-  });
+  // apiRequest, not fetch: this was the last call in the client that would have
+  // surfaced a raw "Failed to fetch" if the server went away mid-session.
+  const response = await apiRequest(`/review-queue${qs ? `?${qs}` : ""}`);
 
   if (!response.ok) {
     let message = `Could not load the review queue (${response.status}).`;
@@ -91,6 +136,38 @@ async function fetchQueue(query: QueueQuery = {}): Promise<ReviewQueueResponse> 
   }
 
   return (await response.json()) as ReviewQueueResponse;
+}
+
+/**
+ * How many documents are waiting, without reading the queue.
+ *
+ * The sidebar badge used `countAwaitingReview(await getReviewQueueItems())`, which
+ * walks the whole paginated queue -- up to fifty sequential requests -- to arrive
+ * at one integer, on every /app route. The endpoint counts it in SQL now.
+ *
+ * The server applies the same predicate as isAwaitingReview(), so the badge and
+ * the page it links to cannot drift apart.
+ */
+export async function getQueueTotals(): Promise<QueueTotalsResponse> {
+  const response = await apiRequest('/review-queue?countOnly=1');
+
+  if (!response.ok) {
+    let message = `Could not read the review queue count (${response.status}).`;
+    try {
+      const parsed = (await response.json()) as { error?: string };
+      if (parsed.error) message = parsed.error;
+    } catch {
+      // Keep the status-based message.
+    }
+    throw new Error(message);
+  }
+
+  const body = (await response.json()) as QueueTotalsResponse;
+  return body;
+}
+
+export async function getAwaitingReviewCount(): Promise<number> {
+  return (await getQueueTotals()).awaiting;
 }
 
 export async function getConfidenceThreshold(): Promise<number> {
@@ -205,6 +282,7 @@ export async function saveFieldResolution(
       resolvedValue !== originalValue ? resolvedValue : undefined,
     reviewStatus: status,
   });
+  notifyQueueChanged();
 }
 
 /**
@@ -219,9 +297,11 @@ export async function markDocumentReviewed(
   documentId: number,
 ): Promise<void> {
   await approveFlaggedFields(batchId, documentId);
+  notifyQueueChanged();
 }
 
 /** Approves every flagged field across one batch, in one request. */
 export async function markBatchReviewed(batchId: number): Promise<void> {
   await approveFlaggedFields(batchId);
+  notifyQueueChanged();
 }

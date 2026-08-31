@@ -12,19 +12,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AutoResizingTextarea } from "@/components/ui/auto-resizing-textarea";
 import { useToast } from "@/hooks/use-toast";
+import { EmptyState, ErrorState, ListSkeleton, PageHeader } from "@/components/app";
 import { PRESETS } from "@/components/UploadModal";
 import {
   Trash2,
   Plus,
-  Loader2,
   Pencil,
   Save,
-  X,
   FileCode2,
 } from "lucide-react";
 
 export function TemplatesSettings() {
-  const { data: templates, isLoading } = useListTemplates();
+  const { data: templates, isLoading, error, refetch } = useListTemplates();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -106,14 +105,15 @@ export function TemplatesSettings() {
   };
 
   const renderForm = () => (
-    <div className="space-y-4 p-5 rounded-2xl border border-border/60 bg-muted/20 mt-4">
+    <div className="mt-4 space-y-4 rounded-xl border border-border bg-muted/20 p-5">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            <label htmlFor="template-name" className="text-label font-medium text-muted-foreground">
               Template Name
             </label>
             <Input
+              id="template-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Monthly Utility Bill"
@@ -121,13 +121,16 @@ export function TemplatesSettings() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            <label htmlFor="template-base-mode" className="text-label font-medium text-muted-foreground">
               Base Mode
             </label>
             <select
+              id="template-base-mode"
               value={baseMode}
               onChange={(e) => setBaseMode(e.target.value)}
-              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              /* h-9 to match the Input beside it — this was h-10, so the two
+                 controls in one grid row had different heights. */
+              className="flex h-9 w-full items-center justify-between rounded-lg border border-input bg-background px-3 py-2 text-body shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -139,10 +142,11 @@ export function TemplatesSettings() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          <label htmlFor="template-prompt" className="text-label font-medium text-muted-foreground">
             Custom Instructions / Prompt (Optional)
           </label>
           <AutoResizingTextarea
+            id="template-prompt"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Additional instructions for the AI..."
@@ -152,10 +156,11 @@ export function TemplatesSettings() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          <label htmlFor="template-description" className="text-label font-medium text-muted-foreground">
             Description (Optional)
           </label>
           <Input
+            id="template-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Short description for the UI..."
@@ -164,7 +169,12 @@ export function TemplatesSettings() {
         </div>
       </div>
 
-      <div className="flex gap-2 justify-end pt-2">
+      {/* A rule and real space. The row used to sit 8px under the Description
+          field with nothing between them, so "Cancel / Save Template" read as
+          another form row rather than as the form's actions. The negative
+          margin lets the rule span the card's padding instead of floating
+          inside it. */}
+      <div className="-mx-5 flex justify-end gap-2 border-t border-border/60 px-5 pt-4">
         <Button variant="ghost" onClick={resetForm}>
           Cancel
         </Button>
@@ -175,41 +185,48 @@ export function TemplatesSettings() {
     </div>
   );
 
-  if (isLoading) {
+  // A bare centred spinner where every other list on the product shows the
+  // shape of the rows it is about to render.
+  if (isLoading) return <ListSkeleton rows={3} />;
+
+  if (error) {
     return (
-      <div className="py-8 flex justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
+      <ErrorState
+        title="Could not load your templates"
+        body="Your saved templates are safe. Try again in a moment."
+        onRetry={() => void refetch()}
+      />
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-extrabold mb-1">Extraction Templates</h2>
-          <p className="text-sm text-muted-foreground font-medium">
-            Save your custom extraction schemas for one-click re-use.
-          </p>
-        </div>
-        {!isCreating && !editingId && (
-          <Button onClick={() => setIsCreating(true)} size="sm">
-            <Plus className="w-4 h-4 mr-2" /> New Template
-          </Button>
-        )}
-      </div>
+      {/* Templates was the one app page with no PageHeader at all: a 24px h2
+          where its siblings use a 36px serif h1, and no eyebrow line. */}
+      <PageHeader
+        eyebrow={<><FileCode2 className="h-3.5 w-3.5" /> Library</>}
+        title="Extraction Templates"
+        description="Save your custom extraction schemas for one-click re-use."
+        actions={
+          !isCreating && !editingId ? (
+            <Button onClick={() => setIsCreating(true)} className="rounded-lg font-semibold">
+              <Plus className="h-4 w-4" /> New Template
+            </Button>
+          ) : undefined
+        }
+      />
 
       {(isCreating || editingId) && renderForm()}
 
       {!isCreating && !editingId && (
         <div className="space-y-3 mt-6">
           {!templates?.length ? (
-            <div className="text-center py-12 bg-muted/20 rounded-2xl border border-dashed border-border/60">
-              <FileCode2 className="w-8 h-8 mx-auto mb-3 text-muted-foreground/50" />
-              <p className="text-sm font-medium text-muted-foreground">
-                You haven't saved any templates yet.
-              </p>
-            </div>
+            <EmptyState
+              icon={FileCode2}
+              title="No templates yet"
+              body="Save a custom prompt from the upload screen and it will show up here for one-click re-use."
+              inset
+            />
           ) : (
             [...templates].sort((a, b) => (b.useCount || 0) - (a.useCount || 0)).map((t) => (
               <div
@@ -218,18 +235,18 @@ export function TemplatesSettings() {
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">{t.name}</span>
-                    <span className="text-[10px] uppercase tracking-widest font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                    <span className="font-semibold text-foreground">{t.name}</span>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-caption font-medium text-primary">
                       {PRESETS.find((p) => p.id === t.baseMode)?.label ||
                         t.baseMode}
                     </span>
                   </div>
                   {t.description && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-label text-muted-foreground mt-1">
                       {t.description}
                     </p>
                   )}
-                  <p className="text-[11px] text-muted-foreground/70 mt-1">
+                  <p className="text-caption text-muted-foreground/70 mt-1">
                     Used {t.useCount} times
                   </p>
                 </div>

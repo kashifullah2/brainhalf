@@ -36,6 +36,17 @@ migrations_dir = "migrations"
 
 # Original uploaded documents. Keys are prefixed with the owner's user id,
 # which is what makes the ownership check in functions/api/storage possible.
+#
+# Objects are removed when their document or batch is deleted, and an upload that
+# never became a document is collected by server/storage-sweep.ts using the
+# pending_uploads table (migration 0006). Before that table existed, the HTTP
+# response was the only record of a freshly stored key, so a tab closed between
+# upload and batch creation left an object nothing pointed at and nothing could
+# find -- billed indefinitely.
+#
+# Migration 0006 must be applied for that collection to run:
+#   pnpm db:migrate:local     # then
+#   pnpm db:migrate:remote
 [[r2_buckets]]
 binding = "DOCUMENTS"
 bucket_name = "brainhalf-storage"

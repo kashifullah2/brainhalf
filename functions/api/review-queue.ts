@@ -52,6 +52,70 @@ interface QueueItem {
   reviewedCount: number;
 }
 
+/**
+ * Answers just "how many documents are waiting?", in one query.
+ *
+ * The sidebar badge needed this number and there was no way to ask for it, so
+ * AppLayout called the full queue reader instead -- which pages this endpoint 100
+ * documents at a time, up to fifty sequential requests, each one joining
+ * document_fields and grouping the result in Worker memory, to render a single
+ * integer on every /app route.
+ *
+ * The predicate has to stay identical to isAwaitingReview() in
+ * src/lib/review-queue-store.ts: a document is waiting while it still holds a
+ * below-threshold field that nobody has ruled on. A badge that counts differently
+ * from the page it links to is the bug this replaces, not a new one.
+ *
+ * No join: document_fields.user_id is denormalised and the rows cascade with their
+ * document, so there is no orphan to filter out. idx_fields_review covers
+ * (user_id, confidence, review_status) exactly.
+ */
+interface QueueTotals {
+  /** Documents still holding at least one unreviewed flagged field. */
+  awaiting: number;
+  /** Documents with any flagged field, reviewed or not. */
+  flaggedDocuments: number;
+  /** Individual flagged fields. */
+  flaggedFields: number;
+  /** Flagged fields nobody has ruled on yet. */
+  pendingFields: number;
+}
+
+async function queueTotals(
+  env: AppEnv,
+  userId: string,
+  threshold: number,
+): Promise<QueueTotals> {
+  // One pass over idx_fields_review. Every number the queue page displays comes
+  // from here, so the page's own list can be paged without the totals becoming
+  // page-local -- a stat card reading "3 awaiting review" over a list of 50 would
+  // be worse than no card at all.
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*)                          AS flagged_fields,
+            COALESCE(SUM(review_status IS NULL), 0) AS pending_fields,
+            COUNT(DISTINCT document_id)       AS flagged_documents,
+            COUNT(DISTINCT CASE WHEN review_status IS NULL THEN document_id END)
+                                              AS awaiting_documents
+       FROM document_fields
+      WHERE user_id = ?
+        AND confidence < ?`,
+  )
+    .bind(userId, threshold)
+    .first<{
+      flagged_fields: number;
+      pending_fields: number;
+      flagged_documents: number;
+      awaiting_documents: number;
+    }>();
+
+  return {
+    awaiting: row?.awaiting_documents ?? 0,
+    flaggedDocuments: row?.flagged_documents ?? 0,
+    flaggedFields: row?.flagged_fields ?? 0,
+    pendingFields: row?.pending_fields ?? 0,
+  };
+}
+
 /** Reads a non-negative integer query parameter, or null when absent/invalid. */
 function intQuery(url: URL, name: string): number | null {
   const raw = url.searchParams.get(name);
@@ -80,6 +144,7 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
   const offset = intQuery(url, 'offset') ?? 0;
   const batchFilter = intQuery(url, 'batchId');
   const documentFilter = intQuery(url, 'documentId');
+  const countOnly = url.searchParams.get('countOnly') === '1';
 
   const settings = await env.DB.prepare(
     `SELECT confidence_threshold FROM user_settings WHERE user_id = ?`,
@@ -88,6 +153,18 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
     .first<{ confidence_threshold: number }>();
 
   const threshold = settings?.confidence_threshold ?? DEFAULT_THRESHOLD;
+
+  // Short-circuit before any paging work. A query parameter rather than a separate
+  // route because `review-queue.ts` is a leaf file: adding /api/review-queue/count
+  // would mean turning it into a directory, and the two would then disagree about
+  // which one owns /api/review-queue.
+  if (countOnly) {
+    return json(
+      { threshold, ...(await queueTotals(env, auth.user.id, threshold)) },
+      200,
+      authHeaders(auth),
+    );
+  }
 
   // Page over documents first. Paging the flat join instead would cut a document's
   // fields in half at the page boundary.

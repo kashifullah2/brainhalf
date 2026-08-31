@@ -38,18 +38,18 @@ function toError(value: unknown): Error {
 function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
   return (
     <div className="min-h-[60vh] w-full flex items-center justify-center p-6">
-      <div className="max-w-lg w-full text-center bg-card p-6 rounded-2xl border border-destructive/20 shadow-lg">
-        <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto mb-4 font-bold text-xl">
+      <div className="max-w-lg w-full text-center bg-card p-6 rounded-xl border border-destructive/20 shadow-lg">
+        <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto mb-4 font-semibold text-xl">
           !
         </div>
-        <h1 className="text-xl font-bold text-foreground">
+        <h1 className="text-xl font-semibold text-foreground">
           Something went wrong
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-body text-muted-foreground">
           This part of the app hit an error. The rest of the app is still running.
         </p>
         
-        <pre className="mt-4 max-h-40 overflow-y-auto rounded-xl bg-muted/60 p-3 text-left font-mono text-xs text-destructive border border-destructive/20 whitespace-pre-wrap break-all">
+        <pre className="mt-4 max-h-40 overflow-y-auto rounded-xl bg-muted/60 p-3 text-left font-mono text-label text-destructive border border-destructive/20 whitespace-pre-wrap break-all">
           {error.message || String(error)}
         </pre>
 
@@ -60,14 +60,14 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
               resetError();
               window.location.reload();
             }}
-            className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+            className="rounded-lg bg-primary px-5 py-2.5 text-body font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             Reload Page
           </button>
           <button
             type="button"
             onClick={resetError}
-            className="rounded-xl bg-muted px-5 py-2.5 text-sm font-bold text-foreground hover:bg-muted/80 transition-colors border border-border/60"
+            className="rounded-lg border border-border bg-muted px-5 py-2.5 text-body font-semibold text-foreground transition-colors hover:bg-muted/80"
           >
             Try Again
           </button>

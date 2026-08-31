@@ -49,6 +49,16 @@ export interface BatchSummaryDto {
   id: number;
   status: string;
   createdAt: string;
+  /**
+   * Last time anything about this batch changed, which is what lets a client tell
+   * a batch that is still being worked on from one that was abandoned.
+   *
+   * Extraction runs in the browser tab, so closing it leaves the remaining
+   * documents at 'queued' and the batch at 'processing' with nothing left to move
+   * them. Both dashboards polled such a batch every few seconds, forever. This is
+   * the signal they needed to stop.
+   */
+  updatedAt: string;
   totalDocuments: number;
   completedDocuments: number;
   failedDocuments: number;
@@ -70,11 +80,14 @@ interface BatchRow {
   engine_type: string;
   prompt: string | null;
   created_at: string;
+  updated_at: string;
   total_documents: number;
   completed_documents: number;
   failed_documents: number;
   first_content_type: string | null;
   first_object_path: string | null;
+  /** Selected only to make SQLite's bare-column rule pin the two fields above. */
+  first_position: number | null;
 }
 
 interface DocumentRow {
@@ -111,6 +124,20 @@ export function toIso(sqliteTimestamp: string): string {
 /**
  * Counts are computed in SQL rather than by loading documents, so the batch list
  * stays a single query no matter how many documents each batch holds.
+ *
+ * This was five correlated subqueries per batch row — 2,500 subquery executions
+ * at the 500-batch listing cap. One LEFT JOIN and a GROUP BY does the same work
+ * in a single pass over idx_documents_batch.
+ *
+ * `first_content_type` / `first_object_path` rely on a documented SQLite
+ * behaviour: when a grouped query contains exactly one min() or max() aggregate,
+ * every bare column in the SELECT is taken from the row that produced it. So
+ * MIN(d.position) is what pins those two to the batch's first document. D1 is
+ * SQLite, so this is a guarantee rather than an accident — but it is the reason
+ * MIN(d.position) is selected even though nothing reads it.
+ *
+ * Callers must insert their WHERE clause between SUMMARY_SELECT and
+ * SUMMARY_GROUP.
  */
 const SUMMARY_SELECT = `
   SELECT b.id                AS id,
@@ -118,23 +145,24 @@ const SUMMARY_SELECT = `
          b.engine_type       AS engine_type,
          b.prompt            AS prompt,
          b.created_at        AS created_at,
-         (SELECT COUNT(*) FROM documents d WHERE d.batch_id = b.id)
-           AS total_documents,
-         (SELECT COUNT(*) FROM documents d WHERE d.batch_id = b.id AND d.status = 'completed')
-           AS completed_documents,
-         (SELECT COUNT(*) FROM documents d WHERE d.batch_id = b.id AND d.status = 'failed')
-           AS failed_documents,
-         (SELECT d.content_type FROM documents d WHERE d.batch_id = b.id
-           ORDER BY d.position LIMIT 1) AS first_content_type,
-         (SELECT d.object_path FROM documents d WHERE d.batch_id = b.id
-           ORDER BY d.position LIMIT 1) AS first_object_path
-    FROM batches b`;
+         b.updated_at        AS updated_at,
+         COUNT(d.id)                                  AS total_documents,
+         COALESCE(SUM(d.status = 'completed'), 0)      AS completed_documents,
+         COALESCE(SUM(d.status = 'failed'), 0)         AS failed_documents,
+         MIN(d.position)                               AS first_position,
+         d.content_type                                AS first_content_type,
+         d.object_path                                 AS first_object_path
+    FROM batches b
+    LEFT JOIN documents d ON d.batch_id = b.id`;
+
+const SUMMARY_GROUP = ` GROUP BY b.id`;
 
 function toSummary(row: BatchRow): BatchSummaryDto {
   return {
     id: row.id,
     status: row.status,
     createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
     totalDocuments: row.total_documents,
     completedDocuments: row.completed_documents,
     failedDocuments: row.failed_documents,
@@ -148,11 +176,14 @@ function toSummary(row: BatchRow): BatchSummaryDto {
 export async function listBatches(
   env: AppEnv,
   userId: string,
+  limit = MAX_LISTED_BATCHES,
+  offset = 0,
 ): Promise<BatchSummaryDto[]> {
   const { results } = await env.DB.prepare(
-    `${SUMMARY_SELECT} WHERE b.user_id = ? ORDER BY b.created_at DESC, b.id DESC LIMIT ?`,
+    `${SUMMARY_SELECT} WHERE b.user_id = ?${SUMMARY_GROUP}
+      ORDER BY b.created_at DESC, b.id DESC LIMIT ? OFFSET ?`,
   )
-    .bind(userId, MAX_LISTED_BATCHES)
+    .bind(userId, limit, offset)
     .all<BatchRow>();
 
   return (results ?? []).map(toSummary);
@@ -168,7 +199,7 @@ export async function getBatchDetail(
   batchId: number,
 ): Promise<BatchDetailDto | null> {
   const batch = await env.DB.prepare(
-    `${SUMMARY_SELECT} WHERE b.id = ? AND b.user_id = ?`,
+    `${SUMMARY_SELECT} WHERE b.id = ? AND b.user_id = ?${SUMMARY_GROUP}`,
   )
     .bind(batchId, userId)
     .first<BatchRow>();
@@ -390,6 +421,35 @@ function cleanString(value: unknown, max: number): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
+/**
+ * Returns the first object path that does not belong to this user, or null.
+ *
+ * `objectPath` arrives from the client, and nothing checked it. Reads were still
+ * safe -- functions/api/storage/[[path]].ts requires the key to sit under the
+ * caller's own `${userId}/` prefix, so claiming someone else's key gets a 404 --
+ * but "the read path happens to reject it" is not the same as "the row cannot be
+ * written". A caller could point their own document rows at another account's
+ * objects, or at nonsense, and the database would hold it: thumbnails and viewers
+ * would 404 for reasons nothing explains, and a batch delete would then try to
+ * remove R2 keys the user does not own.
+ *
+ * The prefix is the ownership boundary, so it is asserted where the row is
+ * created, not only where it is read.
+ */
+export function invalidObjectPath(
+  documents: readonly NormalizedDocument[],
+  userId: string,
+): string | null {
+  const prefix = `${userId}/`;
+  for (const doc of documents) {
+    if (doc.objectPath === null) continue;
+    if (!doc.objectPath.startsWith(prefix) || doc.objectPath.includes('..')) {
+      return doc.objectPath;
+    }
+  }
+  return null;
+}
+
 export function normalizeIncomingDocuments(
   raw: readonly IncomingDocumentInput[],
 ): NormalizedDocument[] {
@@ -477,6 +537,28 @@ export async function insertDocuments(
   });
 
   const results = await env.DB.batch(statements);
+
+  // These keys now have a document pointing at them, so they are no longer
+  // pending. Leaving the rows behind would be harmless -- the sweep also checks
+  // `documents` -- but the table would grow without bound.
+  const claimed = documents
+    .map((doc) => doc.objectPath)
+    .filter((path): path is string => path !== null);
+
+  if (claimed.length > 0) {
+    try {
+      const placeholders = claimed.map(() => '?').join(', ');
+      await env.DB.prepare(
+        `DELETE FROM pending_uploads WHERE user_id = ? AND object_path IN (${placeholders})`,
+      )
+        .bind(userId, ...claimed)
+        .run();
+    } catch (error) {
+      // Bookkeeping only. The documents are inserted and the sweep's NOT EXISTS
+      // check against `documents` already protects the objects themselves.
+      console.error('[batches] could not clear pending upload rows:', error);
+    }
+  }
 
   return documents.map((doc, index) => ({
     id: Number(results[index]?.meta.last_row_id),

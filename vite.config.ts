@@ -49,13 +49,44 @@ import {
   DEFAULT_OPENAI_MODEL,
   DEFAULT_OPENAI_FALLBACK_MODEL,
 } from './server/openai-params';
+// The same prompt builder production uses. Imported rather than reimplemented so
+// the two cannot answer a mode differently.
+import {
+  MAX_CUSTOM_PROMPT_CHARS,
+  OCR_DOCUMENT_TYPES,
+  buildUpstreamRequest,
+  isOcrMode,
+} from './server/ocr-prompts';
 
 // Graceful defaults — no longer crashes when env vars are missing.
 // .env is consulted as well as the shell, so PORT/BASE_PATH declared there are
 // actually honoured (previously only shell env was read).
-const rootDir = path.resolve(import.meta.dirname);const fileEnv = loadEnv(process.env.NODE_ENV || 'development', rootDir, '');
+const rootDir = path.resolve(import.meta.dirname);
+const fileEnv = loadEnv(process.env.NODE_ENV || 'development', rootDir, '');
 const port = Number(process.env.PORT || fileEnv.PORT) || 5173;
 const basePath = process.env.BASE_PATH || fileEnv.BASE_PATH || '/';
+
+/**
+ * Hosts the dev/preview server will answer for.
+ *
+ * `true` means "any", which switches off the Host header check that stops a page
+ * the developer is browsing from reaching a dev server bound to 0.0.0.0. Replit
+ * needs it, because its proxy hostname is generated per session; elsewhere the
+ * default is the loopback set, and DEV_ALLOWED_HOSTS (comma separated) covers a
+ * tunnel such as ngrok.
+ */
+const devAllowedHosts: true | string[] =
+  process.env.REPL_ID !== undefined
+    ? true
+    : [
+        'localhost',
+        '127.0.0.1',
+        '[::1]',
+        ...(process.env.DEV_ALLOWED_HOSTS || fileEnv.DEV_ALLOWED_HOSTS || '')
+          .split(',')
+          .map((host) => host.trim())
+          .filter(Boolean),
+      ];
 
 // Keep in sync with the cap in functions/api/ocr.ts.
 const MAX_OCR_BODY_BYTES = 20 * 1024 * 1024;
@@ -157,22 +188,55 @@ function devOcrProxy(): Plugin {
         }
 
         let parsed: {
+          tier?: unknown;
+          mode?: unknown;
+          customPrompt?: unknown;
+          document?: { contentType?: unknown; dataUrl?: unknown; filename?: unknown };
           messages?: unknown;
-          temperature?: number;
-          seed?: number;
-          jsonObject?: boolean;
-          tier?: string;
         };
         try {
           parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         } catch {
           return send(400, { error: 'Request body must be valid JSON.' });
         }
-        if (!Array.isArray(parsed?.messages) || parsed.messages.length === 0) {
+
+        // Mirrors functions/api/ocr.ts exactly: a `messages` array is refused, the
+        // mode is checked against a fixed list, and the prompt is built here rather
+        // than accepted from the caller.
+        if (parsed.messages !== undefined) {
           return send(400, {
-            error: 'Request must include a non-empty `messages` array.',
+            error:
+              'This endpoint no longer accepts a `messages` array. Send { mode, document } instead.',
           });
         }
+        if (!isOcrMode(parsed.mode)) {
+          return send(400, { error: 'Unknown or missing extraction mode.' });
+        }
+        const customPrompt =
+          typeof parsed.customPrompt === 'string' && parsed.customPrompt.trim()
+            ? parsed.customPrompt.trim().slice(0, MAX_CUSTOM_PROMPT_CHARS)
+            : undefined;
+
+        const doc = parsed.document;
+        const contentType = typeof doc?.contentType === 'string' ? doc.contentType : '';
+        if (!(OCR_DOCUMENT_TYPES as readonly string[]).includes(contentType)) {
+          return send(415, {
+            error: `Unsupported document type (${contentType || 'unknown'}).`,
+          });
+        }
+        const dataUrl = typeof doc?.dataUrl === 'string' ? doc.dataUrl : '';
+        if (!dataUrl.startsWith(`data:${contentType};base64,`) || dataUrl.length < 32) {
+          return send(400, {
+            error: '`document.dataUrl` must be a base64 data URL matching the declared type.',
+          });
+        }
+
+        const upstream = buildUpstreamRequest(parsed.mode, customPrompt, {
+          contentType,
+          dataUrl,
+          filename:
+            typeof doc?.filename === 'string' ? doc.filename.slice(0, 255) : 'document',
+        });
 
         // Mirrors production: the caller names a tier, never a model. Anything
         // other than the exact string 'escalation' is the default tier.
@@ -196,9 +260,10 @@ function devOcrProxy(): Plugin {
           return send(503, { error: 'OCR service is not configured.' });
         }
 
-        const temperature =
-          typeof parsed.temperature === 'number' ? parsed.temperature : 0;
-        const seed = typeof parsed.seed === 'number' ? parsed.seed : 42;
+        // Fixed, matching functions/api/ocr.ts. They used to be read off the request
+        // body, which handed the caller two knobs on billed behaviour.
+        const temperature = 0;
+        const seed = 42;
 
         // OpenAI gets the full parameter set (logprobs, response_format,
         // bounded output). Hunyuan gets only what it is known to accept; its
@@ -206,18 +271,18 @@ function devOcrProxy(): Plugin {
         let upstreamBody: Record<string, unknown> = isOpenAI
           ? {
               model,
-              messages: parsed.messages,
+              messages: upstream.messages,
               ...buildModelParams(model, {
                 temperature,
                 seed,
                 logprobs: true,
-                jsonObject: parsed.jsonObject === true,
+                jsonObject: upstream.jsonObject,
                 maxCompletionTokens: MAX_OCR_COMPLETION_TOKENS,
               }),
             }
           : {
               model,
-              messages: parsed.messages,
+              messages: upstream.messages,
               temperature,
               seed,
             };
@@ -264,9 +329,14 @@ function devOcrProxy(): Plugin {
               server.config.logger.error(
                 `[dev-ocr-proxy] upstream ${upstream.status}: ${text.slice(0, 500)}`,
               );
-              // Same mapping as production (functions/api/ocr.ts): a vendor status
-              // is not the caller's status. Only 413 is genuinely about the
-              // caller's document.
+              // Same status mapping as production (functions/api/ocr.ts): a vendor
+              // status is not the caller's status, and only 413 is genuinely about
+              // the caller's document.
+              //
+              // One deliberate difference: production does NOT return the vendor's
+              // message, because it describes our account. Here it is returned on
+              // purpose -- this proxy only ever runs on a developer's machine, and
+              // the whole reason to read a provider error is to see what it said.
               const status = upstream.status === 413 ? 413 : 503;
               return send(status, {
                 error: `OCR service error (${upstream.status}).`,
@@ -324,10 +394,63 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, 'src'),
-      // Adjusted from broken monorepo-relative path to local assets dir.
-      '@assets': path.resolve(import.meta.dirname, 'public', 'assets'),
     },
     dedupe: ['react', 'react-dom'],
+  },
+  /**
+   * Pre-bundle the dependencies live routes use, at server start.
+   *
+   * Every route in App.tsx is a dynamic import, so Vite's dep scanner — which
+   * crawls from index.html — cannot see most of these until you actually visit
+   * the route that needs one. It then re-bundles mid-session and forces a full
+   * reload:
+   *
+   *   [vite] ✨ new dependencies optimized: @radix-ui/react-accordion
+   *   [vite] ✨ optimized dependencies changed. reloading
+   *   Error: Cannot read properties of null (reading 'useRef')
+   *
+   * That error is the reload racing modules that still hold a reference to the
+   * pre-bundle being replaced — React resolves to null and the first hook call
+   * throws. It is a development-only failure, but it looks exactly like a real
+   * bug and costs a hard refresh every time a new route is opened.
+   *
+   * Deliberately a list rather than `entries: ['src/**\/*.tsx']`. It used to be
+   * justified by the 36 unreachable files in src/components/ui, which dragged
+   * recharts, cmdk, vaul, embla and react-day-picker into the crawl; those
+   * files and those dependencies are gone now, but an explicit list is still
+   * the cheaper contract. If a new dependency is added to a lazily-loaded
+   * route, add it here too — forgetting only costs the one reload this avoids.
+   */
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'wouter',
+      '@tanstack/react-query',
+      'lucide-react',
+      'class-variance-authority',
+      'clsx',
+      'tailwind-merge',
+      'next-themes',
+      'date-fns',
+      'localforage',
+      'react-zoom-pan-pinch',
+      '@emailjs/browser',
+      '@radix-ui/react-slot',
+      '@radix-ui/react-accordion',
+      '@radix-ui/react-alert-dialog',
+      '@radix-ui/react-avatar',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-progress',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-select',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+      '@radix-ui/react-tooltip',
+    ],
   },
   root: path.resolve(import.meta.dirname),
   build: {
@@ -340,9 +463,6 @@ export default defineConfig({
           // React core — rarely changes, so a dedicated chunk maximizes cache hits.
           if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
             return 'vendor-react';
-          }
-          if (id.includes('node_modules/recharts')) {
-            return 'vendor-recharts';
           }
           if (id.includes('node_modules/lucide-react')) {
             return 'vendor-lucide';
@@ -372,7 +492,12 @@ export default defineConfig({
     port,
     strictPort: false,
     host: '0.0.0.0',
-    allowedHosts: true,
+    // `true` disables Vite's Host header check entirely, which is what makes a dev
+    // server on 0.0.0.0 reachable by DNS rebinding from a page the developer
+    // happens to be visiting. It stays on inside Replit, whose proxy serves the app
+    // from a generated hostname that cannot be listed ahead of time; everywhere
+    // else the check is left on, with an escape hatch for tunnels.
+    allowedHosts: devAllowedHosts,
     fs: {
       strict: true,
     },
@@ -380,6 +505,6 @@ export default defineConfig({
   preview: {
     port,
     host: '0.0.0.0',
-    allowedHosts: true,
+    allowedHosts: devAllowedHosts,
   },
 });

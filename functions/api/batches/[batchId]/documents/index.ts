@@ -4,6 +4,7 @@ import {
   MAX_DOCUMENTS_PER_BATCH,
   getBatchCapacity,
   insertDocuments,
+  invalidObjectPath,
   normalizeIncomingDocuments,
   refreshBatchStatus,
   type IncomingDocumentInput,
@@ -36,10 +37,15 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
   // Ownership first: 404 for both "missing" and "someone else's", so the response
   // cannot be used to probe which batch ids exist.
   const batch = await env.DB.prepare(
-    `SELECT id, status, engine_type FROM batches WHERE id = ? AND user_id = ?`,
+    `SELECT id, status, engine_type, prompt FROM batches WHERE id = ? AND user_id = ?`,
   )
     .bind(batchId, auth.user.id)
-    .first<{ id: number; status: string; engine_type: string }>();
+    .first<{
+      id: number;
+      status: string;
+      engine_type: string;
+      prompt: string | null;
+    }>();
 
   if (!batch) return fail('Batch not found.', 404);
 
@@ -53,6 +59,17 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
   const incoming = normalizeIncomingDocuments(
     body.documents as IncomingDocumentInput[],
   );
+
+  // Same ownership assertion as batch creation: the key must be under this user's
+  // prefix. Both intake paths share server/batches.ts precisely so a check added
+  // to one cannot be missing from the other.
+  const foreignPath = invalidObjectPath(incoming, auth.user.id);
+  if (foreignPath) {
+    console.error(
+      `[api/batches/documents] rejected a document claiming an object path outside its owner's prefix (user=${auth.user.id})`,
+    );
+    return fail('One of those documents references a file that is not yours.', 400);
+  }
 
   // Count and next free position in one query.
   const { count, nextPosition } = await getBatchCapacity(env, batchId);
@@ -80,8 +97,16 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
   // polling the newly queued rows.
   await refreshBatchStatus(env, batchId);
 
+  // `prompt` is returned, not accepted: the instructions the batch's existing
+  // documents were read with are the only correct ones for an append, and the
+  // client must not be able to substitute different ones half way through a batch.
   return json(
-    { id: batchId, mode: batch.engine_type, documents: created },
+    {
+      id: batchId,
+      mode: batch.engine_type,
+      prompt: batch.prompt ?? undefined,
+      documents: created,
+    },
     201,
     authHeaders(auth),
   );

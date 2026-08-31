@@ -80,15 +80,15 @@ export default function ResetPassword() {
     return (
       <div className="space-y-6">
         <div className="space-y-2">
-          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             This link is not valid
           </h1>
-          <p className="text-sm font-medium text-muted-foreground">
+          <p className="text-body font-medium text-muted-foreground">
             The reset link is missing its token. Reset links expire after an hour
             and can only be used once, so request a new one.
           </p>
         </div>
-        <Button asChild className="h-11 gap-2 rounded-xl px-5 text-sm font-bold">
+        <Button asChild className="h-11 px-5 text-body font-semibold">
           <Link href="/sign-in">
             Back to sign in
             <ArrowRight className="h-4 w-4" />
@@ -101,16 +101,16 @@ export default function ResetPassword() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           Choose a new password
         </h1>
-        <p className="text-sm font-medium text-muted-foreground">
+        <p className="text-body font-medium text-muted-foreground">
           Setting a new password signs out every other device on this account.
         </p>
       </div>
 
       {errorMsg && (
-        <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold flex items-start gap-2.5">
+        <div className="rounded-lg p-3.5 bg-destructive/10 border border-destructive/20 text-destructive text-label font-semibold flex items-start gap-2.5">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{errorMsg}</span>
         </div>
@@ -118,21 +118,24 @@ export default function ResetPassword() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5 w-full overflow-hidden">
-          <label className="text-[13px] font-semibold text-foreground">
+          <label htmlFor="new-password" className="text-body-sm font-semibold text-foreground">
             New password
           </label>
           <div className="relative w-full">
             <Input
+              id="new-password"
               type={showPassword ? "text" : "password"}
               maxLength={128}
               autoComplete="new-password"
+              aria-invalid={tooShort}
+              aria-describedby={tooShort ? "new-password-error" : undefined}
               placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`h-11 rounded-xl bg-card font-medium text-sm pr-10 truncate transition-colors ${
+              className={`h-11 truncate pr-10 ${
                 tooShort
                   ? "border-destructive focus-visible:ring-destructive"
-                  : "border-border/80 focus:border-primary"
+                  : ""
               }`}
             />
             <button
@@ -149,39 +152,41 @@ export default function ResetPassword() {
             </button>
           </div>
           {tooShort && (
-            <span className="text-[11px] font-semibold text-destructive">
+            <span id="new-password-error" className="text-caption font-semibold text-destructive">
               Password must be at least {MIN_PASSWORD_LENGTH} characters.
             </span>
           )}
         </div>
 
         <div className="space-y-1.5 w-full overflow-hidden">
-          <label className="text-[13px] font-semibold text-foreground">
+          <label htmlFor="confirm-new-password" className="text-body-sm font-semibold text-foreground">
             Confirm new password
           </label>
           <div className="relative w-full">
             <Input
+              id="confirm-new-password"
               type={showPassword ? "text" : "password"}
               maxLength={128}
               autoComplete="new-password"
+              aria-invalid={mismatch}
               placeholder="Repeat the password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className={`h-11 rounded-xl bg-card font-medium text-sm pr-10 truncate transition-colors ${
+              className={`h-11 truncate pr-10 ${
                 mismatch
                   ? "border-destructive focus-visible:ring-destructive"
                   : matches
-                    ? "border-emerald-500/50 focus-visible:ring-emerald-500"
-                    : "border-border/80 focus:border-primary"
+                    ? "border-success/60 focus-visible:ring-success"
+                    : ""
               }`}
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none z-10">
-              {matches && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
+              {matches && <CheckCircle2 className="h-4 w-4 text-success" />}
               {mismatch && <XCircle className="w-4 h-4 text-destructive" />}
             </div>
           </div>
           {mismatch && (
-            <span className="text-[11px] font-semibold text-destructive">
+            <span className="text-caption font-semibold text-destructive">
               The two passwords do not match.
             </span>
           )}
@@ -190,21 +195,21 @@ export default function ResetPassword() {
         <Button
           type="submit"
           disabled={!canSubmit}
-          className="w-full h-11 rounded-xl font-bold text-sm gap-2"
+          className="h-11 w-full text-body font-semibold"
         >
           {isSubmitting ? "Saving..." : "Set new password"}
           {!isSubmitting && <ArrowRight className="h-4 w-4" />}
         </Button>
       </form>
 
-      <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground">
+      <div className="flex items-center gap-2 text-caption font-semibold text-muted-foreground">
         <ShieldCheck className="h-3.5 w-3.5 text-primary" />
         <span>Reset links expire one hour after they are requested.</span>
       </div>
 
-      <p className="text-xs font-medium text-muted-foreground">
+      <p className="text-label font-medium text-muted-foreground">
         Changed your mind?{" "}
-        <Link href="/sign-in" className="font-bold text-primary hover:underline">
+        <Link href="/sign-in" className="font-semibold text-primary hover:underline">
           Back to sign in
         </Link>
       </p>

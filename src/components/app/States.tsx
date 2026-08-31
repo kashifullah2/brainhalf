@@ -14,11 +14,11 @@ export function ErrorState({
         <AlertTriangle className="h-5 w-5" />
       </div>
       <div className="space-y-1">
-        <h3 className="text-[14px] font-semibold text-foreground">{title}</h3>
-        <p className="text-[13px] text-muted-foreground">{body}</p>
+        <h3 className="text-body font-semibold text-foreground">{title}</h3>
+        <p className="text-body-sm text-muted-foreground">{body}</p>
       </div>
       {onRetry && (
-        <Button variant="outline" size="sm" className="rounded-lg h-8 text-[12.5px]" onClick={onRetry}>
+        <Button variant="outline" size="sm" className="rounded-lg h-8 text-label" onClick={onRetry}>
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Try again
         </Button>
       )}

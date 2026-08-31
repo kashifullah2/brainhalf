@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, Wand2 } from "lucide-react";
 import { UploadFlow, PresetSelector } from "@/components/UploadModal";
-import { PageHeader } from "@/components/app";
+import { BackLink, PageHeader } from "@/components/app";
 import { Button } from "@/components/ui/button";
 import { useCreateBatch, useListTemplates, trackTemplateUsage, type CreateBatchProgress } from "@/lib/api-client";
 import { usePageTitle } from "@/lib/use-page-title";
@@ -70,40 +70,38 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="relative flex flex-col flex-1 w-full max-w-6xl mx-auto">
+    <div className="relative flex w-full flex-1 flex-col">
       <PageHeader
         eyebrow={<><Wand2 className="h-3.5 w-3.5" /> New batch</>}
         title="What are we reading today?"
         description="Pick the kind of document you have, then hand over the files."
-        actions={
-          <Button
-            variant="outline"
-            className="h-10 rounded-lg border-border/60 bg-card px-4 text-[13px] font-semibold shadow-sm transition-all hover:bg-muted"
-            onClick={() => setLocation("/app")}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Return to Dashboard
-          </Button>
-        }
+        back={<BackLink href="/app" label="Back to dashboard" />}
       />
 
-      <div className="mb-6 flex items-center justify-between bg-card border border-border/60 p-4 rounded-xl shadow-sm">
-        <div className="flex flex-col">
-          <span className="text-[13px] font-medium text-primary mb-1">Step {step} of 2</span>
-          <span className="text-[15px] font-bold text-foreground">
+      {/* One line, not four. This card used to carry its own heading and its own
+          description directly under the page heading and page description that
+          say the same thing — roughly 200px of chrome before the first preset,
+          on a step that then left a dead band at the bottom of the viewport.
+          The step name and the progress bars are the part that earns its
+          height. */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-4 py-3 shadow-sm">
+        <div className="flex items-baseline gap-2">
+          <span className="text-body-sm font-semibold text-primary">Step {step} of 2</span>
+          <span className="text-body-sm text-muted-foreground">·</span>
+          <span className="text-body font-semibold text-foreground">
             {step === 1 ? "Tell BrainHalf what to look for" : "Hand over your documents"}
           </span>
-          <span className="text-[13px] text-muted-foreground mt-0.5">
-            {step === 1 ? "Presets cover the usual suspects — or describe it yourself." : "Drop them in together; each page is read on its own."}
-          </span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="presentation">
           <div className={cn("h-1.5 w-12 rounded-full transition-colors duration-500", step >= 1 ? "bg-primary" : "bg-muted")} />
           <div className={cn("h-1.5 w-12 rounded-full transition-colors duration-500", step >= 2 ? "bg-primary" : "bg-muted")} />
         </div>
       </div>
 
-      <div className="w-full">
+      {/* flex-1: the leftover viewport height goes to the step's own content —
+          the dropzone on step 2 grows into it — instead of pooling underneath
+          the card as empty canvas. */}
+      <div className="flex w-full flex-1 flex-col">
         {step === 1 ? (
           <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <PresetSelector 
@@ -118,29 +116,30 @@ export default function UploadPage() {
               onCustomPromptChange={setCustomPrompt}
               templates={templates}
             />
-            <div className="flex flex-col items-end gap-2 mt-4">
+            <div className="flex flex-col items-end gap-2">
               <Button
+                size="lg"
                 onClick={() => setStep(2)}
                 disabled={!canContinue}
-                className="h-11 rounded-lg px-8 text-[14px] font-semibold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="text-body font-semibold"
               >
                 Continue to upload
               </Button>
               {!canContinue && (
-                <p className="text-[12px] font-medium text-muted-foreground">
+                <p className="text-label font-medium text-muted-foreground">
                   {mode === "vqa" ? "Add at least one question to continue." : "Describe what to extract to continue."}
                 </p>
               )}
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-right-4 duration-500">
+          <div className="flex flex-1 flex-col gap-6 animate-in fade-in slide-in-from-right-4 duration-500">
             <div className="flex justify-start">
-              <button onClick={() => setStep(1)} className="text-muted-foreground hover:text-foreground font-semibold text-[13px] flex items-center gap-1.5 transition-colors">
+              <button onClick={() => setStep(1)} className="text-muted-foreground hover:text-foreground font-semibold text-body-sm flex items-center gap-1.5 transition-colors">
                 <ArrowLeft className="h-4 w-4" /> Back to mode selection
               </button>
             </div>
-            <div className="bg-card border border-border/60 rounded-xl p-4 sm:p-6 shadow-sm">
+            <div className="flex-1 rounded-xl border border-border/60 bg-card p-4 shadow-sm sm:p-6">
               <UploadFlow
                 key={mode}
                 mode={mode}
