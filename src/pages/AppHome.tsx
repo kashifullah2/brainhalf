@@ -284,16 +284,24 @@ export default function AppHome() {
 
       {/* ── Stats ──────────────────────────────────────────── */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Total Batches" value={stats.total} icon={FileText} tone="primary" />
-          <StatCard label="Documents" value={stats.docs} icon={BarChart3} tone="primary" />
-          <StatCard label="Completed" value={stats.done} icon={CheckCircle2} tone="success" />
-          <StatCard
-            label={stats.running > 0 ? "In Flight" : "Failed"}
-            value={stats.running > 0 ? stats.running : stats.failed}
-            icon={stats.running > 0 ? Activity : AlertTriangle}
-            tone={stats.running > 0 ? "primary" : stats.failed > 0 ? "destructive" : "muted"}
-          />
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+          <div className="col-span-1 sm:col-span-2">
+            <StatCard label="Total Batches" value={stats.total} icon={FileText} tone="primary" />
+          </div>
+          <div className="col-span-1 sm:col-span-2">
+            <StatCard label="Documents" value={stats.docs} icon={BarChart3} tone="primary" />
+          </div>
+          <div className="col-span-1 sm:col-span-1">
+            <StatCard label="Completed" value={stats.done} icon={CheckCircle2} tone={stats.done > 0 ? "success" : "muted"} />
+          </div>
+          <div className="col-span-1 sm:col-span-1">
+            <StatCard
+              label={stats.running > 0 ? "In Flight" : "Failed"}
+              value={stats.running > 0 ? stats.running : stats.failed}
+              icon={stats.running > 0 ? Activity : AlertTriangle}
+              tone={stats.running > 0 ? "primary" : stats.failed > 0 ? "destructive" : "muted"}
+            />
+          </div>
         </div>
       )}
 

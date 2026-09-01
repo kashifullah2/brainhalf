@@ -223,6 +223,15 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
 
             {/* Account items — pushed to bottom */}
             <div className="mt-auto">
+              {!isRail && (
+                <div className="mx-2 mb-4 rounded-xl border border-border/60 bg-card p-3 shadow-sm">
+                  <p className="text-body-sm font-semibold text-foreground">Need help?</p>
+                  <p className="mt-1 text-caption text-muted-foreground leading-snug">Read the docs or reach out to our team.</p>
+                  <a href="mailto:support@brainhalf.com" className="mt-2 inline-block text-label font-semibold text-primary hover:underline">
+                    Contact Support &rarr;
+                  </a>
+                </div>
+              )}
               <div className="my-2 border-t border-sidebar-border/50" />
               {!isRail && (
                 <p className="px-2 pb-2 text-micro font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/40 select-none">
@@ -290,11 +299,11 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
             were hidden behind the navbar, and why neither the navbar nor the
             sidebar ever dimmed behind it. */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <main id="main-content" className="flex-1 bg-muted/10">
+          <main id="main-content" className="flex-1 bg-muted/10 flex justify-center">
             {/* The single content container for every app page. Pages used to
                 add their own max-w-5xl / max-w-6xl wrappers on top of this one,
                 giving four different frame widths across seven screens. */}
-            <div className="mx-auto w-full max-w-7xl px-6 py-7 md:px-8">
+            <div className="w-full max-w-[1200px] px-6 py-7 md:px-8">
               {children}
             </div>
           </main>
