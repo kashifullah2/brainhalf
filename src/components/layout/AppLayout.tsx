@@ -227,9 +227,9 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
                 <div className="mx-2 mb-4 rounded-xl border border-border/60 bg-card p-3 shadow-sm">
                   <p className="text-body-sm font-semibold text-foreground">Need help?</p>
                   <p className="mt-1 text-caption text-muted-foreground leading-snug">Read the docs or reach out to our team.</p>
-                  <a href="mailto:support@brainhalf.com" className="mt-2 inline-block text-label font-semibold text-primary hover:underline">
+                  <Link href="/contact" className="mt-2 inline-block text-label font-semibold text-primary hover:underline">
                     Contact Support &rarr;
-                  </a>
+                  </Link>
                 </div>
               )}
               <div className="my-2 border-t border-sidebar-border/50" />
