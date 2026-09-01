@@ -141,16 +141,57 @@ async function processDocument(msg: OcrQueueMessage, env: Env) {
 
     // 4. Save results to DB
     const content = data.choices?.[0]?.message?.content || "";
-    let extracted = [];
+    let extractedFields: Array<{normalizedField: string; label: string; value: string; confidence?: number}> = [];
+
+    let jsonStr = content;
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1];
+    } else {
+      const firstBrace = content.indexOf("{");
+      const firstBracket = content.indexOf("[");
+      const lastBrace = content.lastIndexOf("}");
+      const lastBracket = content.lastIndexOf("]");
+      if (firstBrace !== -1 && lastBrace !== -1 && (firstBracket === -1 || (firstBrace < firstBracket && lastBrace > lastBracket))) {
+        jsonStr = content.substring(firstBrace, lastBrace + 1);
+      } else if (firstBracket !== -1 && lastBracket !== -1) {
+        jsonStr = content.substring(firstBracket, lastBracket + 1);
+      }
+    }
+
     try {
-      extracted = JSON.parse(content);
+      const parsed = JSON.parse(jsonStr.trim());
+      if (Array.isArray(parsed)) {
+        parsed.forEach((row) => {
+          for (const [key, val] of flattenExtraction(row)) {
+            extractedFields.push({
+              normalizedField: key,
+              label: key,
+              value: val
+            });
+          }
+        });
+      } else if (typeof parsed === 'object' && parsed !== null) {
+        for (const [key, val] of flattenExtraction(parsed)) {
+          extractedFields.push({
+            normalizedField: key,
+            label: key,
+            value: val
+          });
+        }
+      }
     } catch {
-      // Not JSON, just fulltext maybe
+      // Not JSON or failed to parse, use full text
+      extractedFields.push({
+        normalizedField: "Full Text Transcription",
+        label: "Transcription",
+        value: content.trim()
+      });
     }
 
     // Insert fields
-    if (Array.isArray(extracted) && extracted.length > 0) {
-      const stmts = extracted.map((field: any, index: number) => {
+    if (extractedFields.length > 0) {
+      const stmts = extractedFields.map((field, index) => {
         return env.DB.prepare(
           `INSERT INTO document_fields (document_id, position, normalized_field, original_label, value, confidence)
            VALUES (?, ?, ?, ?, ?, ?)`
@@ -159,7 +200,7 @@ async function processDocument(msg: OcrQueueMessage, env: Env) {
           index,
           field.normalizedField || field.label || `field_${index}`,
           field.label || field.normalizedField || `field_${index}`,
-          typeof field.value === 'string' ? field.value : JSON.stringify(field.value),
+          field.value,
           field.confidence ?? 1.0
         );
       });
@@ -228,4 +269,32 @@ function resolveProvider(env: Env) {
   }
 
   return null;
+}
+
+function joinLabel(parent: string, child: string): string {
+  if (!parent) return child;
+  if (child.toLowerCase().startsWith(parent.toLowerCase())) return child;
+  return `${parent} ${child}`;
+}
+
+function flattenExtraction(value: unknown, prefix = '', depth = 0): Array<[string, string]> {
+  const MAX_DEPTH = 4;
+  if (value === null || value === undefined) return prefix ? [[prefix, '']] : [];
+  if (typeof value !== 'object') return [[prefix || 'Value', String(value)]];
+  if (depth >= MAX_DEPTH) return [[prefix || 'Value', JSON.stringify(value)]];
+
+  if (Array.isArray(value)) {
+    if (value.every((item) => item === null || typeof item !== 'object')) {
+      return [[prefix || 'Value', value.map((item) => String(item ?? '')).join(', ')]];
+    }
+    return value.flatMap((item, index) =>
+      flattenExtraction(item, joinLabel(prefix, `${index + 1}`), depth + 1),
+    );
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return prefix ? [[prefix, '']] : [];
+  return entries.flatMap(([key, child]) =>
+    flattenExtraction(child, joinLabel(prefix, key), depth + 1),
+  );
 }
