@@ -484,7 +484,7 @@ export default function AppHome() {
                       the list, saying nothing that the "Done" badge had not. */}
                   <div className="hidden w-28 shrink-0 flex-col gap-1.5 sm:flex">
                     <span
-                      className={`text-right font-data text-caption font-semibold ${
+                      className={`text-right font-sans tabular-nums text-body-sm font-semibold ${
                         batch.status === "failed"
                           ? "text-destructive"
                           : progress === 100

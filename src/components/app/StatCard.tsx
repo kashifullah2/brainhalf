@@ -42,7 +42,7 @@ export function StatCard({
           <Icon className="h-3.5 w-3.5" />
         </span>
       </div>
-      <div className={`mt-auto flex flex-wrap items-baseline gap-x-2 font-sans font-bold text-3xl tracking-tight ${TONES[tone].text}`}>
+      <div className={`mt-auto flex flex-wrap items-baseline gap-x-2 font-sans tabular-nums font-bold text-3xl tracking-tight ${TONES[tone].text}`}>
         {value}
         {hint ? (
           <span className="font-sans text-body-sm font-medium text-muted-foreground">

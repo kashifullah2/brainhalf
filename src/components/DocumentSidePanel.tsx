@@ -113,7 +113,7 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
                         </Button>
                       </div>
                     </div>
-                    <div className="text-body-sm text-foreground font-mono whitespace-pre-wrap break-words leading-relaxed">{field.editedValue ?? field.value ?? "—"}</div>
+                    <div className="text-body-sm text-foreground whitespace-pre-wrap break-words leading-relaxed">{field.editedValue ?? field.value ?? "—"}</div>
                   </div>
                 );
               })}
@@ -133,7 +133,7 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
                     <Copy className="h-3 w-3 text-muted-foreground" />
                   </Button>
                 </div>
-                <div className="text-body-sm text-foreground font-mono whitespace-pre-wrap break-words leading-relaxed">
+                <div className="text-body-sm text-foreground whitespace-pre-wrap break-words leading-relaxed">
                   {doc.ocrText}
                 </div>
               </div>

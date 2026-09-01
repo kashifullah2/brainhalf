@@ -90,7 +90,7 @@ export const AutoResizingTextarea = React.forwardRef<HTMLTextAreaElement, AutoRe
           //
           // transition-colors, not transition-all: the height changes on every
           // keystroke, and tweening the inline height made typing feel laggy.
-          "w-full resize-none overflow-y-auto rounded-lg border border-input bg-transparent px-3 py-2 font-mono text-base shadow-sm transition-colors md:text-body",
+          "w-full resize-none overflow-y-auto rounded-lg border border-input bg-transparent px-3 py-2 font-sans text-base shadow-sm transition-colors md:text-body",
           "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "disabled:cursor-not-allowed disabled:border-border disabled:bg-muted disabled:shadow-none",
           className,
