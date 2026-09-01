@@ -193,10 +193,11 @@ async function processDocument(msg: OcrQueueMessage, env: Env) {
     if (extractedFields.length > 0) {
       const stmts = extractedFields.map((field, index) => {
         return env.DB.prepare(
-          `INSERT INTO document_fields (document_id, position, normalized_field, original_label, value, confidence)
-           VALUES (?, ?, ?, ?, ?, ?)`
+          `INSERT INTO document_fields (document_id, user_id, position, normalized_field, original_label, value, confidence)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           documentId,
+          userId,
           index,
           field.normalizedField || field.label || `field_${index}`,
           field.label || field.normalizedField || `field_${index}`,
