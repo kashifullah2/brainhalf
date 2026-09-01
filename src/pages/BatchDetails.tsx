@@ -10,6 +10,7 @@ import {
   deleteDocument,
   useAppendBatch,
   storageUrl,
+  ApiError,
   type CreateBatchProgress,
   type Document,
   type ExtractedField,
@@ -510,11 +511,20 @@ export default function BatchDetails() {
   // a batch that is gone, and "Batch not found" sent people looking for a
   // deletion that never happened.
   if (error) {
+    const isUnauthorized = error instanceof ApiError && error.status === 401;
     return (
       <ErrorState
-        title="Could not load this batch"
-        body="The batch and its extracted data are untouched. Try again in a moment."
-        onRetry={() => void refetch()}
+        title={isUnauthorized ? "Session expired" : "Could not load this batch"}
+        body={
+          isUnauthorized
+            ? "Your session has expired. Please sign in again to view this batch."
+            : "The batch and its extracted data are untouched. Try again in a moment."
+        }
+        onRetry={
+          isUnauthorized
+            ? () => { window.location.href = "/sign-in"; }
+            : () => void refetch()
+        }
       />
     );
   }

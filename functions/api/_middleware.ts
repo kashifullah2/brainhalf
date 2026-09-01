@@ -1,4 +1,5 @@
 import { fail, type AppEnv } from '../../server/http';
+import { maybeSweepAbandonedUploads } from '../../server/storage-sweep';
 
 /**
  * Turns an unhandled exception in any /api route into our JSON error shape.
@@ -66,7 +67,7 @@ function crossSiteRejection(request: Request, url: URL): Response | null {
   return null;
 }
 
-export const onRequest: PagesFunction<AppEnv> = async ({ request, next }) => {
+export const onRequest: PagesFunction<AppEnv> = async ({ request, next, env, waitUntil }) => {
   const url = new URL(request.url);
 
   const rejected = crossSiteRejection(request, url);
@@ -80,6 +81,11 @@ export const onRequest: PagesFunction<AppEnv> = async ({ request, next }) => {
     // Deliberately generic: the message reaches the user, and an exception
     // string can name tables, columns and bindings.
     return fail('Something went wrong on our end. Please try again.', 500);
+  }
+
+  // Trigger opportunistic cleanups in the background
+  if (typeof waitUntil === 'function') {
+    waitUntil(maybeSweepAbandonedUploads(env));
   }
 
   // An /api path that no function claims falls through to the static assets,

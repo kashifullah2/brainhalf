@@ -240,6 +240,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+    };
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => {
+      window.removeEventListener("auth:unauthorized", handleUnauthorized);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!GOOGLE_CLIENT_ID || typeof window === "undefined") return;
 
     const existing = document.querySelector<HTMLScriptElement>(

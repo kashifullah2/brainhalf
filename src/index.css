@@ -763,3 +763,10 @@ input:-webkit-autofill:active {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
+
+@utility glass-panel {
+  background: hsl(var(--card) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.6);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px -4px hsl(var(--shadow-color) / 0.1);
+}

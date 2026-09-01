@@ -108,7 +108,7 @@ export class ApiError extends Error {
  */
 export async function apiRequest(path: string, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(apiUrl(path), {
+    const response = await fetch(apiUrl(path), {
       ...init,
       // Send and accept the session cookie.
       credentials: "same-origin",
@@ -117,6 +117,12 @@ export async function apiRequest(path: string, init?: RequestInit): Promise<Resp
         ...((init?.headers as Record<string, string>) ?? {}),
       },
     });
+
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+    }
+
+    return response;
   } catch {
     // A genuine network failure. Report it instead of pretending to have data.
     throw new ApiError(

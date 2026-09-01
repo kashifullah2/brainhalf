@@ -53,7 +53,7 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
-  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Opener-Policy: unsafe-none
   Strict-Transport-Security: max-age=31536000; includeSubDomains
 
 # Hashed build output is immutable, so it can be cached hard. The HTML document
