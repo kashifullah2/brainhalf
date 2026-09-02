@@ -234,6 +234,50 @@ export async function extractDocument(
   return parseOCRResult(content, mode, modelConfidence, imageQuality);
 }
 
+export function compressImageForUpload(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    if (file.type === "application/pdf") {
+      return resolve(file);
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX_DIMENSION = 1500;
+      let width = img.width;
+      let height = img.height;
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        if (width > height) {
+          height = Math.round((height * MAX_DIMENSION) / width);
+          width = MAX_DIMENSION;
+        } else {
+          width = Math.round((width * MAX_DIMENSION) / height);
+          height = MAX_DIMENSION;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return resolve(file);
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(file);
+        const nameParts = file.name.split('.');
+        if (nameParts.length > 1) {
+          nameParts.pop();
+        }
+        const newName = nameParts.join('.') + '.jpeg';
+        resolve(new File([blob], newName, { type: "image/jpeg", lastModified: file.lastModified }));
+      }, "image/jpeg", 0.6);
+    };
+    img.onerror = () => resolve(file);
+    img.src = url;
+  });
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     // Pass PDFs through without compression

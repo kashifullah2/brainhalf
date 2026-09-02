@@ -28,6 +28,7 @@ import {
   LIMIT_SUMMARY,
   rejectionReason,
 } from "@/lib/upload-limits";
+import { compressImageForUpload } from "@/lib/ocr-client";
 
 // ---------------------------------------------------------------------------
 // Preset definitions
@@ -374,10 +375,20 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
     return new File([file], `Scan_${stamp}${ext}`, { type: file.type, lastModified: file.lastModified });
   };
 
-  const addFiles = (incoming: FileList) => {
-    const queued = Array.from(incoming).map((file) => ({ id: newQueueId(), file: sanitizeFile(file) }));
-    setQueue((prev) => [...prev, ...queued]);
+  const addFiles = async (incoming: FileList) => {
     setIsStarted(true);
+    const filesArray = Array.from(incoming);
+    const compressedFiles = await Promise.all(
+      filesArray.map(async (file) => {
+        try {
+          return await compressImageForUpload(file);
+        } catch {
+          return file; // fallback
+        }
+      })
+    );
+    const queued = compressedFiles.map((file) => ({ id: newQueueId(), file: sanitizeFile(file) }));
+    setQueue((prev) => [...prev, ...queued]);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
