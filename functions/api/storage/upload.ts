@@ -30,10 +30,25 @@ const MAX_UPLOAD_BYTES = Math.max(MAX_IMAGE_BYTES, MAX_PDF_BYTES);
 
 const ALLOWED_TYPES = new Set([
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/webp',
   'application/pdf',
 ]);
+
+function normalizeContentType(type: string, filename?: string): string {
+  let normalized = type.toLowerCase();
+  if (normalized === 'image/jpg') return 'image/jpeg';
+  if (!normalized || normalized === 'application/octet-stream') {
+    if (filename) {
+      if (/\.jpe?g$/i.test(filename)) return 'image/jpeg';
+      if (/\.png$/i.test(filename)) return 'image/png';
+      if (/\.webp$/i.test(filename)) return 'image/webp';
+      if (/\.pdf$/i.test(filename)) return 'application/pdf';
+    }
+  }
+  return normalized;
+}
 
 function maxBytesFor(contentType: string): number {
   return contentType === 'application/pdf' ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
@@ -113,8 +128,9 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
   }
 
   // Type first: the size cap depends on it.
-  const contentType = file.type || 'application/octet-stream';
-  if (!ALLOWED_TYPES.has(contentType)) {
+  const rawType = file.type || 'application/octet-stream';
+  const contentType = normalizeContentType(rawType, file.name);
+  if (!ALLOWED_TYPES.has(contentType) && contentType !== 'image/jpeg') {
     return fail(
       `Unsupported file type (${contentType}). Use JPG, PNG, WEBP, or PDF.`,
       415,

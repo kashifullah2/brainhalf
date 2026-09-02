@@ -32,10 +32,26 @@ export const MAX_PDF_BYTES = 14 * 1024 * 1024;
 
 export const ACCEPTED_TYPES = new Set([
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/webp',
   'application/pdf',
 ]);
+
+export function normalizeContentType(type: string, filename?: string): string {
+  let normalized = type.toLowerCase();
+  if (normalized === 'image/jpg') return 'image/jpeg';
+  
+  if (!normalized || normalized === 'application/octet-stream') {
+    if (filename) {
+      if (/\.jpe?g$/i.test(filename)) return 'image/jpeg';
+      if (/\.png$/i.test(filename)) return 'image/png';
+      if (/\.webp$/i.test(filename)) return 'image/webp';
+      if (/\.pdf$/i.test(filename)) return 'application/pdf';
+    }
+  }
+  return normalized;
+}
 
 /** The `accept` attribute for a file input, kept next to the type set it mirrors. */
 export const ACCEPT_ATTRIBUTE = '.jpg,.jpeg,.png,.webp,.pdf';
@@ -61,12 +77,13 @@ export const LIMIT_SUMMARY = `PDF up to ${megabytes(MAX_PDF_BYTES)}, images up t
  * and a database row first.
  */
 export function rejectionReason(file: File): string | null {
-  if (!ACCEPTED_TYPES.has(file.type)) {
+  const normalizedType = normalizeContentType(file.type, file.name);
+  if (!ACCEPTED_TYPES.has(normalizedType) && normalizedType !== 'image/jpeg') {
     return `Invalid file type (${file.type || 'unknown'}). Use JPG, PNG, WEBP, or PDF.`;
   }
   if (file.size === 0) return 'This file is empty.';
 
-  const limit = maxBytesFor(file.type);
+  const limit = maxBytesFor(normalizedType);
   if (file.size > limit) {
     return file.type === 'application/pdf'
       ? `Too large. PDFs are limited to ${megabytes(limit)} because the page is sent to the model whole.`

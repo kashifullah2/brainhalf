@@ -132,7 +132,16 @@ export async function extractDocument(
    * `data:image/jpeg;base64,...`. The server checks that the declared type and the
    * data URL agree, and it is the URL that is telling the truth.
    */
-  const declaredType = /^data:([^;]+);base64,/.exec(base64Data)?.[1] ?? file.type;
+  let declaredType = /^data:([^;]+);base64,/.exec(base64Data)?.[1] ?? file.type;
+  if (!declaredType || declaredType === 'application/octet-stream') {
+    if (file.name) {
+      if (/\.jpe?g$/i.test(file.name)) declaredType = 'image/jpeg';
+      else if (/\.png$/i.test(file.name)) declaredType = 'image/png';
+      else if (/\.webp$/i.test(file.name)) declaredType = 'image/webp';
+      else if (/\.pdf$/i.test(file.name)) declaredType = 'application/pdf';
+    }
+  }
+  if (declaredType === 'image/jpg') declaredType = 'image/jpeg';
 
   // The tier is part of the cache key. The premium tier exists to produce a
   // *better* reading of the same bytes, so sharing one entry between tiers would
