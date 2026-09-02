@@ -85,24 +85,8 @@ export default function Home() {
   return (
     <div className="flex min-h-[calc(100dvh-var(--header-h))] flex-col bg-background overflow-hidden">
 
-      {/* Background Ambient Glows & Video Motion Graphics */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline 
-          className="absolute inset-0 w-full h-full object-cover opacity-15 mix-blend-screen"
-        >
-          <source src="/motion-hero.mp4" type="video/mp4" />
-        </video>
-        <div className="absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[120px] animate-glow" />
-        <div className="absolute bottom-0 right-0 h-[500px] w-[500px] translate-x-1/3 translate-y-1/3 rounded-full bg-primary/5 blur-[150px]" />
-        <div
-          className="absolute inset-0 opacity-[0.02]"
-          style={{ backgroundImage: "url('data:image/svg+xml,%3Csvg width=\\'60\\' height=\\'60\\' viewBox=\\'0 0 60 60\\' xmlns=\\'http://www.w3.org/2000/svg\\'%3E%3Cg fill=\\'none\\' fill-rule=\\'evenodd\\'%3E%3Cg fill=\\'%23ffffff\\' fill-opacity=\\'1\\'%3E%3Cpath d=\\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')" }}
-        />
-      </div>
+      {/* Minimalist Background */}
+      <div className="pointer-events-none fixed inset-0 z-0 bg-background/50" />
 
       <main id="main-content" className="relative z-10 flex-1">
 
@@ -154,13 +138,10 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Hero Preview - Floating Glass Interface with Motion */}
-            <div className="mx-auto mt-20 max-w-5xl perspective-1000">
-              <div className="glass-panel relative overflow-hidden rounded-[2.5rem] p-3 shadow-2xl transition-transform duration-700 hover:rotate-x-2 animate-float">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50 animate-glow" />
-                <div className="relative overflow-hidden rounded-[2rem] border border-border/50 bg-background">
-                  <HeroPreview />
-                </div>
+            {/* Hero Preview - Minimalist Interface */}
+            <div className="mx-auto mt-20 max-w-5xl">
+              <div className="relative overflow-hidden rounded-[2rem] border border-border/50 bg-background shadow-2xl">
+                <HeroPreview />
               </div>
             </div>
 
@@ -218,9 +199,6 @@ export default function Home() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
               {BENTO_FEATURES.map(({ icon: Icon, title, body, span }) => (
                 <div key={title} className={`glass-panel group relative overflow-hidden rounded-[2.5rem] p-10 transition-all duration-500 hover:border-primary/50 ${span} min-h-[320px]`}>
-                  {/* Subtle hover glow */}
-                  <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/20 blur-[100px] transition-transform duration-700 group-hover:scale-150" />
-
                   <div className="relative z-10 flex h-full flex-col">
                     <div className="mb-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-foreground/[0.02] border border-border/50 text-primary shadow-inner">
                       <Icon className="h-8 w-8" />
@@ -233,9 +211,8 @@ export default function Home() {
                 </div>
               ))}
 
-              {/* Massive Bold Callout Card with Motion Graphic */}
+              {/* Massive Bold Callout Card */}
               <div className="col-span-1 overflow-hidden rounded-[2.5rem] bg-primary/5 border border-primary/20 p-10 md:col-span-12 md:p-16 relative">
-                <div className="absolute inset-0 bg-[url('/document-transformation.png')] bg-cover bg-center opacity-30 mix-blend-overlay motion-safe:animate-pulse" />
                 <div className="relative z-10 flex flex-col items-start justify-between gap-10 md:flex-row md:items-center">
                   <div className="flex items-center gap-8">
                     <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-2xl">
@@ -270,14 +247,8 @@ export default function Home() {
               <FaqSection />
             </div>
 
-            {/* Neon Command CTA */}
-            <div className="relative flex flex-col justify-center overflow-hidden rounded-[2.5rem] bg-gradient-to-b from-primary/10 via-background to-background p-10 shadow-2xl border border-border/50 md:p-16">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50" />
-              
-              {/* Decorative background glows */}
-              <div className="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-primary/20 blur-[120px]" />
-              <div className="absolute -right-20 -bottom-20 h-64 w-64 rounded-full bg-primary/10 blur-[100px]" />
-
+            {/* Minimalist Command CTA */}
+            <div className="relative flex flex-col justify-center overflow-hidden rounded-[2.5rem] bg-card p-10 shadow-xl border border-border/50 md:p-16">
               <div className="relative z-10 text-center">
                 <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-mono font-bold text-primary backdrop-blur-md">
                   <CheckCircle2 className="h-4 w-4" />
