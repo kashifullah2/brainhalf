@@ -85,63 +85,88 @@ export default function Home() {
   return (
     <div className="flex min-h-[calc(100dvh-var(--header-h))] flex-col bg-background overflow-hidden">
 
-      {/* Minimalist Background */}
-      <div className="pointer-events-none fixed inset-0 z-0 bg-background/50" />
+      {/* Dynamic Glow Backgrounds */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="absolute -top-[20%] -left-[10%] h-[70%] w-[50%] rounded-full bg-primary/10 blur-[120px] opacity-70 animate-pulse" />
+        <div className="absolute top-[10%] -right-[10%] h-[60%] w-[40%] rounded-full bg-blue-500/10 blur-[120px] opacity-50" />
+      </div>
 
       <main id="main-content" className="relative z-10 flex-1">
 
         {/* ===== HERO SECTION ===== */}
-        <section className="relative w-full px-6 pt-24 pb-32 md:px-12 md:pt-36">
+        <section className="relative w-full px-6 pt-24 pb-20 md:px-12 md:pt-32 lg:pt-40 lg:pb-32">
           <div className="mx-auto max-w-7xl">
-            <div className="flex flex-col items-center text-center">
+            <div className="grid grid-cols-1 gap-16 lg:grid-cols-2 lg:gap-8 items-center">
+              
+              {/* Left Column: Copy & CTA */}
+              <div className="flex flex-col items-start text-left">
+                {/* Animated Status Pill */}
+                <div className="group mb-8 inline-flex items-center gap-3 rounded-full border border-primary/30 bg-background/50 px-5 py-2 text-sm font-semibold text-primary shadow-sm backdrop-blur-md transition-all hover:bg-primary/10 hover:border-primary/50">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary"></span>
+                  </span>
+                  <span>Next-Gen Extraction Engine</span>
+                </div>
 
-              {/* Animated Status Pill */}
-              <div className="mb-10 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-sm font-medium text-primary backdrop-blur-md">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary"></span>
-                </span>
-                Document Intelligence Engine
-              </div>
+                {/* Massive Hero Typography */}
+                <h1 className="text-balance text-5xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl lg:leading-[1.1]">
+                  Turn chaotic documents into
+                  <span className="block mt-2 bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent drop-shadow-sm">
+                    structured data.
+                  </span>
+                </h1>
 
-              {/* Massive Hero Typography */}
-              <h1 className="text-balance text-6xl font-extrabold tracking-tighter sm:text-7xl lg:text-[6rem] lg:leading-[0.95]">
-                Messy paper <span className="text-muted-foreground">in.</span><br />
-                Pristine data <span className="text-primary">out.</span>
-              </h1>
+                <p className="mt-8 max-w-xl text-balance text-lg font-medium text-muted-foreground leading-relaxed sm:text-xl">
+                  Instantly transform raw invoices, receipts, and messy PDFs into verifiable CSV and JSON. Powered by vision-language models — zero templates required.
+                </p>
 
-              <p className="mt-8 max-w-2xl text-balance text-lg font-medium text-muted-foreground sm:text-xl">
-                Transform raw invoices, receipts, and chaotic PDFs into perfectly structured CSV and JSON files. Zero templates. Zero manual configuration.
-              </p>
+                {/* CTA Buttons */}
+                <div className="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-5 w-full sm:w-auto">
+                  <Button asChild size="lg" className="group h-14 rounded-xl bg-primary px-8 text-base font-bold text-background shadow-lg shadow-primary/25 transition-all hover:translate-y-[-2px] hover:bg-primary/90 w-full sm:w-auto">
+                    <Link href="/app/upload">
+                      Start extracting free
+                      <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+                    </Link>
+                  </Button>
+                  <Button asChild size="lg" variant="outline" className="h-14 rounded-xl px-8 text-base font-semibold border-border/80 bg-background/50 backdrop-blur-md hover:bg-muted w-full sm:w-auto">
+                    <Link href="#features">
+                      See how it works
+                    </Link>
+                  </Button>
+                </div>
 
-              {/* High-Contrast CTA Buttons */}
-              <div className="mt-12 flex flex-col items-center gap-6 sm:flex-row">
-                <Button asChild size="lg" className="h-14 rounded-full bg-primary px-10 text-base font-bold text-background transition-transform hover:scale-105 hover:bg-primary/90">
-                  <Link href="/app/upload">
-                    Start extracting
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </Link>
-                </Button>
-                <div className="flex items-center gap-6 text-sm font-medium text-muted-foreground">
-                  <TrustSignals items={TRUST} />
+                {/* Trust Signals & Document Types */}
+                <div className="mt-10 flex flex-col gap-5 border-t border-border/50 pt-8 w-full max-w-md">
+                  <div className="flex items-center gap-6 text-sm font-medium text-muted-foreground">
+                    <TrustSignals items={TRUST} />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {DOC_TYPES.map(({ icon: Icon, label }) => (
+                      <div key={label} className="flex items-center gap-1.5 rounded-md bg-muted/50 px-3 py-1.5 text-xs font-semibold text-foreground/80 border border-border/40">
+                        <Icon className="h-3.5 w-3.5 text-primary/80" />
+                        {label}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {/* Document Type Pills */}
-              <div className="mt-16 flex flex-wrap justify-center gap-3">
-                {DOC_TYPES.map(({ icon: Icon, label }) => (
-                  <div key={label} className="glass-panel flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary/30">
-                    <Icon className="h-4 w-4 text-primary" />
-                    {label}
+              {/* Right Column: Hero Preview Dashboard */}
+              <div className="relative w-full lg:w-[120%] lg:-mr-[20%] xl:w-[130%] xl:-mr-[30%]">
+                <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-background shadow-2xl shadow-primary/10 transition-transform duration-700 hover:scale-[1.02]">
+                  {/* Decorative window controls */}
+                  <div className="flex items-center gap-2 border-b border-border/40 bg-muted/20 px-4 py-3 backdrop-blur-md">
+                    <div className="h-3 w-3 rounded-full bg-red-400/80" />
+                    <div className="h-3 w-3 rounded-full bg-yellow-400/80" />
+                    <div className="h-3 w-3 rounded-full bg-green-400/80" />
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Hero Preview - Minimalist Interface */}
-            <div className="mx-auto mt-20 max-w-5xl">
-              <div className="relative overflow-hidden rounded-[2rem] border border-border/50 bg-background shadow-2xl">
-                <HeroPreview />
+                  <HeroPreview />
+                </div>
+                
+                {/* Decorative Elements around Preview */}
+                <div className="absolute -bottom-6 -left-6 h-32 w-32 rounded-full bg-primary/20 blur-3xl -z-10" />
+                <div className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-blue-500/20 blur-3xl -z-10" />
               </div>
             </div>
 
