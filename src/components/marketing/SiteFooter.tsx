@@ -28,7 +28,7 @@ export function SiteFooter() {
         <div className="mb-12 grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-4">
           <div className="col-span-1 space-y-4 sm:col-span-2">
             <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-border/60 dark:ring-white/30">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-background p-1.5 shadow-md border border-border/50">
                 <img
                   src="/apple-touch-icon.png"
                   alt="BrainHalf Logo"

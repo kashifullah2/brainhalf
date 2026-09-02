@@ -235,22 +235,22 @@ export default function Home() {
 
               {/* Massive Bold Callout Card with Motion Graphic */}
               <div className="col-span-1 overflow-hidden rounded-[2.5rem] bg-primary/5 border border-primary/20 p-10 md:col-span-12 md:p-16 relative">
-                <div className="absolute inset-0 bg-[url('/document-transformation.png')] bg-cover bg-center opacity-30 mix-blend-lighten motion-safe:animate-pulse" />
+                <div className="absolute inset-0 bg-[url('/document-transformation.png')] bg-cover bg-center opacity-30 mix-blend-overlay motion-safe:animate-pulse" />
                 <div className="relative z-10 flex flex-col items-start justify-between gap-10 md:flex-row md:items-center">
                   <div className="flex items-center gap-8">
-                    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-background text-primary shadow-2xl">
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-primary text-primary-foreground shadow-2xl">
                       <ShieldCheck className="h-10 w-10" />
                     </div>
                     <div>
-                      <h3 className="text-3xl font-bold tracking-tight text-background sm:text-4xl">
+                      <h3 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
                         Sanitized, Safe Exports
                       </h3>
-                      <p className="mt-3 max-w-xl text-background/80 md:text-lg font-medium">
+                      <p className="mt-3 max-w-xl text-muted-foreground md:text-lg font-medium">
                         CSV, Excel, and JSON are strictly typed. We clean the data on the way out so it's ready for immediate database ingestion.
                       </p>
                     </div>
                   </div>
-                  <Button asChild size="lg" variant="secondary" className="h-16 shrink-0 rounded-full px-10 text-lg font-bold transition-transform hover:scale-105">
+                  <Button asChild size="lg" className="h-16 shrink-0 rounded-full bg-foreground text-background px-10 text-lg font-bold transition-transform hover:scale-105">
                     <Link href="/app/upload">
                       Try an export <ArrowUpRight className="ml-2 h-6 w-6" />
                     </Link>
@@ -267,37 +267,39 @@ export default function Home() {
 
             {/* Minimal FAQ */}
             <div className="glass-panel rounded-[2.5rem] p-8 md:p-12">
-              <h2 className="mb-10 text-3xl font-bold tracking-tight text-foreground">System Queries</h2>
               <FaqSection />
             </div>
 
             {/* Neon Command CTA */}
-            <div className="relative flex flex-col justify-center overflow-hidden rounded-[2.5rem] bg-card p-10 shadow-2xl shadow-primary/5 border border-border/50 md:p-16">
-              <div className="absolute inset-0 bg-gradient-to-b from-primary/10 to-transparent opacity-50" />
-              <div className="absolute -top-px left-20 right-20 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
+            <div className="relative flex flex-col justify-center overflow-hidden rounded-[2.5rem] bg-gradient-to-b from-primary/10 via-background to-background p-10 shadow-2xl border border-border/50 md:p-16">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50" />
+              
+              {/* Decorative background glows */}
+              <div className="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-primary/20 blur-[120px]" />
+              <div className="absolute -right-20 -bottom-20 h-64 w-64 rounded-full bg-primary/10 blur-[100px]" />
 
-              <div className="relative z-10">
-                <div className="mb-6 flex items-center gap-2 text-sm font-mono font-bold text-primary">
-                  <CheckCircle2 className="h-5 w-5" />
+              <div className="relative z-10 text-center">
+                <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-mono font-bold text-primary backdrop-blur-md">
+                  <CheckCircle2 className="h-4 w-4" />
                   READY_FOR_UPLOAD
                 </div>
-                <h2 className="text-5xl font-extrabold tracking-tighter text-foreground sm:text-6xl">
+                <h2 className="text-balance text-5xl font-extrabold tracking-tighter text-foreground sm:text-6xl">
                   Stop typing.<br />Start extracting.
                 </h2>
-                <p className="mt-6 text-lg font-medium text-muted-foreground">
-                  Upload a receipt, pick a preset, and see what comes back. No card, no setup, no sales call.
+                <p className="mx-auto mt-6 max-w-xl text-lg font-medium text-muted-foreground">
+                  Upload a receipt, pick a preset, and see what comes back. No credit card required. No complex setup.
                 </p>
 
-                <div className="mt-12 flex items-center gap-4 rounded-full border border-border/50 bg-foreground/5 p-2 backdrop-blur-md">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm">
-                    <FileText className="h-6 w-6" />
+                <div className="mx-auto mt-12 flex max-w-md items-center gap-4 rounded-2xl border border-border/50 bg-background/50 p-2 shadow-lg backdrop-blur-xl">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                    <FileText className="h-5 w-5" />
                   </div>
-                  <div className="flex-1 font-mono text-sm text-muted-foreground pl-2 hidden sm:block">
+                  <div className="flex-1 text-left font-mono text-sm text-muted-foreground pl-2 hidden sm:block">
                     Drop document here...
                   </div>
-                  <Button asChild size="lg" className="h-14 shrink-0 rounded-full bg-primary px-8 font-bold text-background hover:bg-primary/90 w-full sm:w-auto">
+                  <Button asChild size="lg" className="h-12 shrink-0 rounded-xl bg-primary px-8 font-bold text-primary-foreground transition-all hover:bg-primary/90 hover:scale-105 hover:shadow-[0_0_20px_rgba(79,70,229,0.4)] w-full sm:w-auto">
                     <Link href="/app/upload">
-                      Execute <ArrowRight className="ml-2 h-5 w-5" />
+                      Execute <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
                 </div>

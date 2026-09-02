@@ -49,7 +49,7 @@ export function FaqSection() {
         <Accordion
           type="single"
           collapsible
-          className="overflow-hidden rounded-2xl border border-border bg-card p-2 sm:p-4 shadow-md"
+          className="overflow-hidden rounded-3xl border border-border/50 bg-background/40 backdrop-blur-xl p-3 sm:p-6 shadow-xl shadow-primary/5"
         >
           {FAQ_ITEMS.map((item) => (
             <AccordionItem

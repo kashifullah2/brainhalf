@@ -64,7 +64,7 @@ function Wordmark({ href }: { href: string }) {
       aria-label="BrainHalf home"
       className="flex shrink-0 items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background group"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-border/60 dark:ring-white/30 transition-transform group-hover:scale-105">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background p-1.5 shadow-md border border-border/50 transition-transform group-hover:scale-105">
         <img
           src="/apple-touch-icon.png"
           alt="BrainHalf Logo"
