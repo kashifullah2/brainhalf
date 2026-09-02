@@ -25,6 +25,12 @@ import {
   extractModelConfidence,
   ImageQualityMetrics,
 } from "./confidence-scorer";
+import {
+  extractJsonBlock,
+  flattenExtraction,
+  takeMetaConfidence,
+  splitPreambleFromText,
+} from "../../server/extraction-parse";
 
 /**
  * Same-origin path to our OCR proxy, resolved against the deployment base so
@@ -57,7 +63,7 @@ async function hashString(str: string): Promise<string> {
     .join("");
 }
 
-export interface HunyuanOCRResponse {
+export interface ExtractionResult {
   rawText: string;
   fields: Array<{
     normalizedField: string;
@@ -104,13 +110,13 @@ interface CachedExtraction {
   modelConfidence: number | null;
 }
 
-export async function processWithHunyuanOCR(
+export async function extractDocument(
   file: File,
   mode: string,
   forceReprocess: boolean = false,
   customPrompt?: string,
   tier: OcrTier = 'default'
-): Promise<HunyuanOCRResponse> {
+): Promise<ExtractionResult> {
   // Convert file to Base64
   const base64Data = await fileToBase64(file);
 
@@ -275,108 +281,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 
-/**
- * Keys the model uses to report its own certainty. They are signals, not
- * extracted data — previously they leaked into the table as columns, so a
- * document ended up with a "CONFIDENCE" column holding "0.9", which then got a
- * confidence bar of its own.
- */
-const META_CONFIDENCE_KEYS = ['_overall_confidence', 'overall_confidence', '_confidence', 'confidence'];
 
-/**
- * Pulls a meta confidence value out of a parsed object and removes it, so it is
- * never presented as extracted content. Only accepts a plausible 0-1 score.
- */
-function takeMetaConfidence(
-  parsed: Record<string, unknown>,
-): number | undefined {
-  for (const key of META_CONFIDENCE_KEYS) {
-    if (!(key in parsed)) continue;
-    const raw = parsed[key];
-    const numeric = typeof raw === 'number' ? raw : Number(raw);
-    // A lone {"confidence": ...} object is the payload, not metadata.
-    const hasOtherKeys = Object.keys(parsed).length > 1;
-    if (hasOtherKeys && Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) {
-      delete parsed[key];
-      return numeric;
-    }
-  }
-  return undefined;
-}
-
-function joinLabel(parent: string, child: string): string {
-  if (!parent) return child;
-  // Avoid "Transaction Transaction Date".
-  if (child.toLowerCase().startsWith(parent.toLowerCase())) return child;
-  return `${parent} ${child}`;
-}
-
-/**
- * Flattens a nested extraction result into label/value pairs.
- *
- * The model returns structures like
- *   {"Transaction": {"Date": "...", "ID": "..."}}
- * and the previous code JSON.stringify'd the inner object into a single cell, so
- * the table showed `{"Date":"09 February...` instead of usable columns.
- */
-function flattenExtraction(
-  value: unknown,
-  prefix = '',
-  depth = 0,
-): Array<[string, string]> {
-  const MAX_DEPTH = 4;
-
-  if (value === null || value === undefined) {
-    return prefix ? [[prefix, '']] : [];
-  }
-
-  if (typeof value !== 'object') {
-    return [[prefix || 'Value', String(value)]];
-  }
-
-  if (depth >= MAX_DEPTH) {
-    return [[prefix || 'Value', JSON.stringify(value)]];
-  }
-
-  if (Array.isArray(value)) {
-    // All-scalar arrays read best as one joined cell ("Sent to": [name, phone]).
-    if (value.every((item) => item === null || typeof item !== 'object')) {
-      return [[prefix || 'Value', value.map((item) => String(item ?? '')).join(', ')]];
-    }
-    // Arrays of objects (line items) become numbered columns.
-    return value.flatMap((item, index) =>
-      flattenExtraction(item, joinLabel(prefix, `${index + 1}`), depth + 1),
-    );
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length === 0) {
-    return prefix ? [[prefix, '']] : [];
-  }
-
-  return entries.flatMap(([key, child]) =>
-    flattenExtraction(child, joinLabel(prefix, key), depth + 1),
-  );
-}
-function splitPreambleFromText(text: string): { descFromText?: string; cleanText: string } {
-  if (!text) return { cleanText: "" };
-  
-  // Detect conversational LLM preamble describing the image before the extracted content
-  const regex = /^((?:the|this)\s+(?:image|document|photo|picture)\s+(?:depicts|shows|contains|features|is a|displays|illustrates)[\s\S]*?)(?=(?:indicating the following details:|showing the following text:|with text:|containing:|details:|\n\n|\s*-\s*\*\*|\s*\*\*\w+|\s*-\s+[A-Z]))/i;
-
-  const match = text.match(regex);
-  if (match) {
-    const preamble = match[1].trim();
-    const rest = text.slice(match[1].length).replace(/^(?:indicating the following details:|showing the following text:|with text:|containing:|details:|\s*:)\s*/i, "").trim();
-    if (rest.length > 0 && preamble.length > 15) {
-      return {
-        descFromText: preamble,
-        cleanText: rest
-      };
-    }
-  }
-  return { cleanText: text };
-}
 
 export function parseOCRResult(
   content: string, 
@@ -388,42 +293,14 @@ export function parseOCRResult(
    */
   rawModelConfidence: number | null = null,
   imageQuality?: ImageQualityMetrics
-): HunyuanOCRResponse {
-  let fields: HunyuanOCRResponse["fields"] = [];
+): ExtractionResult {
+  let fields: ExtractionResult["fields"] = [];
   let rows: Record<string, unknown>[] = [];
   let rawText = content;
 
   try {
     // Robustly extract JSON block even if preceded/followed by LLM text
-    let jsonStr = content;
-    
-    // First, look for standard markdown blocks
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1];
-    } else {
-      // Fallback: aggressively locate the first and last structural brackets
-      const firstBrace = content.indexOf("{");
-      const firstBracket = content.indexOf("[");
-      const lastBrace = content.lastIndexOf("}");
-      const lastBracket = content.lastIndexOf("]");
-
-      const hasObj = firstBrace !== -1 && lastBrace !== -1;
-      const hasArr = firstBracket !== -1 && lastBracket !== -1;
-
-      if (hasObj && hasArr) {
-        // Find which structure encompasses the most content
-        if (firstBrace < firstBracket && lastBrace > lastBracket) {
-          jsonStr = content.substring(firstBrace, lastBrace + 1);
-        } else {
-          jsonStr = content.substring(firstBracket, lastBracket + 1);
-        }
-      } else if (hasObj) {
-        jsonStr = content.substring(firstBrace, lastBrace + 1);
-      } else if (hasArr) {
-        jsonStr = content.substring(firstBracket, lastBracket + 1);
-      }
-    }
+    let jsonStr = extractJsonBlock(content);
 
     const parsed = JSON.parse(jsonStr.trim());
 
@@ -440,7 +317,7 @@ export function parseOCRResult(
       const confScore =
         typeof parsedObj.confidence === "number" ? parsedObj.confidence : rawModelConfidence;
 
-      const fieldsList: HunyuanOCRResponse["fields"] = [];
+      const fieldsList: ExtractionResult["fields"] = [];
 
       if (finalDescription) {
         const descConf = calculateFieldConfidence("Image Description", finalDescription, confScore, imageQuality);
@@ -488,19 +365,14 @@ export function parseOCRResult(
       });
       rows = flattenedRows;
 
-      // Columns are the union across every row, in order of first appearance —
-      // taking only the first row dropped fields that appeared later.
-      const seen = new Set<string>();
-      const ordered: Array<[string, string]> = [];
-      for (const row of flattenedRows) {
-        for (const [label, val] of Object.entries(row)) {
-          if (seen.has(label)) continue;
-          seen.add(label);
-          ordered.push([label, String(val ?? '')]);
+      const allFields: Array<[string, string]> = [];
+      parsed.forEach((row, rowIndex) => {
+        for (const [key, val] of flattenExtraction(row, `Row ${rowIndex + 1}`)) {
+          allFields.push([key, val]);
         }
-      }
+      });
 
-      fields = ordered.map(([key, strVal]) => {
+      fields = allFields.map(([key, strVal]) => {
         const confDetails = calculateFieldConfidence(key, strVal, globalConfidence, imageQuality);
         return {
           normalizedField: key,

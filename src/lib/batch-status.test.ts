@@ -33,9 +33,6 @@ describe('isBatchStalled', () => {
     expect(
       isBatchStalled({ status: 'processing', updatedAt: ago(BATCH_STALL_AFTER_MS + 1_000) }),
     ).toBe(true);
-    expect(
-      isBatchStalled({ status: 'queued', updatedAt: ago(24 * 60 * 60_000) }),
-    ).toBe(true);
   });
 
   it('never calls a finished batch stalled, however old it is', () => {

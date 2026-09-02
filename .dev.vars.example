@@ -16,7 +16,33 @@ HUNYUAN_MODEL=hunyuan-ocr
 # Use the same value as VITE_GOOGLE_CLIENT_ID in .env.
 GOOGLE_CLIENT_ID=
 
+# Primary Email Provider: Resend (https://resend.com)
+# Obtain an API key from https://resend.com/api-keys
+RESEND_API_KEY=re_123456789
+RESEND_FROM_EMAIL=BrainHalf <noreply@yourdomain.com>
+SUPPORT_EMAIL=support@yourdomain.com
+
 # Optional: Cloudflare Email Service binding for password-reset mail.
 # Without it, password reset stores the token and logs the link instead of
 # sending it (see wrangler.toml).
 EMAIL=
+
+# ---------------------------------------------------------------------------
+# EmailJS — password-reset delivery (functions/api/auth/password-reset.ts).
+#
+# Secrets, not vars: these three together are enough to send mail through our
+# templates. In production set them with
+#   wrangler pages secret put EMAILJS_SERVICE_ID --project-name brainhalf
+# (and the same for the other three). Leave blank locally to have the reset URL
+# logged to the console instead of emailed.
+#
+# EMAILJS_PWD_TEMPLATE_ID must be the password-reset template. It is read with no
+# fallback to the contact template -- a contact template has no reset_url
+# placeholder, so a reset mailed through it would arrive with no link and
+# EmailJS would still answer 200.
+# ---------------------------------------------------------------------------
+EMAILJS_SERVICE_ID=
+EMAILJS_PWD_TEMPLATE_ID=
+EMAILJS_PUBLIC_KEY=
+# Only needed if /api/contact is ever given the same server-side send.
+EMAILJS_TEMPLATE_ID=

@@ -20,7 +20,7 @@ import { AutoResizingTextarea } from "@/components/ui/auto-resizing-textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { humanizeFieldLabel } from "@/lib/humanizeField";
+import { humanizeFieldLabel } from "@/lib/humanize-field";
 import { storageUrl } from "@/lib/api-client";
 import {
   getFlaggedDocument,
@@ -94,7 +94,7 @@ export default function ReviewQueueDetail() {
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [focusedFieldIndex, setFocusedFieldIndex] = useState(0);
 
-  const fieldCardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const fieldCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const loadData = async () => {
     setIsLoading(true);
@@ -111,7 +111,7 @@ export default function ReviewQueueDetail() {
         match.flaggedFields.forEach((f) => {
           const key = `${match.document.id}_${f.normalizedField}`;
           if (res[key]) {
-            initialVals[f.normalizedField] = res[key].resolvedValue;
+            initialVals[f.normalizedField] = res[key].resolvedValue ?? "";
           } else {
             initialVals[f.normalizedField] = f.editedValue ?? f.value;
           }
@@ -130,7 +130,7 @@ export default function ReviewQueueDetail() {
   }, [documentId]);
 
   useEffect(() => {
-    const card = fieldCardRefs.current.get(focusedFieldIndex);
+    const card = fieldCardRefs.current.get(flaggedFields[focusedFieldIndex]?.normalizedField);
     if (card) {
       card.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
@@ -151,7 +151,7 @@ export default function ReviewQueueDetail() {
     if (!originalField) return;
 
     const originalVal = originalField.value;
-    const finalVal = action === "rejected" ? "[REJECTED]" : (customValue ?? fieldValues[fieldName] ?? originalVal);
+    const finalVal = action === "rejected" ? null : (customValue ?? fieldValues[fieldName] ?? originalVal);
 
     try {
       await saveFieldResolution(item.document.id, fieldName, originalVal, finalVal, action, item.batchId);
@@ -426,8 +426,8 @@ export default function ReviewQueueDetail() {
                     key={field.normalizedField} 
                     id={`review-field-${field.normalizedField}`}
                     ref={(el) => {
-                      if (el) fieldCardRefs.current.set(index, el);
-                      else fieldCardRefs.current.delete(index);
+                      if (el) fieldCardRefs.current.set(field.normalizedField, el);
+                      else fieldCardRefs.current.delete(field.normalizedField);
                     }}
                     className={`p-3 rounded-xl border transition-all duration-200 cursor-pointer ${
                       isFocused

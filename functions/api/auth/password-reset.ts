@@ -11,6 +11,7 @@ import {
   enforceRateLimit,
   ipIdentity,
 } from '../../../server/rate-limit';
+import { sendResendEmail } from '../../../server/resend';
 
 interface Body {
   email?: unknown;
@@ -84,9 +85,92 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
 
   const origin = new URL(request.url).origin;
   const resetUrl = `${origin}/reset-password?token=${token}`;
+  const sender = env.RESEND_FROM_EMAIL || 'BrainHalf Security <noreply@brainhalf.com>';
 
+  // Primary path: Send via Resend API
+  if (env.RESEND_API_KEY) {
+    const result = await sendResendEmail({
+      apiKey: env.RESEND_API_KEY,
+      from: sender,
+      to: email,
+      subject: 'Reset your BrainHalf password',
+      text:
+        `Someone requested to reset the password for your BrainHalf account.\n\n` +
+        `Click the link below to set a new password:\n${resetUrl}\n\n` +
+        `This link will expire in 1 hour. If you did not make this request, you can safely ignore this email.`,
+      html: `
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 40px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          <tr>
+            <td align="center">
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 540px;">
+                <!-- Logo Header -->
+                <tr>
+                  <td align="center" style="padding-bottom: 28px;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td valign="middle" style="padding-right: 10px;">
+                          <img src="${origin}/apple-touch-icon.png" alt="BrainHalf Logo" width="42" height="42" style="display: block; border-radius: 10px; border: 0; outline: none;" />
+                        </td>
+                        <td valign="middle" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 26px; line-height: 1;">
+                          <span style="font-weight: 600; color: #0f172a;">brain</span><span style="font-weight: 800; color: #4f46e5;">half</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                
+                <!-- Main Card -->
+                <tr>
+                  <td style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 36px 32px; box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.04);">
+                    <h1 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 700; color: #0f172a; text-align: center; letter-spacing: -0.3px;">
+                      Reset Your Password
+                    </h1>
+                    <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #475569; text-align: center;">
+                      We received a request to reset your BrainHalf account password. Click the button below to set a new password:
+                    </p>
+                    
+                    <!-- Button CTA -->
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 28px;">
+                      <tr>
+                        <td align="center">
+                          <a href="${resetUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; display: inline-block; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 15px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.25);">
+                            Reset Password
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                    
+                    <!-- Notice Box -->
+                    <div style="background-color: #f1f5f9; border-radius: 10px; padding: 16px; text-align: center;">
+                      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #64748b;">
+                        This link is valid for <strong>1 hour</strong>. If you did not request a password reset, you can safely ignore this email.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td align="center" style="padding-top: 24px; font-size: 12px; color: #94a3b8;">
+                    &copy; ${new Date().getFullYear()} BrainHalf &bull; AI Document Processing Platform
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      `,
+    });
+
+    if (!result.ok) {
+      console.error('[auth/password-reset] Resend dispatch failed:', result.error);
+    }
+    return acknowledged;
+  }
+
+  // Fallback: Legacy EmailJS
   const serviceId = env.EMAILJS_SERVICE_ID || env.VITE_EMAILJS_SERVICE_ID;
-  const templateId = env.EMAILJS_PWD_TEMPLATE_ID || env.VITE_EMAILJS_PWD_TEMPLATE_ID || env.EMAILJS_TEMPLATE_ID || env.VITE_EMAILJS_TEMPLATE_ID;
+  const templateId = env.EMAILJS_PWD_TEMPLATE_ID || env.VITE_EMAILJS_PWD_TEMPLATE_ID;
   const publicKey = env.EMAILJS_PUBLIC_KEY || env.VITE_EMAILJS_PUBLIC_KEY;
 
   if (serviceId && templateId && publicKey) {
@@ -96,7 +180,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
         headers: {
           'Content-Type': 'application/json',
           'Origin': origin,
-          'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0'
         },
         body: JSON.stringify({
           service_id: serviceId,

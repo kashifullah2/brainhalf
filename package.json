@@ -3,24 +3,32 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0 <25.0.0",
+    "pnpm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "dev:api": "pnpm build && NODE_OPTIONS=\"--dns-result-order=ipv4first\" wrangler pages dev",
     "build": "vite build --config vite.config.ts && pnpm prerender",
     "prerender": "node scripts/prerender-public.mjs",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "deploy": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" wrangler pages deploy dist --project-name brainhalf",
+    "deploy": "pnpm build && pnpm db:migrate:remote && pnpm deploy:worker && pnpm deploy:pages",
+    "deploy:worker": "pnpm --filter brainhalf-processor exec wrangler deploy",
+    "deploy:pages": "NODE_OPTIONS=\"--dns-result-order=ipv4first\" wrangler pages deploy dist --project-name brainhalf",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
-    "typecheck:all": "pnpm typecheck && pnpm typecheck:server",
+    "typecheck:worker": "tsc -p queue-worker/tsconfig.json --noEmit",
+    "typecheck:all": "pnpm typecheck && pnpm typecheck:server && pnpm typecheck:worker",
     "probe:ocr": "node scripts/probe-openai.mjs",
     "db:migrate:local": "wrangler d1 migrations apply brainhalf-ocr-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply brainhalf-ocr-db --remote"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260814.1",
+    "@cloudflare/workers-types": "catalog:",
     "@replit/vite-plugin-cartographer": "catalog:",
     "@replit/vite-plugin-dev-banner": "catalog:",
     "@replit/vite-plugin-runtime-error-modal": "catalog:",
@@ -29,12 +37,12 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
-    "typescript": "^7.0.2",
+    "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "^2.1.9"
+    "vitest": "^3.2.6",
+    "wrangler": "catalog:"
   },
   "dependencies": {
-    "@emailjs/browser": "^4.4.1",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",
     "@radix-ui/react-avatar": "^1.1.4",

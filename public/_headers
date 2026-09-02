@@ -16,7 +16,6 @@
 #   cloudflareinsights.com   Where that beacon posts its RUM data
 #   fonts.googleapis.com     Font stylesheet, @import'ed from src/index.css
 #   fonts.gstatic.com        The font files themselves
-#   api.emailjs.com          Contact-form delivery from the browser
 #
 # frame-src carries 'self' so src/pages/DocumentDetails.tsx can frame a stored PDF
 # from /api/storage. Note object-src stays 'none': <object>/<embed> are a plugin
@@ -42,13 +41,14 @@
 #    every extracted document straight out to them. Do not re-add a vendor origin
 #    unless the browser genuinely calls it.
 #
-# 3. api.emailjs.com is required by the /contact form (src/pages/legal/Contact.tsx).
-#    It was missing, so the browser blocked every submission -- and because
-#    /api/contact answers 503 without an EMAIL binding, that left the product with
-#    no working contact channel at all. Remove this origin only together with the
-#    EmailJS dependency.
+# 3. api.emailjs.com is deliberately absent. The /contact form used to reach it
+#    directly, which required a service id, template id and public key in the
+#    bundle -- the full argument set for its send endpoint. That path is gone
+#    (see the header of src/pages/legal/Contact.tsx); the credential is a Pages
+#    secret and only the Worker uses it, where CSP does not apply. Do not re-add
+#    this origin: doing so is what a browser-side send would need.
 /*
-  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.googletagmanager.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://lh3.googleusercontent.com https://www.googletagmanager.com; connect-src 'self' https://accounts.google.com https://www.google-analytics.com https://*.google-analytics.com https://cloudflareinsights.com https://api.emailjs.com; frame-src 'self' https://accounts.google.com; worker-src 'self' blob:; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com https://www.googletagmanager.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://lh3.googleusercontent.com https://www.googletagmanager.com; connect-src 'self' https://accounts.google.com https://www.google-analytics.com https://*.google-analytics.com https://cloudflareinsights.com; frame-src 'self' https://accounts.google.com; worker-src 'self' blob:; upgrade-insecure-requests
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

@@ -32,6 +32,10 @@ export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_OPENAI_MODEL = 'gpt-5.4';
 export const DEFAULT_OPENAI_FALLBACK_MODEL = 'gpt-5.4-mini';
 
+export const DEFAULT_HUNYUAN_BASE_URL = "https://api.futureppo.top/v1";
+export const DEFAULT_HUNYUAN_MODEL = "hunyuan-ocr";
+export const HUNYUAN_USER_AGENT = "BrainHalf-OCR-Backend/1.0";
+
 /** Parameters the caller would *like* to send, before capability filtering. */
 export interface DesiredParams {
   temperature?: number;

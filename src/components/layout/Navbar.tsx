@@ -18,7 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { useMobileNav } from "@/components/layout/mobile-nav";
 import { useToast } from "@/hooks/use-toast";
 import { SkipLink } from "@/components/ui/skip-link";

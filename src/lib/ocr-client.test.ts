@@ -60,7 +60,8 @@ describe('parseOCRResult — nested structures', () => {
     const result = parseOCRResult(content, 'table');
     const names = result.fields.map((f) => f.normalizedField);
 
-    expect(names).toEqual(['Amount', 'Fee / Charge']);
+    expect(names).toEqual(['Row 1 Amount', 'Row 2 Amount', 'Row 2 Fee / Charge']);
+    expect(result.fields.map(f => f.value)).toEqual(['10,000.00', '250.00', 'No Charge']);
     expect(result.rows).toHaveLength(2);
     expect(result.rows[1]['Fee / Charge']).toBe('No Charge');
   });

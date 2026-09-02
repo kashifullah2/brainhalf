@@ -23,6 +23,7 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({
   const session = await resolveSession(request, env);
 
   if (!session) {
+    // Note: googleClientId is public by design. Do not add private server config here.
     return json({ user: null, googleClientId: env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID }, 200);
   }
 

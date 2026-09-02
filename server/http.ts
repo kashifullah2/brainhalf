@@ -41,9 +41,15 @@ export interface AppEnv {
    * shared between the Vite build and the server. Same value as GOOGLE_CLIENT_ID.
    */
   VITE_GOOGLE_CLIENT_ID?: string;
-  /** Cloudflare Email Service binding, used for password reset mail. */
+  /** Resend API Key for sending transactional & contact emails. */
+  RESEND_API_KEY?: string;
+  /** Custom sender address for Resend (e.g. BrainHalf <noreply@brainhalf.com>). */
+  RESEND_FROM_EMAIL?: string;
+  /** Support inbox address for contact form submissions. */
+  SUPPORT_EMAIL?: string;
+  /** Cloudflare Email Service binding, kept as fallback. */
   EMAIL?: { send: (message: unknown) => Promise<unknown> };
-  /** EmailJS parameters for password reset mail delivery. */
+  /** EmailJS parameters (deprecated - prefer Resend). */
   EMAILJS_SERVICE_ID?: string;
   EMAILJS_TEMPLATE_ID?: string;
   EMAILJS_PWD_TEMPLATE_ID?: string;

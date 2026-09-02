@@ -85,9 +85,18 @@ export default function Home() {
   return (
     <div className="flex min-h-[calc(100dvh-var(--header-h))] flex-col bg-background overflow-hidden">
 
-      {/* Background Ambient Glows */}
+      {/* Background Ambient Glows & Video Motion Graphics */}
       <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[120px]" />
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline 
+          className="absolute inset-0 w-full h-full object-cover opacity-15 mix-blend-screen"
+        >
+          <source src="/motion-hero.mp4" type="video/mp4" />
+        </video>
+        <div className="absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-[120px] animate-glow" />
         <div className="absolute bottom-0 right-0 h-[500px] w-[500px] translate-x-1/3 translate-y-1/3 rounded-full bg-primary/5 blur-[150px]" />
         <div
           className="absolute inset-0 opacity-[0.02]"
@@ -145,10 +154,10 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Hero Preview - Floating Glass Interface */}
+            {/* Hero Preview - Floating Glass Interface with Motion */}
             <div className="mx-auto mt-20 max-w-5xl perspective-1000">
-              <div className="glass-panel relative overflow-hidden rounded-[2.5rem] p-3 shadow-2xl transition-transform duration-700 hover:rotate-x-2">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50" />
+              <div className="glass-panel relative overflow-hidden rounded-[2.5rem] p-3 shadow-2xl transition-transform duration-700 hover:rotate-x-2 animate-float">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50 animate-glow" />
                 <div className="relative overflow-hidden rounded-[2rem] border border-border/50 bg-background">
                   <HeroPreview />
                 </div>
@@ -224,9 +233,10 @@ export default function Home() {
                 </div>
               ))}
 
-              {/* Massive Bold Callout Card */}
-              <div className="col-span-1 overflow-hidden rounded-[2.5rem] bg-primary p-10 md:col-span-12 md:p-16">
-                <div className="flex flex-col items-start justify-between gap-10 md:flex-row md:items-center">
+              {/* Massive Bold Callout Card with Motion Graphic */}
+              <div className="col-span-1 overflow-hidden rounded-[2.5rem] bg-primary/5 border border-primary/20 p-10 md:col-span-12 md:p-16 relative">
+                <div className="absolute inset-0 bg-[url('/document-transformation.png')] bg-cover bg-center opacity-30 mix-blend-lighten motion-safe:animate-pulse" />
+                <div className="relative z-10 flex flex-col items-start justify-between gap-10 md:flex-row md:items-center">
                   <div className="flex items-center gap-8">
                     <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-background text-primary shadow-2xl">
                       <ShieldCheck className="h-10 w-10" />

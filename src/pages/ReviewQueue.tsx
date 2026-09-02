@@ -185,18 +185,15 @@ export default function ReviewQueue() {
             <div className="space-y-3">
               {pendingItems.map((item) => {
                 const pendingInDoc = item.totalFlaggedCount - item.reviewedCount;
-                const isFullyReviewed = pendingInDoc === 0;
 
                 return (
                   <Card
                     key={`${item.batchId}_${item.document.id}`}
-                    className={`rounded-xl border transition-all duration-200 overflow-hidden shadow-sm hover:shadow-md ${
-                      isFullyReviewed ? "border-success/40 bg-success/5" : "border-border/60 bg-card"
-                    }`}
+                    className="rounded-xl border transition-all duration-200 overflow-hidden shadow-sm hover:shadow-md border-border/60 bg-card"
                   >
                     <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div className="flex items-start gap-4 min-w-0">
-                        <div className={`p-2.5 rounded-lg shrink-0 ${isFullyReviewed ? "bg-success/20 text-success" : "bg-warning/10 text-warning"}`}>
+                        <div className="p-2.5 rounded-lg shrink-0 bg-warning/10 text-warning">
                           <FileText className="h-5 w-5" />
                         </div>
                         <div className="min-w-0">
@@ -212,14 +209,8 @@ export default function ReviewQueue() {
                           </div>
 
                           <div className="flex items-center gap-3 mt-1.5">
-                            <span className={`px-2 py-0.5 rounded text-caption font-semibold border ${
-                              isFullyReviewed
-                                ? "bg-success/10 text-success border-success/20"
-                                : "bg-warning/10 text-warning border-warning/20"
-                            }`}>
-                              {isFullyReviewed
-                                ? "Fully Verified"
-                                : `${pendingInDoc} field${pendingInDoc === 1 ? "" : "s"} ${pendingInDoc === 1 ? "needs" : "need"} review`}
+                            <span className="px-2 py-0.5 rounded text-caption font-semibold border bg-warning/10 text-warning border-warning/20">
+                              {pendingInDoc} field{pendingInDoc === 1 ? "" : "s"} {pendingInDoc === 1 ? "needs" : "need"} review
                             </span>
 
                             <span className="text-label font-medium text-muted-foreground">
@@ -235,7 +226,6 @@ export default function ReviewQueue() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleApproveDocument(item.batchId, item.document.id)}
-                          disabled={isFullyReviewed}
                           className="rounded-lg h-8 px-3 text-label font-semibold border-border/60 hover:bg-success/10 hover:text-success hover:border-success/30"
                         >
                           <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />

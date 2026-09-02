@@ -1,7 +1,8 @@
-import { buildModelParams, capabilitiesFor, retryWithoutRejectedParam, usedTokens } from '../../server/openai-params';
+import { executeOcrRequest } from '../../server/ocr-provider';
+import { extractJsonBlock, flattenExtraction, takeMetaConfidence } from '../../server/extraction-parse';
+import { sanitizeFields, computeOverallConfidence, buildDocumentResultStatements } from '../../server/document-results';
 import { buildUpstreamRequest, isOcrMode, type OcrMode } from '../../server/ocr-prompts';
 import { refreshBatchStatus } from '../../server/batches';
-
 export interface Env {
   DB: D1Database;
   DOCUMENTS: R2Bucket;
@@ -58,13 +59,20 @@ async function processDocument(msg: OcrQueueMessage, env: Env) {
   }
 
   // If already processing or completed, skip. (Could be a redelivered message)
-  if (docRow.status === 'completed' || docRow.status === 'failed') {
+  if (docRow.status === 'completed' || docRow.status === 'failed' || docRow.status === 'processing') {
     return;
   }
 
-  // Mark as processing
-  await env.DB.prepare(`UPDATE documents SET status = 'processing' WHERE id = ?`)
-    .bind(documentId).run();
+  // Mark as processing atomically
+  const updateResult = await env.DB.prepare(
+    `UPDATE documents SET status = 'processing' WHERE id = ? AND status = 'queued'`
+  ).bind(documentId).run();
+
+  if (updateResult.meta.changes === 0) {
+    console.warn(`[processor] Document ${documentId} is no longer queued. Skipping.`);
+    return;
+  }
+
   await refreshBatchStatus(env, batchId);
 
   try {
@@ -75,9 +83,13 @@ async function processDocument(msg: OcrQueueMessage, env: Env) {
 
     const buffer = await object.arrayBuffer();
     // Convert to base64
-    const base64 = btoa(
-      new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    const base64 = btoa(binary);
     const dataUrl = `data:${docRow.content_type};base64,${base64}`;
 
     // 3. Prepare upstream request
@@ -88,94 +100,49 @@ async function processDocument(msg: OcrQueueMessage, env: Env) {
       filename: docRow.filename,
     });
 
-    // Determine provider
-    const provider = resolveProvider(env);
-    if (!provider) {
-      throw new Error("No OCR provider configured in queue worker");
-    }
+    const result = await executeOcrRequest(env as any, 'default', {
+      messages: upstream.messages,
+      jsonObject: upstream.jsonObject
+    });
 
-    let upstreamBody: any = provider.buildBody(upstream);
-    let attemptsRemaining = provider.retryOnReject ? 2 : 1;
     let data: any = null;
-
-    while (attemptsRemaining > 0) {
-      attemptsRemaining -= 1;
-      
-      const reqHeaders = new Headers();
-      reqHeaders.set("Content-Type", "application/json");
-      reqHeaders.set("Authorization", `Bearer ${provider.key}`);
-      reqHeaders.set("Accept", "application/json");
-      if (provider.extraHeaders) {
-        for (const [k, v] of Object.entries(provider.extraHeaders)) {
-          reqHeaders.set(k, v);
-        }
-      }
-
-      const res = await fetch(`${provider.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: reqHeaders,
-        body: JSON.stringify(upstreamBody),
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      });
-
-      if (res.ok) {
-        data = await res.json();
-        break;
-      }
-
-      const detailText = await res.text().catch(() => "");
-      if (provider.retryOnReject && res.status === 400 && attemptsRemaining > 0) {
-        try {
-          const parsed = JSON.parse(detailText);
-          const retry = retryWithoutRejectedParam(upstreamBody, parsed);
-          if (retry) {
-            upstreamBody = retry.body;
-            continue;
-          }
-        } catch {}
-      }
-      throw new Error(`Upstream error ${res.status}: ${detailText}`);
+    if (result.type === 'success') {
+      data = result.data;
+    } else if (result.type === 'retryable-error') {
+      throw new Error(`Transient error: ${result.message} - ${result.detail}`);
+    } else {
+      const detail = result.type === 'permanent-error' ? result.detail : '';
+      throw new Error(`${result.message} - ${detail}`);
     }
-
-    if (!data) throw new Error("No data returned from provider");
 
     // 4. Save results to DB
     const content = data.choices?.[0]?.message?.content || "";
-    let extractedFields: Array<{normalizedField: string; label: string; value: string; confidence?: number}> = [];
+    let extractedFields: Array<{normalizedField: string; originalLabel: string; value: string; confidence?: number}> = [];
 
-    let jsonStr = content;
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1];
-    } else {
-      const firstBrace = content.indexOf("{");
-      const firstBracket = content.indexOf("[");
-      const lastBrace = content.lastIndexOf("}");
-      const lastBracket = content.lastIndexOf("]");
-      if (firstBrace !== -1 && lastBrace !== -1 && (firstBracket === -1 || (firstBrace < firstBracket && lastBrace > lastBracket))) {
-        jsonStr = content.substring(firstBrace, lastBrace + 1);
-      } else if (firstBracket !== -1 && lastBracket !== -1) {
-        jsonStr = content.substring(firstBracket, lastBracket + 1);
-      }
-    }
+    let jsonStr = extractJsonBlock(content);
+    let globalConfidence: number | null = null;
 
     try {
       const parsed = JSON.parse(jsonStr.trim());
       if (Array.isArray(parsed)) {
-        parsed.forEach((row) => {
-          for (const [key, val] of flattenExtraction(row)) {
+        parsed.forEach((row, rowIndex) => {
+          for (const [key, val] of flattenExtraction(row, `Row ${rowIndex + 1}`)) {
             extractedFields.push({
               normalizedField: key,
-              label: key,
+              originalLabel: key,
               value: val
             });
           }
         });
       } else if (typeof parsed === 'object' && parsed !== null) {
-        for (const [key, val] of flattenExtraction(parsed)) {
+        const record = parsed as Record<string, unknown>;
+        const meta = takeMetaConfidence(record);
+        if (meta !== undefined) globalConfidence = meta;
+
+        for (const [key, val] of flattenExtraction(record)) {
           extractedFields.push({
             normalizedField: key,
-            label: key,
+            originalLabel: key,
             value: val
           });
         }
@@ -184,118 +151,38 @@ async function processDocument(msg: OcrQueueMessage, env: Env) {
       // Not JSON or failed to parse, use full text
       extractedFields.push({
         normalizedField: "Full Text Transcription",
-        label: "Transcription",
+        originalLabel: "Transcription",
         value: content.trim()
       });
     }
 
-    // Insert fields
-    if (extractedFields.length > 0) {
-      const stmts = extractedFields.map((field, index) => {
-        return env.DB.prepare(
-          `INSERT INTO document_fields (document_id, user_id, position, normalized_field, original_label, value, confidence)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
-        ).bind(
-          documentId,
-          userId,
-          index,
-          field.normalizedField || field.label || `field_${index}`,
-          field.label || field.normalizedField || `field_${index}`,
-          field.value,
-          field.confidence ?? 1.0
-        );
-      });
+    const safeFields = sanitizeFields(extractedFields);
+    const overallConfidence = computeOverallConfidence(globalConfidence, safeFields);
+    const stmts = buildDocumentResultStatements(env.DB, documentId, userId, content, overallConfidence, safeFields);
+
+    if (stmts.length > 0) {
       await env.DB.batch(stmts);
     }
 
-    // Update document status
-    await env.DB.prepare(
-      `UPDATE documents SET status = 'completed', ocr_text = ?, error = NULL WHERE id = ?`
-    ).bind(content, documentId).run();
-
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
+    const isTransient = errorMsg.startsWith('Transient error:');
+
+    const newStatus = isTransient ? 'queued' : 'failed';
+    
     await env.DB.prepare(
-      `UPDATE documents SET status = 'failed', error = ? WHERE id = ?`
-    ).bind(errorMsg.slice(0, 500), documentId).run();
+      `UPDATE documents SET status = ?, error = ? WHERE id = ?`
+    ).bind(newStatus, errorMsg.slice(0, 500), documentId).run();
+
+    if (isTransient) {
+      throw err;
+    }
   } finally {
     // Refresh batch status
     await refreshBatchStatus(env, batchId);
   }
 }
 
-function resolveProvider(env: Env) {
-  // Same logic as api/ocr.ts
-  const hunyuanKey = env.HUNYUAN_API_KEY;
-  if (hunyuanKey) {
-    const hunyuanModel = env.HUNYUAN_MODEL || "hunyuan-ocr";
-    return {
-      name: 'hunyuan',
-      baseUrl: (env.HUNYUAN_BASE_URL || "https://api.futureppo.top/v1").replace(/\/$/, ""),
-      key: hunyuanKey,
-      model: hunyuanModel,
-      extraHeaders: { "User-Agent": "BrainHalf-OCR-Backend/1.0" },
-      buildBody: (input: any) => ({
-        model: hunyuanModel,
-        messages: input.messages,
-        temperature: UPSTREAM_TEMPERATURE,
-        seed: UPSTREAM_SEED,
-      }),
-      retryOnReject: false,
-    };
-  }
 
-  const fallbackKey = env.OPENAI_API_KEY || env.OCR_API_KEY;
-  if (fallbackKey) {
-    const fallbackModel = env.OPENAI_MODEL || "gpt-5.4-mini";
-    return {
-      name: 'openai',
-      baseUrl: (env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
-      key: fallbackKey,
-      model: fallbackModel,
-      extraHeaders: {},
-      buildBody: (input: any) => ({
-        model: fallbackModel,
-        messages: input.messages,
-        ...buildModelParams(fallbackModel, {
-          temperature: UPSTREAM_TEMPERATURE,
-          seed: UPSTREAM_SEED,
-          logprobs: true,
-          jsonObject: input.jsonObject,
-          maxCompletionTokens: MAX_COMPLETION_TOKENS,
-        }),
-      }),
-      retryOnReject: true,
-    };
-  }
 
-  return null;
-}
 
-function joinLabel(parent: string, child: string): string {
-  if (!parent) return child;
-  if (child.toLowerCase().startsWith(parent.toLowerCase())) return child;
-  return `${parent} ${child}`;
-}
-
-function flattenExtraction(value: unknown, prefix = '', depth = 0): Array<[string, string]> {
-  const MAX_DEPTH = 4;
-  if (value === null || value === undefined) return prefix ? [[prefix, '']] : [];
-  if (typeof value !== 'object') return [[prefix || 'Value', String(value)]];
-  if (depth >= MAX_DEPTH) return [[prefix || 'Value', JSON.stringify(value)]];
-
-  if (Array.isArray(value)) {
-    if (value.every((item) => item === null || typeof item !== 'object')) {
-      return [[prefix || 'Value', value.map((item) => String(item ?? '')).join(', ')]];
-    }
-    return value.flatMap((item, index) =>
-      flattenExtraction(item, joinLabel(prefix, `${index + 1}`), depth + 1),
-    );
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length === 0) return prefix ? [[prefix, '']] : [];
-  return entries.flatMap(([key, child]) =>
-    flattenExtraction(child, joinLabel(prefix, key), depth + 1),
-  );
-}

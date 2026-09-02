@@ -12,10 +12,7 @@ export const MAX_PROMPT_LENGTH = 4000;
 export const MAX_DESCRIPTION_LENGTH = 500;
 export const MAX_EXPECTED_FIELDS_LENGTH = 1000;
 
-export const ALLOWED_MODES = new Set([
-  'invoice', 'receipt', 'fulltext', 'keyvalue', 'table',
-  'handwriting', 'multilingual', 'custom', 'vqa',
-]);
+
 
 export interface TemplateRow {
   id: number;

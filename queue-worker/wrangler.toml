@@ -21,6 +21,4 @@ max_batch_timeout = 5
 # Number of max concurrent retries for a failed message
 max_retries = 3
 
-[vars]
-HUNYUAN_BASE_URL = "https://brainhalf-vercel-proxy.vercel.app/v1"
-HUNYUAN_MODEL = "hunyuan-ocr"
+

@@ -1,12 +1,11 @@
 // ---------------------------------------------------------------------------
 // Whether a batch is actually being worked on.
 //
-// Extraction runs in the browser tab that started it -- there is no worker and no
-// queue. So closing or reloading that tab leaves the remaining documents at
-// 'queued', and refreshBatchStatus keeps reporting the batch as 'processing' for
-// as long as any document sits there, which is forever. Both dashboards read that
-// as "in flight" and polled it every three to four seconds indefinitely, waiting
-// on a row that nothing was going to change.
+// Historically, extraction ran in the browser tab that started it, so closing
+// the tab left the batch abandoned. Now we have a background queue worker.
+// A batch with status 'queued' is waiting in the Cloudflare Queue and can
+// legitimately sit idle for long periods. A batch with status 'processing'
+// that hasn't been updated in a while is considered stalled.
 //
 // Deliberately dependency-free and separate from api-client.ts: this is a pure
 // predicate, and pulling the whole API client (and localforage, and the OCR
@@ -33,6 +32,10 @@ export function isBatchInFlight(batch: { status: string }): boolean {
  */
 export function isBatchStalled(batch: { status: string; updatedAt: string }): boolean {
   if (!isBatchInFlight(batch)) return false;
+  
+  // A queued batch is in the background queue and can legitimately wait indefinitely
+  if (batch.status === 'queued') return false;
+
   const updatedAt = Date.parse(batch.updatedAt);
   if (!Number.isFinite(updatedAt)) return false;
   return Date.now() - updatedAt > BATCH_STALL_AFTER_MS;

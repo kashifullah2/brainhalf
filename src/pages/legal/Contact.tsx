@@ -5,58 +5,53 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Send, Loader2 } from "lucide-react";
-import emailjs from '@emailjs/browser';
 
 import { apiUrl } from "@/lib/api-paths";
 
 // ---------------------------------------------------------------------------
-// Contact form submission, server first.
+// Contact form submission.
 //
-// functions/api/contact.ts is the better implementation -- it HTML-escapes every
-// field, strips CR/LF out of anything that reaches a mail header, and is rate
-// limited per IP -- so it is tried FIRST. It only answers 503 while no EMAIL
-// binding is configured (see wrangler.toml); the moment one is, this form starts
-// using it with no change here.
+// One channel: our own functions/api/contact.ts. It HTML-escapes every field,
+// strips CR/LF out of anything that reaches a mail header, and is rate limited
+// per IP.
 //
-// EmailJS is the fallback, and only for that 503. It is reached from the browser
-// with a public key, so it has no rate limit of its own -- which is exactly why a
-// 429 from our own endpoint must NOT fall through to it. Falling back on anything
-// other than "delivery is not configured" would hand an attacker a documented way
-// around the throttle.
+// There used to be a browser-side EmailJS fallback for the 503 that endpoint
+// answers while no EMAIL binding is configured. It is gone. Reaching EmailJS
+// from the page meant shipping a service id, a template id and a public key in
+// the bundle, and those three together are the complete argument set for
+// api.emailjs.com/api/v1.0/email/send -- enough for anyone who opened DevTools
+// to send mail through our templates, including the password-reset one, whose
+// reset_url the sender controls. A published credential is worse than a form
+// that admits it is unavailable.
 //
-// Note for whoever removes EmailJS: drop `@emailjs/browser`, the three VITE_
-// variables, and https://api.emailjs.com from connect-src in public/_headers.
+// So a 503 now points the visitor at the support address below. To restore an
+// in-page channel, give functions/api/contact.ts the same server-side EmailJS
+// HTTP call functions/api/auth/password-reset.ts already makes, where the
+// credential stays a secret and the per-IP limit still applies.
 // ---------------------------------------------------------------------------
 
-/** Mirrors the caps in functions/api/contact.ts, so both paths agree. */
+/** Mirrors the caps in functions/api/contact.ts, so the client rejects first. */
 const LIMITS = { name: 100, subject: 200, message: 5_000 } as const;
 
 const SUPPORT_EMAIL = "support@brainhalf.com";
 
 function readableError(error: unknown): string {
-  // EmailJS rejects with { status, text }, which has no `message` at all.
   if (error && typeof error === "object") {
-    const text = (error as { text?: unknown }).text;
-    if (typeof text === "string" && text) return text;
     const message = (error as { message?: unknown }).message;
     if (typeof message === "string" && message) return message;
   }
   return "An unexpected error occurred. Please try again later.";
 }
 
-/**
- * A type alias rather than an interface: TypeScript infers an implicit index
- * signature for the former, which is what `emailjs.send` needs to accept it as
- * template parameters. An interface would not be assignable.
- */
-type Payload = {
+/** The body functions/api/contact.ts validates. */
+interface Payload {
   name: string;
   email: string;
   subject: string;
   message: string;
-};
+}
 
-/** Distinguishes "not configured" from "refused", because only the first may fall back. */
+/** "unconfigured" is the documented 503; it selects the mailto message rather than a fallback send. */
 type ServerOutcome =
   | { kind: "sent" }
   | { kind: "unconfigured" }
@@ -71,8 +66,8 @@ async function sendViaServer(payload: Payload): Promise<ServerOutcome> {
       body: JSON.stringify(payload),
     });
   } catch {
-    // Never reached the server at all. Treat it the same as "not configured" so
-    // the visitor still has a route to the inbox.
+    // Never reached the server at all. Same outcome as "not configured": the
+    // visitor is given an address that works instead of a false success.
     return { kind: "unconfigured" };
   }
 
@@ -80,6 +75,7 @@ async function sendViaServer(payload: Payload): Promise<ServerOutcome> {
 
   // 503 is the documented "no EMAIL binding" answer. Everything else is a real
   // decision by our own endpoint -- validation, or the rate limit -- and stands.
+  // Nothing routes around a 429 any more, because there is nowhere to route to.
   if (response.status === 503) return { kind: "unconfigured" };
 
   let message = "Could not send your message. Please try again.";
@@ -140,24 +136,14 @@ export default function Contact() {
         return;
       }
 
-      // Delivery is not configured server-side. Fall back to EmailJS.
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
-
-      if (!serviceId || !templateId || !publicKey) {
-        // Neither channel exists. Say so plainly and give them an address that
-        // works, rather than pretending to send.
-        toast({
-          title: "Contact form unavailable",
-          description: `Please email ${SUPPORT_EMAIL} directly — we'll pick it up there.`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      await emailjs.send(serviceId, templateId, data, publicKey);
-      sent();
+      // Server-side delivery is not configured (503). There is no second
+      // channel: say so plainly and give them an address that works, rather
+      // than pretending to send.
+      toast({
+        title: "Contact form unavailable",
+        description: `Please email ${SUPPORT_EMAIL} directly — we'll pick it up there.`,
+        variant: "destructive",
+      });
     } catch (err: unknown) {
       toast({
         title: "Sending Failed",

@@ -45,7 +45,7 @@ export interface FieldResolution {
   documentId: number;
   fieldName: string;
   originalValue: string;
-  resolvedValue: string;
+  resolvedValue: string | null;
   status: "approved" | "corrected" | "rejected";
   timestamp: string;
 }
@@ -258,7 +258,7 @@ export async function saveFieldResolution(
   documentId: number,
   fieldName: string,
   originalValue: string,
-  resolvedValue: string,
+  resolvedValue: string | null,
   status: "approved" | "corrected" | "rejected",
   batchId?: number,
 ): Promise<void> {
@@ -297,11 +297,5 @@ export async function markDocumentReviewed(
   documentId: number,
 ): Promise<void> {
   await approveFlaggedFields(batchId, documentId);
-  notifyQueueChanged();
-}
-
-/** Approves every flagged field across one batch, in one request. */
-export async function markBatchReviewed(batchId: number): Promise<void> {
-  await approveFlaggedFields(batchId);
   notifyQueueChanged();
 }

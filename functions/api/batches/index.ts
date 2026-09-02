@@ -13,17 +13,7 @@ import {
 /** Matches MAX_PROMPT_LENGTH in functions/api/templates, so the two agree. */
 const MAX_CUSTOM_PROMPT_LENGTH = 4000;
 
-const VALID_MODES = new Set([
-  'invoice',
-  'receipt',
-  'fulltext',
-  'keyvalue',
-  'table',
-  'handwriting',
-  'multilingual',
-  'custom',
-  'vqa',
-]);
+import { isOcrMode } from '../../../server/ocr-prompts';
 
 interface CreateBody {
   mode?: unknown;
@@ -67,7 +57,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
 
   const rawMode = typeof body.mode === 'string' ? body.mode.trim().slice(0, 32) : '';
   const mode = rawMode || 'invoice';
-  if (!VALID_MODES.has(mode)) {
+  if (!isOcrMode(mode)) {
     return fail(`Unknown extraction mode: ${mode}.`, 400);
   }
   

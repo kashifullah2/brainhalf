@@ -49,7 +49,7 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({
   object.writeHttpMetadata(headers);
   headers.set('etag', object.httpEtag);
   // Private: the response is user-specific, so no shared cache may keep it.
-  headers.set('Cache-Control', 'private, max-age=3600');
+  headers.set('Cache-Control', 'private, no-cache, max-age=0, must-revalidate');
   headers.set('X-Content-Type-Options', 'nosniff');
   // These are user-supplied files; never let one execute in our origin.
   headers.set('Content-Security-Policy', "default-src 'none'; sandbox");

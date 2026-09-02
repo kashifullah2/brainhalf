@@ -15,8 +15,10 @@ import { getSettings } from "@/lib/api-client";
  */
 export const CONFIDENCE_THRESHOLD_KEY = ["settings", "confidenceThreshold"] as const;
 
+import { DEFAULT_CONFIDENCE_THRESHOLD } from "../../server/threshold";
+
 /** Used only until the first response lands, and if the request fails. */
-export const DEFAULT_CONFIDENCE_THRESHOLD = 0.8;
+export { DEFAULT_CONFIDENCE_THRESHOLD };
 
 export function useConfidenceThreshold(): number {
   const { data } = useQuery({

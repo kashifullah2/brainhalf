@@ -6,7 +6,7 @@ import { BackLink, PageHeader } from "@/components/app";
 import { Button } from "@/components/ui/button";
 import { useCreateBatch, useListTemplates, trackTemplateUsage, type CreateBatchProgress } from "@/lib/api-client";
 import { usePageTitle } from "@/lib/use-page-title";
-import { trackAnalyticsEvent } from "@/components/analytics-consent";
+import { trackAnalyticsEvent } from "@/components/AnalyticsConsent";
 import { cn } from "@/lib/utils";
 
 export default function UploadPage() {

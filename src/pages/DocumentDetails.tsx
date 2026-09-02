@@ -19,7 +19,7 @@ import { BackLink, EmptyState, ErrorState, ListSkeleton, PageHeader } from "@/co
 import { StatusBadge } from "@/components/StatusBadge";
 import { ConfidenceIndicator } from "@/components/ConfidenceIndicator";
 import { useToast } from "@/hooks/use-toast";
-import { humanizeFieldLabel } from "@/lib/humanizeField";
+import { humanizeFieldLabel } from "@/lib/humanize-field";
 import { humanizeExtractionError } from "@/lib/humanize-error";
 import { useConfidenceThreshold } from "@/hooks/use-confidence-threshold";
 import { usePageTitle } from "@/lib/use-page-title";

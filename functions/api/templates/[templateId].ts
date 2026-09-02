@@ -5,8 +5,9 @@
 import { fail, json, readJson, type AppEnv } from '../../../server/http';
 import { authHeaders, requireSession } from '../../../server/guard';
 import { enforceRateLimit, userIdentity } from '../../../server/rate-limit';
+import { isOcrMode } from '../../../server/ocr-prompts';
 import {
-  ALLOWED_MODES,
+
   MAX_NAME_LENGTH,
   MAX_PROMPT_LENGTH,
   MAX_DESCRIPTION_LENGTH,
@@ -47,7 +48,7 @@ export const onRequestPatch: PagesFunction<AppEnv> = async ({ params, request, e
   const body = await readJson<UpdateBody>(request);
   const name = cleanTemplateStr(body?.name, MAX_NAME_LENGTH) || existing.name;
   const baseMode = cleanTemplateStr(body?.baseMode, 30) || existing.base_mode;
-  if (!ALLOWED_MODES.has(baseMode)) {
+  if (!isOcrMode(baseMode)) {
     return fail(`Invalid base mode "${baseMode}".`, 400);
   }
 

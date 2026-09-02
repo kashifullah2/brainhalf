@@ -1,0 +1,1 @@
+export const DEFAULT_CONFIDENCE_THRESHOLD = 0.8;

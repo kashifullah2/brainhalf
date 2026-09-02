@@ -1,7 +1,7 @@
 import { fail, json, readJson, type AppEnv } from '../../../../server/http';
 import { authHeaders, intParam, requireSession } from '../../../../server/guard';
 
-const DEFAULT_THRESHOLD = 0.8;
+import { DEFAULT_CONFIDENCE_THRESHOLD } from '../../../../server/threshold';
 
 interface Body {
   documentId?: unknown;
@@ -55,7 +55,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
     .bind(auth.user.id)
     .first<{ confidence_threshold: number }>();
 
-  const threshold = settings?.confidence_threshold ?? DEFAULT_THRESHOLD;
+  const threshold = settings?.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
   // Only the flagged fields, and only the ones nobody has ruled on yet: a field
   // already marked 'corrected' or 'rejected' must not be overwritten by a bulk

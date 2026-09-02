@@ -183,17 +183,31 @@ export async function deleteAccount(
     const pending = await env.DB.prepare(
       `SELECT object_path FROM pending_uploads WHERE user_id = ? LIMIT ?`,
     )
-      .bind(userId, R2_DELETE_CHUNK)
+      .bind(userId, MAX_OBJECTS_PER_DELETE + 1)
       .all<{ object_path: string }>();
+      
     const pendingPaths = (pending.results ?? []).map((row) => row.object_path);
-    if (pendingPaths.length > 0) {
-      await env.DOCUMENTS.delete(pendingPaths);
-      objectsDeleted += pendingPaths.length;
+    const morePending = pendingPaths.length > MAX_OBJECTS_PER_DELETE;
+    const batchToDeletePending = morePending ? pendingPaths.slice(0, MAX_OBJECTS_PER_DELETE) : pendingPaths;
+
+    for (let i = 0; i < batchToDeletePending.length; i += R2_DELETE_CHUNK) {
+      const chunk = batchToDeletePending.slice(i, i + R2_DELETE_CHUNK);
+      await env.DOCUMENTS.delete(chunk);
+      objectsDeleted += chunk.length;
+    }
+
+    if (morePending) {
+      const placeholders = batchToDeletePending.map(() => '?').join(', ');
+      await env.DB.prepare(
+        `DELETE FROM pending_uploads WHERE user_id = ? AND object_path IN (${placeholders})`,
+      )
+        .bind(userId, ...batchToDeletePending)
+        .run();
+      return { complete: false, objectsDeleted };
     }
   } catch (error) {
-    // Not a reason to refuse the erasure. The sweep collects these anyway, and the
-    // rows cascade with the user below.
     console.error('[account] could not clear pending uploads:', error);
+    return { complete: false, objectsDeleted };
   }
 
   // users is the root: sessions, reset tokens, batches, documents,

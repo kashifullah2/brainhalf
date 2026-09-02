@@ -1,7 +1,7 @@
 import { json, type AppEnv } from '../../server/http';
 import { authHeaders, requireSession } from '../../server/guard';
 
-const DEFAULT_THRESHOLD = 0.8;
+import { DEFAULT_CONFIDENCE_THRESHOLD } from '../../server/threshold';
 
 /**
  * How many documents one page may hold.
@@ -152,7 +152,7 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
     .bind(auth.user.id)
     .first<{ confidence_threshold: number }>();
 
-  const threshold = settings?.confidence_threshold ?? DEFAULT_THRESHOLD;
+  const threshold = settings?.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
   // Short-circuit before any paging work. A query parameter rather than a separate
   // route because `review-queue.ts` is a leaf file: adding /api/review-queue/count
@@ -166,10 +166,36 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
     );
   }
 
+  const verifiedOnly = url.searchParams.get('verified') === '1';
+
   // Page over documents first. Paging the flat join instead would cut a document's
   // fields in half at the page boundary.
   const pageFilters: string[] = [];
-  const pageBinds: unknown[] = [auth.user.id, auth.user.id, threshold];
+  const pageBinds: unknown[] = [auth.user.id];
+
+  let statusClause: string;
+  if (verifiedOnly) {
+    statusClause = `
+        AND EXISTS (
+              SELECT 1 FROM document_fields f
+               WHERE f.document_id = d.id AND f.user_id = ? AND f.confidence < ?
+            )
+        AND NOT EXISTS (
+              SELECT 1 FROM document_fields f
+               WHERE f.document_id = d.id AND f.user_id = ? AND f.confidence < ?
+                 AND f.review_status IS NULL
+            )`;
+    pageBinds.push(auth.user.id, threshold, auth.user.id, threshold);
+  } else {
+    statusClause = `
+        AND EXISTS (
+              SELECT 1 FROM document_fields f
+               WHERE f.document_id = d.id AND f.user_id = ? AND f.confidence < ?
+                 AND f.review_status IS NULL
+            )`;
+    pageBinds.push(auth.user.id, threshold);
+  }
+
   if (batchFilter !== null) {
     pageFilters.push('AND d.batch_id = ?');
     pageBinds.push(batchFilter);
@@ -184,10 +210,7 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
     `SELECT d.id AS document_id
        FROM documents d
       WHERE d.user_id = ?
-        AND EXISTS (
-              SELECT 1 FROM document_fields f
-               WHERE f.document_id = d.id AND f.user_id = ? AND f.confidence < ?
-            )
+        ${statusClause}
         ${pageFilters.join('\n        ')}
       ORDER BY d.batch_id DESC, d.id
       LIMIT ? OFFSET ?`,

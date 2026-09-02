@@ -53,10 +53,9 @@ export interface BatchSummaryDto {
    * Last time anything about this batch changed, which is what lets a client tell
    * a batch that is still being worked on from one that was abandoned.
    *
-   * Extraction runs in the browser tab, so closing it leaves the remaining
-   * documents at 'queued' and the batch at 'processing' with nothing left to move
-   * them. Both dashboards polled such a batch every few seconds, forever. This is
-   * the signal they needed to stop.
+   * Extraction runs in a background queue worker. This timestamp allows clients
+   * to determine when a batch is genuinely stalled (e.g., due to a worker failure)
+   * rather than actively processing, so they can stop polling.
    */
   updatedAt: string;
   totalDocuments: number;
@@ -189,6 +188,19 @@ export async function listBatches(
   return (results ?? []).map(toSummary);
 }
 
+export async function getBatchSummary(
+  env: AppEnv,
+  userId: string,
+  batchId: number,
+): Promise<BatchSummaryDto | null> {
+  const row = await env.DB.prepare(
+    `${SUMMARY_SELECT} WHERE b.id = ? AND b.user_id = ?${SUMMARY_GROUP}`,
+  )
+    .bind(batchId, userId)
+    .first<BatchRow>();
+  return row ? toSummary(row) : null;
+}
+
 /**
  * Returns the full batch, or null when it does not exist OR belongs to someone
  * else. Those two cases are deliberately indistinguishable to the caller.
@@ -276,8 +288,8 @@ export async function getBatchDetail(
         columns.push(field.normalizedField);
       }
       // An edited value wins over the extracted one everywhere it is displayed
-      // or exported.
-      projected[field.normalizedField] = field.editedValue ?? field.value;
+      // or exported. Rejected fields are explicitly blanked.
+      projected[field.normalizedField] = field.reviewStatus === 'rejected' ? '' : (field.editedValue ?? field.value);
     }
     rows.push(projected);
   }

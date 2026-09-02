@@ -12,8 +12,9 @@
 
 import { fail, json, readJson, type AppEnv } from '../../../server/http';
 import { authHeaders, requireSession } from '../../../server/guard';
+import { isOcrMode } from '../../../server/ocr-prompts';
 import {
-  ALLOWED_MODES,
+
   MAX_TEMPLATES,
   MAX_NAME_LENGTH,
   MAX_PROMPT_LENGTH,
@@ -60,7 +61,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
   if (!name) return fail('Template name is required.', 400);
 
   const baseMode = cleanTemplateStr(body?.baseMode, 30) || 'custom';
-  if (!ALLOWED_MODES.has(baseMode)) {
+  if (!isOcrMode(baseMode)) {
     return fail(`Invalid base mode "${baseMode}".`, 400);
   }
 

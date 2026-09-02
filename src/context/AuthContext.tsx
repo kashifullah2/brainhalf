@@ -268,8 +268,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     if (existing) {
+      existing.addEventListener("load", initialize);
       initialize();
-      return;
+      return () => {
+        existing.removeEventListener("load", initialize);
+      };
     }
 
     const script = document.createElement("script");
@@ -340,18 +343,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           google.accounts.id.prompt((notification) => {
             if (
               notification?.isNotDisplayed?.() ||
-              notification?.isSkippedMoment?.()
+              notification?.isSkippedMoment?.() ||
+              notification?.isDismissedMoment?.()
             ) {
               const pending = pendingGoogle.current;
               pendingGoogle.current = null;
               pending?.reject(
                 new Error(
-                  "Google did not show the sign-in prompt. Use the Google " +
+                  "Google sign-in was dismissed or could not be shown. Use the Google " +
                     "button above instead.",
                 ),
               );
             }
           });
+
+          // Fallback timeout in case the callback never fires or the user walks away.
+          setTimeout(() => {
+            const pending = pendingGoogle.current;
+            if (pending) {
+              pendingGoogle.current = null;
+              pending.reject(new Error("Sign-in timed out. Please try again."));
+            }
+          }, 60000);
         } catch (error) {
           pendingGoogle.current = null;
           reject(

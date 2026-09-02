@@ -114,8 +114,8 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
       try {
         await signupWithEmail({ firstName, lastName, email, password });
         setLocation("/app");
-      } catch (err: any) {
-        setTopErrorMsg(err.message || "Sign up failed. Please try again.");
+      } catch (err) {
+        setTopErrorMsg((err as Error).message || "Sign up failed. Please try again.");
       } finally {
         setIsSubmitting(false);
       }
@@ -125,8 +125,8 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
       try {
         await loginWithEmail({ email, password });
         setLocation("/app");
-      } catch (err: any) {
-        setTopErrorMsg(err.message || "Invalid credentials. Please try again.");
+      } catch (err) {
+        setTopErrorMsg((err as Error).message || "Invalid credentials. Please try again.");
       } finally {
         setIsSubmitting(false);
       }
@@ -136,8 +136,8 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
       try {
         await resetPassword(email);
         setSuccessMsg(`Password reset instructions sent to ${email}. Check your inbox.`);
-      } catch (err: any) {
-        setTopErrorMsg(err.message || "Could not process password reset request.");
+      } catch (err) {
+        setTopErrorMsg((err as Error).message || "Could not process password reset request.");
       } finally {
         setIsSubmitting(false);
       }

@@ -75,9 +75,9 @@ const basePath = process.env.BASE_PATH || fileEnv.BASE_PATH || '/';
  * default is the loopback set, and DEV_ALLOWED_HOSTS (comma separated) covers a
  * tunnel such as ngrok.
  */
-const devAllowedHosts: true | string[] =
+const devAllowedHosts: string[] =
   process.env.REPL_ID !== undefined
-    ? true
+    ? (process.env.REPLIT_DEV_DOMAIN ? [process.env.REPLIT_DEV_DOMAIN] : [])
     : [
         'localhost',
         '127.0.0.1',
@@ -171,6 +171,22 @@ function devOcrProxy(): Plugin {
 
         if (req.method !== 'POST') {
           return send(405, { error: 'Method not allowed. Use POST.' });
+        }
+
+        const remoteAddress = req.socket.remoteAddress;
+        const isLoopback =
+          remoteAddress === '127.0.0.1' ||
+          remoteAddress === '::1' ||
+          remoteAddress === '::ffff:127.0.0.1';
+
+        const allowRemote = readEnv('DEV_ALLOW_REMOTE') === 'true';
+        if (!isLoopback && !allowRemote) {
+          return send(403, { error: 'Remote access disabled.' });
+        }
+
+        const sharedSecret = readEnv('DEV_PROXY_SHARED_SECRET');
+        if (sharedSecret && req.headers['x-dev-proxy-secret'] !== sharedSecret) {
+          return send(403, { error: 'Unauthorized.' });
         }
 
         const chunks: Buffer[] = [];
@@ -369,9 +385,88 @@ function devOcrProxy(): Plugin {
   };
 }
 
+/**
+ * Refuses to build when a secret-shaped VITE_ variable has a value.
+ *
+ * `VITE_` is not a naming convention, it is the opt-in to static inlining: Vite
+ * substitutes every referenced `import.meta.env.VITE_X` into the emitted
+ * JavaScript, which is served to anyone who opens the page. This repo has already
+ * paid for that once -- `.env` carried live VITE_HUNYUAN_API_KEY, VITE_OCR_API_KEY
+ * and a VITE_AWS_ACCESS_KEY_ID / VITE_AWS_SECRET_ACCESS_KEY pair, left behind by
+ * the browser-side OCR fallback that src/lib/ocr-client.ts:5-7 describes removing.
+ * They never reached a bundle only because nothing happened to reference them.
+ * One `import.meta.env` away is not a security boundary.
+ *
+ * So the check is on the NAME, before anything is referenced. It runs on `build`
+ * only: a broken production artifact is the failure worth blocking, and failing
+ * `pnpm dev` on a stale local key would just teach people to delete the guard.
+ *
+ * It is a heuristic, not a secret scanner. It catches KEY / SECRET / TOKEN and
+ * would not have caught VITE_AWS_REGION, which was deleted alongside the others
+ * because it belonged to the same dead code path. Widen the pattern rather than
+ * adding entries to the allowlist.
+ */
+const SECRET_SHAPED_VITE_VAR = /^VITE_.*(KEY|SECRET|TOKEN)/i;
+
+/**
+ * Values that really are public, and are the only two permitted to match above.
+ *
+ * VITE_GOOGLE_CLIENT_ID does not match the pattern at all (no KEY/SECRET/TOKEN in
+ * the name) and is listed for the reader, not the regex.
+ *
+ * VITE_EMAILJS_PUBLIC_KEY is vestigial: the browser-side EmailJS send is gone (see
+ * the header of src/pages/legal/Contact.tsx), the credential is a Pages secret, and
+ * "public key" was a misnomer -- with a service id and a template id it is enough
+ * to send mail through our templates. Nothing should set it again, so this entry
+ * can be deleted, and deleting it makes the guard strictly stronger.
+ */
+const PUBLIC_VITE_VARS = new Set(['VITE_EMAILJS_PUBLIC_KEY', 'VITE_GOOGLE_CLIENT_ID']);
+
+function forbidSecretViteVars(): Plugin {
+  return {
+    name: 'forbid-secret-vite-vars',
+    apply: 'build',
+    config(_config, { mode }) {
+      // .env files AND the ambient environment: Vite inlines from both, and CI
+      // typically supplies VITE_ vars through the latter.
+      const candidates = new Map<string, string | undefined>();
+      for (const [name, value] of Object.entries(loadEnv(mode, rootDir, 'VITE_'))) {
+        candidates.set(name, value);
+      }
+      for (const [name, value] of Object.entries(process.env)) {
+        if (name.startsWith('VITE_')) candidates.set(name, value);
+      }
+
+      const offenders = [...candidates.entries()]
+        .filter(([name, value]) =>
+          Boolean(value?.trim()) &&
+          SECRET_SHAPED_VITE_VAR.test(name) &&
+          !PUBLIC_VITE_VARS.has(name),
+        )
+        .map(([name]) => name)
+        .sort();
+
+      if (offenders.length > 0) {
+        // Names only. Printing a value would put it in CI logs, which is the
+        // problem this exists to prevent.
+        throw new Error(
+          `Refusing to build: ${offenders.length} secret-shaped VITE_ variable(s) have values ` +
+            `and would be inlined into the client bundle.\n\n` +
+            offenders.map((name) => `  - ${name}`).join('\n') +
+            `\n\nA VITE_-prefixed variable is readable by anyone who opens the page. If one of ` +
+            `these is a real credential, remove it from .env and rotate it at the provider. If it ` +
+            `is genuinely public, rename it so it does not read as a secret, or add it to ` +
+            `PUBLIC_VITE_VARS in vite.config.ts with a comment saying why it is safe.`,
+        );
+      }
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
+    forbidSecretViteVars(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
@@ -436,7 +531,6 @@ export default defineConfig({
       'date-fns',
       'localforage',
       'react-zoom-pan-pinch',
-      '@emailjs/browser',
       '@radix-ui/react-slot',
       '@radix-ui/react-accordion',
       '@radix-ui/react-alert-dialog',
@@ -491,12 +585,7 @@ export default defineConfig({
   server: {
     port,
     strictPort: false,
-    host: '0.0.0.0',
-    // `true` disables Vite's Host header check entirely, which is what makes a dev
-    // server on 0.0.0.0 reachable by DNS rebinding from a page the developer
-    // happens to be visiting. It stays on inside Replit, whose proxy serves the app
-    // from a generated hostname that cannot be listed ahead of time; everywhere
-    // else the check is left on, with an escape hatch for tunnels.
+    host: process.env.REPL_ID !== undefined ? '0.0.0.0' : '127.0.0.1',
     allowedHosts: devAllowedHosts,
     fs: {
       strict: true,
@@ -504,7 +593,7 @@ export default defineConfig({
   },
   preview: {
     port,
-    host: '0.0.0.0',
+    host: process.env.REPL_ID !== undefined ? '0.0.0.0' : '127.0.0.1',
     allowedHosts: devAllowedHosts,
   },
 });

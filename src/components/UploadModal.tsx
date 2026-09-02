@@ -42,81 +42,75 @@ export interface Preset {
   extracts: string[];
 }
 
-export const PRESETS: Preset[] = [
-  {
-    id: "invoice",
+import { OCR_MODES, type OcrMode } from "../../server/ocr-prompts";
+
+export const PRESET_MAP: Record<OcrMode, Omit<Preset, "id">> = {
+  invoice: {
     label: "Invoice",
     icon: FileText,
     tagline: "Billing fields",
     description: "Pulls vendor, amounts, dates, tax lines, and payment status from vendor invoices.",
     extracts: ["Invoice #", "Vendor", "Dates", "Subtotal", "Tax", "Total", "Status"],
   },
-  {
-    id: "fulltext",
+  fulltext: {
     label: "Full Text",
     icon: FileIcon,
     tagline: "Raw transcription",
     description: "Transcribes everything on the page as it appears — layout and line breaks intact, no structure imposed.",
     extracts: ["Full transcription", "Document type"],
   },
-  {
-    id: "receipt",
+  receipt: {
     label: "Receipt",
     icon: ShoppingBag,
     tagline: "Point of sale",
     description: "Reads store receipts for merchant info, every line item, tax, tip, and payment method.",
     extracts: ["Merchant", "Line items", "Tax", "Tip", "Total", "Payment"],
   },
-  {
-    id: "keyvalue",
+  keyvalue: {
     label: "Key-Value",
     icon: ListFilter,
     tagline: "Any form",
     description: "Finds every labeled field on any document — printed forms, scans, checkboxes and all.",
     extracts: ["All fields", "Empty fields", "Checkboxes"],
   },
-  {
-    id: "table",
+  table: {
     label: "Table",
     icon: Table2,
     tagline: "Rows and columns",
     description: "Reads a schedule, price list or grid as rows — one exported row per line on the page.",
     extracts: ["Column headers", "One row per line"],
   },
-  {
-    id: "handwriting",
+  handwriting: {
     label: "Handwriting",
     icon: PenLine,
     tagline: "Cursive and print",
     description: "Transcribes handwritten pages verbatim, keeping line breaks, and reports how legible they were.",
     extracts: ["Transcription", "Writing style", "Legibility"],
   },
-  {
-    id: "multilingual",
+  multilingual: {
     label: "Multilingual",
     icon: Languages,
     tagline: "Any script",
     description: "Detects the languages and scripts on the page, transcribes them as written, then translates to English.",
     extracts: ["Original text", "English translation", "Languages"],
   },
-
-  {
-    id: "custom",
+  custom: {
     label: "Custom Prompt",
     icon: MessageSquareText,
     tagline: "Your own rules",
     description: "Write your own extraction instructions. Tell the AI exactly what to look for and how to structure the output.",
     extracts: ["User-defined"],
   },
-  {
-    id: "vqa",
+  vqa: {
     label: "Visual Q&A",
     icon: Eye,
     tagline: "Ask about images",
     description: "Ask questions about the content of any image or document. The AI reads the visual and answers directly.",
     extracts: ["Answers", "Document type", "Visual details"],
   },
-];
+};
+
+export const PRESETS: Preset[] = OCR_MODES.map((mode: OcrMode) => ({ id: mode, ...PRESET_MAP[mode] }));
 
 // ---------------------------------------------------------------------------
 // Preset selector
@@ -355,7 +349,7 @@ interface UploadFlowProps {
   createBatchFn: (
     data: { documents: UploadedDocument[]; mode: string; forceReprocess?: boolean; customPrompt?: string; },
     onProgress?: (progress: CreateBatchProgress) => void,
-  ) => Promise<{ id: number; failedCount?: number }>;
+  ) => Promise<{ id: number; failedCount?: number; status?: string }>;
 }
 
 interface QueuedFile { id: string; file: File; }
@@ -421,7 +415,11 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
     setIsCreatingBatch(true); setBatchError(null); setProgress(null);
     try {
       const batch = await createBatchFn({ documents: readyDocuments, mode, forceReprocess, customPrompt }, setProgress);
-      onBatchCreated(batch.id);
+      if (batch.status === "queued") {
+        setTimeout(() => onBatchCreated(batch.id), 1500);
+      } else {
+        onBatchCreated(batch.id);
+      }
     } catch (err) {
       setBatchError((err as Error).message || "Couldn't start the batch.");
       setIsCreatingBatch(false); setProgress(null);

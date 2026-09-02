@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   isBatchStalled,
   useGetBatch,
+  useGetBatchSummary,
   getGetBatchQueryKey,
   useUpdateDocumentField,
   useRetryDocument,
@@ -11,6 +12,7 @@ import {
   useAppendBatch,
   storageUrl,
   ApiError,
+  type BatchSummary,
   type CreateBatchProgress,
   type Document,
   type ExtractedField,
@@ -57,7 +59,7 @@ import { BackLink, EmptyState, ErrorState, ListSkeleton, PageHeader } from "@/co
 import { StatusBadge } from "@/components/StatusBadge";
 import { UploadFlow } from "@/components/UploadModal";
 import { useToast } from "@/hooks/use-toast";
-import { humanizeFieldLabel } from "@/lib/humanizeField";
+import { humanizeFieldLabel } from "@/lib/humanize-field";
 import { humanizeExtractionError } from "@/lib/humanize-error";
 import { usePageTitle } from "@/lib/use-page-title";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
@@ -112,20 +114,46 @@ export default function BatchDetails() {
   // spinner on the Export button and vice versa
   const [busyAction, setBusyAction] = useState<"export" | "delete" | null>(null);
 
+  const [pollInterval, setPollInterval] = useState(3000);
+  const prevSummaryRef = useRef<any>(null);
+
   const { data: batch, isLoading, error, refetch } = useGetBatch(batchId, {
+    query: { enabled: !!batchId },
+  });
+
+  const { data: summary } = useGetBatchSummary(batchId, {
     query: {
-      enabled: !!batchId,
-      refetchInterval: (query) => {
+      enabled: !!batchId && (!batch || batch.status === "queued" || batch.status === "processing"),
+      refetchInterval: (query: { state: { data?: BatchSummary } }) => {
         const data = query.state.data;
         if (!data) return false;
         if (data.status !== "processing" && data.status !== "queued") return false;
-        // A batch whose tab went away will never move again on its own. Polling it
-        // every three seconds forever is a request loop against a row that is not
-        // going to change; the banner below offers to resume it instead.
-        return isBatchStalled(data) ? false : 3000;
+        return isBatchStalled(data) ? false : pollInterval;
       },
     },
   });
+
+  useEffect(() => {
+    if (!summary) return;
+    const prev = prevSummaryRef.current;
+    if (!prev) {
+      prevSummaryRef.current = summary;
+      return;
+    }
+
+    if (
+      prev.status !== summary.status ||
+      prev.completedDocuments !== summary.completedDocuments ||
+      prev.failedDocuments !== summary.failedDocuments ||
+      prev.totalDocuments !== summary.totalDocuments
+    ) {
+      setPollInterval(3000);
+      queryClient.invalidateQueries({ queryKey: getGetBatchQueryKey(batchId) });
+    } else if (summary.status === "processing" || summary.status === "queued") {
+      setPollInterval((p) => Math.min(12000, p * 2));
+    }
+    prevSummaryRef.current = summary;
+  }, [summary, batchId, queryClient]);
 
   const updateField = useUpdateDocumentField();
   const appendBatch = useAppendBatch();
@@ -202,15 +230,15 @@ export default function BatchDetails() {
   // per cell — O(rows x docs) and O(cells x fields) on every keystroke in the
   // search box. Indexed once per batch instead.
   const docsById = useMemo(() => {
-    const map = new Map<number, any>();
+    const map = new Map<number, Document>();
     for (const d of batch?.documents ?? []) map.set(d.id, d);
     return map;
   }, [batch?.documents]);
 
   const fieldsByDoc = useMemo(() => {
-    const map = new Map<number, Map<string, any>>();
+    const map = new Map<number, Map<string, ExtractedField>>();
     for (const d of batch?.documents ?? []) {
-      const byName = new Map<string, any>();
+      const byName = new Map<string, ExtractedField>();
       for (const f of d.extractedFields ?? []) byName.set(f.normalizedField, f);
       map.set(d.id, byName);
     }
@@ -225,6 +253,12 @@ export default function BatchDetails() {
   );
 
   useEffect(() => { setPage(0); }, [searchTerm]);
+
+  useEffect(() => {
+    if (page > pageCount - 1) {
+      setPage(Math.max(0, pageCount - 1));
+    }
+  }, [page, pageCount]);
 
   // FIX: OCR values contain newlines — they silently broke TSV copies and
   // markdown table rows (one cell became five)

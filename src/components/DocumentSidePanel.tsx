@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertCircle, X, Copy } from "lucide-react";
-import { humanizeFieldLabel } from "@/lib/humanizeField";
+import { humanizeFieldLabel } from "@/lib/humanize-field";
 import { humanizeExtractionError } from "@/lib/humanize-error";
 import { useConfidenceThreshold } from "@/hooks/use-confidence-threshold";
 import { ConfidenceBadge } from "@/components/ConfidenceIndicator";

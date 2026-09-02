@@ -1,7 +1,7 @@
 import { fail, json, readJson, type AppEnv } from '../../server/http';
 import { authHeaders, requireSession } from '../../server/guard';
 
-const DEFAULT_THRESHOLD = 0.8;
+import { DEFAULT_CONFIDENCE_THRESHOLD } from '../../server/threshold';
 const MIN_THRESHOLD = 0.5;
 const MAX_THRESHOLD = 0.95;
 
@@ -24,7 +24,7 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
     .first<{ confidence_threshold: number }>();
 
   return json(
-    { confidenceThreshold: row?.confidence_threshold ?? DEFAULT_THRESHOLD },
+    { confidenceThreshold: row?.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD },
     200,
     authHeaders(auth),
   );

@@ -17,14 +17,17 @@ import { deleteAccount, downloadAccountExport } from "@/lib/api-client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 
-import { getConfidenceThreshold, setConfidenceThreshold } from "@/lib/review-queue-store";
+import { setConfidenceThreshold } from "@/lib/review-queue-store";
 import {
   CONSENT_CHANGED_EVENT,
   openAnalyticsConsentSettings,
   readAnalyticsConsent,
   type Consent,
-} from "@/components/analytics-consent";
-import { useSyncConfidenceThreshold } from "@/hooks/use-confidence-threshold";
+} from "@/components/AnalyticsConsent";
+import {
+  useSyncConfidenceThreshold,
+  useConfidenceThreshold,
+} from "@/hooks/use-confidence-threshold";
 import { usePageTitle } from "@/lib/use-page-title";
 
 
@@ -47,7 +50,8 @@ export default function Settings() {
     setLocation(id === "organization" ? "/app/settings" : `/app/settings/${id}`);
   };
 
-  const [threshold, setThresholdState] = useState<number>(0.80);
+  const currentThreshold = useConfidenceThreshold();
+  const [threshold, setThresholdState] = useState<number>(currentThreshold);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   /**
@@ -139,11 +143,9 @@ export default function Settings() {
   };
 
   useEffect(() => {
-    getConfidenceThreshold()
-      .then(setThresholdState)
-      // Keep the default rather than leaving the slider in an unknown state.
-      .catch((err) => console.error("Could not load the confidence threshold:", err));
-  }, []);
+    setThresholdState(currentThreshold);
+    savedThreshold.current = currentThreshold;
+  }, [currentThreshold]);
 
   const syncThreshold = useSyncConfidenceThreshold();
 
@@ -162,18 +164,8 @@ export default function Settings() {
    */
   const SAVE_SETTLE_MS = 400;
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savedThreshold = useRef<number>(0.8);
+  const savedThreshold = useRef<number>(currentThreshold);
   const [isSavingThreshold, setIsSavingThreshold] = useState(false);
-
-  useEffect(() => {
-    getConfidenceThreshold()
-      .then((value) => {
-        savedThreshold.current = value;
-      })
-      .catch(() => {
-        // The load error is already reported by the effect above.
-      });
-  }, []);
 
   // A drag left mid-flight when the user navigates away must not fire afterwards.
   useEffect(() => {

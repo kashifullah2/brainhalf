@@ -13,7 +13,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { UseQueryOptions } from "@tanstack/react-query";
 
 import { apiUrl } from "./api-paths";
-import { processWithHunyuanOCR, type HunyuanOCRResponse } from "./ocr-client";
+import { extractDocument, type ExtractionResult } from "./ocr-client";
 import { calculateDocumentOverallConfidence } from "./confidence-scorer";
 
 // ---------------------------------------------------------------------------
@@ -226,6 +226,16 @@ export function useGetBatch(batchId: number, options?: { query?: QueryOverrides<
   });
 }
 
+export function useGetBatchSummary(batchId: number, options?: { query?: QueryOverrides<BatchSummary> }) {
+  const queryOpts = options?.query ?? {};
+  return useQuery<BatchSummary>({
+    queryKey: ['batch', batchId, 'summary'],
+    queryFn: () => apiFetch<BatchSummary>(`/batches/${batchId}`),
+    enabled: !!batchId,
+    ...queryOpts,
+  });
+}
+
 /** Plain fetch (non-hook) for bulk operations such as multi-batch export. */
 export async function getBatch(batchId: number): Promise<BatchDetail> {
   return apiFetch<BatchDetail>(`/batches/${batchId}`);
@@ -360,8 +370,8 @@ async function extractWithEscalation(
   forceReprocess: boolean,
   customPrompt: string | undefined,
   threshold: number,
-): Promise<{ result: HunyuanOCRResponse; overallConfidence: number; escalated: boolean }> {
-  const result = await processWithHunyuanOCR(
+): Promise<{ result: ExtractionResult; overallConfidence: number; escalated: boolean }> {
+  const result = await extractDocument(
     file,
     mode,
     forceReprocess,
@@ -380,7 +390,7 @@ async function extractWithEscalation(
   }
 
   try {
-    const retry = await processWithHunyuanOCR(
+    const retry = await extractDocument(
       file,
       mode,
       forceReprocess,

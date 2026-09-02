@@ -21,7 +21,12 @@ import { maybeSweepAbandonedUploads } from '../../server/storage-sweep';
  * Scoped to /api on purpose. A `_middleware.ts` at the functions root would
  * route every static asset request through the Worker as well.
  */
-/** Methods that change something, and therefore need the origin check below. */
+/**
+ * Methods that change something, and therefore need the origin check below.
+ * Note: If a state-changing GET is ever added, it will bypass this check.
+ * State-changing GETs should be avoided, but if absolutely necessary, they
+ * must be added to this list or checked separately.
+ */
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**

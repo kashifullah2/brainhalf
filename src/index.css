@@ -160,6 +160,29 @@
       transform: scale(1);
     }
   }
+
+  @keyframes float-slow {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% {
+      opacity: 0.5;
+      filter: brightness(1);
+    }
+    50% {
+      opacity: 1;
+      filter: brightness(1.3) blur(2px);
+    }
+  }
+
+  --animate-float: float-slow 6s ease-in-out infinite;
+  --animate-glow: glow-pulse 4s ease-in-out infinite;
 }
 
 /* ==========================================================
@@ -311,6 +334,7 @@
    ========================================================== */
 
 @layer base {
+
   *,
   ::before,
   ::after,
@@ -331,11 +355,9 @@
     min-height: 100dvh;
     margin: 0;
     background:
-      radial-gradient(
-        circle at 14% -8%,
+      radial-gradient(circle at 14% -8%,
         hsl(var(--primary) / 0.06),
-        transparent 30rem
-      ),
+        transparent 30rem),
       hsl(var(--background));
     color: hsl(var(--foreground));
     font-family: var(--app-font-sans);
@@ -486,11 +508,9 @@
     border: 1px solid hsl(var(--border));
     border-radius: 999px;
     background:
-      linear-gradient(
-        to right,
+      linear-gradient(to right,
         hsl(var(--primary)) 0 var(--range-fill),
-        hsl(var(--muted)) var(--range-fill) 100%
-      );
+        hsl(var(--muted)) var(--range-fill) 100%);
   }
 
   input[type="range"]::-moz-range-track {
@@ -578,8 +598,7 @@
   * {
     scrollbar-width: thin;
     scrollbar-color:
-      hsl(var(--muted-foreground) / 0.28)
-      transparent;
+      hsl(var(--muted-foreground) / 0.28) transparent;
   }
 
   ::-webkit-scrollbar {
@@ -749,8 +768,8 @@
 
 /* Chrome/Safari Autofill fix - overrides blue background highlight on signin fields */
 input:-webkit-autofill,
-input:-webkit-autofill:hover, 
-input:-webkit-autofill:focus, 
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: hsl(var(--foreground)) !important;

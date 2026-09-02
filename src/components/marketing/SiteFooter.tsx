@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 
-import { openAnalyticsConsentSettings } from "@/components/analytics-consent";
+import { openAnalyticsConsentSettings } from "@/components/AnalyticsConsent";
 
 const LINK_GROUPS = [
   {

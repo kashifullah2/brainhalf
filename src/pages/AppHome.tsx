@@ -29,6 +29,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/lib/use-page-title";
+import { humanizeFieldLabel } from "@/lib/humanize-field";
 import { sanitizeForExport } from "@/lib/utils";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
 import { EmptyState, ErrorState, ListSkeleton, PageHeader, StatCard, greeting } from "@/components/app";
@@ -110,7 +111,7 @@ export default function AppHome() {
     return r;
   }, [batches, searchQuery, filterStatus, filterEngine, sortOrder]);
 
-  const allSelected = filteredBatches.length > 0 && selectedIds.size === filteredBatches.length;
+  const allSelected = filteredBatches.length > 0 && filteredBatches.every((b: BatchSummary) => selectedIds.has(b.id));
   const isSelecting = selectedIds.size > 0;
   const engineLabels = useMemo(() => new Map(PRESETS.map((p) => [p.id, p.label])), []);
 
@@ -185,9 +186,23 @@ export default function AppHome() {
   };
 
   const buildExport = (list: Array<{ id: number; columns: string[]; rows: Record<string, unknown>[] }>) => {
-    const cols = new Set<string>();
-    list.forEach(({ columns }) => columns.forEach(c => cols.add(c)));
-    const allCols = [...cols];
+    const rawCols = new Set<string>();
+    list.forEach(({ columns }) => columns.forEach(c => rawCols.add(c)));
+    const allCols = [...rawCols];
+
+    const humanizedMap = new Map<string, string>();
+    const seenLabels = new Set<string>();
+
+    allCols.forEach(c => {
+      let label = humanizeFieldLabel(c);
+      let suffix = 1;
+      while (seenLabels.has(label)) {
+        label = `${humanizeFieldLabel(c)} ${++suffix}`;
+      }
+      seenLabels.add(label);
+      humanizedMap.set(c, label);
+    });
+
     return list.flatMap(({ id, rows }) =>
       rows.map(row => {
         // The filename is user-controlled. Unsanitized it reaches Excel as a live
@@ -199,7 +214,7 @@ export default function AppHome() {
           Status: sanitizeForExport(String(rowRecord.status ?? "")),
         };
         allCols.forEach(c => {
-          r[c.replace(/_/g, " ")] = sanitizeForExport(String(rowRecord[c] ?? ""));
+          r[humanizedMap.get(c)!] = sanitizeForExport(String(rowRecord[c] ?? ""));
         });
         return r;
       })
@@ -284,22 +299,30 @@ export default function AppHome() {
 
       {/* ── Stats ──────────────────────────────────────────── */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
-          <div className="col-span-1 sm:col-span-2">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="col-span-1">
             <StatCard label="Total Batches" value={stats.total} icon={FileText} tone="primary" />
           </div>
-          <div className="col-span-1 sm:col-span-2">
+          <div className="col-span-1">
             <StatCard label="Documents" value={stats.docs} icon={BarChart3} tone="primary" />
           </div>
-          <div className="col-span-1 sm:col-span-1">
+          <div className="col-span-1">
             <StatCard label="Completed" value={stats.done} icon={CheckCircle2} tone={stats.done > 0 ? "success" : "muted"} />
           </div>
-          <div className="col-span-1 sm:col-span-1">
+          <div className="col-span-1">
             <StatCard
-              label={stats.running > 0 ? "In Flight" : "Failed"}
-              value={stats.running > 0 ? stats.running : stats.failed}
-              icon={stats.running > 0 ? Activity : AlertTriangle}
-              tone={stats.running > 0 ? "primary" : stats.failed > 0 ? "destructive" : "muted"}
+              label="In Flight"
+              value={stats.running}
+              icon={Activity}
+              tone={stats.running > 0 ? "primary" : "muted"}
+            />
+          </div>
+          <div className="col-span-1">
+            <StatCard
+              label="Failed"
+              value={stats.failed}
+              icon={AlertTriangle}
+              tone={stats.failed > 0 ? "destructive" : "muted"}
             />
           </div>
         </div>
