@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
+    "build": "vite build",
+    "dev": "vite",
     "db:migrate": "pnpm --filter @brainhalf/workers db:migrate",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
