@@ -471,20 +471,8 @@ export default defineConfig({
     tailwindcss(),
     runtimeErrorOverlay(),
     devOcrProxy(),
-    // Replit-specific plugins only load when running inside Replit.
-    ...(process.env.NODE_ENV !== 'production' &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import('@replit/vite-plugin-cartographer').then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, '..'),
-            }),
-          ),
-          await import('@replit/vite-plugin-dev-banner').then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
+    // Replit-specific plugins only load when running inside Replit dev mode.
+
   ],
   resolve: {
     alias: {
