@@ -171,6 +171,14 @@ function AppGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { isSignedIn, isLoading, isAdmin } = useAuth();
+  if (isLoading) return <PageLoader />;
+  if (!isSignedIn) return <Redirect to="/sign-in" />;
+  if (!isAdmin) return <Redirect to="/app" />;
+  return <>{children}</>;
+}
+
 function RoutedErrorBoundary({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
@@ -224,7 +232,7 @@ function AppRoutes() {
           <AppGuard><TemplatesPage /></AppGuard>
         </Route>
         <Route path="/app/admin">
-          <AppGuard><AdminDashboard /></AppGuard>
+          <AdminGuard><AdminDashboard /></AdminGuard>
         </Route>
         <Route path="/app/settings">
           <AppGuard><Settings /></AppGuard>

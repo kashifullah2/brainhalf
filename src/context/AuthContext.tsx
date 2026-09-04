@@ -30,6 +30,7 @@ export interface UserProfile {
   /** The provider's profile image URL, or "" when there is none. */
   picture: string;
   givenName?: string;
+  isAdmin?: boolean;
 }
 
 interface SignUpData {
@@ -47,6 +48,7 @@ interface SignInData {
 interface AuthContextType {
   user: UserProfile | null;
   isSignedIn: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   loginWithGoogle: (emailHint?: string) => Promise<void>;
   loginWithEmail: (data: SignInData) => Promise<void>;
@@ -445,11 +447,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // stops calling disableAutoSelect() once the id arrives from /auth/me.
   }, [GOOGLE_CLIENT_ID]);
 
+  const ADMIN_EMAILS = (
+    import.meta.env.VITE_ADMIN_EMAILS ||
+    "kashifullah,admin@brainhalf.com,owner@brainhalf.com"
+  ).toLowerCase().split(",").map(e => e.trim());
+
+  const isAdmin = Boolean(
+    user?.email && ADMIN_EMAILS.some(admin => admin && user.email.toLowerCase().includes(admin))
+  );
+
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: user ? { ...user, isAdmin } : null,
         isSignedIn: !!user,
+        isAdmin,
         isLoading,
         loginWithGoogle,
         loginWithEmail,

@@ -7,6 +7,7 @@ import {
 } from "@/lib/review-queue-store";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useMobileNav } from "@/components/layout/mobile-nav";
+import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   FileText,
@@ -95,6 +96,8 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
     return location === url || location.startsWith(`${url}/`);
   };
 
+  const { isAdmin } = useAuth();
+
   const navItems: NavItem[] = [
     { title: "Dashboard", url: "/app", icon: LayoutDashboard },
     { title: "Upload", url: "/app/upload", icon: UploadCloud },
@@ -106,7 +109,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
       badgeNoun: "awaiting review",
     },
     { title: "Templates", url: "/app/templates", icon: FileText },
-    { title: "Admin Console", url: "/app/admin", icon: ShieldCheck },
+    ...(isAdmin ? [{ title: "Admin Console", url: "/app/admin", icon: ShieldCheck }] : []),
   ];
 
   const accountItems: NavItem[] = [
