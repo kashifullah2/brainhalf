@@ -16,6 +16,7 @@ import {
   Settings as SettingsIcon,
   CreditCard,
   PanelLeft,
+  ShieldCheck,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -105,6 +106,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
       badgeNoun: "awaiting review",
     },
     { title: "Templates", url: "/app/templates", icon: FileText },
+    { title: "Admin Console", url: "/app/admin", icon: ShieldCheck },
   ];
 
   const accountItems: NavItem[] = [

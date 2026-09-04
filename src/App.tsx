@@ -30,6 +30,7 @@ const DocumentDetails = lazy(() => import("@/pages/DocumentDetails"));
 const ReviewQueue = lazy(() => import("@/pages/ReviewQueue"));
 const ReviewQueueDetail = lazy(() => import("@/pages/ReviewQueueDetail"));
 const TemplatesPage = lazy(() => import("@/pages/TemplatesPage"));
+const AdminDashboard = lazy(() => import("@/pages/AdminDashboard"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -221,6 +222,9 @@ function AppRoutes() {
         </Route>
         <Route path="/app/templates">
           <AppGuard><TemplatesPage /></AppGuard>
+        </Route>
+        <Route path="/app/admin">
+          <AppGuard><AdminDashboard /></AppGuard>
         </Route>
         <Route path="/app/settings">
           <AppGuard><Settings /></AppGuard>
