@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/lib/use-page-title";
 import { apiRequest } from "@/lib/api-client";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AdminDashboard() {
   usePageTitle("Admin Console · BrainHalf", { canonicalPath: "/app/admin", noindex: true });
