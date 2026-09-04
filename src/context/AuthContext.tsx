@@ -449,7 +449,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const ADMIN_EMAILS = (
     import.meta.env.VITE_ADMIN_EMAILS ||
-    "kashifullah,admin@brainhalf.com,owner@brainhalf.com"
+    "kashifullah919@gmail.com,kashifullah,admin@brainhalf.com,owner@brainhalf.com"
   ).toLowerCase().split(",").map(e => e.trim());
 
   const isAdmin = Boolean(
