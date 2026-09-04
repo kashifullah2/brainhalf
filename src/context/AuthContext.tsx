@@ -449,11 +449,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const ADMIN_EMAILS = (
     import.meta.env.VITE_ADMIN_EMAILS ||
-    "kashifullah919@gmail.com,kashifullah,admin@brainhalf.com,owner@brainhalf.com"
+    "kashif,kashifullah,kashifullah919@gmail.com,admin@brainhalf.com,owner@brainhalf.com"
   ).toLowerCase().split(",").map(e => e.trim());
 
   const isAdmin = Boolean(
-    user?.email && ADMIN_EMAILS.some(admin => admin && user.email.toLowerCase().includes(admin))
+    user && (
+      (user.email && ADMIN_EMAILS.some(admin => admin && user.email.toLowerCase().includes(admin))) ||
+      (user.name && ADMIN_EMAILS.some(admin => admin && user.name.toLowerCase().includes(admin))) ||
+      (user.firstName && ADMIN_EMAILS.some(admin => admin && user.firstName.toLowerCase().includes(admin)))
+    )
   );
 
   return (
