@@ -18,6 +18,12 @@
 // ---------------------------------------------------------------------------
 
 import localforage from "localforage";
+import { 
+  TextractClient, 
+  DetectDocumentTextCommand,
+  AnalyzeDocumentCommand,
+  AnalyzeExpenseCommand 
+} from "@aws-sdk/client-textract";
 import { apiRequest } from "./api-client";
 import {
   calculateFieldConfidence,
@@ -156,6 +162,186 @@ export async function extractDocument(
       }
     } catch (err) {
       console.warn("Failed to read from OCR cache:", err);
+    }
+  }
+
+  // AWS Textract Integration (Native Forms, Expense & Tables)
+  const accessKeyId = (import.meta.env.VITE_AWS_ACCESS_KEY_ID || "").trim();
+  const secretAccessKey = (import.meta.env.VITE_AWS_SECRET_ACCESS_KEY || "").trim();
+  if (accessKeyId && secretAccessKey) {
+    console.log(`[OCR Client] Routing to Native AWS Textract (${mode})...`);
+    const client = new TextractClient({
+      region: import.meta.env.VITE_AWS_REGION || "us-east-1",
+      credentials: {
+        accessKeyId,
+        secretAccessKey
+      }
+    });
+    
+    const base64Content = base64Data.split(",")[1].replace(/\s/g, "");
+    const binaryString = atob(base64Content);
+    const len = binaryString.length;
+    const imageBytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      imageBytes[i] = binaryString.charCodeAt(i);
+    }
+
+    try {
+      let response: any = null;
+      if (mode === 'invoice' || mode === 'receipt') {
+        try {
+          const expenseCommand = new AnalyzeExpenseCommand({
+            Document: { Bytes: imageBytes }
+          });
+          response = await client.send(expenseCommand);
+        } catch {
+          // Fallback to AnalyzeDocument if Expense fails
+        }
+      }
+
+      if (!response || !response.ExpenseDocuments?.length) {
+        try {
+          const analyzeCommand = new AnalyzeDocumentCommand({
+            Document: { Bytes: imageBytes },
+            FeatureTypes: ["FORMS", "TABLES"]
+          });
+          response = await client.send(analyzeCommand);
+        } catch {
+          const textCommand = new DetectDocumentTextCommand({
+            Document: { Bytes: imageBytes }
+          });
+          response = await client.send(textCommand);
+        }
+      }
+
+      const fields: Array<{
+        normalizedField: string;
+        originalLabel: string;
+        value: string;
+        editedValue: string | null;
+        confidence: number;
+      }> = [];
+      const rows: Record<string, unknown>[] = [];
+      let rawText = "";
+
+      // 1. Process Expense Documents (Invoices & Receipts)
+      if (response.ExpenseDocuments && response.ExpenseDocuments.length > 0) {
+        for (const expDoc of response.ExpenseDocuments) {
+          if (expDoc.SummaryFields) {
+            for (const f of expDoc.SummaryFields) {
+              const label = f.Type?.Text || f.LabelDetection?.Text || "Field";
+              const val = f.ValueDetection?.Text || "";
+              const conf = (f.ValueDetection?.Confidence || 99) / 100;
+              if (val) {
+                fields.push({
+                  normalizedField: label,
+                  originalLabel: label,
+                  value: val,
+                  editedValue: null,
+                  confidence: Math.round(conf * 100) / 100,
+                });
+              }
+            }
+          }
+          if (expDoc.LineItemGroups) {
+            for (const group of expDoc.LineItemGroups) {
+              if (group.LineItems) {
+                for (const item of group.LineItems) {
+                  const rowObj: Record<string, unknown> = {};
+                  if (item.LineItemExpenseFields) {
+                    for (const f of item.LineItemExpenseFields) {
+                      const k = f.Type?.Text || f.LabelDetection?.Text || "Item";
+                      rowObj[k] = f.ValueDetection?.Text || "";
+                    }
+                  }
+                  if (Object.keys(rowObj).length > 0) rows.push(rowObj);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Process Forms / Key-Values / Line Blocks
+      if (response.Blocks) {
+        const blockMap = new Map<string, any>();
+        const keyBlocks: any[] = [];
+        const lineTexts: string[] = [];
+
+        for (const block of response.Blocks) {
+          blockMap.set(block.Id, block);
+          if (block.BlockType === "LINE" && block.Text) {
+            lineTexts.push(block.Text);
+          } else if (block.BlockType === "KEY_VALUE_SET" && block.EntityTypes?.includes("KEY")) {
+            keyBlocks.push(block);
+          }
+        }
+
+        rawText = lineTexts.join("\n");
+
+        const getText = (resultBlock: any) => {
+          let t = "";
+          if (resultBlock?.Relationships) {
+            for (const rel of resultBlock.Relationships) {
+              if (rel.Type === "CHILD") {
+                for (const childId of rel.Ids) {
+                  const word = blockMap.get(childId);
+                  if (word?.BlockType === "WORD") t += word.Text + " ";
+                  if (word?.BlockType === "SELECTION_ELEMENT" && word.SelectionStatus === "SELECTED") t += "[X] ";
+                }
+              }
+            }
+          }
+          return t.trim();
+        };
+
+        const getValueBlock = (keyBlock: any) => {
+          if (keyBlock.Relationships) {
+            for (const rel of keyBlock.Relationships) {
+              if (rel.Type === "VALUE") {
+                for (const valId of rel.Ids) return blockMap.get(valId);
+              }
+            }
+          }
+          return null;
+        };
+
+        for (const keyBlock of keyBlocks) {
+          const kText = getText(keyBlock);
+          const vBlock = getValueBlock(keyBlock);
+          const vText = vBlock ? getText(vBlock) : "";
+          if (kText && vText) {
+            fields.push({
+              normalizedField: kText,
+              originalLabel: kText,
+              value: vText,
+              editedValue: null,
+              confidence: Math.round(((keyBlock.Confidence || 99) / 100) * 100) / 100,
+            });
+          }
+        }
+      }
+
+      if (!rawText && fields.length > 0) {
+        rawText = fields.map(f => `${f.normalizedField}: ${f.value}`).join("\n");
+      }
+
+      if (fields.length === 0 && rawText) {
+        fields.push({
+          normalizedField: "Full Text Transcription",
+          originalLabel: "Transcription",
+          value: rawText,
+          editedValue: null,
+          confidence: 0.99
+        });
+      }
+
+      return { rawText, fields, rows };
+    } catch (err: any) {
+      console.error("Textract Native Error:", err);
+      const errorName = err.name || "UnknownError";
+      const errorMsg = err.message || "An error occurred";
+      throw new Error(`Textract Error (${errorName}): ${errorMsg}`);
     }
   }
 

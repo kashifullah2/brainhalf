@@ -9,5 +9,9 @@
     "@cloudflare/workers-types": "catalog:",
     "typescript": "catalog:",
     "wrangler": "catalog:"
+  },
+  "dependencies": {
+    "@aws-sdk/client-textract": "^3.1124.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1124.0"
   }
 }

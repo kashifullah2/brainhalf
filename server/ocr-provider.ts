@@ -10,6 +10,16 @@ import {
   retryWithoutRejectedParam,
   usedTokens,
 } from './openai-params';
+import { 
+  TextractClient, 
+  DetectDocumentTextCommand,
+  AnalyzeDocumentCommand,
+  AnalyzeExpenseCommand 
+} from "@aws-sdk/client-textract";
+import {
+  BedrockRuntimeClient,
+  InvokeModelCommand
+} from "@aws-sdk/client-bedrock-runtime";
 
 export type Tier = 'default' | 'escalation';
 
@@ -21,6 +31,10 @@ export interface OcrProviderEnv {
   OCR_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   OPENAI_MODEL?: string;
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
+  AWS_REGION?: string;
+  AWS_BEDROCK_MODEL?: string;
 }
 
 export interface OcrRequestPayload {
@@ -157,6 +171,270 @@ export async function executeOcrRequest(
   tier: Tier,
   payload: OcrRequestPayload
 ): Promise<OcrProviderResult> {
+  const awsKey = env.AWS_ACCESS_KEY_ID;
+  const awsSecret = env.AWS_SECRET_ACCESS_KEY;
+  const awsRegion = env.AWS_REGION || "us-east-1";
+
+  if (awsKey && awsSecret) {
+    // 1. AWS Bedrock Runtime AI Vision (Claude 3.5 Sonnet / Amazon Nova / Haiku)
+    if (env.AWS_BEDROCK_MODEL || tier === 'escalation') {
+      const bedrockModel = env.AWS_BEDROCK_MODEL || "anthropic.claude-3-5-sonnet-20241022-v2:0";
+      console.log(`[ocr-provider] Using AWS Bedrock Model (${bedrockModel})...`);
+      
+      const bedrockClient = new BedrockRuntimeClient({
+        region: awsRegion,
+        credentials: {
+          accessKeyId: awsKey,
+          secretAccessKey: awsSecret,
+        }
+      });
+
+      let base64Data = "";
+      const msg = payload.messages[0];
+      if (msg && Array.isArray(msg.content)) {
+        const imgObj = msg.content.find((c: any) => c.type === 'image_url') as any;
+        if (imgObj) base64Data = imgObj.image_url?.url || "";
+        const fileObj = msg.content.find((c: any) => c.type === 'file') as any;
+        if (fileObj) base64Data = fileObj.file?.file_data || "";
+      }
+
+      if (base64Data) {
+        try {
+          const base64Content = base64Data.split(",")[1]?.replace(/\s/g, "") || base64Data;
+          const mimeType = base64Data.split(";")[0]?.split(":")[1] || "image/jpeg";
+          
+          let bodyPayload: any;
+          if (bedrockModel.startsWith("anthropic.")) {
+            bodyPayload = {
+              anthropic_version: "bedrock-2023-05-31",
+              max_tokens: 2048,
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "image",
+                      source: {
+                        type: "base64",
+                        media_type: mimeType,
+                        data: base64Content
+                      }
+                    },
+                    {
+                      type: "text",
+                      text: "Extract all text, key fields, and tables from this document. Return ONLY valid, parseable JSON."
+                    }
+                  ]
+                }
+              ]
+            };
+          } else {
+            bodyPayload = {
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      image: {
+                        format: mimeType.replace("image/", ""),
+                        source: { bytes: base64Content }
+                      }
+                    },
+                    { text: "Extract all text, key fields, and structured data from this image as JSON." }
+                  ]
+                }
+              ]
+            };
+          }
+
+          const command = new InvokeModelCommand({
+            modelId: bedrockModel,
+            contentType: "application/json",
+            accept: "application/json",
+            body: JSON.stringify(bodyPayload)
+          });
+
+          const res = await bedrockClient.send(command);
+          const jsonString = new TextDecoder().decode(res.body);
+          const parsedRes = JSON.parse(jsonString);
+
+          let outputContent = "";
+          if (bedrockModel.startsWith("anthropic.")) {
+            outputContent = parsedRes.content?.[0]?.text || "";
+          } else {
+            outputContent = parsedRes.output?.message?.content?.[0]?.text || "";
+          }
+
+          if (outputContent) {
+            const mockData = {
+              choices: [{
+                message: { content: outputContent },
+                finish_reason: "stop"
+              }],
+              usage: { total_tokens: parsedRes.usage?.output_tokens || 0 }
+            };
+
+            return {
+              type: 'success',
+              data: mockData,
+              providerName: 'aws-bedrock',
+              model: bedrockModel,
+              tokensUsed: parsedRes.usage?.output_tokens || 0,
+              isTruncated: false
+            };
+          }
+        } catch (err: any) {
+          console.warn("[ocr-provider] Bedrock failed, falling back to AWS Textract:", err.message);
+        }
+      }
+    }
+
+    // 2. AWS Textract Native (Forms, Expenses, Tables, Text)
+    console.log("[ocr-provider] Using AWS Textract backend...");
+    const client = new TextractClient({
+      region: awsRegion,
+      credentials: {
+        accessKeyId: awsKey,
+        secretAccessKey: awsSecret,
+      }
+    });
+
+    let base64Data = "";
+    const msg = payload.messages[0];
+    if (msg && Array.isArray(msg.content)) {
+      const imgObj = msg.content.find((c: any) => c.type === 'image_url') as any;
+      if (imgObj) base64Data = imgObj.image_url?.url || "";
+      const fileObj = msg.content.find((c: any) => c.type === 'file') as any;
+      if (fileObj) base64Data = fileObj.file?.file_data || "";
+    }
+
+    if (base64Data) {
+      try {
+        const base64Content = base64Data.split(",")[1]?.replace(/\s/g, "") || base64Data;
+        const binaryString = atob(base64Content);
+        const len = binaryString.length;
+        const imageBytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          imageBytes[i] = binaryString.charCodeAt(i);
+        }
+
+        let response: any = null;
+        try {
+          const expenseCommand = new AnalyzeExpenseCommand({
+            Document: { Bytes: imageBytes }
+          });
+          response = await client.send(expenseCommand);
+        } catch {}
+
+        if (!response || !response.ExpenseDocuments?.length) {
+          try {
+            const analyzeCommand = new AnalyzeDocumentCommand({
+              Document: { Bytes: imageBytes },
+              FeatureTypes: ["FORMS", "TABLES"]
+            });
+            response = await client.send(analyzeCommand);
+          } catch {
+            const textCommand = new DetectDocumentTextCommand({
+              Document: { Bytes: imageBytes }
+            });
+            response = await client.send(textCommand);
+          }
+        }
+
+        const jsonResult: Record<string, any> = {
+          _overall_confidence: 0.99
+        };
+        let rawTextLines: string[] = [];
+
+        if (response.ExpenseDocuments && response.ExpenseDocuments.length > 0) {
+          for (const expDoc of response.ExpenseDocuments) {
+            if (expDoc.SummaryFields) {
+              for (const f of expDoc.SummaryFields) {
+                const k = f.Type?.Text || f.LabelDetection?.Text || "Field";
+                const v = f.ValueDetection?.Text || "";
+                if (k && v) jsonResult[k] = v;
+              }
+            }
+          }
+        }
+
+        if (response.Blocks) {
+          const blockMap = new Map<string, any>();
+          const keyBlocks: any[] = [];
+          for (const b of response.Blocks) {
+            blockMap.set(b.Id, b);
+            if (b.BlockType === "LINE" && b.Text) rawTextLines.push(b.Text);
+            else if (b.BlockType === "KEY_VALUE_SET" && b.EntityTypes?.includes("KEY")) keyBlocks.push(b);
+          }
+
+          const getText = (resBlock: any) => {
+            let t = "";
+            if (resBlock?.Relationships) {
+              for (const rel of resBlock.Relationships) {
+                if (rel.Type === "CHILD") {
+                  for (const childId of rel.Ids) {
+                    const w = blockMap.get(childId);
+                    if (w?.BlockType === "WORD") t += w.Text + " ";
+                  }
+                }
+              }
+            }
+            return t.trim();
+          };
+
+          const getValueBlock = (kB: any) => {
+            if (kB.Relationships) {
+              for (const rel of kB.Relationships) {
+                if (rel.Type === "VALUE") {
+                  for (const valId of rel.Ids) return blockMap.get(valId);
+                }
+              }
+            }
+            return null;
+          };
+
+          for (const kB of keyBlocks) {
+            const k = getText(kB);
+            const vB = getValueBlock(kB);
+            const v = vB ? getText(vB) : "";
+            if (k && v) jsonResult[k] = v;
+          }
+        }
+
+        const outputContent = Object.keys(jsonResult).length > 1
+          ? JSON.stringify(jsonResult, null, 2)
+          : rawTextLines.join("\n");
+
+        // Return mock response for downstream consumption
+        const mockData = {
+          choices: [{
+            message: { content: outputContent },
+            finish_reason: "stop"
+          }],
+          usage: { total_tokens: 0 }
+        };
+
+        return {
+          type: 'success',
+          data: mockData,
+          providerName: 'aws-textract',
+          model: 'textract',
+          tokensUsed: 0,
+          isTruncated: false
+        };
+      } catch (err: any) {
+        return {
+          type: 'permanent-error',
+          status: err.$metadata?.httpStatusCode || 500,
+          message: 'Textract refused the request.',
+          providerName: 'aws-textract',
+          detail: err.message,
+          payloadTooLarge: err.name === 'ValidationException'
+        };
+      }
+    }
+  }
+
   const provider = resolveProvider(env, tier);
   if ('type' in provider) {
     return provider; // Config error
