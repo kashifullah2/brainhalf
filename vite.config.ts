@@ -2,9 +2,6 @@ import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
-
-import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
-
 /**
  * Radix packages that are pure internals — every widget pulls several of them,
  * so they belong in one shared chunk rather than one chunk each.
@@ -469,7 +466,6 @@ export default defineConfig({
     forbidSecretViteVars(),
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
     devOcrProxy(),
     // Replit-specific plugins only load when running inside Replit dev mode.
 
