@@ -22,6 +22,7 @@ import {
   enforceRateLimit,
   ipIdentity,
 } from '../../../server/rate-limit';
+import { isAdminEmail } from '../../../server/admin';
 
 interface LoginBody {
   email?: unknown;
@@ -112,7 +113,9 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
     ip: clientIp(request),
   });
 
-  return json({ user: toSessionUser(user) }, 200, {
+  // Returned so the client does not have to ask again just to know whether to
+  // show the admin entry. Every admin endpoint re-checks it server-side.
+  return json({ user: toSessionUser(user), isAdmin: isAdminEmail(env, user.email) }, 200, {
     'Set-Cookie': sessionCookie(request, token),
   });
 };

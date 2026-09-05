@@ -1,0 +1,19 @@
+{
+  "name": "@brainhalf/ai",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./agent": "./src/agent.ts",
+    "./streaming": "./src/streaming.ts",
+    "./providers": "./src/providers.ts",
+    "./asset-search": "./src/asset-search/index.ts"
+  },
+  "dependencies": {
+    "ulidx": "^2.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

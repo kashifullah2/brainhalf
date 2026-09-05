@@ -39,7 +39,7 @@ export const ACCEPTED_TYPES = new Set([
 ]);
 
 export function normalizeContentType(type: string, filename?: string): string {
-  let normalized = type.toLowerCase();
+  const normalized = type.toLowerCase();
   if (normalized === 'image/jpg') return 'image/jpeg';
   
   if (!normalized || normalized === 'application/octet-stream') {

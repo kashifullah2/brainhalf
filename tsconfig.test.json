@@ -1,0 +1,28 @@
+// Typechecks the server-side test files. They run under Node (vitest) rather
+// than on the Workers runtime, so they may use fs, path and import.meta.dirname
+// -- but the modules they import are Workers code, hence both type packages.
+//
+// Server and function modules are therefore checked twice: once here with Node
+// types available, and once by tsconfig.server.json with ONLY
+// @cloudflare/workers-types. The second pass is what catches a Node-only API
+// creeping into code that has to run on Workers; this one only exists so a test
+// that reads a migration file off disk is not a type error.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node", "@cloudflare/workers-types"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true
+  },
+  "include": ["server/**/*.test.ts", "functions/**/*.test.ts", "queue-worker/**/*.test.ts"]
+}

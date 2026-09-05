@@ -1,336 +1,355 @@
-import React, { useState, useEffect } from "react";
-import { 
-  ShieldCheck, 
-  Activity, 
-  Cpu, 
-  Database, 
-  Server, 
-  FileText, 
-  CheckCircle2, 
-  AlertCircle, 
-  Zap, 
-  RefreshCw, 
-  Download, 
-  Layers, 
-  Sliders, 
-  ExternalLink,
-  Key,
-  Globe,
+// ---------------------------------------------------------------------------
+// Admin console.
+//
+// Every number on this page used to be a literal written into the component: a
+// hardcoded 1,428 documents processed, "99.2%" accuracy, "1.1s" average latency,
+// 12 active batches, and a four-row "Recent Platform Activity Stream" listing
+// document ids that had never existed. It reported a healthy platform whatever
+// the platform was doing, and an "Export Audit Report" button that only raised a
+// toast saying a report had been saved.
+//
+// It also printed a "Credentials & Secrets" panel with the first characters of
+// the AWS access key and secret — a real disclosure to anyone who could reach the
+// page, which before server/admin.ts was anyone who signed up with the right
+// first name.
+//
+// Everything here now comes from GET /api/admin/metrics, counted in the database
+// at request time. Provider configuration is shown as configured / not
+// configured: no values, no fragments, no lengths.
+// ---------------------------------------------------------------------------
+
+import { useMemo } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
   Clock,
-  Sparkles
+  Cpu,
+  Download,
+  FileText,
+  Gauge,
+  RefreshCw,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ErrorState, ListSkeleton, PageHeader, StatCard } from "@/components/app";
 import { usePageTitle } from "@/lib/use-page-title";
-import { apiRequest } from "@/lib/api-client";
+import { useAdminMetrics, type AdminMetrics } from "@/lib/api-client";
+import { downloadBlob } from "@/lib/xlsx-writer";
 import { useToast } from "@/hooks/use-toast";
 
+/** "—" rather than "0%" or "100%": an unmeasured rate is not a good one. */
+function percent(value: number | null): string {
+  return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+function integer(value: number): string {
+  return value.toLocaleString();
+}
+
+interface ConfigRow {
+  label: string;
+  /** True = configured, false = not, string = a non-secret value worth showing. */
+  state: boolean | string | null;
+  detail: string;
+}
+
+function configRows(metrics: AdminMetrics): ConfigRow[] {
+  const { providers, bindings } = metrics;
+  return [
+    {
+      label: "Default extraction tier",
+      state: providers.defaultTier,
+      detail: "Runs on every page.",
+    },
+    {
+      label: "High-accuracy tier",
+      state: providers.escalationTier,
+      detail: "Re-reads pages the default tier scored below the review threshold.",
+    },
+    {
+      label: "AWS credentials",
+      state: providers.awsConfigured,
+      detail: providers.awsConfigured
+        ? `Textract and Bedrock reachable in ${providers.awsRegion ?? "us-east-1"}.`
+        : "Textract and Bedrock are not in use on this deployment.",
+    },
+    {
+      label: "Bedrock vision model",
+      state: providers.bedrockModel,
+      detail: providers.bedrockModel
+        ? "Used for both tiers in preference to Textract."
+        : "Not set, so AWS extraction uses Textract only.",
+    },
+    {
+      label: "Background queue",
+      state: bindings.queue,
+      detail: bindings.queue
+        ? "Batches are extracted by the worker, so closing the tab is safe."
+        : "Extraction runs in the browser: closing the tab stops the batch.",
+    },
+    {
+      label: "Google sign-in",
+      state: providers.googleSignIn,
+      detail: "Client id present, so the Google button is offered.",
+    },
+    {
+      label: "Transactional email",
+      state: providers.transactionalEmail,
+      detail: providers.transactionalEmail
+        ? "Password resets and contact messages are delivered."
+        : "Password reset tokens are created but not emailed.",
+    },
+    {
+      label: "Document storage",
+      state: bindings.storage,
+      detail: "R2 bucket holding the uploaded originals.",
+    },
+  ];
+}
+
+function StateBadge({ state }: { state: boolean | string | null }) {
+  if (typeof state === "string") {
+    return (
+      <Badge variant="outline" className="max-w-[16rem] truncate font-mono text-xs">
+        {state}
+      </Badge>
+    );
+  }
+  if (state) {
+    return (
+      <Badge
+        variant="outline"
+        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+      >
+        Configured
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-muted-foreground">
+      Not configured
+    </Badge>
+  );
+}
+
 export default function AdminDashboard() {
-  usePageTitle("Admin Console · BrainHalf", { canonicalPath: "/app/admin", noindex: true });
+  usePageTitle("Admin console · BrainHalf", { canonicalPath: "/app/admin", noindex: true });
   const { toast } = useToast();
 
-  const [isTestingOcr, setIsTestingOcr] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
-
-  // System State & Metrics
-  const [stats, setStats] = useState({
-    totalProcessed: 1428,
-    successRate: "99.2%",
-    avgLatency: "1.1s",
-    activeBatches: 12,
-    activeEngine: "AWS Bedrock + AWS Textract",
-    activeModel: import.meta.env.VITE_AWS_BEDROCK_MODEL || "anthropic.claude-3-5-sonnet-20241022-v2:0",
-    awsRegion: import.meta.env.VITE_AWS_REGION || "us-east-1",
-    hasAwsKeys: Boolean(import.meta.env.VITE_AWS_ACCESS_KEY_ID),
+  // 30s: these are aggregate counts, not a live feed, and every refresh is a
+  // handful of COUNT(*) queries against the whole documents table.
+  const { data, isLoading, isError, error, refetch, isFetching } = useAdminMetrics({
+    query: { refetchInterval: 30_000 },
   });
 
-  const handleTestOcrPipeline = async () => {
-    setIsTestingOcr(true);
-    setTestResult(null);
-    try {
-      // Simulate test request to OCR API endpoint
-      const res = await apiRequest("/api/ocr", {
-        method: "POST",
-        body: JSON.stringify({ test: true })
-      });
-      if (res.status === 401) {
-        setTestResult("API Endpoint Live (Returned HTTP 401 Auth Guard as expected)");
-        toast({ title: "Pipeline Diagnostic Passed", description: "Backend OCR endpoint is active and guarded." });
-      } else {
-        setTestResult(`Response status: ${res.status}`);
-      }
-    } catch (err: any) {
-      setTestResult(`Diagnostic Status: OCR Server Endpoint Guarded (${err.message})`);
-    } finally {
-      setIsTestingOcr(false);
-    }
+  const rows = useMemo(() => (data ? configRows(data) : []), [data]);
+
+  const handleExport = () => {
+    if (!data) return;
+    // Exports what the page is showing, which is what "export" should mean. The
+    // button this replaces only raised a toast claiming a report had been saved.
+    downloadBlob(
+      new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
+      `brainhalf-metrics-${data.generatedAt.slice(0, 19).replace(/[:T]/g, "-")}.json`,
+    );
+    toast({
+      title: "Metrics exported",
+      description: "The figures shown on this page were saved as JSON.",
+    });
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 space-y-8">
-      {/* Header Banner */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/60 pb-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 gap-1 text-xs font-semibold px-2.5 py-0.5">
-              <ShieldCheck className="h-3.5 w-3.5" /> System Admin Console
-            </Badge>
-            <span className="text-caption text-muted-foreground">• Live Platform Operations</span>
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground mt-2">
-            BrainHalf Platform Overview
-          </h1>
-          <p className="text-body-sm text-muted-foreground mt-1">
-            Real-time status, AWS OCR engines, model configurations, and extraction metrics.
-          </p>
-        </div>
+    <div className="mx-auto max-w-7xl px-4 py-8">
+      <PageHeader
+        eyebrow={
+          <>
+            <ShieldCheck className="h-4 w-4" aria-hidden />
+            Admin console
+          </>
+        }
+        title="Platform overview"
+        description={
+          data
+            ? `Counted from the database at ${new Date(data.generatedAt).toLocaleTimeString()}.`
+            : "Live counts from the application database."
+        }
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void refetch()}
+              disabled={isFetching}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} aria-hidden />
+              {isFetching ? "Refreshing…" : "Refresh"}
+            </Button>
+            <Button size="sm" onClick={handleExport} disabled={!data} className="gap-2">
+              <Download className="h-4 w-4" aria-hidden />
+              Export metrics
+            </Button>
+          </>
+        }
+      />
 
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleTestOcrPipeline}
-            disabled={isTestingOcr}
-            className="gap-2"
+      {isLoading ? (
+        <ListSkeleton rows={5} />
+      ) : isError || !data ? (
+        <ErrorState
+          title="Metrics are not available"
+          body={
+            error?.message ??
+            "This account cannot read platform metrics, or the database is unreachable."
+          }
+          onRetry={() => void refetch()}
+        />
+      ) : (
+        <div className="space-y-8">
+          <section aria-labelledby="admin-throughput">
+            <h2 id="admin-throughput" className="sr-only">
+              Throughput
+            </h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard
+                label="Documents"
+                value={integer(data.counts.documents)}
+                hint={`in ${integer(data.counts.batches)} batches`}
+                icon={FileText}
+                tone="primary"
+              />
+              <StatCard
+                label="Completed"
+                value={integer(data.counts.completed)}
+                hint={`${integer(data.counts.completedLastDay)} in the last day`}
+                icon={CheckCircle2}
+                tone={data.counts.completed > 0 ? "success" : "muted"}
+              />
+              <StatCard
+                label="In flight"
+                value={integer(data.counts.queued + data.counts.processing)}
+                hint={`${integer(data.counts.queued)} queued`}
+                icon={Activity}
+                tone={data.counts.queued + data.counts.processing > 0 ? "warning" : "muted"}
+              />
+              <StatCard
+                label="Failed"
+                value={integer(data.counts.failed)}
+                hint={data.counts.failed > 0 ? "needs a retry" : undefined}
+                icon={AlertTriangle}
+                tone={data.counts.failed > 0 ? "destructive" : "muted"}
+              />
+            </div>
+          </section>
+
+          <section aria-labelledby="admin-quality">
+            <h2 id="admin-quality" className="sr-only">
+              Extraction quality
+            </h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard
+                label="Completion rate"
+                value={percent(data.quality.successRate)}
+                hint={
+                  data.quality.successRate === null
+                    ? "nothing finished yet"
+                    : "of documents that finished"
+                }
+                icon={Gauge}
+                tone={
+                  data.quality.successRate === null
+                    ? "muted"
+                    : data.quality.successRate >= 0.95
+                      ? "success"
+                      : "warning"
+                }
+              />
+              <StatCard
+                label="Mean confidence"
+                value={percent(data.quality.meanConfidence)}
+                hint={
+                  data.quality.meanConfidence === null
+                    ? "nothing scored yet"
+                    : "across scored documents"
+                }
+                icon={Cpu}
+                tone={
+                  data.quality.meanConfidence === null
+                    ? "muted"
+                    : data.quality.meanConfidence >= data.quality.threshold
+                      ? "success"
+                      : "warning"
+                }
+              />
+              <StatCard
+                label="Below threshold"
+                value={integer(data.quality.belowThreshold)}
+                hint={`under ${Math.round(data.quality.threshold * 100)}%`}
+                icon={AlertTriangle}
+                tone={data.quality.belowThreshold > 0 ? "warning" : "muted"}
+              />
+              <StatCard
+                label="Registered users"
+                value={integer(data.counts.users)}
+                icon={Users}
+                tone="primary"
+              />
+            </div>
+          </section>
+
+          {data.counts.stuck > 0 ? (
+            <div
+              role="status"
+              className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4"
+            >
+              <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+              <div className="space-y-1">
+                <p className="text-body font-semibold text-foreground">
+                  {integer(data.counts.stuck)} document
+                  {data.counts.stuck === 1 ? "" : "s"} interrupted mid-extraction
+                </p>
+                <p className="text-body-sm text-muted-foreground">
+                  These have been processing longer than the recovery threshold. The
+                  sweep in server/stuck-documents.ts returns them to the queue
+                  automatically and fails them once they run out of attempts, so this
+                  should clear itself.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          <section
+            aria-labelledby="admin-config"
+            className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
           >
-            <RefreshCw className={`h-4 w-4 ${isTestingOcr ? "animate-spin" : ""}`} />
-            Run System Diagnostic
-          </Button>
-          <Button 
-            size="sm"
-            onClick={() => {
-              toast({ title: "Audit Log Downloaded", description: "Platform diagnostic report saved to local disk." });
-            }}
-            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            <Download className="h-4 w-4" />
-            Export Audit Report
-          </Button>
-        </div>
-      </div>
-
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-card to-muted/30 border-border/80 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active Engine</CardTitle>
-            <Cpu className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold text-foreground truncate">{stats.activeEngine}</div>
-            <p className="text-caption text-emerald-500 flex items-center gap-1 mt-1 font-medium">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Native AWS Credentials Configured
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-card to-muted/30 border-border/80 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Extraction Accuracy</CardTitle>
-            <Activity className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground tabular-nums">{stats.successRate}</div>
-            <p className="text-caption text-muted-foreground mt-1">Based on last 1,000 document runs</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-card to-muted/30 border-border/80 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Avg Processing Time</CardTitle>
-            <Clock className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground tabular-nums">{stats.avgLatency}</div>
-            <p className="text-caption text-muted-foreground mt-1">Client + Server side pipeline</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-card to-muted/30 border-border/80 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">AWS Region</CardTitle>
-            <Globe className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-foreground uppercase">{stats.awsRegion}</div>
-            <p className="text-caption text-muted-foreground mt-1">US East (N. Virginia)</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Grid: Engine Configuration & Infrastructure Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left 2 Cols: Engine Details & Configuration */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader className="border-b border-border/40 bg-muted/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-primary" /> Active AI & OCR Model Pipeline
-                  </CardTitle>
-                  <CardDescription className="text-body-sm text-muted-foreground">
-                    Current active processing engines and model routing logic.
-                  </CardDescription>
-                </div>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                  Operational
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6 space-y-6">
-              
-              {/* Primary AI Model */}
-              <div className="flex items-start justify-between p-4 rounded-lg bg-muted/40 border border-border/60">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 font-semibold text-foreground">
-                    <span>AWS Bedrock Vision Model</span>
-                    <Badge variant="secondary" className="text-xs">Primary Multimodal AI</Badge>
-                  </div>
-                  <p className="text-caption text-muted-foreground font-mono bg-background/80 px-2 py-1 rounded border border-border/40 inline-block">
-                    {stats.activeModel}
-                  </p>
-                  <p className="text-caption text-muted-foreground mt-1">
-                    Processes handwritten notes, complex multi-page documents, and custom JSON reasoning.
-                  </p>
-                </div>
-                <Badge className="bg-primary/20 text-primary border-primary/30">Active</Badge>
-              </div>
-
-              {/* Secondary Structural OCR */}
-              <div className="flex items-start justify-between p-4 rounded-lg bg-muted/40 border border-border/60">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 font-semibold text-foreground">
-                    <span>AWS Textract Native Engine</span>
-                    <Badge variant="secondary" className="text-xs">Form & Table Parser</Badge>
-                  </div>
-                  <p className="text-caption text-muted-foreground">
-                    Native Commands: <code className="text-foreground">AnalyzeExpense</code>, <code className="text-foreground">AnalyzeDocument (FORMS, TABLES)</code>, <code className="text-foreground">DetectDocumentText</code>.
-                  </p>
-                  <p className="text-caption text-muted-foreground mt-1">
-                    Extracts key-value form fields, line items, and receipt metadata directly.
-                  </p>
-                </div>
-                <Badge className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30">Active</Badge>
-              </div>
-
-              {/* Diagnostic Box */}
-              {testResult && (
-                <div className="p-4 rounded-lg bg-primary/10 border border-primary/20 text-body-sm text-foreground space-y-1">
-                  <p className="font-semibold flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-primary" /> Last Diagnostic Run
-                  </p>
-                  <p className="text-caption font-mono text-muted-foreground">{testResult}</p>
-                </div>
-              )}
-
-            </CardContent>
-          </Card>
-
-          {/* Activity Logs & Platform History */}
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader className="border-b border-border/40 bg-muted/20">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Layers className="h-5 w-5 text-primary" /> Recent Platform Activity Stream
-              </CardTitle>
-              <CardDescription className="text-body-sm text-muted-foreground">
-                Audit trail of recent document extraction requests.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y divide-border/60">
-                {[
-                  { id: "doc-9941", mode: "invoice", engine: "AWS Bedrock (Sonnet)", status: "Success", confidence: "99.4%", time: "2 mins ago" },
-                  { id: "doc-9940", mode: "receipt", engine: "AWS Textract (Expense)", status: "Success", confidence: "98.9%", time: "5 mins ago" },
-                  { id: "doc-9939", mode: "form", engine: "AWS Textract (Forms)", status: "Success", confidence: "99.1%", time: "12 mins ago" },
-                  { id: "doc-9938", mode: "table", engine: "AWS Bedrock (Nova Pro)", status: "Success", confidence: "97.8%", time: "18 mins ago" },
-                ].map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-primary/10 text-primary">
-                        <FileText className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-body-sm font-semibold text-foreground">{item.id} ({item.mode})</p>
-                        <p className="text-caption text-muted-foreground">{item.engine}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <span className="text-caption font-mono text-emerald-500 font-medium">{item.confidence}</span>
-                      <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs">
-                        {item.status}
-                      </Badge>
-                      <span className="text-caption text-muted-foreground hidden sm:inline">{item.time}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Col: Infrastructure Health & Environment Variables */}
-        <div className="space-y-6">
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader className="border-b border-border/40 bg-muted/20">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Server className="h-5 w-5 text-primary" /> Infrastructure Health
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-body-sm font-medium text-foreground">Cloudflare Pages</span>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                  Online (Deployed)
-                </Badge>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-body-sm font-medium text-foreground">Cloudflare Queue Worker</span>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                  brainhalf-processor
-                </Badge>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-body-sm font-medium text-foreground">AWS IAM Auth</span>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                  Full Access
-                </Badge>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-body-sm font-medium text-foreground">Database Storage</span>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                  SQLite / D1 Active
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader className="border-b border-border/40 bg-muted/20">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Key className="h-5 w-5 text-primary" /> Credentials & Secrets
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 space-y-3">
-              <div className="p-3 rounded bg-muted/40 border border-border/60 text-caption font-mono space-y-1">
-                <p className="text-muted-foreground">AWS_ACCESS_KEY_ID: <span className="text-foreground">AKIAX...4YZ</span></p>
-                <p className="text-muted-foreground">AWS_SECRET_ACCESS_KEY: <span className="text-foreground">ONEDu...pAJ</span></p>
-                <p className="text-muted-foreground">AWS_REGION: <span className="text-foreground">us-east-1</span></p>
-              </div>
-              <p className="text-caption text-muted-foreground">
-                Secrets are encrypted and synced to Cloudflare Pages & Queue Worker via Wrangler.
+            <div className="border-b border-border/60 bg-muted/30 px-5 py-4">
+              <h2 id="admin-config" className="text-body-lg font-semibold text-foreground">
+                Deployment configuration
+              </h2>
+              <p className="mt-0.5 text-body-sm text-muted-foreground">
+                Presence only. No credential, or any part of one, is sent to this page.
               </p>
-            </CardContent>
-          </Card>
+            </div>
+            <dl className="divide-y divide-border/50">
+              {rows.map((row) => (
+                <div
+                  key={row.label}
+                  className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 px-5 py-3.5"
+                >
+                  <div className="min-w-0">
+                    <dt className="text-body-sm font-semibold text-foreground">{row.label}</dt>
+                    <dd className="text-caption text-muted-foreground">{row.detail}</dd>
+                  </div>
+                  <StateBadge state={row.state} />
+                </div>
+              ))}
+            </dl>
+          </section>
         </div>
-
-      </div>
+      )}
     </div>
   );
 }

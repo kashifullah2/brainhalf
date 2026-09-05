@@ -30,6 +30,21 @@ export interface AppEnv {
    */
   OCR_API_KEY?: string;
   /**
+   * AWS credentials for the Textract / Bedrock engines. Server-only, and reached
+   * through the signed requests in server/aws-ocr.ts -- there is deliberately no
+   * VITE_-prefixed counterpart, because a VITE_ variable is inlined into the
+   * browser bundle and a previous revision of src/lib/ocr-client.ts published
+   * exactly this pair that way.
+   *
+   * Selection rules live in server/ocr-provider.ts. AWS_BEDROCK_MODEL both names
+   * the vision model and is what enables the Bedrock path at all.
+   */
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
+  AWS_SESSION_TOKEN?: string;
+  AWS_REGION?: string;
+  AWS_BEDROCK_MODEL?: string;
+  /**
    * Google OAuth client ID. Public by nature, but the server needs it to check
    * the `aud` claim of an ID token — without that check, a token minted for a
    * different application would be accepted.
@@ -58,8 +73,16 @@ export interface AppEnv {
   VITE_EMAILJS_TEMPLATE_ID?: string;
   VITE_EMAILJS_PWD_TEMPLATE_ID?: string;
   VITE_EMAILJS_PUBLIC_KEY?: string;
+  /**
+   * Comma-separated list of administrator email addresses, matched exactly and
+   * case-insensitively by server/admin.ts. Unset falls back to the owner address
+   * built in there. This is the ONLY thing that grants admin access -- the
+   * previous check ran in the browser and matched substrings of the user's own
+   * first name, so signing up as "Kashif" was enough.
+   */
+  ADMIN_EMAILS?: string;
   /** Background processing queue for OCR */
-  OCR_QUEUE?: Queue<any>;
+  OCR_QUEUE?: Queue<unknown>;
 }
 
 const SECURITY_HEADERS: Record<string, string> = {

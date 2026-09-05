@@ -14,13 +14,12 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
   const auth = await requireSession(request, env);
   if (auth instanceof Response) return auth;
 
-  // An export reads six tables and serialises the lot, so it is not free to call
-  // in a loop. Reuses the upload allowance rather than introducing another rule.
+  // Six table scans serialised into one response; see RULES.accountExport.
   const limited = await enforceRateLimit(
     env,
     'account/export',
     userIdentity(auth.user.id),
-    { limit: 10, windowSeconds: 3600 },
+    RULES.accountExport,
   );
   if (limited) return limited;
 
@@ -36,6 +35,3 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
     'Cache-Control': 'no-store',
   });
 };
-
-// Referenced so the rate-limit rules table stays the single place limits live.
-void RULES;

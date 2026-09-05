@@ -1,0 +1,9 @@
+import { redirect } from "@remix-run/cloudflare";
+
+export async function loader() {
+  return redirect("/dashboard");
+}
+
+export default function GamesRedirect() {
+  return null;
+}

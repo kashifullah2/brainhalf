@@ -1,12 +1,20 @@
+// The consumer runs on the Workers runtime and imports shared code from
+// ../server, so the include list reaches outside this directory.
 {
   "compilerOptions": {
-    "target": "es2022",
-    "module": "es2022",
-    "lib": ["es2022"],
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types"],
     "moduleResolution": "bundler",
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noEmit": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true
-  }
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": ["src/**/*.ts", "../server/**/*.ts"],
+  "exclude": ["../server/**/*.test.ts"]
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
   Check,
@@ -26,7 +26,8 @@ import {
   getFlaggedDocument,
   saveFieldResolution,
   getFieldResolutions,
-  FlaggedDocument
+  type FieldResolution,
+  type FlaggedDocument,
 } from "@/lib/review-queue-store";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { confidenceTone } from "@/components/ConfidenceIndicator";
@@ -85,7 +86,7 @@ export default function ReviewQueueDetail() {
 
   const [item, setItem] = useState<FlaggedDocument | null>(null);
   const threshold = useConfidenceThreshold();
-  const [resolutions, setResolutions] = useState<Record<string, any>>({});
+  const [resolutions, setResolutions] = useState<Record<string, FieldResolution>>({});
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   // Kept separate from `item`: a failed fetch and a document that is no
@@ -96,12 +97,23 @@ export default function ReviewQueueDetail() {
 
   const fieldCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  const loadData = async () => {
+  /**
+   * Memoised for two reasons. `item?.flaggedFields ?? []` produced a fresh array
+   * on every render, which made it a changing dependency of every useCallback
+   * below — so each of them was rebuilt every render and the memoisation did
+   * nothing. And it used to be declared *after* the effect that reads it, which
+   * only worked because effects run after the whole component body has evaluated.
+   */
+  const flaggedFields = useMemo(() => item?.flaggedFields ?? [], [item]);
+  const doc = item?.document;
+  const batchId = item?.batchId;
+
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
     try {
       const match = await getFlaggedDocument(documentId);
-      
+
       if (match) {
         setItem(match);
         const res = await getFieldResolutions(documentId);
@@ -123,22 +135,22 @@ export default function ReviewQueueDetail() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
   }, [documentId]);
 
   useEffect(() => {
-    const card = fieldCardRefs.current.get(flaggedFields[focusedFieldIndex]?.normalizedField);
-    if (card) {
-      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [focusedFieldIndex]);
+    void loadData();
+  }, [loadData]);
 
-  const flaggedFields = item?.flaggedFields ?? [];
-  const doc = item?.document;
-  const batchId = item?.batchId;
+  // Keeps the focused card in view for the J/K hotkeys. flaggedFields belongs in
+  // the dependency list: the index alone is meaningless if the list changed
+  // underneath it, which is exactly what happens after a reload.
+  useEffect(() => {
+    const focused = flaggedFields[focusedFieldIndex];
+    if (!focused) return;
+    fieldCardRefs.current
+      .get(focused.normalizedField)
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [focusedFieldIndex, flaggedFields]);
 
   const handleAction = useCallback(async (
     fieldName: string,

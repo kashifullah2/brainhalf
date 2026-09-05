@@ -9,6 +9,14 @@ apps/studio/dist/
 apps/workers/dist/
 .wrangler/
 **/.wrangler/
+.turbo/
+**/.turbo/
+*.tsbuildinfo
+**/*.tsbuildinfo
+.vscode/
+.claude/
+.agents/
+.replit-artifact/
 .env*
 .dev.vars
 !.dev.vars.example

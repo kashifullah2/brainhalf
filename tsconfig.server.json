@@ -20,5 +20,11 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["functions/**/*.ts", "server/**/*.ts"]
+  // Tests are excluded because they do not ship to the Workers runtime and some
+  // of them legitimately read the filesystem. tsconfig.test.json typechecks
+  // them with Node types instead, so nothing goes unchecked -- and keeping
+  // "node" out of the types list here is what stops a Node-only API from being
+  // used in code that has to run on Workers.
+  "include": ["functions/**/*.ts", "server/**/*.ts"],
+  "exclude": ["**/*.test.ts"]
 }

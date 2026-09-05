@@ -16,6 +16,7 @@ import {
   enforceRateLimit,
   ipIdentity,
 } from '../../../server/rate-limit';
+import { isAdminEmail } from '../../../server/admin';
 
 interface SignupBody {
   firstName?: unknown;
@@ -99,6 +100,10 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
         pictureUrl: null,
         emailVerified: false,
       },
+      // Decided from the email against server/admin.ts's allowlist. `firstName`
+      // arrives from this very request body and takes no part -- the check it
+      // replaces matched substrings of it, so signing up as "Kashif" was enough.
+      isAdmin: isAdminEmail(env, email),
     },
     201,
     { 'Set-Cookie': sessionCookie(request, token) },

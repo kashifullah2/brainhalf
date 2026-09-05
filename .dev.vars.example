@@ -16,6 +16,38 @@ HUNYUAN_MODEL=hunyuan-ocr
 # Use the same value as VITE_GOOGLE_CLIENT_ID in .env.
 GOOGLE_CLIENT_ID=
 
+# ---------------------------------------------------------------------------
+# Administrators.
+#
+# Comma-separated email addresses, matched EXACTLY and case-insensitively by
+# server/admin.ts. Entries without an "@" are ignored: the check this replaced
+# ran in the browser and matched substrings of the signed-in user's email, display
+# name and first name, so a bare word like "kashif" made every address containing
+# it an administrator -- and `firstName` comes from the signup form.
+#
+# Unset falls back to the single owner address built into server/admin.ts.
+ADMIN_EMAILS=
+
+# ---------------------------------------------------------------------------
+# Optional: AWS Textract / Bedrock as the extraction engine.
+#
+# Server-only, and deliberately NOT VITE_-prefixed -- these are reached from
+# server/aws-ocr.ts over signed HTTPS, never from the browser. Set them and AWS
+# takes precedence over the Hunyuan/OpenAI tiers above.
+#
+# AWS_BEDROCK_MODEL both names the vision model and is what enables the Bedrock
+# path at all; without it AWS extraction uses Textract only. Textract is never
+# used for the escalation tier: it cannot be given instructions, so it is a
+# different engine rather than a better one.
+# ---------------------------------------------------------------------------
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+# Only for STS / temporary credentials.
+AWS_SESSION_TOKEN=
+AWS_REGION=us-east-1
+# e.g. anthropic.claude-3-5-sonnet-20241022-v2:0 or amazon.nova-lite-v1:0
+AWS_BEDROCK_MODEL=
+
 # Primary Email Provider: Resend (https://resend.com)
 # Obtain an API key from https://resend.com/api-keys
 RESEND_API_KEY=re_123456789

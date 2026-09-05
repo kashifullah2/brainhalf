@@ -115,7 +115,8 @@ export default function BatchDetails() {
   const [busyAction, setBusyAction] = useState<"export" | "delete" | null>(null);
 
   const [pollInterval, setPollInterval] = useState(3000);
-  const prevSummaryRef = useRef<any>(null);
+  // Typed, so the comparison below cannot silently read a field that moved.
+  const prevSummaryRef = useRef<BatchSummary | null>(null);
 
   const { data: batch, isLoading, error, refetch } = useGetBatch(batchId, {
     query: { enabled: !!batchId },

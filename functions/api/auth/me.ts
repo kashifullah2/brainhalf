@@ -4,6 +4,7 @@ import {
   resolveSession,
   sessionCookie,
 } from '../../../server/session';
+import { isAdminEmail } from '../../../server/admin';
 
 /**
  * The single source of truth for "am I signed in?". The client no longer decides
@@ -24,12 +25,27 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({
 
   if (!session) {
     // Note: googleClientId is public by design. Do not add private server config here.
-    return json({ user: null, googleClientId: env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID }, 200);
+    return json(
+      { user: null, isAdmin: false, googleClientId: env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID },
+      200,
+    );
   }
 
   const headers = session.refreshedToken
     ? { 'Set-Cookie': sessionCookie(request, session.refreshedToken) }
     : undefined;
 
-  return json({ user: session.user, googleClientId: env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID }, 200, headers);
+  return json(
+    {
+      user: session.user,
+      // Decided here, from the account's email against an allowlist the browser
+      // cannot see or influence. The client used to work this out for itself by
+      // substring-matching the user's own first name -- see server/admin.ts.
+      // Every admin endpoint re-checks it anyway; this flag only drives the UI.
+      isAdmin: isAdminEmail(env, session.user.email),
+      googleClientId: env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID,
+    },
+    200,
+    headers,
+  );
 };

@@ -76,6 +76,15 @@ interface ServerUser {
   emailVerified: boolean;
 }
 
+/**
+ * What every auth endpoint answers with. `isAdmin` is the server's verdict, from
+ * the allowlist in server/admin.ts — it is never computed here.
+ */
+interface IdentityResponse {
+  user: ServerUser;
+  isAdmin?: boolean;
+}
+
 function toProfile(user: ServerUser): UserProfile {
   const name = `${user.firstName} ${user.lastName}`.trim() || user.email.split("@")[0];
   return {
@@ -164,6 +173,21 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
+  /**
+   * The server's answer, not a local calculation.
+   *
+   * This used to be derived in the browser by substring-matching the signed-in
+   * user's email, display name AND first name against a list that contained the
+   * bare words "kashif" and "kashifullah". Every part of that was wrong: the
+   * name fields come from the signup form, so registering as "Kashif" granted
+   * admin; a substring match let kashif@anything.example through; and being a
+   * client-side computation it could simply be edited in DevTools.
+   *
+   * It is now decided in server/admin.ts by exact email match, returned by the
+   * auth endpoints, and re-checked by every admin endpoint — so this flag only
+   * decides whether to render the entry, never whether access is allowed.
+   */
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
   const [dynamicClientId, setDynamicClientId] = useState<string>(FALLBACK_GOOGLE_CLIENT_ID);
@@ -183,10 +207,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const exchangeGoogleCredential = useCallback(async (credential: string) => {
     // The raw ID token goes straight to the server, which verifies its RS256
     // signature against Google's keys. It is never decoded for trust here.
-    const data = await postJson<{ user: ServerUser }>("/auth/google", {
+    const data = await postJson<IdentityResponse>("/auth/google", {
       credential,
     });
     setUser(toProfile(data.user));
+    setIsAdmin(data.isAdmin === true);
   }, []);
 
   const handleCredentialResponse = useCallback(
@@ -217,20 +242,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const response = await authFetch("/auth/me");
         if (response.ok) {
-          const data = (await response.json()) as { user: ServerUser | null, googleClientId?: string };
+          const data = (await response.json()) as {
+            user: ServerUser | null;
+            isAdmin?: boolean;
+            googleClientId?: string;
+          };
           if (!cancelled) {
             setUser(data.user ? toProfile(data.user) : null);
+            setIsAdmin(data.user ? data.isAdmin === true : false);
             if (data.googleClientId) {
               setDynamicClientId(data.googleClientId);
             }
           }
         } else if (!cancelled) {
           setUser(null);
+          setIsAdmin(false);
         }
       } catch {
         // Network failure or the API is not running. Treat as signed out rather
         // than guessing — guessing is what made the old implementation unsafe.
-        if (!cancelled) setUser(null);
+        if (!cancelled) {
+          setUser(null);
+          setIsAdmin(false);
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -244,6 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handleUnauthorized = () => {
       setUser(null);
+      setIsAdmin(false);
     };
     window.addEventListener("auth:unauthorized", handleUnauthorized);
     return () => {
@@ -380,22 +415,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loginWithEmail = useCallback(async ({ email, password }: SignInData) => {
-    const data = await postJson<{ user: ServerUser }>("/auth/login", {
+    const data = await postJson<IdentityResponse>("/auth/login", {
       email,
       password,
     });
     setUser(toProfile(data.user));
+    setIsAdmin(data.isAdmin === true);
   }, []);
 
   const signupWithEmail = useCallback(
     async ({ firstName, lastName, email, password }: SignUpData) => {
-      const data = await postJson<{ user: ServerUser }>("/auth/signup", {
+      const data = await postJson<IdentityResponse>("/auth/signup", {
         firstName,
         lastName,
         email,
         password,
       });
       setUser(toProfile(data.user));
+      setIsAdmin(data.isAdmin === true);
     },
     [],
   );
@@ -411,11 +448,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (token: string, password: string) => {
       // The endpoint revokes every existing session and issues a fresh one, so
       // the response is a signed-in user and this can set it directly.
-      const data = await postJson<{ user: ServerUser }>(
+      const data = await postJson<IdentityResponse>(
         "/auth/password-reset-confirm",
         { token, password },
       );
       setUser(toProfile(data.user));
+      setIsAdmin(data.isAdmin === true);
     },
     [],
   );
@@ -442,23 +480,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setUser(null);
+    setIsAdmin(false);
     // GOOGLE_CLIENT_ID is read above, so it belongs in the dependency list --
     // without it this closure keeps whatever value was current on first render and
     // stops calling disableAutoSelect() once the id arrives from /auth/me.
   }, [GOOGLE_CLIENT_ID]);
-
-  const ADMIN_EMAILS = (
-    import.meta.env.VITE_ADMIN_EMAILS ||
-    "kashif,kashifullah,kashifullah919@gmail.com,admin@brainhalf.com,owner@brainhalf.com"
-  ).toLowerCase().split(",").map(e => e.trim());
-
-  const isAdmin = Boolean(
-    user && (
-      (user.email && ADMIN_EMAILS.some(admin => admin && user.email.toLowerCase().includes(admin))) ||
-      (user.name && ADMIN_EMAILS.some(admin => admin && user.name.toLowerCase().includes(admin))) ||
-      (user.firstName && ADMIN_EMAILS.some(admin => admin && user.firstName.toLowerCase().includes(admin)))
-    )
-  );
 
   return (
     <AuthContext.Provider

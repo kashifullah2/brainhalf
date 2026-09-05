@@ -1,3 +1,5 @@
+# The tracked project is the OCR platform at the repository root plus the queue
+# consumer in queue-worker/. Both are installed from one lockfile so the worker
+# cannot drift onto a different version of the code it imports from server/.
 packages:
-  - "apps/*"
-  - "packages/*"
+  - "queue-worker"

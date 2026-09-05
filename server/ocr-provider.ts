@@ -10,16 +10,18 @@ import {
   retryWithoutRejectedParam,
   usedTokens,
 } from './openai-params';
-import { 
-  TextractClient, 
-  DetectDocumentTextCommand,
-  AnalyzeDocumentCommand,
-  AnalyzeExpenseCommand 
-} from "@aws-sdk/client-textract";
 import {
-  BedrockRuntimeClient,
-  InvokeModelCommand
-} from "@aws-sdk/client-bedrock-runtime";
+  AwsCallError,
+  TEXTRACT_MAX_BYTES,
+  callBedrock,
+  callTextract,
+  isRetryableAwsError,
+  resolveAwsConfig,
+  type AwsOcrConfig,
+  type TextractOperation,
+  type TextractResponse,
+} from './aws-ocr';
+import { parseTextractResponse } from './textract-parse';
 
 export type Tier = 'default' | 'escalation';
 
@@ -33,6 +35,7 @@ export interface OcrProviderEnv {
   OPENAI_MODEL?: string;
   AWS_ACCESS_KEY_ID?: string;
   AWS_SECRET_ACCESS_KEY?: string;
+  AWS_SESSION_TOKEN?: string;
   AWS_REGION?: string;
   AWS_BEDROCK_MODEL?: string;
 }
@@ -40,6 +43,13 @@ export interface OcrProviderEnv {
 export interface OcrRequestPayload {
   messages: Array<{ role: string; content: unknown[] }>;
   jsonObject: boolean;
+  /**
+   * The extraction preset. Textract has one operation per document class and no
+   * way to be told what to look for, so it needs this to choose between
+   * AnalyzeExpense, AnalyzeDocument and DetectDocumentText. The chat providers
+   * ignore it -- the mode is already baked into `messages`.
+   */
+  mode?: string;
 }
 
 export type OcrProviderResult =
@@ -166,274 +176,345 @@ function resolveProvider(env: OcrProviderEnv, tier: Tier): ResolvedProvider | Oc
   return { type: 'config-error', message: 'OCR is not configured on this deployment.' };
 }
 
+// ---------------------------------------------------------------------------
+// AWS branch
+// ---------------------------------------------------------------------------
+
+interface DocumentPart {
+  /** The instructions server/ocr-prompts.ts built for this mode. */
+  prompt: string;
+  /** `data:<type>;base64,<payload>` */
+  dataUrl: string;
+  contentType: string;
+  base64: string;
+  byteLength: number;
+}
+
+/**
+ * Pulls the prompt and the document back out of the OpenAI-shaped message array.
+ *
+ * The Bedrock adapter this replaces read only the document and substituted a
+ * hardcoded sentence for the prompt, so every mode -- invoice, table, handwriting,
+ * a user's own saved template -- was sent the same generic instruction and
+ * answered in a shape the parser did not expect.
+ */
+function readDocumentPart(payload: OcrRequestPayload): DocumentPart | null {
+  const message = payload.messages[0];
+  if (!message || !Array.isArray(message.content)) return null;
+
+  let prompt = '';
+  let dataUrl = '';
+
+  for (const part of message.content as Array<Record<string, any>>) {
+    if (part?.type === 'text' && typeof part.text === 'string') {
+      prompt = part.text;
+    } else if (part?.type === 'image_url' && typeof part.image_url?.url === 'string') {
+      dataUrl = part.image_url.url;
+    } else if (part?.type === 'file' && typeof part.file?.file_data === 'string') {
+      dataUrl = part.file.file_data;
+    }
+  }
+
+  if (!dataUrl) return null;
+
+  const match = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
+  if (!match) return null;
+  const [, contentType, base64] = match;
+  const cleaned = base64.replace(/\s/g, '');
+  if (!cleaned) return null;
+
+  return {
+    prompt,
+    dataUrl,
+    contentType,
+    base64: cleaned,
+    // Every 4 base64 characters carry 3 bytes; padding shortens the last group.
+    byteLength: Math.floor((cleaned.length * 3) / 4),
+  };
+}
+
+/** Which Textract operation suits this mode. */
+function textractOperationFor(mode: string | undefined): TextractOperation {
+  if (mode === 'invoice' || mode === 'receipt') return 'AnalyzeExpense';
+  if (mode === 'fulltext' || mode === 'handwriting' || mode === 'multilingual') {
+    // These modes want the page transcribed, and DetectDocumentText is both the
+    // cheapest operation and the only one that returns nothing but text.
+    return 'DetectDocumentText';
+  }
+  return 'AnalyzeDocument';
+}
+
+/**
+ * Shapes a provider reply the way the rest of the pipeline expects: an
+ * OpenAI-style `choices[0].message.content` string. `choices[0].confidence` is
+ * the provider's own certainty, which is what
+ * src/lib/confidence-scorer.ts:extractModelConfidence() reads when there are no
+ * logprobs -- so a real measurement reaches the score instead of a placeholder.
+ */
+function chatShapedReply(
+  content: string,
+  confidence: number | null,
+  tokensUsed: number,
+): unknown {
+  return {
+    choices: [
+      {
+        message: { content },
+        finish_reason: 'stop',
+        ...(confidence === null ? {} : { confidence }),
+      },
+    ],
+    usage: { total_tokens: tokensUsed },
+  };
+}
+
+/** Anthropic and Amazon Nova take different request bodies on Bedrock. */
+function bedrockBody(modelId: string, part: DocumentPart): Record<string, unknown> {
+  const isAnthropic = modelId.startsWith('anthropic.') || modelId.includes('.anthropic.');
+
+  if (isAnthropic) {
+    const source =
+      part.contentType === 'application/pdf'
+        ? {
+            type: 'document' as const,
+            source: { type: 'base64', media_type: 'application/pdf', data: part.base64 },
+          }
+        : {
+            type: 'image' as const,
+            source: { type: 'base64', media_type: part.contentType, data: part.base64 },
+          };
+    return {
+      anthropic_version: 'bedrock-2023-05-31',
+      max_tokens: MAX_COMPLETION_TOKENS,
+      temperature: UPSTREAM_TEMPERATURE,
+      messages: [{ role: 'user', content: [source, { type: 'text', text: part.prompt }] }],
+    };
+  }
+
+  return {
+    // Nova's Converse-style body. Its `format` is a bare extension, not a MIME type.
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            image: {
+              format: part.contentType.replace('image/', '').replace('jpg', 'jpeg'),
+              source: { bytes: part.base64 },
+            },
+          },
+          { text: part.prompt },
+        ],
+      },
+    ],
+    inferenceConfig: { maxTokens: MAX_COMPLETION_TOKENS, temperature: UPSTREAM_TEMPERATURE },
+  };
+}
+
+function bedrockContent(modelId: string, response: unknown): { text: string; tokens: number } {
+  const body = response as any;
+  const isAnthropic = modelId.startsWith('anthropic.') || modelId.includes('.anthropic.');
+  const text = isAnthropic
+    ? body?.content?.[0]?.text
+    : body?.output?.message?.content?.[0]?.text;
+  const tokens =
+    body?.usage?.output_tokens ?? body?.usage?.outputTokens ?? 0;
+  return { text: typeof text === 'string' ? text : '', tokens: Number(tokens) || 0 };
+}
+
+async function runBedrock(
+  config: AwsOcrConfig,
+  modelId: string,
+  part: DocumentPart,
+): Promise<OcrProviderResult> {
+  try {
+    const response = await callBedrock(config, modelId, bedrockBody(modelId, part));
+    const { text, tokens } = bedrockContent(modelId, response);
+    if (!text) {
+      return {
+        type: 'retryable-error',
+        status: null,
+        message: 'The extraction service returned an empty reply.',
+        providerName: 'aws-bedrock',
+        detail: 'Bedrock returned no text content',
+      };
+    }
+    return {
+      type: 'success',
+      // Bedrock reports no per-token certainty, so the model dimension stays
+      // unmeasured and the score is built from pattern and quality instead.
+      data: chatShapedReply(text, null, tokens),
+      providerName: 'aws-bedrock',
+      model: modelId,
+      tokensUsed: tokens,
+      isTruncated: false,
+    };
+  } catch (error) {
+    return awsFailure(error, 'aws-bedrock');
+  }
+}
+
+async function runTextract(
+  config: AwsOcrConfig,
+  part: DocumentPart,
+  mode: string | undefined,
+): Promise<OcrProviderResult> {
+  if (part.byteLength > TEXTRACT_MAX_BYTES) {
+    return {
+      type: 'permanent-error',
+      status: 413,
+      message: 'This document is too large to extract.',
+      providerName: 'aws-textract',
+      detail: `Textract accepts at most ${TEXTRACT_MAX_BYTES} bytes inline; got ${part.byteLength}`,
+      payloadTooLarge: true,
+    };
+  }
+
+  const operation = textractOperationFor(mode);
+
+  let response: TextractResponse;
+  try {
+    response = await callTextract(config, operation, part.base64);
+  } catch (error) {
+    // AnalyzeExpense refuses anything that is not an invoice or receipt, and
+    // AnalyzeDocument refuses some scans FORMS cannot be found in. Both are worth
+    // one retry with the operation that has no such preconditions.
+    if (operation !== 'DetectDocumentText' && error instanceof AwsCallError && !isRetryableAwsError(error)) {
+      console.warn(
+        `[ocr-provider] Textract.${operation} refused the document (${error.awsErrorType ?? error.status}); retrying with DetectDocumentText`,
+      );
+      try {
+        response = await callTextract(config, 'DetectDocumentText', part.base64);
+      } catch (fallbackError) {
+        return awsFailure(fallbackError, 'aws-textract');
+      }
+    } else {
+      return awsFailure(error, 'aws-textract');
+    }
+  }
+
+  const extraction = parseTextractResponse(response);
+  if (extraction.fields.length === 0 && !extraction.rawText) {
+    return {
+      type: 'retryable-error',
+      status: null,
+      message: 'Nothing readable was found in this document.',
+      providerName: 'aws-textract',
+      detail: 'Textract returned neither fields nor lines',
+    };
+  }
+
+  // A mode that wants the page transcribed gets the text; a mode that wants
+  // labelled values gets a flat JSON object, which is the shape every parser in
+  // this project already understands. `_overall_confidence` is Textract's own
+  // measurement -- the adapter this replaces hardcoded 0.99 here.
+  const wantsText = operation === 'DetectDocumentText' || extraction.fields.length === 0;
+  const content = wantsText
+    ? extraction.rawText
+    : JSON.stringify(
+        {
+          ...Object.fromEntries(extraction.fields.map((f) => [f.label, f.value])),
+          ...(extraction.confidence === null
+            ? {}
+            : { _overall_confidence: Number(extraction.confidence.toFixed(4)) }),
+        },
+        null,
+        2,
+      );
+
+  return {
+    type: 'success',
+    data: chatShapedReply(content, extraction.confidence, 0),
+    providerName: 'aws-textract',
+    model: `textract:${operation}`,
+    // Textract bills per page, not per token. Reporting 0 is accurate here.
+    tokensUsed: 0,
+    isTruncated: false,
+  };
+}
+
+function awsFailure(error: unknown, providerName: string): OcrProviderResult {
+  const detail = error instanceof Error ? error.message : String(error);
+  const status = error instanceof AwsCallError ? error.status : null;
+
+  if (isRetryableAwsError(error)) {
+    return {
+      type: 'retryable-error',
+      status,
+      message: 'The extraction service could not read this document. Try again in a moment.',
+      providerName,
+      detail,
+    };
+  }
+
+  return {
+    type: 'permanent-error',
+    status,
+    message: 'The extraction service refused the request.',
+    providerName,
+    detail,
+    payloadTooLarge:
+      status === 413 ||
+      (error instanceof AwsCallError && error.awsErrorType === 'DocumentTooLargeException'),
+  };
+}
+
+/**
+ * The AWS engines, when credentials are configured.
+ *
+ * Returns null to mean "not applicable, use the chat provider", which is how a
+ * PDF on an image-only path and an unconfigured Bedrock model both fall through.
+ *
+ * Textract is deliberately never used for the escalation tier: escalation exists
+ * to re-read a page the default tier scored badly, and Textract is a different
+ * class of engine rather than a better one -- it cannot be given instructions at
+ * all. Bedrock is a vision model, so it is a legitimate escalation and is used
+ * for both tiers when AWS_BEDROCK_MODEL names one.
+ */
+async function tryAwsProviders(
+  env: OcrProviderEnv,
+  tier: Tier,
+  payload: OcrRequestPayload,
+): Promise<OcrProviderResult | null> {
+  const config = resolveAwsConfig(env);
+  if (!config) return null;
+
+  const part = readDocumentPart(payload);
+  if (!part) {
+    console.error('[ocr-provider] AWS is configured but the request carried no document part.');
+    return null;
+  }
+
+  const bedrockModel = env.AWS_BEDROCK_MODEL?.trim();
+  if (bedrockModel) {
+    const result = await runBedrock(config, bedrockModel, part);
+    if (result.type === 'success') return result;
+    console.warn(
+      `[ocr-provider] Bedrock (${bedrockModel}) failed: ${result.type === 'config-error' ? result.message : result.detail.slice(0, 200)}`,
+    );
+  }
+
+  if (tier === 'escalation') return null;
+
+  const result = await runTextract(config, part, payload.mode);
+  if (result.type === 'success') return result;
+  console.warn(
+    `[ocr-provider] Textract failed: ${result.type === 'config-error' ? result.message : result.detail.slice(0, 200)}`,
+  );
+
+  // A payload Textract will not accept is worth telling the user about directly
+  // rather than silently spending a second upstream call on.
+  if (result.type === 'permanent-error' && result.payloadTooLarge) return result;
+  return null;
+}
+
 export async function executeOcrRequest(
   env: OcrProviderEnv,
   tier: Tier,
   payload: OcrRequestPayload
 ): Promise<OcrProviderResult> {
-  const awsKey = env.AWS_ACCESS_KEY_ID;
-  const awsSecret = env.AWS_SECRET_ACCESS_KEY;
-  const awsRegion = env.AWS_REGION || "us-east-1";
-
-  if (awsKey && awsSecret) {
-    // 1. AWS Bedrock Runtime AI Vision (Claude 3.5 Sonnet / Amazon Nova / Haiku)
-    if (env.AWS_BEDROCK_MODEL || tier === 'escalation') {
-      const bedrockModel = env.AWS_BEDROCK_MODEL || "anthropic.claude-3-5-sonnet-20241022-v2:0";
-      console.log(`[ocr-provider] Using AWS Bedrock Model (${bedrockModel})...`);
-      
-      const bedrockClient = new BedrockRuntimeClient({
-        region: awsRegion,
-        credentials: {
-          accessKeyId: awsKey,
-          secretAccessKey: awsSecret,
-        }
-      });
-
-      let base64Data = "";
-      const msg = payload.messages[0];
-      if (msg && Array.isArray(msg.content)) {
-        const imgObj = msg.content.find((c: any) => c.type === 'image_url') as any;
-        if (imgObj) base64Data = imgObj.image_url?.url || "";
-        const fileObj = msg.content.find((c: any) => c.type === 'file') as any;
-        if (fileObj) base64Data = fileObj.file?.file_data || "";
-      }
-
-      if (base64Data) {
-        try {
-          const base64Content = base64Data.split(",")[1]?.replace(/\s/g, "") || base64Data;
-          const mimeType = base64Data.split(";")[0]?.split(":")[1] || "image/jpeg";
-          
-          let bodyPayload: any;
-          if (bedrockModel.startsWith("anthropic.")) {
-            bodyPayload = {
-              anthropic_version: "bedrock-2023-05-31",
-              max_tokens: 2048,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      type: "image",
-                      source: {
-                        type: "base64",
-                        media_type: mimeType,
-                        data: base64Content
-                      }
-                    },
-                    {
-                      type: "text",
-                      text: "Extract all text, key fields, and tables from this document. Return ONLY valid, parseable JSON."
-                    }
-                  ]
-                }
-              ]
-            };
-          } else {
-            bodyPayload = {
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      image: {
-                        format: mimeType.replace("image/", ""),
-                        source: { bytes: base64Content }
-                      }
-                    },
-                    { text: "Extract all text, key fields, and structured data from this image as JSON." }
-                  ]
-                }
-              ]
-            };
-          }
-
-          const command = new InvokeModelCommand({
-            modelId: bedrockModel,
-            contentType: "application/json",
-            accept: "application/json",
-            body: JSON.stringify(bodyPayload)
-          });
-
-          const res = await bedrockClient.send(command);
-          const jsonString = new TextDecoder().decode(res.body);
-          const parsedRes = JSON.parse(jsonString);
-
-          let outputContent = "";
-          if (bedrockModel.startsWith("anthropic.")) {
-            outputContent = parsedRes.content?.[0]?.text || "";
-          } else {
-            outputContent = parsedRes.output?.message?.content?.[0]?.text || "";
-          }
-
-          if (outputContent) {
-            const mockData = {
-              choices: [{
-                message: { content: outputContent },
-                finish_reason: "stop"
-              }],
-              usage: { total_tokens: parsedRes.usage?.output_tokens || 0 }
-            };
-
-            return {
-              type: 'success',
-              data: mockData,
-              providerName: 'aws-bedrock',
-              model: bedrockModel,
-              tokensUsed: parsedRes.usage?.output_tokens || 0,
-              isTruncated: false
-            };
-          }
-        } catch (err: any) {
-          console.warn("[ocr-provider] Bedrock failed, falling back to AWS Textract:", err.message);
-        }
-      }
-    }
-
-    // 2. AWS Textract Native (Forms, Expenses, Tables, Text)
-    console.log("[ocr-provider] Using AWS Textract backend...");
-    const client = new TextractClient({
-      region: awsRegion,
-      credentials: {
-        accessKeyId: awsKey,
-        secretAccessKey: awsSecret,
-      }
-    });
-
-    let base64Data = "";
-    const msg = payload.messages[0];
-    if (msg && Array.isArray(msg.content)) {
-      const imgObj = msg.content.find((c: any) => c.type === 'image_url') as any;
-      if (imgObj) base64Data = imgObj.image_url?.url || "";
-      const fileObj = msg.content.find((c: any) => c.type === 'file') as any;
-      if (fileObj) base64Data = fileObj.file?.file_data || "";
-    }
-
-    if (base64Data) {
-      try {
-        const base64Content = base64Data.split(",")[1]?.replace(/\s/g, "") || base64Data;
-        const binaryString = atob(base64Content);
-        const len = binaryString.length;
-        const imageBytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          imageBytes[i] = binaryString.charCodeAt(i);
-        }
-
-        let response: any = null;
-        try {
-          const expenseCommand = new AnalyzeExpenseCommand({
-            Document: { Bytes: imageBytes }
-          });
-          response = await client.send(expenseCommand);
-        } catch {}
-
-        if (!response || !response.ExpenseDocuments?.length) {
-          try {
-            const analyzeCommand = new AnalyzeDocumentCommand({
-              Document: { Bytes: imageBytes },
-              FeatureTypes: ["FORMS", "TABLES"]
-            });
-            response = await client.send(analyzeCommand);
-          } catch {
-            const textCommand = new DetectDocumentTextCommand({
-              Document: { Bytes: imageBytes }
-            });
-            response = await client.send(textCommand);
-          }
-        }
-
-        const jsonResult: Record<string, any> = {
-          _overall_confidence: 0.99
-        };
-        let rawTextLines: string[] = [];
-
-        if (response.ExpenseDocuments && response.ExpenseDocuments.length > 0) {
-          for (const expDoc of response.ExpenseDocuments) {
-            if (expDoc.SummaryFields) {
-              for (const f of expDoc.SummaryFields) {
-                const k = f.Type?.Text || f.LabelDetection?.Text || "Field";
-                const v = f.ValueDetection?.Text || "";
-                if (k && v) jsonResult[k] = v;
-              }
-            }
-          }
-        }
-
-        if (response.Blocks) {
-          const blockMap = new Map<string, any>();
-          const keyBlocks: any[] = [];
-          for (const b of response.Blocks) {
-            blockMap.set(b.Id, b);
-            if (b.BlockType === "LINE" && b.Text) rawTextLines.push(b.Text);
-            else if (b.BlockType === "KEY_VALUE_SET" && b.EntityTypes?.includes("KEY")) keyBlocks.push(b);
-          }
-
-          const getText = (resBlock: any) => {
-            let t = "";
-            if (resBlock?.Relationships) {
-              for (const rel of resBlock.Relationships) {
-                if (rel.Type === "CHILD") {
-                  for (const childId of rel.Ids) {
-                    const w = blockMap.get(childId);
-                    if (w?.BlockType === "WORD") t += w.Text + " ";
-                  }
-                }
-              }
-            }
-            return t.trim();
-          };
-
-          const getValueBlock = (kB: any) => {
-            if (kB.Relationships) {
-              for (const rel of kB.Relationships) {
-                if (rel.Type === "VALUE") {
-                  for (const valId of rel.Ids) return blockMap.get(valId);
-                }
-              }
-            }
-            return null;
-          };
-
-          for (const kB of keyBlocks) {
-            const k = getText(kB);
-            const vB = getValueBlock(kB);
-            const v = vB ? getText(vB) : "";
-            if (k && v) jsonResult[k] = v;
-          }
-        }
-
-        const outputContent = Object.keys(jsonResult).length > 1
-          ? JSON.stringify(jsonResult, null, 2)
-          : rawTextLines.join("\n");
-
-        // Return mock response for downstream consumption
-        const mockData = {
-          choices: [{
-            message: { content: outputContent },
-            finish_reason: "stop"
-          }],
-          usage: { total_tokens: 0 }
-        };
-
-        return {
-          type: 'success',
-          data: mockData,
-          providerName: 'aws-textract',
-          model: 'textract',
-          tokensUsed: 0,
-          isTruncated: false
-        };
-      } catch (err: any) {
-        return {
-          type: 'permanent-error',
-          status: err.$metadata?.httpStatusCode || 500,
-          message: 'Textract refused the request.',
-          providerName: 'aws-textract',
-          detail: err.message,
-          payloadTooLarge: err.name === 'ValidationException'
-        };
-      }
-    }
-  }
+  const aws = await tryAwsProviders(env, tier, payload);
+  if (aws) return aws;
 
   const provider = resolveProvider(env, tier);
   if ('type' in provider) {

@@ -1,0 +1,40 @@
+name = "brainhalf-api"
+main = "src/index.ts"
+compatibility_date = "2024-05-12"
+compatibility_flags = [ "nodejs_compat" ]
+# Fallback URL until api.brainhalf.com DNS is active (custom domain is registered but NXDOMAIN).
+workers_dev = true
+
+[[routes]]
+pattern = "api.brainhalf.com/*"
+zone_name = "brainhalf.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "brainhalf-db"
+database_id = "2ec76f15-b76a-4fcb-b683-9dabeeb6a776"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "afb2bea1c98840b486baeb8a2178459b"
+
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "brainhalf-assets"
+
+# Non-secret defaults — override in production dashboard or wrangler secret
+[vars]
+BETTER_AUTH_URL = "https://brainhalf-api.kashifullah919.workers.dev"
+
+# Secrets (never commit real values):
+#   wrangler secret put BETTER_AUTH_SECRET
+#   wrangler secret put CEREBRAS_API_KEY
+#   wrangler secret put AGENT_ROUTER_API_KEY
+#   wrangler secret put OPENPROVIDER_API_KEY
+#   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put FREEMODEL_API_KEY
+#   wrangler secret put GROQ_API_KEY
+#   wrangler secret put GOOGLE_API_KEY
+#   wrangler secret put CLOUDFLARE_AI_API_TOKEN
+#
+# Local dev: copy .dev.vars.example to .dev.vars

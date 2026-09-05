@@ -18,25 +18,12 @@
 // ---------------------------------------------------------------------------
 
 import localforage from "localforage";
-import { 
-  TextractClient, 
-  DetectDocumentTextCommand,
-  AnalyzeDocumentCommand,
-  AnalyzeExpenseCommand 
-} from "@aws-sdk/client-textract";
 import { apiRequest } from "./api-client";
+import { analyzeImageQuality, extractModelConfidence } from "./confidence-scorer";
 import {
-  calculateFieldConfidence,
-  analyzeImageQuality,
-  extractModelConfidence,
-  ImageQualityMetrics,
-} from "./confidence-scorer";
-import {
-  extractJsonBlock,
-  flattenExtraction,
-  takeMetaConfidence,
-  splitPreambleFromText,
-} from "../../server/extraction-parse";
+  parseExtraction,
+  type ParsedExtraction,
+} from "../../server/extraction-to-fields";
 
 /**
  * Same-origin path to our OCR proxy, resolved against the deployment base so
@@ -69,23 +56,12 @@ async function hashString(str: string): Promise<string> {
     .join("");
 }
 
-export interface ExtractionResult {
-  rawText: string;
-  fields: Array<{
-    normalizedField: string;
-    originalLabel: string;
-    value: string;
-    editedValue: string | null;
-    confidence: number;
-    boundingBox?: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    };
-  }>;
-  rows: Record<string, unknown>[];
-}
+/**
+ * The shape every caller in the client consumes. Defined once, in
+ * server/extraction-to-fields.ts, so the queue consumer and the browser agree on
+ * it by construction rather than by convention.
+ */
+export type { ParsedExtraction as ExtractionResult } from "../../server/extraction-to-fields";
 
 /** Shape of the JSON error envelope returned by functions/api/ocr.ts. */
 interface OcrProxyError {
@@ -122,7 +98,7 @@ export async function extractDocument(
   forceReprocess: boolean = false,
   customPrompt?: string,
   tier: OcrTier = 'default'
-): Promise<ExtractionResult> {
+): Promise<ParsedExtraction> {
   // Convert file to Base64
   const base64Data = await fileToBase64(file);
 
@@ -158,192 +134,33 @@ export async function extractDocument(
     try {
       const cached = await localforage.getItem<CachedExtraction>(cacheKey);
       if (cached?.content) {
-        return parseOCRResult(cached.content, mode, cached.modelConfidence, imageQuality);
+        return parseExtraction(cached.content, mode, cached.modelConfidence, imageQuality);
       }
     } catch (err) {
       console.warn("Failed to read from OCR cache:", err);
     }
   }
 
-  // AWS Textract Integration (Native Forms, Expense & Tables)
-  const accessKeyId = (import.meta.env.VITE_AWS_ACCESS_KEY_ID || "").trim();
-  const secretAccessKey = (import.meta.env.VITE_AWS_SECRET_ACCESS_KEY || "").trim();
-  if (accessKeyId && secretAccessKey) {
-    console.log(`[OCR Client] Routing to Native AWS Textract (${mode})...`);
-    const client = new TextractClient({
-      region: import.meta.env.VITE_AWS_REGION || "us-east-1",
-      credentials: {
-        accessKeyId,
-        secretAccessKey
-      }
-    });
-    
-    const base64Content = base64Data.split(",")[1].replace(/\s/g, "");
-    const binaryString = atob(base64Content);
-    const len = binaryString.length;
-    const imageBytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      imageBytes[i] = binaryString.charCodeAt(i);
-    }
-
-    try {
-      let response: any = null;
-      if (mode === 'invoice' || mode === 'receipt') {
-        try {
-          const expenseCommand = new AnalyzeExpenseCommand({
-            Document: { Bytes: imageBytes }
-          });
-          response = await client.send(expenseCommand);
-        } catch {
-          // Fallback to AnalyzeDocument if Expense fails
-        }
-      }
-
-      if (!response || !response.ExpenseDocuments?.length) {
-        try {
-          const analyzeCommand = new AnalyzeDocumentCommand({
-            Document: { Bytes: imageBytes },
-            FeatureTypes: ["FORMS", "TABLES"]
-          });
-          response = await client.send(analyzeCommand);
-        } catch {
-          const textCommand = new DetectDocumentTextCommand({
-            Document: { Bytes: imageBytes }
-          });
-          response = await client.send(textCommand);
-        }
-      }
-
-      const fields: Array<{
-        normalizedField: string;
-        originalLabel: string;
-        value: string;
-        editedValue: string | null;
-        confidence: number;
-      }> = [];
-      const rows: Record<string, unknown>[] = [];
-      let rawText = "";
-
-      // 1. Process Expense Documents (Invoices & Receipts)
-      if (response.ExpenseDocuments && response.ExpenseDocuments.length > 0) {
-        for (const expDoc of response.ExpenseDocuments) {
-          if (expDoc.SummaryFields) {
-            for (const f of expDoc.SummaryFields) {
-              const label = f.Type?.Text || f.LabelDetection?.Text || "Field";
-              const val = f.ValueDetection?.Text || "";
-              const conf = (f.ValueDetection?.Confidence || 99) / 100;
-              if (val) {
-                fields.push({
-                  normalizedField: label,
-                  originalLabel: label,
-                  value: val,
-                  editedValue: null,
-                  confidence: Math.round(conf * 100) / 100,
-                });
-              }
-            }
-          }
-          if (expDoc.LineItemGroups) {
-            for (const group of expDoc.LineItemGroups) {
-              if (group.LineItems) {
-                for (const item of group.LineItems) {
-                  const rowObj: Record<string, unknown> = {};
-                  if (item.LineItemExpenseFields) {
-                    for (const f of item.LineItemExpenseFields) {
-                      const k = f.Type?.Text || f.LabelDetection?.Text || "Item";
-                      rowObj[k] = f.ValueDetection?.Text || "";
-                    }
-                  }
-                  if (Object.keys(rowObj).length > 0) rows.push(rowObj);
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // 2. Process Forms / Key-Values / Line Blocks
-      if (response.Blocks) {
-        const blockMap = new Map<string, any>();
-        const keyBlocks: any[] = [];
-        const lineTexts: string[] = [];
-
-        for (const block of response.Blocks) {
-          blockMap.set(block.Id, block);
-          if (block.BlockType === "LINE" && block.Text) {
-            lineTexts.push(block.Text);
-          } else if (block.BlockType === "KEY_VALUE_SET" && block.EntityTypes?.includes("KEY")) {
-            keyBlocks.push(block);
-          }
-        }
-
-        rawText = lineTexts.join("\n");
-
-        const getText = (resultBlock: any) => {
-          let t = "";
-          if (resultBlock?.Relationships) {
-            for (const rel of resultBlock.Relationships) {
-              if (rel.Type === "CHILD") {
-                for (const childId of rel.Ids) {
-                  const word = blockMap.get(childId);
-                  if (word?.BlockType === "WORD") t += word.Text + " ";
-                  if (word?.BlockType === "SELECTION_ELEMENT" && word.SelectionStatus === "SELECTED") t += "[X] ";
-                }
-              }
-            }
-          }
-          return t.trim();
-        };
-
-        const getValueBlock = (keyBlock: any) => {
-          if (keyBlock.Relationships) {
-            for (const rel of keyBlock.Relationships) {
-              if (rel.Type === "VALUE") {
-                for (const valId of rel.Ids) return blockMap.get(valId);
-              }
-            }
-          }
-          return null;
-        };
-
-        for (const keyBlock of keyBlocks) {
-          const kText = getText(keyBlock);
-          const vBlock = getValueBlock(keyBlock);
-          const vText = vBlock ? getText(vBlock) : "";
-          if (kText && vText) {
-            fields.push({
-              normalizedField: kText,
-              originalLabel: kText,
-              value: vText,
-              editedValue: null,
-              confidence: Math.round(((keyBlock.Confidence || 99) / 100) * 100) / 100,
-            });
-          }
-        }
-      }
-
-      if (!rawText && fields.length > 0) {
-        rawText = fields.map(f => `${f.normalizedField}: ${f.value}`).join("\n");
-      }
-
-      if (fields.length === 0 && rawText) {
-        fields.push({
-          normalizedField: "Full Text Transcription",
-          originalLabel: "Transcription",
-          value: rawText,
-          editedValue: null,
-          confidence: 0.99
-        });
-      }
-
-      return { rawText, fields, rows };
-    } catch (err: any) {
-      console.error("Textract Native Error:", err);
-      const errorName = err.name || "UnknownError";
-      const errorMsg = err.message || "An error occurred";
-      throw new Error(`Textract Error (${errorName}): ${errorMsg}`);
-    }
-  }
+  // There is no direct-to-AWS path here on purpose.
+  //
+  // A previous revision constructed a TextractClient in the browser from
+  // `import.meta.env.VITE_AWS_ACCESS_KEY_ID` / `VITE_AWS_SECRET_ACCESS_KEY`. A
+  // VITE_-prefixed value is substituted into the emitted JavaScript, so those two
+  // lines published an AWS access key and secret to every visitor who opened
+  // DevTools -- in the one file whose own header says no API key exists in it.
+  //
+  // Three further consequences, for whoever is tempted to add it back:
+  //   * the CSP in public/_headers has no amazonaws.com in connect-src, so the
+  //     request was blocked in production anyway;
+  //   * forbidSecretViteVars() in vite.config.ts fails the build outright once
+  //     either variable has a value, so configuring it broke the deploy;
+  //   * it bypassed /api/ocr, and with it the session check, the per-account rate
+  //     limit and the confidence scoring -- it reported a flat 0.99, which is
+  //     above every review threshold, so those documents were never reviewed.
+  //
+  // AWS Textract and Bedrock are still supported. They are reached server-side,
+  // where the credential can actually be kept: server/aws-ocr.ts, selected by
+  // server/ocr-provider.ts when AWS_ACCESS_KEY_ID is set on the deployment.
 
   /**
    * What the server is asked for. Notably NOT a `messages` array.
@@ -417,7 +234,7 @@ export async function extractDocument(
     console.warn("Failed to write to OCR cache:", err);
   }
 
-  return parseOCRResult(content, mode, modelConfidence, imageQuality);
+  return parseExtraction(content, mode, modelConfidence, imageQuality);
 }
 
 export function compressImageForUpload(file: File): Promise<File> {
@@ -522,156 +339,12 @@ function fileToBase64(file: File): Promise<string> {
 
 
 
-export function parseOCRResult(
-  content: string, 
-  mode?: string,
-  /**
-   * The provider's certainty, or null when it gave none. Null is not a synonym
-   * for "high": calculateFieldConfidence() drops the model dimension for it and
-   * scores on pattern and image quality alone.
-   */
-  rawModelConfidence: number | null = null,
-  imageQuality?: ImageQualityMetrics
-): ExtractionResult {
-  let fields: ExtractionResult["fields"] = [];
-  let rows: Record<string, unknown>[] = [];
-  let rawText = content;
-
-  try {
-    // Robustly extract JSON block even if preceded/followed by LLM text
-    let jsonStr = extractJsonBlock(content);
-
-    const parsed = JSON.parse(jsonStr.trim());
-
-    if (mode === "fulltext" || mode === undefined) {
-      const parsedObj = (typeof parsed === "object" && parsed !== null) ? (parsed as Record<string, any>) : {};
-      const rawDescription = parsedObj.image_description || parsedObj.description || parsedObj.visual_summary;
-      const rawTextContent = parsedObj.text || parsedObj.extracted_text || parsedObj.transcription || (typeof parsed === "string" ? parsed : "");
-
-      const { descFromText, cleanText } = splitPreambleFromText(String(rawTextContent));
-      const finalDescription = rawDescription ? String(rawDescription) : descFromText;
-      const finalExtractedText = cleanText || String(rawTextContent);
-      // A `confidence` key the model actually emitted is a real signal; falling
-      // back to rawModelConfidence keeps null as null.
-      const confScore =
-        typeof parsedObj.confidence === "number" ? parsedObj.confidence : rawModelConfidence;
-
-      const fieldsList: ExtractionResult["fields"] = [];
-
-      if (finalDescription) {
-        const descConf = calculateFieldConfidence("Image Description", finalDescription, confScore, imageQuality);
-        fieldsList.push({
-          normalizedField: "Image Description",
-          originalLabel: "Image Description",
-          value: finalDescription,
-          editedValue: null,
-          confidence: descConf.score,
-        });
-      }
-
-      const textConf = calculateFieldConfidence("Full Text Transcription", finalExtractedText, confScore, imageQuality);
-      fieldsList.push({
-        normalizedField: "Full Text Transcription",
-        originalLabel: "Full Text Transcription",
-        value: finalExtractedText,
-        editedValue: null,
-        confidence: textConf.score,
-      });
-
-      return {
-        rawText: finalExtractedText,
-        fields: fieldsList,
-        rows: [
-          {
-            "Image Description": finalDescription || "—",
-            "Full Text Transcription": finalExtractedText
-          }
-        ]
-      };
-    }
-
-    let globalConfidence: number | null = rawModelConfidence;
-
-    if (Array.isArray(parsed)) {
-      // Table mode: one row per array entry, each flattened so nested cells
-      // become their own columns.
-      const flattenedRows = parsed.map((row) => {
-        const record: Record<string, unknown> = {};
-        for (const [label, val] of flattenExtraction(row)) {
-          record[label] = val;
-        }
-        return record;
-      });
-      rows = flattenedRows;
-
-      const allFields: Array<[string, string]> = [];
-      parsed.forEach((row, rowIndex) => {
-        for (const [key, val] of flattenExtraction(row, `Row ${rowIndex + 1}`)) {
-          allFields.push([key, val]);
-        }
-      });
-
-      fields = allFields.map(([key, strVal]) => {
-        const confDetails = calculateFieldConfidence(key, strVal, globalConfidence, imageQuality);
-        return {
-          normalizedField: key,
-          originalLabel: key,
-          value: strVal,
-          editedValue: null,
-          confidence: confDetails.score,
-        };
-      });
-    } else if (typeof parsed === "object" && parsed !== null) {
-      const record = parsed as Record<string, unknown>;
-      const meta = takeMetaConfidence(record);
-      if (meta !== undefined) globalConfidence = meta;
-
-      const flattened = flattenExtraction(record);
-
-      fields = flattened.map(([key, strVal]) => {
-        const confDetails = calculateFieldConfidence(key, strVal, globalConfidence, imageQuality);
-        return {
-          normalizedField: key,
-          originalLabel: key,
-          value: strVal,
-          editedValue: null,
-          confidence: confDetails.score,
-        };
-      });
-
-      const projected: Record<string, unknown> = {};
-      for (const [key, strVal] of flattened) projected[key] = strVal;
-      rows = [projected];
-    }
-  } catch {
-    // If raw non-JSON text output, parse out preamble if any and create separate fields without truncating
-    const { descFromText, cleanText } = splitPreambleFromText(content);
-    fields = [];
-    if (descFromText) {
-      const descConf = calculateFieldConfidence("Image Description", descFromText, rawModelConfidence, imageQuality);
-      fields.push({
-        normalizedField: "Image Description",
-        originalLabel: "Image Description",
-        value: descFromText,
-        editedValue: null,
-        confidence: descConf.score,
-      });
-    }
-
-    const confDetails = calculateFieldConfidence("Full Text Transcription", cleanText, rawModelConfidence, imageQuality);
-    fields.push({
-      normalizedField: "Full Text Transcription",
-      originalLabel: "Transcription",
-      value: cleanText,
-      editedValue: null,
-      confidence: confDetails.score,
-    });
-    rawText = cleanText;
-  }
-
-  return { rawText, fields, rows };
-}
-
+/**
+ * Kept as a named re-export because this is the name the tests and the rest of
+ * the client use. The implementation is in server/extraction-to-fields.ts so the
+ * queue consumer produces byte-identical results; see the header there.
+ */
+export { parseExtraction as parseOCRResult } from "../../server/extraction-to-fields";
 // Bounding boxes are deliberately NOT synthesised any more. The previous
 // implementation generated coordinates with Math.random(), and the document
 // viewer drew those boxes over the page — so field highlights pointed at random

@@ -1,8 +1,40 @@
+# ---------------------------------------------------------------------------
+# The background OCR consumer.
+#
+# The Pages project (../wrangler.toml) is the PRODUCER: it declares
+# [[queues.producers]] and sends one message per document. Pages Functions cannot
+# host a queue consumer, which is why this is a separate Worker.
+#
+# Deploy it, or "upload and close the tab" is not true: with no consumer bound,
+# functions/api/batches/index.ts still reports asyncProcessing and the messages
+# pile up unread.
+#
+#   pnpm --filter brainhalf-processor deploy      # or: pnpm deploy:worker
+#
+# Secrets it needs, set with `wrangler secret put` from this directory (the same
+# values as the Pages project's environment variables):
+#
+#   HUNYUAN_API_KEY        default extraction tier
+#   OPENAI_API_KEY         escalation tier, and the default tier's fallback
+#   AWS_ACCESS_KEY_ID      optional: Textract / Bedrock
+#   AWS_SECRET_ACCESS_KEY
+#
+# Non-secret overrides (HUNYUAN_MODEL, AWS_REGION, AWS_BEDROCK_MODEL, ...) belong
+# in [vars] or the dashboard. There is deliberately no nodejs_compat flag: the AWS
+# integration is signed HTTPS via server/aws-sigv4.ts rather than the AWS SDK, so
+# nothing here needs a Node built-in.
+# ---------------------------------------------------------------------------
+
 name = "brainhalf-processor"
 main = "src/index.ts"
-compatibility_date = "2024-03-20"
+# Kept in step with ../wrangler.toml so the same server/ modules behave the same
+# in both runtimes.
+compatibility_date = "2026-08-01"
 
-# We bind the same database and storage as the Pages app
+[observability]
+enabled = true
+
+# The same database and bucket the Pages app writes.
 [[d1_databases]]
 binding = "DB"
 database_name = "brainhalf-ocr-db"
@@ -12,13 +44,14 @@ database_id = "dea61974-e734-4bf6-9532-c1e6ef61620b"
 binding = "DOCUMENTS"
 bucket_name = "brainhalf-storage"
 
-# Consume from the Queue
 [[queues.consumers]]
 queue = "brainhalf-ocr-queue"
-# Adjust batch sizing for concurrency (each batch contains up to 10 messages)
+# Ten messages per invocation, processed sequentially: each document holds its
+# whole file in memory as bytes and again as base64, against a 128 MB isolate.
 max_batch_size = 10
 max_batch_timeout = 5
-# Number of max concurrent retries for a failed message
+# Retries are for transient upstream faults only. The consumer ack()s a permanent
+# failure after writing the reason to the row, so a bad document does not consume
+# three upstream calls. server/stuck-documents.ts is the backstop for a consumer
+# that dies mid-document and never reports either way.
 max_retries = 3
-
-

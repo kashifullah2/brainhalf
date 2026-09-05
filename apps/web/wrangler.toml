@@ -1,0 +1,13 @@
+name = "brainhalf-web"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "./build/client"
+
+[vars]
+STUDIO_URL = "https://studio.brainhalf.com"
+API_URL = "https://brainhalf-api.kashifullah919.workers.dev"
+
+# Optional: same KV as workers for SSR loader caching (homepage / arcade)
+[[kv_namespaces]]
+binding = "CACHE"
+id = "afb2bea1c98840b486baeb8a2178459b"

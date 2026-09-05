@@ -10,8 +10,16 @@ import {
 } from '../../../../../../server/batches';
 
 /**
- * Puts a document back in the queue and clears its previous outcome. The client
- * then re-runs extraction for it and posts to .../result.
+ * Puts a document back in the queue and clears its previous outcome.
+ *
+ * When a queue consumer is bound, the message is re-sent here -- previously this
+ * only reset the row to 'queued' and returned, so on a deployment with the queue
+ * enabled a retry moved the document into a state nothing would ever pick up, and
+ * it sat there while the batch reported itself as still processing. Without the
+ * binding the client re-runs extraction itself and posts to .../result.
+ *
+ * `attempts` is reset because this is a human asking again, not the automatic
+ * recovery in server/stuck-documents.ts working through its budget.
  */
 export const onRequestPost: PagesFunction<AppEnv> = async ({
   request,
@@ -34,7 +42,8 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
     env.DB.prepare(
       `UPDATE documents
           SET status = 'queued', error = NULL, ocr_text = NULL,
-              overall_confidence = NULL, completed_at = NULL
+              overall_confidence = NULL, completed_at = NULL,
+              started_at = NULL, attempts = 0
         WHERE id = ?`,
     ).bind(documentId),
     env.DB.prepare(`DELETE FROM document_fields WHERE document_id = ?`).bind(
@@ -44,8 +53,21 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
 
   await refreshBatchStatus(env, batchId);
 
+  let asyncProcessing = false;
+  if (env.OCR_QUEUE) {
+    try {
+      await env.OCR_QUEUE.send({ batchId, documentId, userId: auth.user.id });
+      asyncProcessing = true;
+    } catch (error) {
+      // The row is queued either way. Reporting asyncProcessing: false tells the
+      // client to run the extraction itself rather than wait for a worker that
+      // was never told about it.
+      console.error('[api/documents/retry] could not enqueue the document:', error);
+    }
+  }
+
   return json(
-    { ok: true, objectPath: owned.object_path ?? null },
+    { ok: true, objectPath: owned.object_path ?? null, asyncProcessing },
     200,
     authHeaders(auth),
   );

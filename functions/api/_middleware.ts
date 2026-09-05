@@ -1,5 +1,6 @@
 import { fail, type AppEnv } from '../../server/http';
 import { maybeSweepAbandonedUploads } from '../../server/storage-sweep';
+import { maybeRecoverStuckDocuments } from '../../server/stuck-documents';
 
 /**
  * Turns an unhandled exception in any /api route into our JSON error shape.
@@ -88,9 +89,15 @@ export const onRequest: PagesFunction<AppEnv> = async ({ request, next, env, wai
     return fail('Something went wrong on our end. Please try again.', 500);
   }
 
-  // Trigger opportunistic cleanups in the background
+  // Opportunistic background maintenance. A Pages project has no scheduled
+  // handler, so both of these are probabilistic and bounded; see the header of
+  // each module. waitUntil keeps them off the response path.
   if (typeof waitUntil === 'function') {
     waitUntil(maybeSweepAbandonedUploads(env));
+    // Returns documents whose extraction was interrupted to the queue. Without
+    // this a document stuck in 'processing' kept its batch reporting 'processing'
+    // for ever, and the client polled it for ever.
+    waitUntil(maybeRecoverStuckDocuments(env));
   }
 
   // An /api path that no function claims falls through to the static assets,

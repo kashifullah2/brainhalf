@@ -41,7 +41,14 @@
 #    every extracted document straight out to them. Do not re-add a vendor origin
 #    unless the browser genuinely calls it.
 #
-# 3. api.emailjs.com is deliberately absent. The /contact form used to reach it
+# 3. Cross-Origin-Opener-Policy is same-origin-allow-popups, not unsafe-none.
+#    unsafe-none is the weakest value there is: it leaves window.opener connected
+#    both ways, so any page that opens ours keeps a handle on it. The reason it was
+#    set that way is Google Identity Services, and same-origin-allow-popups is the
+#    value Google documents as compatible -- it severs the opener relationship for
+#    pages that open us while still allowing popups we open ourselves.
+#
+# 4. api.emailjs.com is deliberately absent. The /contact form used to reach it
 #    directly, which required a service id, template id and public key in the
 #    bundle -- the full argument set for its send endpoint. That path is gone
 #    (see the header of src/pages/legal/Contact.tsx); the credential is a Pages
@@ -53,7 +60,7 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=()
-  Cross-Origin-Opener-Policy: unsafe-none
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
   Strict-Transport-Security: max-age=31536000; includeSubDomains
 
 # Hashed build output is immutable, so it can be cached hard. The HTML document

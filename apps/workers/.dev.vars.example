@@ -1,0 +1,29 @@
+BETTER_AUTH_SECRET=your-local-secret-at-least-32-characters-long
+BETTER_AUTH_URL=http://127.0.0.1:8787
+CEREBRAS_API_KEY=
+AGENT_ROUTER_API_KEY=
+OPENPROVIDER_API_KEY=
+ANTHROPIC_API_KEY=
+# FreeModel — https://cc.freemodel.dev (OpenAI-compatible)
+FREEMODEL_API_KEY=
+FREEMODEL_BASE_URL=https://cc.freemodel.dev/v1
+FREEMODEL_DEFAULT_MODEL=claude-sonnet-4-6
+# Groq — https://console.groq.com
+GROQ_API_KEY=
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_DEFAULT_MODEL=openai/gpt-oss-120b
+# Google Gemini (OpenAI-compatible) — https://aistudio.google.com/apikey
+GOOGLE_API_KEY=
+GOOGLE_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+GOOGLE_DEFAULT_MODEL=gemini-2.0-flash
+# Cloudflare Workers AI (OpenAI-compatible)
+# Base URL format: https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/v1
+CLOUDFLARE_AI_API_TOKEN=
+CLOUDFLARE_AI_BASE_URL=
+CLOUDFLARE_AI_DEFAULT_MODEL=@cf/qwen/qwen2.5-coder-32b-instruct
+# Default: Cerebras primary, FreeModel fallback (when both keys are set)
+DEFAULT_AI_PROVIDER=Cerebras
+DEFAULT_AI_PROVIDER_FALLBACK=FreeModel
+# Optional asset library keys
+# POLY_PIZZA_API_KEY=
+# HUGGINGFACE_API_KEY=

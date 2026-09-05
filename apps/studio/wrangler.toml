@@ -1,0 +1,10 @@
+name = "brainhalf-studio"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Note: Vite reads VITE_* at build time (.env.production). These are for Pages Functions if added later.
+VITE_API_URL = "https://brainhalf-api.kashifullah919.workers.dev"
+VITE_WEB_URL = "https://brainhalf.com"
+API_URL = "https://brainhalf-api.kashifullah919.workers.dev"
+WEB_URL = "https://brainhalf.com"

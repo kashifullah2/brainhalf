@@ -18,6 +18,7 @@ import {
   enforceRateLimit,
   ipIdentity,
 } from '../../../server/rate-limit';
+import { isAdminEmail } from '../../../server/admin';
 
 interface GoogleBody {
   /** The `credential` field from Google Identity Services. */
@@ -136,6 +137,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
           picture_url: user.picture_url ?? identity.picture,
           email_verified: 1,
         }),
+        isAdmin: isAdminEmail(env, user.email),
       },
       200,
       { 'Set-Cookie': sessionCookie(request, token) },
@@ -181,6 +183,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
         pictureUrl: identity.picture,
         emailVerified: true,
       },
+      isAdmin: isAdminEmail(env, identity.email),
     },
     201,
     { 'Set-Cookie': sessionCookie(request, token) },

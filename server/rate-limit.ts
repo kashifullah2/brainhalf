@@ -64,6 +64,17 @@ export const RULES: Record<string, RateLimitRule> = {
    * A day-long window rather than an hour because the underlying quota is daily.
    * Note this is the value that forces MAX_WINDOW_SECONDS below to 86400.
    */
+  /**
+   * Reading out the whole account (GDPR Article 15). Six table scans serialised
+   * into one response, so it is not free to call in a loop.
+   */
+  accountExport: { limit: 10, windowSeconds: 3600 },
+  /**
+   * Account deletion (GDPR Article 17). The most destructive action in the
+   * product; a low cap means a stolen session cannot grind through it, and a large
+   * account legitimately needs several calls to finish removing its objects.
+   */
+  accountDelete: { limit: 5, windowSeconds: 3600 },
   ocrEscalation: {
     limit: 100,
     windowSeconds: 86400,

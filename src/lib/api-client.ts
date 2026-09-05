@@ -378,7 +378,7 @@ async function extractWithEscalation(
     customPrompt,
     "default",
   );
-  let overallConfidence = calculateDocumentOverallConfidence(
+  const overallConfidence = calculateDocumentOverallConfidence(
     result.fields,
     result.rawText,
   );
@@ -802,14 +802,23 @@ export interface RetryDocumentInput {
  * A failure here is reported to .../failure rather than left alone. Otherwise a
  * retry that fails leaves the document at 'queued', and a queued document with
  * nothing running holds its whole batch at 'processing' forever.
+ *
+ * On a deployment with a queue consumer the endpoint re-sends the message itself
+ * and answers `asyncProcessing: true`; this returns immediately in that case
+ * rather than extracting the same document a second time in the browser.
  */
 export async function retryDocument(input: RetryDocumentInput): Promise<void> {
   const { batchId, documentId } = input;
 
-  const reset = await apiFetch<{ ok: true; objectPath: string | null }>(
-    `/batches/${batchId}/documents/${documentId}/retry`,
-    { method: "POST" },
-  );
+  const reset = await apiFetch<{
+    ok: true;
+    objectPath: string | null;
+    asyncProcessing?: boolean;
+  }>(`/batches/${batchId}/documents/${documentId}/retry`, { method: "POST" });
+
+  // The queue consumer took it. Running the extraction here as well would spend a
+  // second upstream call on the same document and race the worker's write.
+  if (reset.asyncProcessing) return;
 
   if (!reset.objectPath) {
     const message =
@@ -1101,5 +1110,69 @@ export async function deleteTemplate(id: number): Promise<void> {
 export function trackTemplateUsage(id: number): void {
   apiFetch(`/templates/${id}`, { method: "POST" }).catch(() => {
     // Best-effort; do not interrupt the upload flow.
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Admin metrics
+//
+// Counted in the database by functions/api/admin/metrics.ts. The admin console
+// used to render constants written into the component — 1,428 documents, "99.2%"
+// accuracy, a four-row activity feed of document ids that never existed — so it
+// reported a healthy platform whatever the platform was doing.
+//
+// The endpoint answers 404 to a non-admin, which is what the page renders as
+// "not available for this account" rather than a scarier error.
+// ---------------------------------------------------------------------------
+
+export interface AdminMetrics {
+  counts: {
+    users: number;
+    batches: number;
+    documents: number;
+    queued: number;
+    processing: number;
+    completed: number;
+    failed: number;
+    completedLastDay: number;
+    /** Documents that have been 'processing' past the recovery threshold. */
+    stuck: number;
+  };
+  quality: {
+    /** Null until at least one document has been scored. */
+    meanConfidence: number | null;
+    belowThreshold: number;
+    threshold: number;
+    /** Null until at least one document has finished. */
+    successRate: number | null;
+  };
+  providers: {
+    defaultTier: string | null;
+    escalationTier: string | null;
+    awsConfigured: boolean;
+    awsRegion: string | null;
+    bedrockModel: string | null;
+    googleSignIn: boolean;
+    transactionalEmail: boolean;
+  };
+  bindings: {
+    database: boolean;
+    storage: boolean;
+    /** False means extraction runs in the browser rather than in the worker. */
+    queue: boolean;
+  };
+  generatedAt: string;
+}
+
+export function getAdminMetricsQueryKey() {
+  return ["admin", "metrics"] as const;
+}
+
+export function useAdminMetrics(options?: { query?: QueryOverrides<AdminMetrics> }) {
+  const queryOpts = options?.query ?? {};
+  return useQuery<AdminMetrics>({
+    queryKey: getAdminMetricsQueryKey(),
+    queryFn: () => apiFetch<AdminMetrics>("/admin/metrics"),
+    ...queryOpts,
   });
 }

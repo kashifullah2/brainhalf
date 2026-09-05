@@ -17,7 +17,7 @@ import { fail, json, normalizeEmail, readJson, type AppEnv } from '../../../serv
 import { requireSession } from '../../../server/guard';
 import { clearedCookieHeader } from '../../../server/session';
 import { deleteAccount } from '../../../server/account';
-import { enforceRateLimit, userIdentity } from '../../../server/rate-limit';
+import { RULES, enforceRateLimit, userIdentity } from '../../../server/rate-limit';
 
 interface Body {
   /** Must equal the signed-in user's own email address. */
@@ -32,7 +32,7 @@ export const onRequestDelete: PagesFunction<AppEnv> = async ({ request, env }) =
     env,
     'account/delete',
     userIdentity(auth.user.id),
-    { limit: 5, windowSeconds: 3600 },
+    RULES.accountDelete,
   );
   if (limited) return limited;
 

@@ -68,7 +68,30 @@ bucket_name = "brainhalf-storage"
 # guessed at.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Background extraction.
+#
+# This project is the PRODUCER only: functions/api/batches/* send one message per
+# document. The CONSUMER is a separate Worker (queue-worker/), because Pages
+# Functions cannot host `[[queues.consumers]]`. Deploy both, or the messages pile
+# up unread while the API keeps reporting `asyncProcessing: true`:
+#
+#   pnpm build && pnpm deploy        # this project
+#   pnpm deploy:worker               # queue-worker/
+#
+# With no OCR_QUEUE binding at all the API reports asyncProcessing: false and the
+# browser drives extraction instead, which still works -- it just means closing the
+# tab stops the batch.
+# ---------------------------------------------------------------------------
 [[queues.producers]]
 queue = "brainhalf-ocr-queue"
 binding = "OCR_QUEUE"
+
+# ---------------------------------------------------------------------------
+# ADMIN_EMAILS is a plain environment variable (not a secret) and decides who can
+# reach /api/admin/*. Matched exactly and case-insensitively by server/admin.ts.
+# Set it in the Pages dashboard; unset falls back to the owner address in that
+# file. It replaced a browser-side substring match that also looked at the user's
+# own first name, so signing up as "Kashif" was enough to become an administrator.
+# ---------------------------------------------------------------------------
 
