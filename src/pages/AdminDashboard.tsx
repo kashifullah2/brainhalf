@@ -11,12 +11,15 @@ import { useLocation } from "wouter";
 import {
   Activity,
   AlertTriangle,
+  ArrowDown,
+  ArrowRight,
   Check,
   CheckCircle2,
   Copy,
   Cpu,
   Download,
   Eye,
+  EyeOff,
   FileText,
   FileUp,
   Globe,
@@ -250,6 +253,7 @@ export default function AdminDashboard() {
   const [bedrockModel, setBedrockModel] = useState<string>("amazon.nova-lite-v1:0");
   const [openaiModel, setOpenAIModel] = useState<string>("gpt-4o-mini");
   const [openaiApiKey, setOpenAIApiKey] = useState<string>("");
+  const [showOpenAIApiKey, setShowOpenAIApiKey] = useState(false);
 
   // Diagnostics test lab state
   const [testTarget, setTestTarget] = useState<string>("default");
@@ -1194,80 +1198,73 @@ export default function AdminDashboard() {
           {/* TAB 3: AI MODELS & ENGINES */}
           {activeTab === "engines" && (
             <div className="space-y-6 animate-in fade-in duration-300">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Default Tier Card */}
-                <div className="rounded-2xl border border-border/70 bg-card p-6 space-y-5 shadow-2xs">
-                  <div className="flex items-center justify-between border-b border-border/60 pb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                        <Sparkles className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-body font-bold text-foreground">Default Extraction Tier</h3>
-                        <p className="text-caption text-muted-foreground">Executes on every standard page upload</p>
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-semibold">
-                      Primary
-                    </Badge>
+              {/* Visually Connected Tier Flow */}
+              <div className="relative">
+                {/* Desktop Visual Connector Pill */}
+                <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 items-center justify-center pointer-events-none">
+                  <div className="flex items-center gap-2 rounded-full border border-primary/40 bg-card px-3.5 py-1.5 shadow-md text-caption font-semibold text-primary backdrop-blur-md">
+                    <ArrowRight className="h-4 w-4 animate-pulse shrink-0" />
+                    <span>escalates when confidence &lt; {Math.round((data?.quality?.threshold ?? 0.85) * 100)}%</span>
                   </div>
+                </div>
 
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-caption font-semibold text-foreground">Primary Extraction Provider</label>
-                      <Select
-                        value={defaultTierProvider}
-                        onValueChange={(v: "hunyuan" | "bedrock" | "openai") => setDefaultTierProvider(v)}
-                      >
-                        <SelectTrigger className="w-full rounded-xl bg-background border-border/70">
-                          <SelectValue placeholder="Select primary provider" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                          <SelectItem value="bedrock">AWS Bedrock (Multimodal Vision - Fast &amp; Reliable)</SelectItem>
-                          <SelectItem value="hunyuan">Tencent Hunyuan OCR (High-Speed Specialized OCR)</SelectItem>
-                          <SelectItem value="openai">OpenAI Vision (Cloud Fallback)</SelectItem>
-                        </SelectContent>
-                      </Select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                  {/* Default Tier Card */}
+                  <div className="rounded-2xl border border-border/70 bg-card p-6 flex flex-col justify-between space-y-5 shadow-2xs">
+                    <div>
+                      <div className="flex items-center justify-between border-b border-border/60 pb-4 mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                            <Sparkles className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-body font-bold text-foreground">Default Extraction Tier</h3>
+                            <p className="text-caption text-muted-foreground">Standard tier for 100% of document uploads</p>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-semibold">
+                          Tier 1 · Standard
+                        </Badge>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-caption font-semibold text-foreground">Primary Extraction Provider</label>
+                          <Select
+                            value={defaultTierProvider}
+                            onValueChange={(v: "hunyuan" | "bedrock" | "openai") => setDefaultTierProvider(v)}
+                          >
+                            <SelectTrigger className="w-full rounded-xl bg-background border-border/70">
+                              <SelectValue placeholder="Select primary provider" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              <SelectItem value="bedrock">AWS Bedrock (Multimodal Vision - Fast &amp; Reliable)</SelectItem>
+                              <SelectItem value="hunyuan">Tencent Hunyuan OCR (High-Speed Specialized OCR)</SelectItem>
+                              <SelectItem value="openai">OpenAI Vision (Cloud Fallback)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {defaultTierProvider === "hunyuan" && (
+                          <div className="space-y-2 animate-in fade-in duration-200">
+                            <label className="text-caption font-semibold text-foreground">Hunyuan Model ID</label>
+                            <Input
+                              value={hunyuanModel}
+                              onChange={(e) => setHunyuanModel(e.target.value)}
+                              className="font-mono text-xs rounded-xl bg-background"
+                              placeholder="hunyuan-ocr"
+                            />
+                          </div>
+                        )}
+
+                        <div className="rounded-xl bg-muted/30 p-3 border border-border/50 text-caption text-muted-foreground leading-relaxed">
+                          <span className="font-semibold text-foreground">Trigger Condition:</span> Runs automatically on all new documents. If extraction confidence passes threshold ({Math.round((data?.quality?.threshold ?? 0.85) * 100)}%), processing completes immediately.
+                        </div>
+                      </div>
                     </div>
 
-                    {defaultTierProvider === "hunyuan" && (
-                      <div className="space-y-2 animate-in fade-in duration-200">
-                        <label className="text-caption font-semibold text-foreground">Hunyuan Model ID</label>
-                        <Input
-                          value={hunyuanModel}
-                          onChange={(e) => setHunyuanModel(e.target.value)}
-                          className="font-mono text-xs rounded-xl bg-background"
-                          placeholder="hunyuan-ocr"
-                        />
-                      </div>
-                    )}
-
-                    {defaultTierProvider === "bedrock" && (
-                      <div className="space-y-2 animate-in fade-in duration-200">
-                        <label className="text-caption font-semibold text-foreground">Bedrock Vision Model</label>
-                        <Select value={bedrockModel} onValueChange={setBedrockModel}>
-                          <SelectTrigger className="w-full rounded-xl bg-background border-border/70 text-xs font-mono">
-                            <SelectValue placeholder="Select Bedrock Model" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-[300px] rounded-xl">
-                            {settingsData?.availableModels?.bedrock?.length ? (
-                              settingsData.availableModels.bedrock.map((m) => (
-                                <SelectItem key={m} value={m} className="font-mono text-xs">
-                                  {formatBedrockModelLabel(m)}
-                                </SelectItem>
-                              ))
-                            ) : (
-                              <SelectItem value="amazon.nova-lite-v1:0" className="font-mono text-xs">
-                                {formatBedrockModelLabel("amazon.nova-lite-v1:0")}
-                              </SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-
-                    <div className="pt-2 flex items-center justify-between border-t border-border/60">
-                      <span className="text-caption text-muted-foreground">Test target: {defaultTierProvider}</span>
+                    <div className="pt-3 flex items-center justify-between border-t border-border/60 mt-4">
+                      <span className="text-caption text-muted-foreground font-mono">Active Provider: {defaultTierProvider}</span>
                       <Button
                         type="button"
                         variant="outline"
@@ -1276,70 +1273,54 @@ export default function AdminDashboard() {
                         className="gap-1.5 text-xs rounded-xl border-primary/30 text-primary hover:bg-primary/10"
                       >
                         <PlayCircle className="h-3.5 w-3.5" />
-                        Test Tier
+                        Test Default Tier
                       </Button>
                     </div>
                   </div>
-                </div>
 
-                {/* High-Accuracy Escalation Tier Card */}
-                <div className="rounded-2xl border border-border/70 bg-card p-6 space-y-5 shadow-2xs">
-                  <div className="flex items-center justify-between border-b border-border/60 pb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                        <Cpu className="h-5 w-5" />
+                  {/* High-Accuracy Escalation Tier Card */}
+                  <div className="rounded-2xl border border-border/70 bg-card p-6 flex flex-col justify-between space-y-5 shadow-2xs">
+                    <div>
+                      <div className="flex items-center justify-between border-b border-border/60 pb-4 mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                            <Cpu className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-body font-bold text-foreground">High-Accuracy Escalation Tier</h3>
+                            <p className="text-caption text-muted-foreground">Deep re-scan for low-confidence pages</p>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold">
+                          Tier 2 · Escalation
+                        </Badge>
                       </div>
-                      <div>
-                        <h3 className="text-body font-bold text-foreground">High-Accuracy Escalation Tier</h3>
-                        <p className="text-caption text-muted-foreground">Re-reads pages when default confidence is low</p>
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-caption font-semibold text-foreground">Escalation Provider</label>
+                          <Select
+                            value={highAccuracyProvider}
+                            onValueChange={(v: "bedrock" | "openai") => setHighAccuracyProvider(v)}
+                          >
+                            <SelectTrigger className="w-full rounded-xl bg-background border-border/70">
+                              <SelectValue placeholder="Select escalation provider" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              <SelectItem value="bedrock">AWS Bedrock (Recommended for Vision &amp; Handwriting)</SelectItem>
+                              <SelectItem value="openai">OpenAI (Direct Vision API)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="rounded-xl bg-muted/30 p-3 border border-border/50 text-caption text-muted-foreground leading-relaxed">
+                          <span className="font-semibold text-foreground">Escalation Trigger:</span> Activated automatically whenever Default Tier confidence scores fall below {Math.round((data?.quality?.threshold ?? 0.85) * 100)}%. Re-reads pages with foundation vision models.
+                        </div>
                       </div>
                     </div>
-                    <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold">
-                      Escalation
-                    </Badge>
-                  </div>
 
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-caption font-semibold text-foreground">Escalation Provider</label>
-                      <Select
-                        value={highAccuracyProvider}
-                        onValueChange={(v: "bedrock" | "openai") => setHighAccuracyProvider(v)}
-                      >
-                        <SelectTrigger className="w-full rounded-xl bg-background border-border/70">
-                          <SelectValue placeholder="Select escalation provider" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                          <SelectItem value="bedrock">AWS Bedrock (Recommended for Vision &amp; Handwriting)</SelectItem>
-                          <SelectItem value="openai">OpenAI (Direct Vision API)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-caption font-semibold text-foreground">Escalation Vision Model</label>
-                      <Select value={bedrockModel} onValueChange={setBedrockModel}>
-                        <SelectTrigger className="w-full rounded-xl bg-background border-border/70 text-xs font-mono">
-                          <SelectValue placeholder="Select Model" />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-[300px] rounded-xl">
-                          {settingsData?.availableModels?.bedrock?.length ? (
-                            settingsData.availableModels.bedrock.map((m) => (
-                              <SelectItem key={m} value={m} className="font-mono text-xs">
-                                {formatBedrockModelLabel(m)}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="anthropic.claude-3-5-sonnet-20241022-v2:0" className="font-mono text-xs">
-                              Claude 3.5 Sonnet v2 (🎯 Highest Accuracy OCR)
-                            </SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="pt-2 flex items-center justify-between border-t border-border/60">
-                      <span className="text-caption text-muted-foreground">Target model: {bedrockModel.split(".")[1] || bedrockModel}</span>
+                    <div className="pt-3 flex items-center justify-between border-t border-border/60 mt-4">
+                      <span className="text-caption text-muted-foreground font-mono">Active Provider: {highAccuracyProvider}</span>
                       <Button
                         type="button"
                         variant="outline"
@@ -1348,10 +1329,61 @@ export default function AdminDashboard() {
                         className="gap-1.5 text-xs rounded-xl border-primary/30 text-primary hover:bg-primary/10"
                       >
                         <PlayCircle className="h-3.5 w-3.5" />
-                        Test Escalation
+                        Test Escalation Tier
                       </Button>
                     </div>
                   </div>
+                </div>
+
+                {/* Mobile Visual Connector Indicator */}
+                <div className="flex md:hidden items-center justify-center my-3">
+                  <div className="flex items-center gap-2 rounded-full border border-primary/40 bg-card px-3.5 py-1.5 shadow-xs text-caption font-semibold text-primary">
+                    <ArrowDown className="h-4 w-4 animate-pulse shrink-0" />
+                    <span>escalates when confidence &lt; {Math.round((data?.quality?.threshold ?? 0.85) * 100)}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Shared AI Vision Model Architecture Card (Factored Out identical Bedrock model setting) */}
+              <div className="rounded-2xl border border-border/70 bg-card p-6 space-y-4 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3.5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500/10 text-teal-500 border border-teal-500/20">
+                      <Cpu className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-body-sm font-bold text-foreground">Shared AI Vision Foundation Model</h4>
+                      <p className="text-caption text-muted-foreground">Foundation model powering Bedrock vision extraction across all active tiers</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="border-teal-500/30 bg-teal-500/10 text-teal-700 dark:text-teal-300 text-xs font-semibold">
+                    Shared Vision Core
+                  </Badge>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <label className="text-caption font-semibold text-foreground">AWS Bedrock Foundation Model</label>
+                  <Select value={bedrockModel} onValueChange={setBedrockModel}>
+                    <SelectTrigger className="w-full rounded-xl bg-background border-border/70 text-xs font-mono">
+                      <SelectValue placeholder="Select Bedrock Model" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px] rounded-xl">
+                      {settingsData?.availableModels?.bedrock?.length ? (
+                        settingsData.availableModels.bedrock.map((m) => (
+                          <SelectItem key={m} value={m} className="font-mono text-xs">
+                            {formatBedrockModelLabel(m)}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="amazon.nova-lite-v1:0" className="font-mono text-xs">
+                          {formatBedrockModelLabel("amazon.nova-lite-v1:0")}
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-caption text-muted-foreground">
+                    Selected foundation model applies automatically whenever Bedrock is active in either extraction tier.
+                  </p>
                 </div>
               </div>
 
@@ -1367,9 +1399,16 @@ export default function AdminDashboard() {
                       <p className="text-caption text-muted-foreground">Optional external API credentials for direct model queries</p>
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-xs">
-                    {settingsData?.settings?.openaiApiKeyMasked ? "Configured" : "Optional"}
-                  </Badge>
+                  {settingsData?.settings?.openaiApiKeyMasked ? (
+                    <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-semibold gap-1">
+                      <ShieldCheck className="h-3 w-3" />
+                      Key saved: {settingsData.settings.openaiApiKeyMasked}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs">
+                      Optional
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
@@ -1390,36 +1429,48 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-caption font-semibold text-foreground">
-                      OpenAI API Key {settingsData?.settings?.openaiApiKeyMasked ? "(Leave blank to keep current)" : ""}
-                    </label>
-                    <Input
-                      type="password"
-                      placeholder={settingsData?.settings?.openaiApiKeyMasked || "sk-proj-..."}
-                      value={openaiApiKey}
-                      onChange={(e) => setOpenAIApiKey(e.target.value)}
-                      className="font-mono text-xs rounded-xl bg-background"
-                    />
+                    <div className="flex items-center justify-between">
+                      <label className="text-caption font-semibold text-foreground">
+                        OpenAI API Key {settingsData?.settings?.openaiApiKeyMasked ? "(Leave blank to keep current)" : ""}
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <Input
+                        type={showOpenAIApiKey ? "text" : "password"}
+                        placeholder={settingsData?.settings?.openaiApiKeyMasked || "sk-proj-••••••••••••••••"}
+                        value={openaiApiKey}
+                        onChange={(e) => setOpenAIApiKey(e.target.value)}
+                        className="font-mono text-xs rounded-xl bg-background pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowOpenAIApiKey(!showOpenAIApiKey)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
+                        title={showOpenAIApiKey ? "Hide API Key" : "Show API Key"}
+                      >
+                        {showOpenAIApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Sticky Action Footer */}
-              <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl border border-primary/20 bg-primary/5">
+              {/* Sticky Action Footer Bar */}
+              <div className="sticky bottom-0 z-20 mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/80 bg-background/95 p-4 shadow-xl backdrop-blur-md">
                 <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-primary" />
+                  <Zap className="h-4 w-4 text-primary shrink-0" />
                   <p className="text-xs font-medium text-foreground">
                     Configuration overrides take effect immediately across all Cloudflare worker nodes and edge functions.
                   </p>
                 </div>
                 <Button
-                  size="sm"
+                  size="lg"
                   onClick={handleSaveSettings}
                   disabled={updateSettingsMutation.isPending || isSettingsLoading}
-                  className="gap-2 text-xs font-semibold bg-primary text-primary-foreground shadow-xs px-6"
+                  className="gap-2 text-body-sm font-bold bg-gradient-to-r from-primary via-primary to-amber-500 hover:from-primary/90 hover:to-amber-500/90 text-primary-foreground shadow-md px-8 py-2.5 rounded-xl border-none transition-all disabled:opacity-40"
                 >
                   <Save className={`h-4 w-4 ${updateSettingsMutation.isPending ? "animate-spin" : ""}`} />
-                  {updateSettingsMutation.isPending ? "Saving configuration…" : "Save Configuration"}
+                  {updateSettingsMutation.isPending ? "Saving Configuration…" : "Save Configuration"}
                 </Button>
               </div>
             </div>
