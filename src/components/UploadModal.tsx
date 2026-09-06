@@ -135,48 +135,53 @@ export function PresetSelector({
 }) {
   return (
     <div className={cn("flex flex-col gap-6", className)}>
-      <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4")}>
-        {/* Saved Templates First */}
-        {[...templates].sort((a, b) => (b.useCount || 0) - (a.useCount || 0)).map((template) => {
-          const selected = value === `template_${template.id}`;
-          return (
-            <button
-              key={`template_${template.id}`}
-              type="button"
-              onClick={() => onChange(`template_${template.id}`, { prompt: template.prompt || undefined })}
-              className={cn(
-                "relative flex h-full flex-col p-4 rounded-xl border text-left transition-all duration-300 group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                selected
-                  ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-sm ring-1 ring-primary/20"
-                  : "border-border/60 bg-card hover:border-primary/40 hover:shadow-sm"
-              )}
-            >
-              <div className="relative z-10 flex items-start gap-3">
-                <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors border", selected ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border/40 group-hover:bg-primary/10 group-hover:text-primary")}>
-                  <FileCode2 className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0 flex flex-col gap-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={cn("truncate text-body-sm font-semibold", selected ? "text-primary" : "text-foreground")}>{template.name}</p>
-                    {selected && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-2.5 w-2.5" strokeWidth={3} /></span>}
-                  </div>
-                  <p className="text-caption font-medium text-muted-foreground">Saved template</p>
-                  <p className="mt-1.5 text-label leading-relaxed font-medium text-muted-foreground">{template.description || `Based on ${PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}`}</p>
-                  <div className={cn("grid transition-all duration-300 ease-in-out", selected ? "grid-rows-[1fr] mt-2 opacity-100" : "grid-rows-[0fr] opacity-0")}>
-                    <div className="overflow-hidden flex flex-col gap-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className="py-0.5 text-caption text-muted-foreground">Based on</span>
+      {/* Saved Templates */}
+      {templates.length > 0 && (
+        <>
+          <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground/70">Your Saved Templates</p>
+          <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 -mt-3")}>
+            {[...templates].sort((a, b) => (b.useCount || 0) - (a.useCount || 0)).map((template) => {
+              const selected = value === `template_${template.id}`;
+              return (
+                <button
+                  key={`template_${template.id}`}
+                  type="button"
+                  onClick={() => onChange(`template_${template.id}`, { prompt: template.prompt || undefined })}
+                  className={cn(
+                    "relative flex h-full flex-col p-4 rounded-xl border text-left transition-all duration-300 group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    selected
+                      ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-sm ring-1 ring-primary/20"
+                      : "border-border/60 bg-card hover:border-primary/40 hover:shadow-sm"
+                  )}
+                >
+                  <div className="relative z-10 flex items-start gap-3">
+                    <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors border", selected ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border/40 group-hover:bg-primary/10 group-hover:text-primary")}>
+                      <FileCode2 className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={cn("truncate text-body-sm font-semibold", selected ? "text-primary" : "text-foreground")}>{template.name}</p>
+                        {selected && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-2.5 w-2.5" strokeWidth={3} /></span>}
+                      </div>
+                      <p className="text-caption font-medium text-muted-foreground">Saved template</p>
+                      <p className="mt-1.5 text-label leading-relaxed font-medium text-muted-foreground">{template.description || `Based on ${PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}`}</p>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
                         <span className="rounded bg-primary/10 px-1.5 py-0.5 text-caption font-medium text-primary">{PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}</span>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
-        {/* Built-in Presets */}
+      {/* Built-in Presets */}
+      {templates.length > 0 && (
+        <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground/70">Built-in Presets</p>
+      )}
+      <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4", templates.length > 0 && "-mt-3")}>
         {PRESETS.map((preset) => {
           const Icon = preset.icon;
           const selected = value === preset.id;
@@ -203,14 +208,10 @@ export function PresetSelector({
                   </div>
                   <p className="text-caption font-medium text-muted-foreground">{preset.tagline}</p>
                   <p className="mt-1.5 text-label leading-relaxed font-medium text-muted-foreground">{preset.description}</p>
-                  <div className={cn("grid transition-all duration-300 ease-in-out", selected ? "grid-rows-[1fr] mt-2 opacity-100" : "grid-rows-[0fr] opacity-0")}>
-                    <div className="overflow-hidden flex flex-col gap-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        {preset.extracts.slice(0, 3).map((tag) => (
-                          <span key={tag} className="rounded bg-primary/10 px-1.5 py-0.5 text-caption font-medium text-primary">{tag}</span>
-                        ))}
-                      </div>
-                    </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {preset.extracts.slice(0, 3).map((tag) => (
+                      <span key={tag} className="rounded bg-primary/10 px-1.5 py-0.5 text-caption font-medium text-primary">{tag}</span>
+                    ))}
                   </div>
                 </div>
               </div>

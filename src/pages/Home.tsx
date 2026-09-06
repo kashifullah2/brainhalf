@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 const STATS = [
-  { value: "0", label: "Templates" },
+  { value: "9", label: "AI Modes" },
   { value: "100%", label: "Verifiable" },
   { value: "25MB", label: "Max File" },
   { value: "JSON", label: "Ready" },

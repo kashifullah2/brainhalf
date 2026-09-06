@@ -11,10 +11,20 @@ export interface SystemSettings {
 }
 
 export const KNOWN_BEDROCK_MODELS = [
+  // Amazon Nova — fast multimodal vision
   'amazon.nova-lite-v1:0',
   'amazon.nova-pro-v1:0',
+  // Anthropic Claude 3 family
   'anthropic.claude-3-haiku-20240307-v1:0',
+  'anthropic.claude-3-sonnet-20240229-v1:0',
+  'anthropic.claude-3-opus-20240229-v1:0',
+  // Anthropic Claude 3.5 family
+  'anthropic.claude-3-5-haiku-20241022-v1:0',
   'anthropic.claude-3-5-sonnet-20240620-v1:0',
+  'anthropic.claude-3-5-sonnet-20241022-v2:0',
+  // Anthropic Claude 4 family (latest generation)
+  'anthropic.claude-sonnet-4-20250514-v1:0',
+  'anthropic.claude-opus-4-20250514-v1:0',
 ] as const;
 
 export const KNOWN_HUNYUAN_MODELS = [

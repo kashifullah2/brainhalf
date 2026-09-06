@@ -63,8 +63,8 @@ const queryClient = new QueryClient({
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const AUTH_FEATURES = [
-  { label: "Extract data from any invoice or receipt", sub: "PDF, PNG, JPG, WEBP — all supported" },
-  { label: "4 extraction modes", sub: "Full Text, Key-Value, Visual Q&A, Custom Prompt" },
+  { label: "Extract data from any document", sub: "Invoices, receipts, forms, handwriting — PDF, PNG, JPG, WEBP" },
+  { label: "9 extraction modes", sub: "Invoice, Receipt, Full Text, Key-Value, Table, Handwriting, Multilingual, Custom, Visual Q&A" },
   { label: "Export in one click", sub: "CSV, Excel, Markdown, or JSON — ready to use" },
 ];
 

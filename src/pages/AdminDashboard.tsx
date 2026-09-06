@@ -359,16 +359,7 @@ export default function AdminDashboard() {
               className="gap-2 bg-primary text-primary-foreground font-medium shadow-sm hover:opacity-95"
             >
               <PlayCircle className="h-4 w-4" aria-hidden />
-              Test Extraction Lab
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsTestModalOpen(true)}
-              className="gap-2"
-            >
-              <Terminal className="h-4 w-4 text-primary" aria-hidden />
-              Test Modal
+              Test Lab
             </Button>
             <Button
               variant="outline"
@@ -385,7 +376,7 @@ export default function AdminDashboard() {
             </Button>
             <Button size="sm" variant="outline" onClick={handleExport} disabled={!data} className="gap-2">
               <Download className="h-4 w-4" aria-hidden />
-              Export metrics
+              Export
             </Button>
           </>
         }
@@ -903,10 +894,16 @@ export default function AdminDashboard() {
                         ))
                       ) : (
                         <>
-                          <SelectItem value="amazon.nova-lite-v1:0" className="font-mono text-xs">amazon.nova-lite-v1:0 (Fast Multimodal)</SelectItem>
-                          <SelectItem value="amazon.nova-pro-v1:0" className="font-mono text-xs">amazon.nova-pro-v1:0 (High Accuracy)</SelectItem>
-                          <SelectItem value="anthropic.claude-3-haiku-20240307-v1:0" className="font-mono text-xs">anthropic.claude-3-haiku-20240307-v1:0</SelectItem>
-                          <SelectItem value="anthropic.claude-3-5-sonnet-20240620-v1:0" className="font-mono text-xs">anthropic.claude-3-5-sonnet-20240620-v1:0</SelectItem>
+                          <SelectItem value="amazon.nova-lite-v1:0" className="font-mono text-xs">Nova Lite v1 — Fast Multimodal</SelectItem>
+                          <SelectItem value="amazon.nova-pro-v1:0" className="font-mono text-xs">Nova Pro v1 — High Accuracy</SelectItem>
+                          <SelectItem value="anthropic.claude-3-haiku-20240307-v1:0" className="font-mono text-xs">Claude 3 Haiku — Fast &amp; Cheap</SelectItem>
+                          <SelectItem value="anthropic.claude-3-sonnet-20240229-v1:0" className="font-mono text-xs">Claude 3 Sonnet — Balanced</SelectItem>
+                          <SelectItem value="anthropic.claude-3-opus-20240229-v1:0" className="font-mono text-xs">Claude 3 Opus — Premium</SelectItem>
+                          <SelectItem value="anthropic.claude-3-5-haiku-20241022-v1:0" className="font-mono text-xs">Claude 3.5 Haiku — Fast (Newer)</SelectItem>
+                          <SelectItem value="anthropic.claude-3-5-sonnet-20240620-v1:0" className="font-mono text-xs">Claude 3.5 Sonnet — High Quality Vision</SelectItem>
+                          <SelectItem value="anthropic.claude-3-5-sonnet-20241022-v2:0" className="font-mono text-xs">Claude 3.5 Sonnet v2 — Latest 3.5</SelectItem>
+                          <SelectItem value="anthropic.claude-sonnet-4-20250514-v1:0" className="font-mono text-xs">Claude Sonnet 4 — Latest Generation</SelectItem>
+                          <SelectItem value="anthropic.claude-opus-4-20250514-v1:0" className="font-mono text-xs">Claude Opus 4 — Best Quality</SelectItem>
                         </>
                       )}
                     </SelectContent>
