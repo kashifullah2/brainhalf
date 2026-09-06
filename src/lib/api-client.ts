@@ -1268,6 +1268,12 @@ export interface TestModelPayload {
   provider?: 'hunyuan' | 'bedrock' | 'textract' | 'openai';
   model?: string;
   customPrompt?: string;
+  mode?: string;
+  document?: {
+    contentType: string;
+    dataUrl: string;
+    filename: string;
+  };
 }
 
 export interface TestModelResult {
@@ -1277,6 +1283,7 @@ export interface TestModelResult {
   tier?: 'default' | 'escalation';
   latencyMs: number;
   tokensUsed?: number;
+  fields?: Array<{ label: string; value: string; confidence: number }>;
   preview?: string | null;
   error?: string | null;
 }
