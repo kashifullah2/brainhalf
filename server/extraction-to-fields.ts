@@ -67,7 +67,8 @@ export function parseExtraction(
     const parsed = JSON.parse(jsonStr.trim());
 
     if (mode === "fulltext" || mode === undefined) {
-      const parsedObj = (typeof parsed === "object" && parsed !== null) ? (parsed as Record<string, any>) : {};
+      const parsedObj: Record<string, unknown> =
+        typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
       const rawDescription = parsedObj.image_description || parsedObj.description || parsedObj.visual_summary;
       const rawTextContent = parsedObj.text || parsedObj.extracted_text || parsedObj.transcription || (typeof parsed === "string" ? parsed : "");
 

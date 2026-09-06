@@ -33,6 +33,7 @@ import {
   type QueueTotalsResponse,
   type ReviewQueueResponse,
 } from "@/lib/review-queue-store";
+import { errorMessage } from "@/lib/humanize-error";
 
 const PAGE_SIZE = 50;
 
@@ -81,7 +82,7 @@ export default function ReviewQueue() {
     } catch (err) {
       toast({
         title: "Could not approve these fields",
-        description: err instanceof Error ? err.message : "Try again in a moment.",
+        description: errorMessage(err, "Try again in a moment."),
         variant: "destructive",
       });
     }

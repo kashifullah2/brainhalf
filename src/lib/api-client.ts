@@ -13,6 +13,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { UseQueryOptions } from "@tanstack/react-query";
 
 import { apiUrl } from "./api-paths";
+import { errorMessage } from "./humanize-error";
 import { extractDocument, type ExtractionResult } from "./ocr-client";
 import { calculateDocumentOverallConfidence } from "./confidence-scorer";
 
@@ -267,6 +268,29 @@ export async function deleteBatch(batchId: number): Promise<void> {
   await apiFetch<void>(`/batches/${batchId}`, { method: "DELETE" });
 }
 
+export interface CancelBatchOutcome {
+  /** How many documents this call moved to 'cancelled'. */
+  cancelled: number;
+  /** The batch's status afterwards. */
+  status: string;
+}
+
+/**
+ * Stops the unfinished documents in a batch and keeps the finished ones.
+ *
+ * The distinction from deleteBatch matters and is worth stating at the call site:
+ * this preserves every document that already extracted, and a cancelled document
+ * can be retried individually. Deleting throws the whole batch away, files and all.
+ *
+ * Idempotent — cancelling a batch that has already finished reports
+ * `cancelled: 0` and is not an error.
+ */
+export async function cancelBatch(batchId: number): Promise<CancelBatchOutcome> {
+  return apiFetch<CancelBatchOutcome>(`/batches/${batchId}/cancel`, {
+    method: "POST",
+  });
+}
+
 /**
  * Approves every still-unreviewed flagged field on a batch, or on one document
  * within it. Returns how many fields were approved.
@@ -298,7 +322,7 @@ export interface CreateBatchProgress {
   current: number;
   total: number;
   filename: string;
-  status: "processing" | "completed" | "failed";
+  status: "processing" | "completed" | "failed" | "queued";
   error?: string;
 }
 
@@ -414,6 +438,125 @@ async function extractWithEscalation(
 }
 
 /**
+ * Extracts each document in turn and records the outcome, one document at a time.
+ *
+ * Shared by createBatch and appendBatch. The two carried byte-identical copies of
+ * this loop that differed only in which `mode` and `prompt` they passed and in the
+ * wording of one error message — so the cancellation check below would have had to
+ * be added twice, and the next change to either copy is how they drift.
+ *
+ * Progress is durable because each result is posted as it lands: closing the tab
+ * mid-run leaves a batch that accurately reports which documents finished, and a
+ * failure on document 7 no longer discards documents 1 to 6.
+ */
+async function runExtractionLoop(
+  batchId: number,
+  serverDocuments: Array<{ id: number; filename: string }>,
+  localDocuments: Array<{ rawFile?: File }>,
+  options: {
+    mode: string;
+    customPrompt: string | undefined;
+    forceReprocess: boolean;
+    confidenceThreshold: number;
+  },
+  onProgress?: (progress: CreateBatchProgress) => void,
+): Promise<{ failedCount: number; cancelled: boolean }> {
+  const total = serverDocuments.length;
+  let failedCount = 0;
+
+  for (let index = 0; index < serverDocuments.length; index++) {
+    const serverDoc = serverDocuments[index];
+    const local = localDocuments[index];
+
+    onProgress?.({
+      current: index + 1,
+      total,
+      filename: serverDoc.filename,
+      status: "processing",
+    });
+
+    // Without the original bytes there is nothing to extract. Record it as a
+    // failure on that document rather than aborting the batch.
+    if (!local?.rawFile) {
+      failedCount += 1;
+      const message = "The original file was not available in this browser session.";
+      const outcome = await reportFailure(batchId, serverDoc.id, message);
+      if (outcome.cancelled) return { failedCount, cancelled: true };
+      onProgress?.({
+        current: index + 1,
+        total,
+        filename: serverDoc.filename,
+        status: "failed",
+        error: "Original file unavailable.",
+      });
+      continue;
+    }
+
+    try {
+      const { result, overallConfidence } = await extractWithEscalation(
+        local.rawFile,
+        options.mode,
+        options.forceReprocess,
+        options.customPrompt,
+        options.confidenceThreshold,
+      );
+
+      const saved = await apiFetch<{ ok: true; cancelled?: boolean }>(
+        `/batches/${batchId}/documents/${serverDoc.id}/result`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ocrText: result.rawText,
+            overallConfidence,
+            fields: result.fields.map((field) => ({
+              normalizedField: field.normalizedField,
+              originalLabel: field.originalLabel,
+              value: field.value,
+              confidence: field.confidence,
+            })),
+          }),
+        },
+      );
+
+      // The owner stopped the batch while this document was being read. Every
+      // remaining document would cost another upstream call for a result the
+      // server is now going to discard, so the run ends here.
+      if (saved.cancelled) {
+        onProgress?.({
+          current: index + 1,
+          total,
+          filename: serverDoc.filename,
+          status: "completed",
+        });
+        return { failedCount, cancelled: true };
+      }
+
+      onProgress?.({
+        current: index + 1,
+        total,
+        filename: serverDoc.filename,
+        status: "completed",
+      });
+    } catch (error) {
+      failedCount += 1;
+      const message =
+        errorMessage(error, "Extraction failed.");
+      const outcome = await reportFailure(batchId, serverDoc.id, message);
+      if (outcome.cancelled) return { failedCount, cancelled: true };
+      onProgress?.({
+        current: index + 1,
+        total,
+        filename: serverDoc.filename,
+        status: "failed",
+        error: message,
+      });
+    }
+  }
+
+  return { failedCount, cancelled: false };
+}
+
+/**
  * Creates the batch server-side first, then extracts one document at a time and
  * reports each outcome. Two consequences worth stating:
  *
@@ -447,14 +590,13 @@ export async function createBatch(
   });
 
   const total = created.documents.length;
-  let failedCount = 0;
 
   if (created.asyncProcessing) {
     onProgress?.({
       current: total,
       total,
-      filename: "Processing in background...",
-      status: "completed",
+      filename: "Queued for background extraction...",
+      status: "queued",
     });
     return { id: created.id, failedCount: 0 };
   }
@@ -464,96 +606,43 @@ export async function createBatch(
   // a value that never varies.
   const confidenceThreshold = await resolveConfidenceThreshold();
 
-  for (let index = 0; index < created.documents.length; index++) {
-    const serverDoc = created.documents[index];
-    const local = input.documents[index];
-
-    onProgress?.({
-      current: index + 1,
-      total,
-      filename: serverDoc.filename,
-      status: "processing",
-    });
-
-    // Without the original bytes there is nothing to extract. Record it as a
-    // failure on that document rather than aborting the batch.
-    if (!local?.rawFile) {
-      failedCount += 1;
-      await reportFailure(
-        created.id,
-        serverDoc.id,
-        "The original file was not available in this browser session.",
-      );
-      onProgress?.({
-        current: index + 1,
-        total,
-        filename: serverDoc.filename,
-        status: "failed",
-        error: "Original file unavailable.",
-      });
-      continue;
-    }
-
-    try {
-      const { result, overallConfidence } = await extractWithEscalation(
-        local.rawFile,
-        input.mode,
-        input.forceReprocess ?? false,
-        input.customPrompt,
-        confidenceThreshold,
-      );
-
-      await apiFetch(`/batches/${created.id}/documents/${serverDoc.id}/result`, {
-        method: "POST",
-        body: JSON.stringify({
-          ocrText: result.rawText,
-          overallConfidence,
-          fields: result.fields.map((field) => ({
-            normalizedField: field.normalizedField,
-            originalLabel: field.originalLabel,
-            value: field.value,
-            confidence: field.confidence,
-          })),
-        }),
-      });
-
-      onProgress?.({
-        current: index + 1,
-        total,
-        filename: serverDoc.filename,
-        status: "completed",
-      });
-    } catch (error) {
-      failedCount += 1;
-      const message =
-        error instanceof Error ? error.message : "Extraction failed.";
-      await reportFailure(created.id, serverDoc.id, message);
-      onProgress?.({
-        current: index + 1,
-        total,
-        filename: serverDoc.filename,
-        status: "failed",
-        error: message,
-      });
-    }
-  }
+  const { failedCount } = await runExtractionLoop(
+    created.id,
+    created.documents,
+    input.documents,
+    {
+      mode: input.mode,
+      customPrompt: input.customPrompt,
+      forceReprocess: input.forceReprocess ?? false,
+      confidenceThreshold,
+    },
+    onProgress,
+  );
 
   return { id: created.id, failedCount };
 }
 
-/** Recording a failure must never itself break the run. */
+/**
+ * Recording a failure must never itself break the run, so a transport error here
+ * is logged and swallowed.
+ *
+ * Returns whether the server reported the document as already cancelled, which is
+ * the signal runExtractionLoop uses to stop early.
+ */
 async function reportFailure(
   batchId: number,
   documentId: number,
   message: string,
-): Promise<void> {
+): Promise<{ cancelled: boolean }> {
   try {
-    await apiFetch(`/batches/${batchId}/documents/${documentId}/failure`, {
-      method: "POST",
-      body: JSON.stringify({ error: message }),
-    });
+    const outcome = await apiFetch<{ ok: true; cancelled?: boolean }>(
+      `/batches/${batchId}/documents/${documentId}/failure`,
+      { method: "POST", body: JSON.stringify({ error: message }) },
+    );
+    return { cancelled: outcome.cancelled === true };
   } catch (error) {
     console.error("Could not record the document failure:", error);
+    return { cancelled: false };
   }
 }
 
@@ -582,6 +671,26 @@ export function useCreateBatch() {
       onProgress?: (progress: CreateBatchProgress) => void;
     }) => createBatch(data, onProgress),
     onSuccess: () => invalidateAfterExtraction(queryClient),
+  });
+}
+
+/**
+ * Cancels a batch and refreshes everything the change is visible in.
+ *
+ * The batch's own detail query is invalidated as well as the list: the page the
+ * user is looking at is the one that must stop showing "Processing" immediately,
+ * and it polls the cheap summary endpoint rather than the detail, so without this
+ * the table would keep its stale per-document statuses.
+ */
+export function useCancelBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (batchId: number) => cancelBatch(batchId),
+    onSuccess: (_outcome, batchId) => {
+      invalidateAfterExtraction(queryClient);
+      void queryClient.invalidateQueries({ queryKey: getGetBatchQueryKey(batchId) });
+      void queryClient.invalidateQueries({ queryKey: ["batch", batchId, "summary"] });
+    },
   });
 }
 
@@ -623,14 +732,13 @@ export async function appendBatch(
   });
 
   const total = created.documents.length;
-  let failedCount = 0;
 
   if (created.asyncProcessing) {
     onProgress?.({
       current: total,
       total,
-      filename: "Processing in background...",
-      status: "completed",
+      filename: "Queued for background extraction...",
+      status: "queued",
     });
     return { id: created.id, failedCount: 0 };
   }
@@ -644,72 +752,18 @@ export async function appendBatch(
   // a value that never varies.
   const confidenceThreshold = await resolveConfidenceThreshold();
 
-  for (let index = 0; index < created.documents.length; index++) {
-    const serverDoc = created.documents[index];
-    const local = input.documents[index];
-
-    onProgress?.({
-      current: index + 1,
-      total,
-      filename: serverDoc.filename,
-      status: "processing",
-    });
-
-    if (!local?.rawFile) {
-      failedCount += 1;
-      await reportFailure(created.id, serverDoc.id, "The original file was not available.");
-      onProgress?.({
-        current: index + 1,
-        total,
-        filename: serverDoc.filename,
-        status: "failed",
-        error: "Original file unavailable.",
-      });
-      continue;
-    }
-
-    try {
-      const { result, overallConfidence } = await extractWithEscalation(
-        local.rawFile,
-        created.mode,
-        input.forceReprocess ?? false,
-        effectivePrompt,
-        confidenceThreshold,
-      );
-
-      await apiFetch(`/batches/${created.id}/documents/${serverDoc.id}/result`, {
-        method: "POST",
-        body: JSON.stringify({
-          ocrText: result.rawText,
-          overallConfidence,
-          fields: result.fields.map((field) => ({
-            normalizedField: field.normalizedField,
-            originalLabel: field.originalLabel,
-            value: field.value,
-            confidence: field.confidence,
-          })),
-        }),
-      });
-
-      onProgress?.({
-        current: index + 1,
-        total,
-        filename: serverDoc.filename,
-        status: "completed",
-      });
-    } catch (error) {
-      failedCount += 1;
-      const message = error instanceof Error ? error.message : "Extraction failed.";
-      await reportFailure(created.id, serverDoc.id, message);
-      onProgress?.({
-        current: index + 1,
-        total,
-        filename: serverDoc.filename,
-        status: "failed",
-        error: message,
-      });
-    }
-  }
+  const { failedCount } = await runExtractionLoop(
+    created.id,
+    created.documents,
+    input.documents,
+    {
+      mode: created.mode,
+      customPrompt: effectivePrompt,
+      forceReprocess: input.forceReprocess ?? false,
+      confidenceThreshold,
+    },
+    onProgress,
+  );
 
   return { id: created.id, failedCount };
 }
@@ -858,7 +912,7 @@ export async function retryDocument(input: RetryDocumentInput): Promise<void> {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Extraction failed.";
+      errorMessage(error, "Extraction failed.");
     await reportFailure(batchId, documentId, message);
     throw error;
   }
@@ -1000,7 +1054,7 @@ export async function downloadAccountExport(): Promise<void> {
     anchor.click();
     anchor.remove();
   } finally {
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
 

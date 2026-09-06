@@ -35,6 +35,12 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
   const owned = await findOwnedDocument(env, auth.user.id, batchId, documentId);
   if (!owned) return fail('Document not found.', 404);
 
+  // Same rule as .../result: a cancelled document is already final, and "failed"
+  // would be the wrong thing to show for a document the owner chose to stop.
+  if (owned.status === 'cancelled') {
+    return json({ ok: true, cancelled: true }, 200, authHeaders(auth));
+  }
+
   const body = await readJson<Body>(request);
   const message =
     typeof body?.error === 'string' && body.error.trim()
@@ -42,7 +48,7 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({
       : 'Extraction failed.';
 
   await env.DB.prepare(
-    `UPDATE documents SET status = 'failed', error = ? WHERE id = ?`,
+    `UPDATE documents SET status = 'failed', error = ? WHERE id = ? AND status != 'cancelled'`,
   )
     .bind(message, documentId)
     .run();

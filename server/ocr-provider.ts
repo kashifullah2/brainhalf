@@ -183,9 +183,8 @@ function resolveProvider(env: OcrProviderEnv, tier: Tier): ResolvedProvider | Oc
 interface DocumentPart {
   /** The instructions server/ocr-prompts.ts built for this mode. */
   prompt: string;
-  /** `data:<type>;base64,<payload>` */
-  dataUrl: string;
   contentType: string;
+  /** The payload of the data URL, with whitespace removed. */
   base64: string;
   byteLength: number;
 }
@@ -198,6 +197,17 @@ interface DocumentPart {
  * a user's own saved template -- was sent the same generic instruction and
  * answered in a shape the parser did not expect.
  */
+/**
+ * The three content parts server/ocr-prompts.ts emits. A union rather than
+ * `Record<string, any>`, so adding a fourth part there is a compile error here
+ * instead of a value this loop silently ignores.
+ */
+type MessagePart =
+  | { type: 'text'; text?: unknown }
+  | { type: 'image_url'; image_url?: { url?: unknown } }
+  | { type: 'file'; file?: { file_data?: unknown } }
+  | { type?: string };
+
 function readDocumentPart(payload: OcrRequestPayload): DocumentPart | null {
   const message = payload.messages[0];
   if (!message || !Array.isArray(message.content)) return null;
@@ -205,12 +215,21 @@ function readDocumentPart(payload: OcrRequestPayload): DocumentPart | null {
   let prompt = '';
   let dataUrl = '';
 
-  for (const part of message.content as Array<Record<string, any>>) {
-    if (part?.type === 'text' && typeof part.text === 'string') {
+  for (const part of message.content as MessagePart[]) {
+    if (!part || typeof part !== 'object') continue;
+    if (part.type === 'text' && 'text' in part && typeof part.text === 'string') {
       prompt = part.text;
-    } else if (part?.type === 'image_url' && typeof part.image_url?.url === 'string') {
+    } else if (
+      part.type === 'image_url' &&
+      'image_url' in part &&
+      typeof part.image_url?.url === 'string'
+    ) {
       dataUrl = part.image_url.url;
-    } else if (part?.type === 'file' && typeof part.file?.file_data === 'string') {
+    } else if (
+      part.type === 'file' &&
+      'file' in part &&
+      typeof part.file?.file_data === 'string'
+    ) {
       dataUrl = part.file.file_data;
     }
   }
@@ -225,7 +244,6 @@ function readDocumentPart(payload: OcrRequestPayload): DocumentPart | null {
 
   return {
     prompt,
-    dataUrl,
     contentType,
     base64: cleaned,
     // Every 4 base64 characters carry 3 bytes; padding shortens the last group.
@@ -311,14 +329,22 @@ function bedrockBody(modelId: string, part: DocumentPart): Record<string, unknow
   };
 }
 
+/** The two reply shapes Bedrock returns, depending on the model family. */
+interface BedrockReply {
+  /** Anthropic models. */
+  content?: Array<{ text?: unknown }>;
+  /** Amazon Nova and the other Converse-shaped models. */
+  output?: { message?: { content?: Array<{ text?: unknown }> } };
+  usage?: { output_tokens?: unknown; outputTokens?: unknown };
+}
+
 function bedrockContent(modelId: string, response: unknown): { text: string; tokens: number } {
-  const body = response as any;
+  const body = response as BedrockReply | null | undefined;
   const isAnthropic = modelId.startsWith('anthropic.') || modelId.includes('.anthropic.');
   const text = isAnthropic
     ? body?.content?.[0]?.text
     : body?.output?.message?.content?.[0]?.text;
-  const tokens =
-    body?.usage?.output_tokens ?? body?.usage?.outputTokens ?? 0;
+  const tokens = body?.usage?.output_tokens ?? body?.usage?.outputTokens ?? 0;
   return { text: typeof text === 'string' ? text : '', tokens: Number(tokens) || 0 };
 }
 
@@ -555,7 +581,8 @@ export async function executeOcrRequest(
         }
 
         const tokens = usedTokens(data);
-        const choices = (data as any)?.choices;
+        const choices = (data as { choices?: Array<{ finish_reason?: unknown }> } | null)
+          ?.choices;
         const isTruncated = choices?.[0]?.finish_reason === 'length';
 
         return {

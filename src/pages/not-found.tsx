@@ -8,7 +8,9 @@ import { usePageTitle } from "@/lib/use-page-title";
 export default function NotFound() {
   usePageTitle("404 Page not found · BrainHalf", { noindex: true });
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center px-6">
+    // <main> with the header's skip-link target: this route renders outside
+    // AppLayout, which is where the only other #main-content lives.
+    <main id="main-content" className="flex min-h-[60vh] flex-col items-center justify-center px-6">
       <EmptyState
         icon={FileQuestion}
         title="We looked, it isn't here."
@@ -26,6 +28,6 @@ export default function NotFound() {
           </div>
         }
       />
-    </div>
+    </main>
   );
 }

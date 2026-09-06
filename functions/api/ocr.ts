@@ -213,7 +213,12 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
 
   const result = await executeOcrRequest(env, tier, {
     messages: upstream.messages,
-    jsonObject: upstream.jsonObject
+    jsonObject: upstream.jsonObject,
+    // Passed through for the AWS engines only. Textract has one operation per
+    // document class and cannot be given instructions, so this is the only way it
+    // learns whether to run AnalyzeExpense, AnalyzeDocument or DetectDocumentText.
+    // The chat providers ignore it -- their mode is already in `messages`.
+    mode,
   });
 
   if (result.type === 'config-error') {

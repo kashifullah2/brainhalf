@@ -33,7 +33,10 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
   if (auth instanceof Response) return auth;
 
   const url = new URL(request.url);
-  const limit = intQuery(url, 'limit') ?? MAX_LISTED_BATCHES;
+  const limit = Math.min(
+    intQuery(url, 'limit') ?? MAX_LISTED_BATCHES,
+    MAX_LISTED_BATCHES,
+  );
   const offset = intQuery(url, 'offset') ?? 0;
 
   const batches = await listBatches(env, auth.user.id, limit, offset);

@@ -10,7 +10,9 @@ export function LegalLayout({ children, title, canonicalPath }: { children: Reac
   return (
     <div className="min-h-[calc(100dvh-var(--header-h))] bg-background font-sans text-foreground">
       {/* Content */}
-      <main className="container max-w-4xl mx-auto px-4 md:px-6 py-12 md:py-20">
+      {/* id, not just the element: SkipLink in the header targets #main-content on
+          every route, and without it the link was a no-op here. */}
+      <main id="main-content" className="container max-w-4xl mx-auto px-4 md:px-6 py-12 md:py-20">
         <div className="space-y-8">
           <div className="space-y-2 border-b border-border/40 pb-8">
             <h1 className="text-3xl font-semibold tracking-tight lg:text-4xl">{title}</h1>

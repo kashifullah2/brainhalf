@@ -276,7 +276,10 @@ export function compressImageForUpload(file: File): Promise<File> {
         resolve(new File([blob], newName, { type: "image/jpeg", lastModified: file.lastModified }));
       }, "image/jpeg", 0.6);
     };
-    img.onerror = () => resolve(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
     img.src = url;
   });
 }
@@ -321,6 +324,7 @@ function fileToBase64(file: File): Promise<string> {
         // Fallback if canvas fails
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (error) => reject(error);
         reader.readAsDataURL(file);
         return;
       }
@@ -331,7 +335,10 @@ function fileToBase64(file: File): Promise<string> {
       const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
       resolve(dataUrl);
     };
-    img.onerror = () => reject(new Error("Failed to load image for compression"));
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image for compression"));
+    };
     img.src = url;
   });
 }

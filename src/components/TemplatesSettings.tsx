@@ -21,6 +21,7 @@ import {
   Save,
   FileCode2,
 } from "lucide-react";
+import { errorMessage } from "@/lib/humanize-error";
 
 export function TemplatesSettings() {
   const { data: templates, isLoading, error, refetch } = useListTemplates();
@@ -80,10 +81,10 @@ export function TemplatesSettings() {
       }
       queryClient.invalidateQueries({ queryKey: getTemplatesQueryKey() });
       resetForm();
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast({
         title: "Could not save template",
-        description: e.message,
+        description: errorMessage(e),
         variant: "destructive",
       });
     }
@@ -95,10 +96,10 @@ export function TemplatesSettings() {
       await deleteTemplate(id);
       queryClient.invalidateQueries({ queryKey: getTemplatesQueryKey() });
       toast({ title: "Template deleted" });
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast({
         title: "Delete failed",
-        description: e.message,
+        description: errorMessage(e),
         variant: "destructive",
       });
     }

@@ -143,7 +143,6 @@ function main() {
       route.path === '/' ? DIST : path.join(DIST, route.path.slice(1));
     fs.mkdirSync(outputDir, { recursive: true });
     fs.writeFileSync(path.join(outputDir, 'index.html'), html, 'utf8');
-    // eslint-disable-next-line no-console
     console.log(
       `Prerendered ${route.path} → ${path.relative(
         DIST,

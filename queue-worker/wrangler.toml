@@ -26,6 +26,7 @@
 # ---------------------------------------------------------------------------
 
 name = "brainhalf-processor"
+account_id = "12fc31472161e3ebb8a01b4722ec1725"
 main = "src/index.ts"
 # Kept in step with ../wrangler.toml so the same server/ modules behave the same
 # in both runtimes.

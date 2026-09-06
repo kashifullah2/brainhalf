@@ -32,10 +32,6 @@ export default tseslint.config(
       // Vendored agent skill definitions, not application code.
       '.agents/**',
       '.claude/**',
-      // One-off codemods from an earlier refactor, kept in the tree but not part
-      // of the application. See the report: they are candidates for deletion.
-      'fix-imports.cjs',
-      'split-api-client.cjs',
     ],
   },
   js.configs.recommended,
@@ -55,10 +51,19 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': 'off',
       'no-unused-vars': 'off',
 
-      // `any` is used deliberately at the provider boundaries, where the shape is
-      // whatever a third party sent. Warn so it stays visible without failing the
-      // build over a cast that is genuinely at an untyped edge.
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // An error, not a warning, now that there are none left.
+      //
+      // All 22 occurrences turned out to be avoidable. The interesting ones were
+      // not at real untyped edges at all: `doc: any` on the document side panel
+      // meant a rename in the API type would have surfaced as a blank drawer at
+      // runtime, and eighteen `catch (e: any)` blocks then read `e.message`, which
+      // is `undefined` for anything thrown that is not an Error -- a toast with an
+      // empty description. src/lib/humanize-error.ts:errorMessage() replaced those.
+      //
+      // Where a third-party shape genuinely is unknown, narrow it once with a
+      // declared interface at the boundary (see BedrockReply in
+      // server/ocr-provider.ts) rather than letting `any` spread inward.
+      '@typescript-eslint/no-explicit-any': 'error',
 
       // Real-bug rules.
       eqeqeq: ['error', 'always', { null: 'ignore' }],

@@ -74,17 +74,22 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
   const passwordHash = await hashPassword(body.password as string);
 
   try {
-    await env.DB.prepare(
-      `UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`,
-    )
-      .bind(passwordHash, row.user_id)
-      .run();
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE password_reset_tokens
+            SET used_at = datetime('now')
+          WHERE token_hash = ?
+            AND used_at IS NULL
+            AND datetime(expires_at) > datetime('now')`,
+      ).bind(tokenHash),
+      env.DB.prepare(
+        `UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?`,
+      ).bind(passwordHash, row.user_id),
+    ]);
 
-    await env.DB.prepare(
-      `UPDATE password_reset_tokens SET used_at = datetime('now') WHERE token_hash = ?`,
-    )
-      .bind(tokenHash)
-      .run();
+    if ((results[0]?.meta.changes ?? 0) === 0) {
+      return invalid();
+    }
   } catch (error) {
     console.error('[auth/password-reset-confirm] update failed:', error);
     return fail('Could not reset the password.', 500);

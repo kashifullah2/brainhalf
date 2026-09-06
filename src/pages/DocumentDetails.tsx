@@ -6,7 +6,8 @@ import {
   useGetDocument,
   useRetryDocument,
   useUpdateDocumentField,
-  storageUrl
+  storageUrl,
+  type ExtractedField,
 } from "@/lib/api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ConfidenceIndicator } from "@/components/ConfidenceIndicator";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeFieldLabel } from "@/lib/humanize-field";
-import { humanizeExtractionError } from "@/lib/humanize-error";
+import { errorMessage, humanizeExtractionError } from "@/lib/humanize-error";
 import { useConfidenceThreshold } from "@/hooks/use-confidence-threshold";
 import { usePageTitle } from "@/lib/use-page-title";
 import { validateFieldMath, type MathWarning } from "@/lib/confidence-scorer";
@@ -106,7 +107,7 @@ export default function DocumentDetails() {
     setEditValue("");
   }, [batchId, documentId]);
 
-  const doc = batch?.documents?.find((d: any) => d.id === documentId);
+  const doc = batch?.documents?.find((d) => d.id === documentId);
   const isDuplicate = doc?.isDuplicate ?? false;
 
   /**
@@ -136,7 +137,7 @@ export default function DocumentDetails() {
       toast({
         title: "Retry failed",
         description:
-          err instanceof Error ? err.message : "Could not read the document again.",
+          errorMessage(err, "Could not read the document again."),
         variant: "destructive",
       });
     }
@@ -159,13 +160,13 @@ export default function DocumentDetails() {
     setIsSaving(true);
     try {
       await updateField.mutateAsync({
-        batchId, documentId: doc.id, data: { normalizedField, editedValue: editValue || null }
+        batchId, documentId: doc.id, data: { normalizedField, editedValue: editValue }
       });
       await queryClient.invalidateQueries({ queryKey: getGetBatchQueryKey(batchId) });
       toast({ title: "Field updated successfully" });
       setEditingField(null);
-    } catch (e: any) {
-      toast({ title: "Update failed", description: e.message, variant: "destructive" });
+    } catch (e: unknown) {
+      toast({ title: "Update failed", description: errorMessage(e), variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
@@ -400,7 +401,7 @@ export default function DocumentDetails() {
                         <p className="text-body-sm font-semibold text-foreground">No fields extracted</p>
                       </div>
                     ) : (
-                      doc.extractedFields.map((field: any, idx: number) => {
+                      doc.extractedFields.map((field: ExtractedField, idx: number) => {
                         const isEditing = editingField === field.normalizedField;
                         const isHovered = hoveredField === field.normalizedField;
                         const hasCorrection = field.editedValue !== null;

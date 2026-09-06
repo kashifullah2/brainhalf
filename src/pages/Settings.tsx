@@ -29,6 +29,7 @@ import {
   useConfidenceThreshold,
 } from "@/hooks/use-confidence-threshold";
 import { usePageTitle } from "@/lib/use-page-title";
+import { errorMessage } from "@/lib/humanize-error";
 
 
 /** Valid tab slugs, also used to validate the :tab route parameter. */
@@ -77,7 +78,7 @@ export default function Settings() {
     } catch (err) {
       toast({
         title: "Could not build the export",
-        description: err instanceof Error ? err.message : "Try again in a moment.",
+        description: errorMessage(err, "Try again in a moment."),
         variant: "destructive",
       });
     } finally {
@@ -106,7 +107,7 @@ export default function Settings() {
       setDeleteState("idle");
       toast({
         title: "Could not delete the account",
-        description: err instanceof Error ? err.message : "Nothing has been removed.",
+        description: errorMessage(err, "Nothing has been removed."),
         variant: "destructive",
       });
     }
@@ -192,7 +193,7 @@ export default function Settings() {
         setThresholdState(savedThreshold.current);
         toast({
           title: "Could not save the threshold",
-          description: err instanceof Error ? err.message : "Try again.",
+          description: errorMessage(err, "Try again."),
           variant: "destructive",
         });
       } finally {

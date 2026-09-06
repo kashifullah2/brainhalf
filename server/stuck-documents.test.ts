@@ -141,6 +141,21 @@ describe('recoverStuckDocuments', () => {
     ]);
   });
 
+  it('leaves the rows alone when the queue refuses the messages', async () => {
+    // Reset-then-send would have moved these to 'queued' with nothing behind them,
+    // which takes them out of this sweep's own predicate for ever.
+    const { env, calls } = stubEnv([{ id: 13, batch_id: 7, user_id: 'usr_1', attempts: 0 }]);
+    (env as unknown as { OCR_QUEUE: { sendBatch: () => Promise<void> } }).OCR_QUEUE = {
+      sendBatch: async () => {
+        throw new Error('queue unavailable');
+      },
+    };
+
+    expect(await recoverStuckDocuments(env)).toEqual({ requeued: 0, failed: 0 });
+    expect(sqlFor(calls, 'UPDATE documents')).toHaveLength(0);
+    expect(sqlFor(calls, 'UPDATE batches')).toHaveLength(0);
+  });
+
   it('still resets the row when there is no queue binding', async () => {
     // Deployments without a consumer run extraction in the browser. Resetting to
     // 'queued' is what lets the batch page offer a retry at all.

@@ -34,6 +34,7 @@ import { sanitizeForExport } from "@/lib/utils";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
 import { EmptyState, ErrorState, ListSkeleton, PageHeader, StatCard, greeting } from "@/components/app";
 import { StatusBadge } from "@/components/StatusBadge";
+import { errorMessage } from "@/lib/humanize-error";
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
@@ -163,7 +164,7 @@ export default function AppHome() {
         description: "Gone for good — extraction results went with them.",
       });
     } catch (e) {
-      toast({ title: "Delete failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Delete failed", description: errorMessage(e), variant: "destructive" });
     } finally {
       setBusyAction(null);
       setPendingDelete(null);
@@ -238,7 +239,7 @@ export default function AppHome() {
         toast({ title: "Excel exported" });
       }
     } catch (e) {
-      toast({ title: "Export failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Export failed", description: errorMessage(e), variant: "destructive" });
     } finally {
       setBusyAction(null);
     }
@@ -335,9 +336,13 @@ export default function AppHome() {
             <div className="relative w-full sm:w-56 shrink-0">
               <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
+                type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search batches..."
+                // A placeholder is not an accessible name: it is not reliably
+                // announced, and it is gone the moment the field has a value.
+                aria-label="Search batches by id, filename or status"
                 className="h-8 pl-8 text-label rounded-lg bg-card border-border/60 focus-visible:ring-1"
               />
             </div>

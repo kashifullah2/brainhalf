@@ -7,6 +7,21 @@
 // raw text is never thrown away: callers keep it as a tooltip.
 // ---------------------------------------------------------------------------
 
+/**
+ * The message out of an unknown thrown value.
+ *
+ * `catch (e: any)` then `e.message` was written eighteen times across src/, and
+ * `any` is what made it compile: a thrown string, a rejected fetch, or anything
+ * else non-Error yields `undefined` there, and a toast whose description is
+ * `undefined` renders as an empty line under a title. This narrows once, in one
+ * place, and always produces something readable.
+ */
+export function errorMessage(error: unknown, fallback = "Something went wrong."): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return fallback;
+}
+
 export interface HumanError {
   title: string;
   body: string;

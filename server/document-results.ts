@@ -59,8 +59,14 @@ export function computeOverallConfidence(
   return null;
 }
 
+/**
+ * `D1Database` rather than `any`: this returns prepared statements the caller
+ * hands straight to `db.batch()`, so getting the binding wrong is exactly the
+ * mistake worth catching at compile time. Not reachable from src/, so the
+ * Workers type is available.
+ */
 export function buildDocumentResultStatements(
-  db: any,
+  db: D1Database,
   documentId: number,
   userId: string,
   ocrText: string | null,
@@ -70,11 +76,15 @@ export function buildDocumentResultStatements(
   const safeOcrText = typeof ocrText === 'string' ? ocrText.slice(0, MAX_OCR_TEXT_CHARS) : null;
   
   return [
+    // `AND status != 'cancelled'` is the race guard. The callers check the status
+    // first, but a cancel landing between that read and this write would otherwise
+    // move a stopped document to 'completed'. When this applies to no rows the
+    // caller deletes the fields it just wrote -- see functions/api/.../result.ts.
     db.prepare(
       `UPDATE documents
           SET status = 'completed', error = NULL, ocr_text = ?,
               overall_confidence = ?, completed_at = datetime('now')
-        WHERE id = ?`
+        WHERE id = ? AND status != 'cancelled'`
     ).bind(safeOcrText, overallConfidence, documentId),
     db.prepare(`DELETE FROM document_fields WHERE document_id = ?`).bind(documentId),
     ...fields.map((field, index) =>

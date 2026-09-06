@@ -1,0 +1,98 @@
+# ---------------------------------------------------------------------------
+# The gate nothing had.
+#
+# Every regression this repository has shipped would have been caught by one of
+# the steps below, and none of them ran anywhere:
+#
+#   * the root package.json lost the application's entire dependency list, and
+#     six successive commits tried to guess it back one package at a time. A
+#     frozen-lockfile install plus a build would have failed on the first one.
+#   * vitest.config.ts was pointed at a different project's tests, so `pnpm test`
+#     reported success while running none of this project's 200-plus.
+#   * two packages were imported that were never installed, which broke the Pages
+#     Functions bundle and the queue consumer bundle without touching the client
+#     build, so `vite build` alone could not see it. Both are built here.
+#   * `typecheck` resolved to a task that did not exist, so it exited 0.
+#
+# Deliberately one job, not a matrix. These steps are ordered cheapest-first and
+# each one's failure explains the next, so running them in parallel would trade a
+# clear signal for thirty seconds.
+# ---------------------------------------------------------------------------
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # So a dependency or provider change can be checked without a commit.
+  workflow_dispatch:
+
+# A second push supersedes the first: there is no value in verifying a commit
+# nobody will deploy.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # --frozen-lockfile is the point of this step, not a detail: it fails when
+      # package.json and pnpm-lock.yaml disagree, which is the exact state that
+      # broke the Cloudflare Pages build.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck:all
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build client
+        run: pnpm build
+
+      # The two bundles `vite build` does not touch. Both run on the Workers
+      # runtime and both have been broken by an unresolvable import while the
+      # client build stayed green.
+      - name: Build Pages Functions bundle
+        run: npx wrangler pages functions build --outdir /tmp/functions-build
+
+      - name: Build queue consumer bundle
+        run: pnpm --filter brainhalf-processor exec wrangler deploy --dry-run
+
+      # Catches a migration with invalid SQL before it reaches the real database,
+      # against a local D1 file that is thrown away with the runner.
+      - name: Apply migrations to a throwaway local D1
+        run: pnpm db:migrate:local
+
+      # A VITE_-prefixed secret is substituted into the published JavaScript.
+      # forbidSecretViteVars() fails `pnpm build` when one has a value, but only
+      # for names it recognises as secret-shaped, so this is a second, blunter
+      # check on what actually landed in the bundle.
+      - name: Assert no credential reached the client bundle
+        run: |
+          if grep -rIlE 'AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9]{32,}|re_[A-Za-z0-9]{24,}|-----BEGIN [A-Z ]*PRIVATE KEY' dist/; then
+            echo "::error::A credential-shaped string is present in dist/. Do not deploy this build."
+            exit 1
+          fi
+          echo "No credential-shaped strings in dist/."

@@ -168,6 +168,10 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     throw new Error(message || `Request failed (${response.status}).`);
   }
 
+  if (parsed === null) {
+    throw new Error("The server returned an unreadable response.");
+  }
+
   return parsed as T;
 }
 

@@ -1,83 +1,110 @@
-# Deploying BrainHalf on Cloudflare
+# Deploying the document-extraction platform
 
-## Architecture
+This is the deployment guide for the app that serves **brainhalf.com** — the code
+in `src/`, `functions/`, `server/`, `migrations/` and `queue-worker/`.
 
-| App | Cloudflare product | URL |
-|-----|-------------------|-----|
-| `apps/workers` | Worker | `https://api.brainhalf.com` |
-| `apps/web` | Pages | `https://brainhalf.com` |
-| `apps/studio` | Pages | `https://studio.brainhalf.com` |
+`apps/` and `packages/` are a different product with its own guide in
+`apps/DEPLOY.md`. Nothing below touches them. See `README.md` for why.
 
-## 1. Workers API
+## What it runs on
 
-```bash
-cd apps/workers
-cp .dev.vars.example .dev.vars   # local only — never commit .dev.vars
+| Piece | Cloudflare resource | Declared in |
+|---|---|---|
+| App + API | Pages project `brainhalf` (Functions under `functions/`) | `wrangler.toml` |
+| Data | D1 database `brainhalf-ocr-db`, binding `DB` | `wrangler.toml` |
+| Uploaded originals | R2 bucket `brainhalf-storage`, binding `DOCUMENTS` | `wrangler.toml` |
+| Background extraction | Queue `brainhalf-ocr-queue` — Pages **produces**, the `brainhalf-processor` Worker **consumes** | `wrangler.toml` + `queue-worker/wrangler.toml` |
 
-# One-time secrets (production)
-wrangler secret put BETTER_AUTH_SECRET
-wrangler secret put CEREBRAS_API_KEY
-wrangler secret put CLOUDFLARE_AI_API_TOKEN
+Pages Functions cannot host a queue consumer, which is why the consumer is a
+separate Worker rather than part of this project.
 
-# Optional: set Cloudflare Workers AI as primary model provider
-# add non-secret vars in Worker Settings (or wrangler.toml [vars]):
-#   DEFAULT_AI_PROVIDER=Cloudflare
-#   DEFAULT_AI_PROVIDER_FALLBACK=Cerebras,Groq,Gemini,FreeModel
+## Order matters
 
-# Migrate D1 (first deploy) — safe to re-run
-curl -X POST https://api.brainhalf.com/api/migrate
-
-pnpm deploy
-```
-
-Set **Custom Domain** `api.brainhalf.com` on the Worker.  
-Dashboard → Worker → Settings → Variables: `BETTER_AUTH_URL=https://api.brainhalf.com`
-Dashboard → Worker → Settings → Variables:
-- `CLOUDFLARE_AI_BASE_URL=https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/v1`
-- `CLOUDFLARE_AI_DEFAULT_MODEL=@cf/qwen/qwen2.5-coder-32b-instruct` (or your preferred Workers AI model)
-
-## 2. Web (marketing + dashboard)
+### 1. Migrate the remote database, first
 
 ```bash
-cd apps/web
-pnpm build
-wrangler pages deploy ./build/client --project-name=brainhalf-web
+pnpm db:migrate:remote
 ```
 
-Pages env vars (dashboard):
+Before the code that needs it. Migration `0008_document_lifecycle` adds
+`documents.started_at` and `documents.attempts`, and both the queue consumer and
+the stuck-document recovery write them on every document — deploy the code first
+and every extraction fails on an unknown column.
 
-- `API_URL` = `https://api.brainhalf.com`
-- `STUDIO_URL` = `https://studio.brainhalf.com`
-- `CACHE` KV binding (optional, same namespace as workers)
+Migrations are additive and safe to re-run; `wrangler` tracks which have been
+applied.
 
-Custom domain: `brainhalf.com`
+### 2. Environment variables
 
-## 3. Studio (IDE)
+Pages → Settings → Environment variables. Mark anything that is a credential as a
+**Secret**, not a plain variable.
 
-Build with production API URL:
+| Name | Required | What it does |
+|---|---|---|
+| `HUNYUAN_API_KEY` | yes | Default extraction tier, runs on every page. `/api/ocr` answers 503 without it. |
+| `OPENAI_API_KEY` | recommended | The escalation tier, which re-reads a page the default tier scored below the review threshold. Also the default tier's fallback. |
+| `GOOGLE_CLIENT_ID` | for Google sign-in | The server needs it to check the `aud` claim of the ID token. Same value as `VITE_GOOGLE_CLIENT_ID`. |
+| `ADMIN_EMAILS` | recommended | Comma-separated, matched **exactly**. Decides who may reach `/api/admin/*`. Unset falls back to the single owner address in `server/admin.ts`. |
+| `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `SUPPORT_EMAIL` | for email | Password-reset and contact-form delivery. Without them a reset token is created and the link logged instead of sent. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | optional | Enables Textract. `AWS_REGION` defaults to `us-east-1`. |
+| `AWS_BEDROCK_MODEL` | optional | Names a Bedrock vision model AND is what enables the Bedrock path at all. Used for both tiers in preference to Textract. |
+
+There is no `VITE_`-prefixed form of any of these, and there must never be: a
+`VITE_` variable is substituted into the published JavaScript. `forbidSecretViteVars()`
+in `vite.config.ts` fails the build if a secret-shaped one has a value.
+
+### 3. Build and deploy the Pages project
 
 ```bash
-cd apps/studio
-export VITE_API_URL=https://api.brainhalf.com
-export VITE_WEB_URL=https://brainhalf.com
-pnpm build
-wrangler pages deploy ./dist --project-name=brainhalf-studio
+pnpm verify        # typecheck ×4, lint, tests, build — do not skip
+pnpm run deploy    # or: pnpm deploy:pages
 ```
 
-Custom domain: `studio.brainhalf.com`  
-`public/_headers` enables WebContainer (COOP/COEP).
+Cloudflare's own Git integration runs `pnpm install && pnpm build` and publishes
+`dist/`, so a push to `main` does the same thing.
 
-## 4. CORS & cookies
+### 4. Deploy the queue consumer
 
-Workers allow origins: localhost, `brainhalf.com`, `studio.brainhalf.com`, and `*.pages.dev` preview URLs.
+```bash
+pnpm deploy:worker
+```
 
-Auth cookies require HTTPS and matching `BETTER_AUTH_URL` on the API worker.
+**Not optional.** With the `OCR_QUEUE` producer binding present but no consumer
+deployed, `functions/api/batches/*` still report `asyncProcessing: true`, the
+browser stops driving extraction, and the messages pile up unread — every upload
+appears to queue and never finishes.
 
-## 5. Pre-deploy checklist
+The consumer needs its own secrets, set from `queue-worker/`:
 
-- [ ] `pnpm typecheck` passes
-- [ ] `pnpm build` passes
-- [ ] D1 migrated on remote
-- [ ] Secrets set via `wrangler secret` (not in `wrangler.toml`)
-- [ ] `API_URL` set on web Pages project
-- [ ] Studio built with `VITE_API_URL`
+```bash
+cd queue-worker
+wrangler secret put HUNYUAN_API_KEY
+wrangler secret put OPENAI_API_KEY
+# and AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY if you use them
+```
+
+They are a separate Worker, so Pages environment variables do not reach it.
+
+If you would rather not run a consumer at all, remove the `[[queues.producers]]`
+block from `wrangler.toml`. The API then reports `asyncProcessing: false` and the
+browser extracts each document itself, which works — it just means closing the tab
+stops the batch.
+
+## Verifying a deploy
+
+```bash
+# The bundles both compile, without deploying anything:
+npx wrangler pages functions build --outdir /tmp/fn
+cd queue-worker && npx wrangler deploy --dry-run
+```
+
+Then, against the live site: sign in, upload one document, confirm it reaches
+`completed`, and check `/app/admin` — every number there is counted in D1 at
+request time, so a queue that is not consuming shows up immediately as documents
+stuck in **In flight**.
+
+## Rolling back
+
+`wrangler pages deployment list --project-name brainhalf`, then promote an earlier
+deployment from the dashboard. Migrations are additive and are **not** rolled back
+by that: an older build against a newer schema is fine, the reverse is not.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { invalidObjectPath, refreshBatchStatus } from './batches';
+import type { AppEnv } from './http';
 
 describe('invalidObjectPath', () => {
   it('returns null if all object paths match the user prefix', () => {
@@ -36,7 +37,7 @@ describe('invalidObjectPath', () => {
 describe('refreshBatchStatus', () => {
   it('runs the UPDATE query to recalculate batch status from documents', async () => {
     const calls: { sql: string; args: unknown[] }[] = [];
-    const env: any = {
+    const env = {
       DB: {
         prepare: (sql: string) => ({
           bind: (...args: unknown[]) => ({
@@ -48,7 +49,10 @@ describe('refreshBatchStatus', () => {
       }
     };
 
-    await refreshBatchStatus(env, 42);
+    // A structurally partial AppEnv, asserted once at the call site rather than
+    // typed `any` at the binding -- the cast is the honest part, and everything
+    // inside the stub stays checked.
+    await refreshBatchStatus(env as unknown as AppEnv, 42);
 
     expect(calls.length).toBe(1);
     expect(calls[0].sql).toContain('UPDATE batches');
@@ -62,7 +66,7 @@ describe('getBatchSummary', () => {
   it('calls SUMMARY_SELECT and returns mapped DTO', async () => {
     const { getBatchSummary } = await import('./batches');
     const calls: { sql: string; args: unknown[] }[] = [];
-    const env: any = {
+    const env = {
       DB: {
         prepare: (sql: string) => ({
           bind: (...args: unknown[]) => ({
@@ -84,7 +88,7 @@ describe('getBatchSummary', () => {
       }
     };
 
-    const summary = await getBatchSummary(env, 'user123', 42);
+    const summary = await getBatchSummary(env as unknown as AppEnv, 'user123', 42);
     expect(calls.length).toBe(1);
     expect(calls[0].sql).toContain('SELECT');
     expect(calls[0].args).toEqual([42, 'user123']);

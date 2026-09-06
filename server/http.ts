@@ -69,10 +69,6 @@ export interface AppEnv {
   EMAILJS_TEMPLATE_ID?: string;
   EMAILJS_PWD_TEMPLATE_ID?: string;
   EMAILJS_PUBLIC_KEY?: string;
-  VITE_EMAILJS_SERVICE_ID?: string;
-  VITE_EMAILJS_TEMPLATE_ID?: string;
-  VITE_EMAILJS_PWD_TEMPLATE_ID?: string;
-  VITE_EMAILJS_PUBLIC_KEY?: string;
   /**
    * Comma-separated list of administrator email addresses, matched exactly and
    * case-insensitively by server/admin.ts. Unset falls back to the owner address
@@ -122,19 +118,32 @@ export async function readJson<T>(request: Request): Promise<T | null> {
 }
 
 export function normalizeEmail(value: unknown): string {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (typeof value !== 'string') return '';
+  let result = '';
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code >= 32 && code !== 127) {
+      result += value[i];
+    }
+  }
+  return result.trim().toLowerCase();
 }
 
 /**
  * Deliberately permissive: the authoritative check on an address is whether
  * mail to it is delivered, not whether it satisfies a clever regex.
+ * Rejects whitespace and ASCII control characters to prevent header injection.
  */
 export function isPlausibleEmail(email: string): boolean {
   if (email.length < 3 || email.length > 254) return false;
+  for (let i = 0; i < email.length; i++) {
+    const code = email.charCodeAt(i);
+    if (code <= 32 || code === 127) return false;
+  }
   const at = email.indexOf('@');
   if (at < 1 || at !== email.lastIndexOf('@')) return false;
   const domain = email.slice(at + 1);
-  return domain.length >= 3 && domain.includes('.') && !domain.includes(' ');
+  return domain.length >= 3 && domain.includes('.');
 }
 
 export const MIN_PASSWORD_LENGTH = 10;

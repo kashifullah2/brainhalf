@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
-    "typecheck:all": "pnpm typecheck && pnpm typecheck:server && pnpm typecheck:test",
+    "typecheck:worker": "pnpm --filter brainhalf-processor run typecheck",
+    "typecheck:all": "pnpm typecheck && pnpm typecheck:server && pnpm typecheck:test && pnpm typecheck:worker",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -19,7 +20,9 @@
     "db:migrate:local": "wrangler d1 migrations apply brainhalf-ocr-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply brainhalf-ocr-db --remote",
     "deploy": "wrangler pages deploy dist --project-name brainhalf",
-    "deploy:worker": "pnpm --filter brainhalf-processor run deploy"
+    "deploy:pages": "wrangler pages deploy dist --project-name brainhalf",
+    "deploy:worker": "pnpm --filter brainhalf-processor run deploy",
+    "deploy:all": "pnpm run deploy:pages && pnpm run deploy:worker"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.4",

@@ -11,7 +11,26 @@ const USER_ROW = {
   email_verified: 1,
 };
 
-function stubEnv(dbResults: Record<string, any[]> = {}): { env: AppEnv; calls: { sql: string; args: unknown[] }[] } {
+/** The shape of the endpoint's reply, as far as these tests read it. */
+interface ReviewQueueBody {
+  threshold: number;
+  items: Array<{
+    batchId: number;
+    document: { id: number; filename: string };
+    flaggedFields: Array<{ normalizedField: string; confidence: number }>;
+    totalFlaggedCount: number;
+    reviewedCount: number;
+  }>;
+  page?: { limit: number; offset: number; hasMore: boolean };
+  awaiting?: number;
+  flaggedDocuments?: number;
+  flaggedFields?: number;
+  pendingFields?: number;
+}
+
+function stubEnv(
+  dbResults: Record<string, Array<Record<string, unknown>>> = {},
+): { env: AppEnv; calls: { sql: string; args: unknown[] }[] } {
   const calls: { sql: string; args: unknown[] }[] = [];
 
   const make = (sql: string, args: unknown[]): Record<string, unknown> => ({
@@ -78,7 +97,9 @@ async function call(
       Cookie: 'bh_session=test-session-token',
     },
   });
-  return await reviewQueueGet({ request, env } as any);
+  // The handler only reads `request` and `env`; the rest of a Pages context is
+  // not needed and is not worth constructing.
+  return await reviewQueueGet({ request, env } as unknown as Parameters<typeof reviewQueueGet>[0]);
 }
 
 describe('GET /api/review-queue', () => {
@@ -117,7 +138,7 @@ describe('GET /api/review-queue', () => {
 
     const response = await call('https://app.example.com/api/review-queue', env);
     expect(response.status).toBe(200);
-    const body = await response.json() as any;
+    const body = (await response.json()) as ReviewQueueBody;
 
     expect(body.items).toHaveLength(2);
 
@@ -150,7 +171,7 @@ describe('GET /api/review-queue', () => {
     const response = await call('https://app.example.com/api/review-queue?verified=1', env);
     expect(response.status).toBe(200);
     
-    const body = await response.json() as any;
+    const body = (await response.json()) as ReviewQueueBody;
     expect(body.items).toHaveLength(1);
 
     const pagingQuery = calls.find(c => c.sql.includes('SELECT d.id AS document_id'));

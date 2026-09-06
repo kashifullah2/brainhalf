@@ -133,8 +133,12 @@ async function processDocument(msg: OcrQueueMessage, env: Env): Promise<void> {
     return;
   }
 
-  if (row.status === 'completed' || row.status === 'failed') {
-    // Terminal. A redelivery here is a duplicate, not work to redo.
+  if (row.status === 'completed' || row.status === 'failed' || row.status === 'cancelled') {
+    // Terminal. A redelivery here is a duplicate, not work to redo -- and for
+    // 'cancelled' it is a message that was already in the queue when the owner
+    // stopped the batch. Returning normally ack()s it, which is what un-queues it:
+    // there is no API to withdraw a message, so the consumer discarding it is how
+    // a cancel actually takes effect for work already in flight.
     return;
   }
 

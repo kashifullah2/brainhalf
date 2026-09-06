@@ -33,6 +33,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { confidenceTone } from "@/components/ConfidenceIndicator";
 import { usePageTitle } from "@/lib/use-page-title";
 import { useReviewHotkeys } from "@/hooks/use-review-hotkeys";
+import { errorMessage } from "@/lib/humanize-error";
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -80,7 +81,8 @@ function HotkeyHintBar() {
 export default function ReviewQueueDetail() {
   const [, setLocation] = useLocation();
   const [, params] = useRoute("/app/review-queue/:documentId");
-  const documentId = params?.documentId ? parseInt(params.documentId, 10) : 0;
+  const rawId = params?.documentId ? Number(params.documentId) : NaN;
+  const documentId = Number.isInteger(rawId) && rawId > 0 ? rawId : 0;
   const { toast } = useToast();
   usePageTitle("Review document · BrainHalf", { noindex: true });
 
@@ -96,6 +98,7 @@ export default function ReviewQueueDetail() {
   const [focusedFieldIndex, setFocusedFieldIndex] = useState(0);
 
   const fieldCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const activeRequestId = useRef(0);
 
   /**
    * Memoised for two reasons. `item?.flaggedFields ?? []` produced a fresh array
@@ -109,14 +112,25 @@ export default function ReviewQueueDetail() {
   const batchId = item?.batchId;
 
   const loadData = useCallback(async () => {
+    if (!documentId) {
+      setIsLoading(false);
+      setItem(null);
+      setLoadError(new Error("Invalid document ID."));
+      return;
+    }
+
+    const reqId = ++activeRequestId.current;
     setIsLoading(true);
     setLoadError(null);
     try {
       const match = await getFlaggedDocument(documentId);
+      if (reqId !== activeRequestId.current) return;
+
+      setItem(match);
 
       if (match) {
-        setItem(match);
         const res = await getFieldResolutions(documentId);
+        if (reqId !== activeRequestId.current) return;
         setResolutions(res);
 
         const initialVals: Record<string, string> = {};
@@ -129,16 +143,26 @@ export default function ReviewQueueDetail() {
           }
         });
         setFieldValues(initialVals);
+      } else {
+        setResolutions({});
+        setFieldValues({});
       }
     } catch (err) {
+      if (reqId !== activeRequestId.current) return;
       setLoadError(err instanceof Error ? err : new Error(String(err)));
     } finally {
-      setIsLoading(false);
+      if (reqId === activeRequestId.current) {
+        setIsLoading(false);
+      }
     }
   }, [documentId]);
 
   useEffect(() => {
+    const requestIdRef = activeRequestId;
     void loadData();
+    return () => {
+      requestIdRef.current++;
+    };
   }, [loadData]);
 
   // Keeps the focused card in view for the J/K hotkeys. flaggedFields belongs in
@@ -193,7 +217,7 @@ export default function ReviewQueueDetail() {
     } catch (err) {
       toast({
         title: "Action failed",
-        description: err instanceof Error ? err.message : String(err),
+        description: errorMessage(err),
         variant: "destructive",
       });
       throw err;
@@ -474,6 +498,10 @@ export default function ReviewQueueDetail() {
                       value={fieldValues[field.normalizedField] ?? ""}
                       onChange={(e) => setFieldValues((prev) => ({ ...prev, [field.normalizedField]: e.target.value }))}
                       placeholder="Enter corrected value..."
+                      // The card's heading is visual only. Named per field so the
+                      // hotkey-driven flow (J/K between fields) announces which
+                      // one now has focus.
+                      aria-label={`Corrected value for ${humanizeFieldLabel(field.normalizedField)}`}
                       minRows={1}
                       maxRows={6}
                       className="font-medium text-body-sm rounded-lg bg-background border-border/60 focus-visible:ring-primary/40 p-2 min-h-[36px]"

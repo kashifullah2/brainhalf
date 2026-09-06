@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useRoute, Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import {
+  isBatchInFlight,
   isBatchStalled,
   useGetBatch,
   useGetBatchSummary,
@@ -10,6 +11,7 @@ import {
   useRetryDocument,
   deleteDocument,
   useAppendBatch,
+  useCancelBatch,
   storageUrl,
   ApiError,
   type BatchSummary,
@@ -26,7 +28,8 @@ import { Input } from "@/components/ui/input";
 import { AutoResizingTextarea } from "@/components/ui/auto-resizing-textarea";
 import { ArrowRight, Search, Loader2, Download, Copy, FileText,
   ChevronDown, ChevronLeft, ChevronRight, Pencil, AlertTriangle, Trash2, X, Info,
-  RotateCcw
+  RotateCcw,
+  CircleSlash
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -60,7 +63,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { UploadFlow } from "@/components/UploadModal";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeFieldLabel } from "@/lib/humanize-field";
-import { humanizeExtractionError } from "@/lib/humanize-error";
+import { errorMessage, humanizeExtractionError } from "@/lib/humanize-error";
 import { usePageTitle } from "@/lib/use-page-title";
 import { recordsToCsv, recordsToXlsx, downloadBlob } from "@/lib/xlsx-writer";
 import { sanitizeForExport } from "@/lib/utils";
@@ -112,7 +115,8 @@ export default function BatchDetails() {
   const [sidePanelDocId, setSidePanelDocId] = useState<number | null>(null);
   // FIX: per-action busy state — the old single flag showed the delete
   // spinner on the Export button and vice versa
-  const [busyAction, setBusyAction] = useState<"export" | "delete" | null>(null);
+  const [busyAction, setBusyAction] = useState<"export" | "delete" | "cancel" | null>(null);
+  const [isCancelOpen, setIsCancelOpen] = useState(false);
 
   const [pollInterval, setPollInterval] = useState(3000);
   // Typed, so the comparison below cannot silently read a field that moved.
@@ -158,6 +162,41 @@ export default function BatchDetails() {
 
   const updateField = useUpdateDocumentField();
   const appendBatch = useAppendBatch();
+  const cancelBatchMutation = useCancelBatch();
+
+  /**
+   * Stops the documents that have not finished, and keeps the ones that have.
+   *
+   * The product had no way to stop a batch at all: a hundred documents started
+   * with the wrong extraction mode could only be waited out or deleted whole,
+   * which throws away the pages that had already succeeded.
+   */
+  const handleCancelBatch = async () => {
+    if (!batch || busyAction) return;
+    setBusyAction("cancel");
+    try {
+      const outcome = await cancelBatchMutation.mutateAsync(batch.id);
+      setIsCancelOpen(false);
+      toast({
+        title:
+          outcome.cancelled > 0
+            ? `Stopped ${outcome.cancelled} document${outcome.cancelled === 1 ? "" : "s"}`
+            : "Nothing left to stop",
+        description:
+          outcome.cancelled > 0
+            ? "Documents that had already finished keep their extracted data. Any stopped document can be retried individually."
+            : "Every document in this batch had already finished.",
+      });
+    } catch (err) {
+      toast({
+        title: "Could not stop the batch",
+        description: errorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  };
   const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   const [editingCell, setEditingCell] = useState<{ docId: number; field: string } | null>(null);
@@ -199,12 +238,12 @@ export default function BatchDetails() {
       await updateField.mutateAsync({
         batchId,
         documentId: docId,
-        data: { normalizedField: field, editedValue: editValue || null }
+        data: { normalizedField: field, editedValue: editValue }
       });
       await queryClient.invalidateQueries({ queryKey: getGetBatchQueryKey(batchId) });
       toast({ title: "Saved", description: "Your correction is in." });
     } catch (e) {
-      toast({ title: "Update failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Update failed", description: errorMessage(e), variant: "destructive" });
     } finally {
       setEditingCell(null);
     }
@@ -235,6 +274,22 @@ export default function BatchDetails() {
     for (const d of batch?.documents ?? []) map.set(d.id, d);
     return map;
   }, [batch?.documents]);
+
+  /** The document the side drawer is showing, or undefined when it is closed. */
+  const selectedPanelDoc =
+    sidePanelDocId === null ? undefined : docsById.get(sidePanelDocId);
+
+  // Escape closes the drawer. It is not a Radix Dialog, so nothing supplied this:
+  // a keyboard user who opened the panel had no way to close it except tabbing
+  // through its whole contents to reach the close button.
+  useEffect(() => {
+    if (sidePanelDocId === null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidePanelDocId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sidePanelDocId]);
 
   const fieldsByDoc = useMemo(() => {
     const map = new Map<number, Map<string, ExtractedField>>();
@@ -317,7 +372,7 @@ export default function BatchDetails() {
       );
       toast({ title: "Exported selected rows" });
     } catch (e) {
-      toast({ title: "Export failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Export failed", description: errorMessage(e), variant: "destructive" });
     } finally {
       setBusyAction(null);
     }
@@ -347,7 +402,7 @@ export default function BatchDetails() {
       setSelectedRows(new Set());
       toast({ title: `${ids.length} document${ids.length === 1 ? "" : "s"} deleted` });
     } catch (e) {
-      toast({ title: "Delete failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Delete failed", description: errorMessage(e), variant: "destructive" });
     } finally {
       setBusyAction(null);
       setPendingDelete(null);
@@ -603,6 +658,24 @@ export default function BatchDetails() {
           </>
         }
         actions={<>
+          {/* Only while there is something to stop. isBatchInFlight is false for
+              'cancelled' too, so the button disappears once it has been used. */}
+          {isBatchInFlight(batch) && (
+            <Button
+              variant="outline"
+              onClick={() => setIsCancelOpen(true)}
+              disabled={!!busyAction}
+              className="rounded-lg h-9 px-3.5 text-body-sm font-semibold border-border/60"
+            >
+              {busyAction === "cancel" ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <CircleSlash className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              )}
+              {busyAction === "cancel" ? "Stopping…" : "Stop"}
+            </Button>
+          )}
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="rounded-lg h-9 px-3.5 text-body-sm font-semibold border-border/60">
@@ -751,7 +824,11 @@ export default function BatchDetails() {
               <div className="relative w-full sm:w-80">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search..."
+                  type="search"
+                  // "Search..." said nothing about what it searched. Both the
+                  // visible placeholder and the accessible name now do.
+                  placeholder="Search this batch…"
+                  aria-label="Search documents in this batch by filename or extracted value"
                   className="pl-9 h-9 rounded-lg bg-background border-border/60 text-body-sm"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -783,7 +860,7 @@ export default function BatchDetails() {
                   because scrolling cells pass underneath them. */}
               <thead className="sticky top-0 z-20 border-b border-border/60 bg-muted shadow-sm">
                 <tr>
-                  <th className="sticky left-0 z-10 whitespace-nowrap bg-muted px-4 py-3">
+                  <th scope="col" className="sticky left-0 z-10 whitespace-nowrap bg-muted px-4 py-3">
                     <input
                       type="checkbox"
                       aria-label="Select all rows"
@@ -792,14 +869,21 @@ export default function BatchDetails() {
                       onChange={toggleSelectAll}
                     />
                   </th>
-                  <th className="sticky left-12 z-10 whitespace-nowrap border-r border-border/60 bg-muted px-4 py-3 text-label font-semibold text-muted-foreground">Document</th>
-                  <th className="px-4 py-3 whitespace-nowrap text-label font-semibold text-muted-foreground">Status</th>
+                  {/* scope="col" on every header cell. Without it a screen reader
+                      reading a 12-column extraction table has to guess which header
+                      belongs to which cell, which is the whole reason the table
+                      exists. The two spacer headers get an sr-only name rather than
+                      being empty, so the column is announced as something. */}
+                  <th scope="col" className="sticky left-12 z-10 whitespace-nowrap border-r border-border/60 bg-muted px-4 py-3 text-label font-semibold text-muted-foreground">Document</th>
+                  <th scope="col" className="px-4 py-3 whitespace-nowrap text-label font-semibold text-muted-foreground">Status</th>
                   {cols.map((col) => (
-                    <th key={col} className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis text-label font-semibold text-muted-foreground" title={humanizeFieldLabel(col)}>
+                    <th scope="col" key={col} className="px-4 py-3 whitespace-nowrap overflow-hidden text-ellipsis text-label font-semibold text-muted-foreground" title={humanizeFieldLabel(col)}>
                       {humanizeFieldLabel(col)}
                     </th>
                   ))}
-                  <th className="px-2 py-3"></th>
+                  <th scope="col" className="px-2 py-3">
+                    <span className="sr-only">Open document</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50 text-body-sm">
@@ -935,6 +1019,10 @@ export default function BatchDetails() {
                                 <div className={`absolute top-0 z-30 w-[min(300px,80vw)] p-1.5 bg-card rounded-lg shadow-xl border border-primary ${anchorRight ? "right-0" : "left-0"}`}>
                                   <AutoResizingTextarea
                                     ref={editInputRef}
+                                    // Without this the editor announced only its
+                                    // value, so a screen-reader user editing a
+                                    // 12-column table had no idea which cell.
+                                    aria-label={`Edit ${humanizeFieldLabel(col)} for ${docInfo?.filename ?? `document ${docId}`}`}
                                     value={editValue}
                                     onChange={(e) => setEditValue(e.target.value)}
                                     onBlur={handleSaveEdit}
@@ -953,9 +1041,26 @@ export default function BatchDetails() {
                                     <span className={`line-clamp-2 whitespace-pre-wrap break-words leading-relaxed text-label ${corrected ? "text-foreground font-semibold" : "text-foreground"}`} title={val}>
                                       {val}
                                     </span>
-                                    <div className="opacity-0 group-hover/cell:opacity-100 transition-opacity" title="Double-click to edit">
-                                      <Pencil className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
-                                    </div>
+                                    {/* A button, not a decorative icon in a div.
+                                        Double-clicking the cell was the only way
+                                        to edit an extracted value, and there is no
+                                        keyboard equivalent of a double-click — so
+                                        the table's primary interaction was
+                                        unreachable without a mouse. Revealed on
+                                        focus as well as hover, or it would be a
+                                        tab stop nobody can see. */}
+                                    <button
+                                      type="button"
+                                      aria-label={`Edit ${humanizeFieldLabel(col)} for ${docInfo?.filename ?? `document ${docId}`}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingCell({ docId, field: col });
+                                        setEditValue(val === "—" ? "" : val);
+                                      }}
+                                      className="shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    >
+                                      <Pencil className="h-3 w-3 text-muted-foreground" aria-hidden />
+                                    </button>
                                   </div>
                                   {corrected ? (
                                     <span className="text-micro font-semibold text-success mt-1 flex items-center gap-1"><Pencil className="h-2.5 w-2.5" /> Edited</span>
@@ -972,10 +1077,22 @@ export default function BatchDetails() {
                           );
                         })}
                         <td className="px-2 py-3 text-right">
-                          <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                            <div className="flex h-6 w-6 items-center justify-center rounded bg-muted/60 text-muted-foreground">
-                              <ArrowRight className="h-3 w-3" />
-                            </div>
+                          {/* The row's own onClick opens the drawer, which a
+                              keyboard cannot trigger on a <tr>. This is the same
+                              action as a real control, so the interaction stops
+                              being mouse-only. */}
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              aria-label={`Open details for ${row.filename ?? `document ${docId}`}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSidePanelDocId(docId);
+                              }}
+                              className="flex h-6 w-6 items-center justify-center rounded bg-muted/60 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <ArrowRight className="h-3 w-3" aria-hidden />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1028,13 +1145,34 @@ export default function BatchDetails() {
       {/* ── Document side panel (overlay — doesn't squeeze the table) ── */}
       {sidePanelDocId && (
         <>
-          <div className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSidePanelDocId(null)} />
+          {/* aria-hidden because it is a click target, not a control: a bare
+              <div onClick> is invisible to the keyboard and to assistive tech, and
+              announcing it as anything would be a lie. Escape (below) and the
+              panel's own close button are the real routes out. */}
+          <div
+            aria-hidden
+            className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setSidePanelDocId(null)}
+          />
           {/* The drawer owns the edge: border-l and no radius. The panel
               inside used to draw its own `border rounded-xl`, so a rounded card
               sat inside a square sheet — two borders down the left side and two
               rounded corners cut off against the viewport edge. */}
-          <div className="fixed inset-y-0 right-0 z-50 w-full border-l border-border bg-card shadow-2xl animate-in slide-in-from-right duration-300 sm:w-[600px] xl:w-[760px]">
-            <DocumentSidePanel doc={sidePanelDocId === null ? null : docsById.get(sidePanelDocId)} onClose={() => setSidePanelDocId(null)} />
+          {/* A hand-rolled drawer, so the semantics Radix's Dialog would have
+              supplied are declared here: it is a modal, it has a name, and Escape
+              closes it (see the effect above). */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Document details: ${selectedPanelDoc?.filename ?? "document"}`}
+            className="fixed inset-y-0 right-0 z-50 w-full border-l border-border bg-card shadow-2xl animate-in slide-in-from-right duration-300 sm:w-[600px] xl:w-[760px]"
+          >
+            {/* Narrowed here rather than letting the panel accept a nullable
+                document: the drawer only opens for a row that exists, and a
+                missing id means the batch was refetched while the drawer was open. */}
+            {selectedPanelDoc ? (
+              <DocumentSidePanel doc={selectedPanelDoc} onClose={() => setSidePanelDocId(null)} />
+            ) : null}
           </div>
         </>
       )}
@@ -1074,6 +1212,47 @@ export default function BatchDetails() {
           </button>
         </div>
       )}
+
+      {/* ── Stop confirmation ───────────────────────────────── */}
+      <AlertDialog
+        open={isCancelOpen}
+        onOpenChange={(open) => {
+          if (!open && busyAction !== "cancel") setIsCancelOpen(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop this batch?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Documents that have not finished are stopped. Everything already
+              extracted is kept, and any stopped document can be retried on its own
+              later. This is not a delete — nothing is removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busyAction === "cancel"}>
+              Keep going
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                // Keep the dialog mounted while the request runs, so the button can
+                // show progress rather than the dialog vanishing under the user.
+                event.preventDefault();
+                void handleCancelBatch();
+              }}
+              disabled={busyAction === "cancel"}
+            >
+              {busyAction === "cancel" ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" aria-hidden /> Stopping…
+                </>
+              ) : (
+                "Stop batch"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Delete confirmation ─────────────────────────────── */}
       <AlertDialog

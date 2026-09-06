@@ -406,18 +406,21 @@ function devOcrProxy(): Plugin {
 const SECRET_SHAPED_VITE_VAR = /^VITE_.*(KEY|SECRET|TOKEN)/i;
 
 /**
- * Values that really are public, and are the only two permitted to match above.
+ * Values that really are public.
  *
  * VITE_GOOGLE_CLIENT_ID does not match the pattern at all (no KEY/SECRET/TOKEN in
- * the name) and is listed for the reader, not the regex.
+ * the name) and is listed for the reader, not the regex — an OAuth client id is
+ * published in the page by design.
  *
- * VITE_EMAILJS_PUBLIC_KEY is vestigial: the browser-side EmailJS send is gone (see
- * the header of src/pages/legal/Contact.tsx), the credential is a Pages secret, and
- * "public key" was a misnomer -- with a service id and a template id it is enough
- * to send mail through our templates. Nothing should set it again, so this entry
- * can be deleted, and deleting it makes the guard strictly stronger.
+ * VITE_EMAILJS_PUBLIC_KEY used to be here, and its own comment said the entry
+ * should be deleted. It now is. "Public key" was a misnomer: together with a
+ * service id and a template id it is the complete argument set for EmailJS's send
+ * endpoint, so allowlisting it meant the guard deliberately waved through the one
+ * name it would otherwise have caught. functions/api/auth/password-reset.ts no
+ * longer reads any VITE_-prefixed EmailJS variable either, so nothing has a reason
+ * to set one — and if something does, the build now fails.
  */
-const PUBLIC_VITE_VARS = new Set(['VITE_EMAILJS_PUBLIC_KEY', 'VITE_GOOGLE_CLIENT_ID']);
+const PUBLIC_VITE_VARS = new Set(['VITE_GOOGLE_CLIENT_ID']);
 
 function forbidSecretViteVars(): Plugin {
   return {

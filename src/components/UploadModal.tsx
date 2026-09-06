@@ -44,6 +44,7 @@ export interface Preset {
 }
 
 import { OCR_MODES, type OcrMode } from "../../server/ocr-prompts";
+import { errorMessage } from "@/lib/humanize-error";
 
 export const PRESET_MAP: Record<OcrMode, Omit<Preset, "id">> = {
   invoice: {
@@ -309,7 +310,7 @@ function FileUploadRow({ file, onSuccess, onRemove, autoStart, onStatusChange }:
       onSuccess({ filename: file.name, objectPath: res.objectPath, contentType: res.contentType || file.type, sizeBytes: res.sizeBytes, contentHash: res.contentHash, rawFile: file });
     } catch (error) {
       setStatus("error");
-      setFailureMessage(error instanceof Error ? error.message : "Upload failed.");
+      setFailureMessage(errorMessage(error, "Upload failed."));
     }
   }, [file, uploadFile, onSuccess, typeError]);
 
@@ -432,7 +433,7 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
         onBatchCreated(batch.id);
       }
     } catch (err) {
-      setBatchError((err as Error).message || "Couldn't start the batch.");
+      setBatchError(errorMessage(err, "Couldn't start the batch."));
       setIsCreatingBatch(false); setProgress(null);
     }
   };
@@ -556,16 +557,42 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
             </Button>
           </div>
           {isCreatingBatch && progress && (
-            <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-muted/20 p-3">
+            // A polite live region rather than silent visual progress: extraction
+            // takes minutes on a large batch, and a bar with no announcement means
+            // a screen-reader user cannot tell whether anything is happening.
+            // aria-atomic keeps "Extracting <file>, 7 of 40" as one utterance
+            // instead of reading the changed fragment on its own.
+            <div
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="flex flex-col gap-2 rounded-xl border border-border/60 bg-muted/20 p-3"
+            >
               <div className="flex items-center justify-between gap-2">
-                <p className="text-label font-semibold text-foreground truncate">{progress.status === "failed" ? "Failed: " : "Extracting: "} {progress.filename}</p>
+                <p className="text-label font-semibold text-foreground truncate">
+                  {progress.status === "failed"
+                    ? "Failed: "
+                    : progress.status === "queued"
+                      ? "Queued: "
+                      : "Extracting: "}{" "}
+                  {progress.filename}
+                </p>
                 <span className="text-caption font-semibold text-muted-foreground tabular-nums shrink-0">{progress.current} / {progress.total}</span>
               </div>
               <Progress value={Math.round((progress.current / Math.max(1, progress.total)) * 100)} className="h-1.5" />
               {progress.error && <p className="text-caption font-medium text-destructive">{progress.error}</p>}
             </div>
           )}
-          {batchError && <p className="text-label text-destructive font-semibold bg-destructive/10 p-3 rounded-xl">{batchError}</p>}
+          {/* Appears after "Start extraction" fails, with focus still on the
+              button. role="alert" is what makes it audible. */}
+          {batchError && (
+            <p
+              role="alert"
+              className="text-label text-destructive font-semibold bg-destructive/10 p-3 rounded-xl"
+            >
+              {batchError}
+            </p>
+          )}
         </div>
       )}
     </div>

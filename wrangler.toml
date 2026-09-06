@@ -22,6 +22,7 @@
 # `name` must match the existing Cloudflare Pages project, which is what serves
 # brainhalf.com / www.brainhalf.com.
 name = "brainhalf"
+account_id = "12fc31472161e3ebb8a01b4722ec1725"
 compatibility_date = "2026-08-01"
 pages_build_output_dir = "dist"
 

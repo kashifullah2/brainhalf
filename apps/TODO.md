@@ -1,4 +1,9 @@
-# BrainHalf Code Fixes TODO
+# Studio app TODO
+
+> Scoped to `apps/` — the AI coding studio. Nothing here refers to the
+> document-extraction platform at the repository root. Moved out of the root,
+> where it was titled "BrainHalf Code Fixes TODO" and read like a task list for
+> the whole repository.
 
 ## Critical Errors (Breaking Bugs)
 

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, EyeOff, CheckCircle2, AlertCircle, Loader2, Mail, XCircle } from "lucide-react";
+import { errorMessage } from "@/lib/humanize-error";
 
 interface AuthCardProps {
   mode?: "sign-in" | "sign-up" | "forgot-password";
@@ -115,7 +116,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
         await signupWithEmail({ firstName, lastName, email, password });
         setLocation("/app");
       } catch (err) {
-        setTopErrorMsg((err as Error).message || "Sign up failed. Please try again.");
+        setTopErrorMsg(errorMessage(err, "Sign up failed. Please try again."));
       } finally {
         setIsSubmitting(false);
       }
@@ -126,7 +127,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
         await loginWithEmail({ email, password });
         setLocation("/app");
       } catch (err) {
-        setTopErrorMsg((err as Error).message || "Invalid credentials. Please try again.");
+        setTopErrorMsg(errorMessage(err, "Invalid credentials. Please try again."));
       } finally {
         setIsSubmitting(false);
       }
@@ -137,7 +138,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
         await resetPassword(email);
         setSuccessMsg(`Password reset instructions sent to ${email}. Check your inbox.`);
       } catch (err) {
-        setTopErrorMsg((err as Error).message || "Could not process password reset request.");
+        setTopErrorMsg(errorMessage(err, "Could not process password reset request."));
       } finally {
         setIsSubmitting(false);
       }
@@ -161,16 +162,27 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
       </div>
 
       {/* Top-Level Error / Success Notifications */}
+      {/* role="alert" and role="status" because both of these appear AFTER an
+          async submit, above a button that keeps focus. Without them a
+          screen-reader user pressing "Sign in" on a wrong password heard nothing
+          at all: the message rendered silently off-focus and the form looked
+          unchanged. alert is assertive (a failure interrupts), status is polite. */}
       {topErrorMsg && (
-        <div className="p-3.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-label font-semibold flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+        <div
+          role="alert"
+          className="p-3.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-label font-semibold flex items-start gap-2.5 animate-in fade-in slide-in-from-top-1"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
           <span>{topErrorMsg}</span>
         </div>
       )}
 
       {successMsg && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-success/25 bg-success/10 p-3.5 text-caption font-semibold text-success animate-in fade-in slide-in-from-top-1">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-lg border border-success/25 bg-success/10 p-3.5 text-caption font-semibold text-success animate-in fade-in slide-in-from-top-1"
+        >
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>{successMsg}</span>
         </div>
       )}
@@ -193,7 +205,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   onChange={(e) => { setFirstName(e.target.value); if(errors.firstName) setErrors({...errors, firstName: ""}) }}
                   className={`h-11 ${errors.firstName ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
-                {errors.firstName && <span id="signup-first-name-error" className="text-caption font-semibold text-destructive">{errors.firstName}</span>}
+                {errors.firstName && <span id="signup-first-name-error" role="alert" className="text-caption font-semibold text-destructive">{errors.firstName}</span>}
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="signup-last-name" className="text-body-sm font-semibold text-foreground">Last Name</label>
@@ -207,7 +219,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   onChange={(e) => { setLastName(e.target.value); if(errors.lastName) setErrors({...errors, lastName: ""}) }}
                   className={`h-11 ${errors.lastName ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                 />
-                {errors.lastName && <span id="signup-last-name-error" className="text-caption font-semibold text-destructive">{errors.lastName}</span>}
+                {errors.lastName && <span id="signup-last-name-error" role="alert" className="text-caption font-semibold text-destructive">{errors.lastName}</span>}
               </div>
             </div>
 
@@ -225,7 +237,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                 onChange={(e) => { setEmail(e.target.value); if(errors.email) setErrors({...errors, email: ""}) }}
                 className={`h-11 truncate ${errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
-              {errors.email && <span id="signup-email-error" className="text-caption font-semibold text-destructive">{errors.email}</span>}
+              {errors.email && <span id="signup-email-error" role="alert" className="text-caption font-semibold text-destructive">{errors.email}</span>}
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
@@ -264,7 +276,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                 <div className={`h-full ${passwordStrength.width} ${passwordStrength.color} transition-all duration-300 ease-out`} />
               </div>
               {password.length === 0 && <p id="signup-password-hint" className="mt-1 text-caption text-muted-foreground">Use 10+ characters with a mix of letters, numbers and symbols.</p>}
-              {errors.password && <span id="signup-password-error" className="text-caption font-semibold text-destructive">{errors.password}</span>}
+              {errors.password && <span id="signup-password-error" role="alert" className="text-caption font-semibold text-destructive">{errors.password}</span>}
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
@@ -303,7 +315,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {errors.confirmPassword && <span id="signup-confirm-password-error" className="text-caption font-semibold text-destructive">{errors.confirmPassword}</span>}
+              {errors.confirmPassword && <span id="signup-confirm-password-error" role="alert" className="text-caption font-semibold text-destructive">{errors.confirmPassword}</span>}
             </div>
 
             <hr className="my-2 border-border/40" />
@@ -343,7 +355,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                 onChange={(e) => { setEmail(e.target.value); if(errors.email) setErrors({...errors, email: ""}) }}
                 className={`h-11 truncate ${errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
               />
-              {errors.email && <span id="signin-email-error" className="text-caption font-semibold text-destructive">{errors.email}</span>}
+              {errors.email && <span id="signin-email-error" role="alert" className="text-caption font-semibold text-destructive">{errors.email}</span>}
             </div>
 
             <div className="space-y-1.5 w-full overflow-hidden">
@@ -379,7 +391,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {errors.password && <span id="signin-password-error" className="text-caption font-semibold text-destructive">{errors.password}</span>}
+              {errors.password && <span id="signin-password-error" role="alert" className="text-caption font-semibold text-destructive">{errors.password}</span>}
             </div>
 
             <p className="pt-1 text-caption text-muted-foreground">
@@ -403,7 +415,7 @@ export function GoogleAuthCard({ mode: initialMode = "sign-in" }: AuthCardProps)
               onChange={(e) => { setEmail(e.target.value); if(errors.email) setErrors({...errors, email: ""}) }}
               className={`h-11 ${errors.email ? 'border-destructive focus-visible:ring-destructive' : ''}`}
             />
-            {errors.email && <span id="reset-email-error" className="text-caption font-semibold text-destructive">{errors.email}</span>}
+            {errors.email && <span id="reset-email-error" role="alert" className="text-caption font-semibold text-destructive">{errors.email}</span>}
           </div>
         )}
 

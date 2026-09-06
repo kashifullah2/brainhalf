@@ -18,6 +18,12 @@ const STATUSES: Record<string, { label: string; variant: Variant; pulse?: boolea
   queued: { label: 'Queued', variant: 'neutral', pulse: true },
   failed: { label: 'Failed', variant: 'danger' },
   partial: { label: 'Partial', variant: 'warning' },
+  /**
+   * Neutral, not danger. The owner asked for this; it is not something that went
+   * wrong, and colouring it red would put a batch someone deliberately stopped
+   * next to one that broke.
+   */
+  cancelled: { label: 'Stopped', variant: 'neutral' },
 };
 
 const DOT: Record<Variant, string> = {

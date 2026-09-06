@@ -168,10 +168,18 @@ export const onRequestPost: PagesFunction<AppEnv> = async ({ request, env }) => 
     return acknowledged;
   }
 
-  // Fallback: Legacy EmailJS
-  const serviceId = env.EMAILJS_SERVICE_ID || env.VITE_EMAILJS_SERVICE_ID;
-  const templateId = env.EMAILJS_PWD_TEMPLATE_ID || env.VITE_EMAILJS_PWD_TEMPLATE_ID;
-  const publicKey = env.EMAILJS_PUBLIC_KEY || env.VITE_EMAILJS_PUBLIC_KEY;
+  // Fallback: legacy EmailJS.
+  //
+  // Server-only names, with no VITE_ fallback. Accepting `VITE_EMAILJS_SERVICE_ID`
+  // / `VITE_EMAILJS_PWD_TEMPLATE_ID` / `VITE_EMAILJS_PUBLIC_KEY` here was an
+  // invitation to configure exactly the thing this endpoint exists to avoid: a
+  // VITE_ variable is substituted into the published JavaScript, and a service id
+  // plus a template id plus that "public" key is the complete argument set for
+  // EmailJS's send endpoint. Anyone who opened the page could have sent mail
+  // through our templates.
+  const serviceId = env.EMAILJS_SERVICE_ID;
+  const templateId = env.EMAILJS_PWD_TEMPLATE_ID;
+  const publicKey = env.EMAILJS_PUBLIC_KEY;
 
   if (serviceId && templateId && publicKey) {
     try {

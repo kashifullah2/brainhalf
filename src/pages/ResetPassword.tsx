@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
+import { errorMessage } from "@/lib/humanize-error";
 
 /** Mirrors MIN_PASSWORD_LENGTH in server/http.ts. The server still decides. */
 const MIN_PASSWORD_LENGTH = 10;
@@ -69,7 +70,7 @@ export default function ResetPassword() {
       setLocation("/app");
     } catch (error) {
       setErrorMsg(
-        error instanceof Error ? error.message : "Could not reset the password.",
+        errorMessage(error, "Could not reset the password."),
       );
     } finally {
       setIsSubmitting(false);

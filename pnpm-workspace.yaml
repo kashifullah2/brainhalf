@@ -1,5 +1,13 @@
-# The tracked project is the OCR platform at the repository root plus the queue
-# consumer in queue-worker/. Both are installed from one lockfile so the worker
-# cannot drift onto a different version of the code it imports from server/.
+# The tracked project is the document-extraction platform at the repository root
+# plus the queue consumer in queue-worker/. Both are installed from one lockfile so
+# the worker cannot drift onto a different version of the code it imports from
+# server/.
+#
+# apps/* and packages/* are deliberately ABSENT. They are a second, unrelated
+# product that happens to live in this repository (see README.md) and pull in
+# three.js, Phaser, Monaco and WebContainer; a document-extraction build has no
+# reason to install or typecheck any of it. Adding them here is what would make
+# `pnpm install` at the root a several-minute operation and `pnpm test` run a
+# different product's suite -- which is exactly the state this replaced.
 packages:
   - "queue-worker"

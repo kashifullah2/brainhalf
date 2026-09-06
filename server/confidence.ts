@@ -45,9 +45,21 @@ export interface ConfidenceDetails {
  * Null propagates. calculateFieldConfidence() drops the model dimension and
  * scores on the signals that do exist, rather than blending in a guess.
  */
-export function extractModelConfidence(apiResponse: any): number | null {
+/**
+ * The slice of an OpenAI-compatible reply this reads. Narrowed here, at the
+ * boundary, rather than by typing the parameter `any` and letting an untyped
+ * value spread through the function.
+ */
+interface CertaintyBearingReply {
+  choices?: Array<{
+    logprobs?: { content?: Array<{ logprob?: unknown }> } | null;
+    confidence?: unknown;
+  }>;
+}
+
+export function extractModelConfidence(apiResponse: unknown): number | null {
   try {
-    const choice = apiResponse?.choices?.[0];
+    const choice = (apiResponse as CertaintyBearingReply | null | undefined)?.choices?.[0];
     const logprobs = choice?.logprobs?.content;
 
     if (Array.isArray(logprobs) && logprobs.length > 0) {

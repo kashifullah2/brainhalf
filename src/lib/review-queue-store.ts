@@ -116,7 +116,9 @@ const MAX_PAGES = 50;
 export async function fetchQueue(query: QueueQuery = {}): Promise<ReviewQueueResponse> {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined) search.set(key, String(value));
+    if (value !== undefined && !Number.isNaN(value)) {
+      search.set(key, String(value));
+    }
   }
   const qs = search.toString();
 
@@ -210,6 +212,7 @@ export async function getReviewQueueItems(): Promise<FlaggedDocument[]> {
 export async function getFlaggedDocument(
   documentId: number,
 ): Promise<FlaggedDocument | null> {
+  if (!Number.isInteger(documentId) || documentId <= 0) return null;
   const queue = await fetchQueue({ documentId, limit: 1 });
   return queue.items[0] ?? null;
 }

@@ -5,9 +5,19 @@ import { humanizeFieldLabel } from "@/lib/humanize-field";
 import { humanizeExtractionError } from "@/lib/humanize-error";
 import { useConfidenceThreshold } from "@/hooks/use-confidence-threshold";
 import { ConfidenceBadge } from "@/components/ConfidenceIndicator";
-import { storageUrl } from "@/lib/api-client";
+import {
+  storageUrl,
+  type Document,
+  type ExtractedField,
+} from "@/lib/api-client";
 
-export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => void }) {
+/**
+ * `Document`, not `any`. The panel reads `extractedFields`, `overallConfidence`,
+ * `objectPath` and `contentType` off this object, so an `any` here meant a rename
+ * in the API type would surface as a blank panel at runtime rather than a compile
+ * error.
+ */
+export function DocumentSidePanel({ doc, onClose }: { doc: Document; onClose: () => void }) {
   // Same shared value as the table beside the panel, so both colour the same
   // field identically — they used to fetch it separately and could disagree.
   const threshold = useConfidenceThreshold();
@@ -95,7 +105,7 @@ export function DocumentSidePanel({ doc, onClose }: { doc: any; onClose: () => v
             <div>
               <h4 className="text-body-sm font-semibold text-foreground mb-4">Extracted Fields</h4>
             <div className="space-y-2">
-              {doc.extractedFields?.map((field: any, idx: number) => {
+              {doc.extractedFields?.map((field: ExtractedField, idx: number) => {
                 const conf = field.confidence ?? 0.9;
                 return (
                   <div key={idx} className="flex flex-col gap-1 p-3 rounded-xl border border-border/40 bg-card hover:border-border/80 transition-colors group">

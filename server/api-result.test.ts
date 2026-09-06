@@ -50,7 +50,7 @@ function stubEnv(): { env: AppEnv; calls: Recorded[] } {
   const env = {
     DB: {
       prepare: (sql: string) => make(sql, []),
-      batch: async (statements: Array<any>) => {
+      batch: async (statements: Array<{ _sql: string; _args: unknown[] }>) => {
         for (const stmt of statements) {
           calls.push({ sql: stmt._sql, args: stmt._args });
         }
@@ -73,7 +73,9 @@ function call(env: AppEnv, body: unknown) {
     request,
     env,
     params: { batchId: '10', documentId: '20' },
-  } as any);
+    // Only these three are read; constructing the rest of a Pages context adds
+    // nothing the assertions depend on.
+  } as unknown as Parameters<typeof resultPost>[0]);
 }
 
 describe('POST /api/batches/:batchId/documents/:documentId/result', () => {
@@ -91,7 +93,7 @@ describe('POST /api/batches/:batchId/documents/:documentId/result', () => {
     });
 
     expect(response.status).toBe(200);
-    const body = await response.json() as any;
+    const body = (await response.json()) as { ok: boolean; fieldCount: number; cancelled?: boolean };
     expect(body.ok).toBe(true);
     expect(body.fieldCount).toBe(2);
 

@@ -22,6 +22,59 @@ export const MAX_DOCUMENTS_PER_BATCH = 100;
  */
 export const MAX_LISTED_BATCHES = 500;
 
+// ---------------------------------------------------------------------------
+// The document lifecycle.
+//
+//        ┌──────────┐   claimed by the consumer, or by the browser loop
+//        │  queued  │ ────────────────────────────────┐
+//        └──────────┘                                 ▼
+//             ▲                              ┌────────────────┐
+//             │  retry, or the stuck sweep   │   processing   │
+//             └──────────────────────────────└────────────────┘
+//                                                    │
+//                        ┌───────────────────────────┼───────────────────────┐
+//                        ▼                           ▼                       ▼
+//                 ┌─────────────┐            ┌────────────┐          ┌─────────────┐
+//                 │  completed  │            │   failed   │          │  cancelled  │
+//                 └─────────────┘            └────────────┘          └─────────────┘
+//
+// All three bottom states are terminal, and only `retry` leaves them. `cancelled`
+// is reached from `queued` or `processing` by POST /api/batches/:id/cancel and
+// never by anything automatic -- the stuck sweep fails a document rather than
+// cancelling it, because "we gave up" and "you asked us to stop" are different
+// things to read on a screen.
+//
+// A cancelled document keeps whatever it had. Cancelling a batch is deliberately
+// NOT deleting it: documents that already finished keep their extracted fields,
+// which is the entire difference between "Stop" and "Delete".
+// ---------------------------------------------------------------------------
+
+/** Statuses a document row may hold. Terminal ones are listed last. */
+export const DOCUMENT_STATUSES = [
+  'queued',
+  'processing',
+  'completed',
+  'failed',
+  'cancelled',
+] as const;
+
+/** Statuses a document can be cancelled from. Everything else is already final. */
+export const CANCELLABLE_DOCUMENT_STATUSES = ['queued', 'processing'] as const;
+
+/**
+ * Statuses a batch row may hold. Derived, never set directly -- see
+ * refreshBatchStatus(), which recomputes it from the documents after every
+ * transition so the aggregate cannot drift from its parts.
+ */
+export const BATCH_STATUSES = [
+  'queued',
+  'processing',
+  'completed',
+  'partial',
+  'failed',
+  'cancelled',
+] as const;
+
 
 export interface FieldDto {
   normalizedField: string;
@@ -178,11 +231,13 @@ export async function listBatches(
   limit = MAX_LISTED_BATCHES,
   offset = 0,
 ): Promise<BatchSummaryDto[]> {
+  const safeLimit = Math.min(Math.max(1, limit), MAX_LISTED_BATCHES);
+  const safeOffset = Math.max(0, offset);
   const { results } = await env.DB.prepare(
     `${SUMMARY_SELECT} WHERE b.user_id = ?${SUMMARY_GROUP}
       ORDER BY b.created_at DESC, b.id DESC LIMIT ? OFFSET ?`,
   )
-    .bind(userId, limit, offset)
+    .bind(userId, safeLimit, safeOffset)
     .all<BatchRow>();
 
   return (results ?? []).map(toSummary);
@@ -301,6 +356,29 @@ export async function getBatchDetail(
  * Recomputes a batch's status from its documents. Called after every document
  * transition so the aggregate can never drift from reality.
  */
+export const BATCH_STATUS_CASE = `
+  CASE
+    WHEN COUNT(*) = 0 THEN 'queued'
+    -- "Still working" outranks everything: a batch with one queued document is
+    -- not finished, however many of the others are.
+    WHEN SUM(status IN ('queued', 'processing')) > 0 THEN 'processing'
+    WHEN SUM(status = 'cancelled') = COUNT(*) THEN 'cancelled'
+    WHEN SUM(status = 'failed') = COUNT(*) THEN 'failed'
+    WHEN SUM(status = 'completed') = COUNT(*) THEN 'completed'
+    -- Anything mixed. Reached by completed + failed, and now also by
+    -- completed + cancelled: some documents produced data and some did not.
+    ELSE 'partial'
+  END`;
+
+/**
+ * Recomputes a batch's status from its documents. Called after every document
+ * transition so the aggregate can never drift from reality.
+ *
+ * The CASE is total rather than a chain ending in `ELSE 'completed'`. The previous
+ * version reached 'completed' for anything that was not all-failed and had nothing
+ * in flight, so a batch of entirely cancelled documents would have reported itself
+ * as completed -- with no results in it.
+ */
 export async function refreshBatchStatus(
   env: AppEnv,
   batchId: number,
@@ -308,14 +386,7 @@ export async function refreshBatchStatus(
   await env.DB.prepare(
     `UPDATE batches
         SET status = (
-              SELECT CASE
-                WHEN COUNT(*) = 0 THEN 'queued'
-                WHEN SUM(status = 'failed') = COUNT(*) THEN 'failed'
-                WHEN SUM(status IN ('queued', 'processing')) > 0 THEN 'processing'
-                WHEN SUM(status = 'failed') > 0 THEN 'partial'
-                ELSE 'completed'
-              END
-                FROM documents WHERE batch_id = ?
+              SELECT ${BATCH_STATUS_CASE} FROM documents WHERE batch_id = ?
             ),
             updated_at = datetime('now')
       WHERE id = ?`,
@@ -324,21 +395,90 @@ export async function refreshBatchStatus(
     .run();
 }
 
-/** Confirms the document belongs to the caller before any mutation. */
+export interface CancelOutcome {
+  /** Documents moved to 'cancelled' by this call. */
+  cancelled: number;
+  /** The batch's status afterwards. */
+  status: string;
+}
+
+/**
+ * Stops the unfinished documents in a batch, keeping the finished ones.
+ *
+ * Idempotent: a second call cancels nothing and still answers with the batch's
+ * status, so a double-click or a retried request is not an error.
+ *
+ * There is no need to un-queue the messages already sitting in the Cloudflare
+ * Queue, and no API to do it with. The consumer's claim is
+ * `WHERE status = 'queued' OR (status = 'processing' AND stale)`, so a cancelled
+ * row is simply unclaimable, and queue-worker/src/index.ts treats the status as
+ * terminal and acks the delivery.
+ */
+export async function cancelBatch(
+  env: AppEnv,
+  userId: string,
+  batchId: number,
+): Promise<CancelOutcome | null> {
+  const owned = await env.DB.prepare(
+    `SELECT id FROM batches WHERE id = ? AND user_id = ?`,
+  )
+    .bind(batchId, userId)
+    .first<{ id: number }>();
+
+  // Null means "missing OR someone else's", and the caller answers 404 for both.
+  if (!owned) return null;
+
+  const placeholders = CANCELLABLE_DOCUMENT_STATUSES.map(() => '?').join(', ');
+  const result = await env.DB.prepare(
+    `UPDATE documents
+        SET status = 'cancelled',
+            started_at = NULL,
+            error = 'Cancelled before extraction finished.'
+      WHERE batch_id = ? AND status IN (${placeholders})`,
+  )
+    .bind(batchId, ...CANCELLABLE_DOCUMENT_STATUSES)
+    .run();
+
+  await refreshBatchStatus(env, batchId);
+
+  const after = await env.DB.prepare(`SELECT status FROM batches WHERE id = ?`)
+    .bind(batchId)
+    .first<{ status: string }>();
+
+  return {
+    cancelled: result.meta.changes ?? 0,
+    status: after?.status ?? 'cancelled',
+  };
+}
+
+export interface OwnedDocument {
+  id: number;
+  batch_id: number;
+  object_path: string | null;
+  status: string;
+}
+
+/**
+ * Confirms the document belongs to the caller before any mutation.
+ *
+ * `status` is selected because two write paths need it: recording a result or a
+ * failure must not move a cancelled document back out of its terminal state, and
+ * before this returned the status there was nothing for them to check.
+ */
 export async function findOwnedDocument(
   env: AppEnv,
   userId: string,
   batchId: number,
   documentId: number,
-): Promise<{ id: number; batch_id: number; object_path: string | null } | null> {
+): Promise<OwnedDocument | null> {
   return env.DB.prepare(
-    `SELECT d.id, d.batch_id, d.object_path
+    `SELECT d.id, d.batch_id, d.object_path, d.status
        FROM documents d
        JOIN batches b ON b.id = d.batch_id
       WHERE d.id = ? AND d.batch_id = ? AND b.user_id = ?`,
   )
     .bind(documentId, batchId, userId)
-    .first<{ id: number; batch_id: number; object_path: string | null }>();
+    .first<OwnedDocument>();
 }
 
 /**
@@ -572,11 +712,17 @@ export async function insertDocuments(
     }
   }
 
-  return documents.map((doc, index) => ({
-    id: Number(results[index]?.meta.last_row_id),
-    filename: doc.filename,
-    position: startPosition + index,
-  }));
+  return documents.map((doc, index) => {
+    const id = Number(results[index]?.meta.last_row_id);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error('Document insert returned no row id.');
+    }
+    return {
+      id,
+      filename: doc.filename,
+      position: startPosition + index,
+    };
+  });
 }
 
 /**

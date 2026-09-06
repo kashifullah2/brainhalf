@@ -127,10 +127,17 @@ function AuthLayout({ children }: { children: React.ReactNode }) {
         <AuthBrandPanel />
       </div>
 
-      {/* Form side — full-width on mobile */}
-      <div className="flex flex-1 flex-col items-center justify-center bg-background px-6 py-12">
+      {/* Form side — full-width on mobile.
+          A <main> with the id the header's SkipLink targets. Without one, tabbing
+          from the top of /sign-in, /sign-up or /reset-password offered "Skip to
+          main content" and then did nothing. The brand panel beside it is
+          decorative repetition of the marketing copy, so it stays outside. */}
+      <main
+        id="main-content"
+        className="flex flex-1 flex-col items-center justify-center bg-background px-6 py-12"
+      >
         <div className="w-full max-w-[400px]">{children}</div>
-      </div>
+      </main>
     </div>
   );
 }

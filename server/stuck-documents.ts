@@ -99,15 +99,42 @@ export async function recoverStuckDocuments(
   const retryable = stuck.filter((doc) => doc.attempts < MAX_ATTEMPTS);
   const exhausted = stuck.filter((doc) => doc.attempts >= MAX_ATTEMPTS);
 
+  // Enqueue BEFORE resetting the row, not after.
+  //
+  // Both orders are safe against double work -- the consumer's claim is a
+  // conditional UPDATE, and it can reclaim a row that is still 'processing' past
+  // the threshold. But if the send goes second and fails, the rows have already
+  // moved to 'queued', which takes them out of this sweep's own predicate: they
+  // would sit at 'queued' with no message behind them and nothing would ever look
+  // at them again. Sending first means a failed send changes nothing and the next
+  // sweep tries again.
+  let requeued = retryable;
+  if (env.OCR_QUEUE && retryable.length > 0) {
+    try {
+      const messages = retryable.map((doc) => ({
+        body: { batchId: doc.batch_id, documentId: doc.id, userId: doc.user_id },
+      }));
+      for (let i = 0; i < messages.length; i += 100) {
+        await env.OCR_QUEUE.sendBatch(messages.slice(i, i + 100));
+      }
+    } catch (error) {
+      console.error(
+        '[stuck-documents] could not re-enqueue; leaving the rows for the next sweep:',
+        error,
+      );
+      requeued = [];
+    }
+  }
+
   const statements = [];
-  if (retryable.length > 0) {
+  if (requeued.length > 0) {
     statements.push(
       env.DB.prepare(
         `UPDATE documents
             SET status = 'queued', started_at = NULL,
                 error = 'Extraction was interrupted and has been queued again.'
-          WHERE id IN (${retryable.map(() => '?').join(', ')})`,
-      ).bind(...retryable.map((doc) => doc.id)),
+          WHERE id IN (${requeued.map(() => '?').join(', ')})`,
+      ).bind(...requeued.map((doc) => doc.id)),
     );
   }
   if (exhausted.length > 0) {
@@ -121,28 +148,18 @@ export async function recoverStuckDocuments(
     );
   }
 
+  if (statements.length === 0) return { requeued: 0, failed: 0 };
   await env.DB.batch(statements);
-
-  // Re-send only what was requeued, and only when there is a consumer. Without a
-  // queue binding the synchronous client path owns extraction, and the reset to
-  // 'queued' is enough for the batch page to offer a retry.
-  if (env.OCR_QUEUE && retryable.length > 0) {
-    const messages = retryable.map((doc) => ({
-      body: { batchId: doc.batch_id, documentId: doc.id, userId: doc.user_id },
-    }));
-    for (let i = 0; i < messages.length; i += 100) {
-      await env.OCR_QUEUE.sendBatch(messages.slice(i, i + 100));
-    }
-  }
 
   // One recompute per affected batch, through the same helper every document
   // transition uses, so the aggregate cannot drift from its documents.
-  const batchIds = [...new Set(stuck.map((doc) => doc.batch_id))];
+  const touched = [...requeued, ...exhausted];
+  const batchIds = [...new Set(touched.map((doc) => doc.batch_id))];
   for (const batchId of batchIds) {
     await refreshBatchStatus(env, batchId);
   }
 
-  return { requeued: retryable.length, failed: exhausted.length };
+  return { requeued: requeued.length, failed: exhausted.length };
 }
 
 /** The opportunistic entry point. Never throws. */
