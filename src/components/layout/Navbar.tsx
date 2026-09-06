@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import {
+  ChevronDown,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -23,28 +24,6 @@ import { useMobileNav } from "@/components/layout/mobile-nav";
 import { useToast } from "@/hooks/use-toast";
 import { SkipLink } from "@/components/ui/skip-link";
 
-/**
- * The application's only header, on every route.
- *
- * It was one component in name and three headers in practice. The bar switched
- * container between `container max-w-7xl mx-auto` when signed out and `w-full`
- * when signed in, so the logo jumped horizontally the moment you logged in. It
- * was mounted separately by Home, LegalLayout and AppLayout, which meant its
- * height (h-16 md:h-20) was also hardcoded a second time in AppLayout's sticky
- * offsets and viewport maths. AuthLayout didn't use it at all — it carried its
- * own logo bar with a hand-inlined copy of the FileText icon and a wordmark at a
- * different size and weight. /reset-password and the 404 page had no header of
- * any kind.
- *
- * So: one bar, full width, one height (--header-h, which AppLayout reads rather
- * than restates), mounted once in App.tsx. What changes between routes is the
- * contents, not the frame:
- *
- *   /app/*                        logo -> dashboard, theme, account menu
- *   /sign-in, /sign-up, /reset    logo -> marketing site, theme
- *   everything else               logo, section links, theme, sign-in or account
- */
-
 /** Landing-page sections the header can jump to. */
 const MARKETING_SECTIONS = [
   { hash: "how-it-works", label: "How it works" },
@@ -53,10 +32,7 @@ const MARKETING_SECTIONS = [
 
 const AUTH_ROUTES = ["/sign-in", "/sign-up", "/reset-password"];
 
-/**
- * The logo lockup. One size, one weight, one place — the wordmark used to be
- * `md:block`, so on a phone the header was an unlabelled green square.
- */
+/** The logo lockup. */
 function Wordmark({ href }: { href: string }) {
   return (
     <Link
@@ -79,7 +55,7 @@ function Wordmark({ href }: { href: string }) {
   );
 }
 
-/** Initial for the avatar fallback. "G" used to be hardcoded here. */
+/** Initial for the avatar fallback. */
 function initialFor(user: { givenName?: string; name?: string; email?: string } | null) {
   return (
     user?.givenName?.charAt(0) ||
@@ -91,30 +67,33 @@ function initialFor(user: { givenName?: string; name?: string; email?: string } 
 
 function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
   const { user } = useAuth();
+  const userName = user?.givenName || user?.name?.split(" ")[0] || user?.email?.split("@")[0] || "Account";
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
+          size="sm"
           aria-label="Open account menu"
-          /* h-9 w-9, matching the logo tile. The avatar was 44px against a 40px
-             logo, so the two ends of the bar sat on different grids. */
-          className="h-9 w-9 shrink-0 rounded-full border border-border/60 p-0"
+          className="group flex h-9 items-center gap-2 rounded-xl border border-border/60 bg-muted/20 px-2 py-1 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring transition-colors"
           data-testid="button-user-menu"
         >
-          <Avatar className="h-9 w-9">
+          <Avatar className="h-6 w-6 rounded-md border border-border/40">
             <AvatarImage src={user?.picture} alt="" />
-            <AvatarFallback className="bg-primary/10 text-label font-semibold text-primary">
+            <AvatarFallback className="bg-primary/10 text-[10px] font-bold text-primary">
               {initialFor(user)}
             </AvatarFallback>
           </Avatar>
+          <span className="hidden md:inline-block text-xs font-semibold text-foreground max-w-[100px] truncate">
+            {userName}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60 rounded-xl p-1.5">
         <DropdownMenuLabel className="px-2.5 py-2 font-normal">
-          <p className="text-body-sm font-semibold text-foreground">{user?.name}</p>
+          <p className="text-body-sm font-semibold text-foreground">{user?.name || "User Account"}</p>
           <p className="mt-0.5 text-label font-medium text-muted-foreground">{user?.email}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -245,8 +224,12 @@ export function Navbar() {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2.5">
           <ThemeToggle />
+
+          {!isAuthRoute && (
+            <div className="h-4 w-px bg-border/60 mx-0.5" aria-hidden="true" />
+          )}
 
           {/* Auth routes get neither: the account menu has nothing to show, and
               a "Log in" button on the log-in page is noise. */}

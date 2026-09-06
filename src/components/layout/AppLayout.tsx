@@ -165,108 +165,62 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
           )}
         >
           {/* Navigation */}
-          <nav className="flex flex-1 flex-col gap-0.5 px-2 py-3 pb-8 overflow-y-auto overflow-x-hidden">
+          <nav className="flex flex-1 flex-col px-0 py-3 overflow-y-auto overflow-x-hidden">
             {/* Section label */}
             {!isRail && (
-              <p className="px-2 pt-1 pb-2 text-micro font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/40 select-none">
+              <p className="px-4 pt-1 pb-2 text-micro font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/40 select-none">
                 Menu
               </p>
             )}
 
-            {navItems.map((item) => {
-              const active = isRouteActive(item.url);
-              return (
-                // FIX: aria-current + keyboard focus ring; removed the title
-                // attr (it fought with the custom tooltip → double tooltip)
-                <Link
-                  key={item.title}
-                  href={item.url}
-                  aria-current={active ? "page" : undefined}
-                  className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                >
-                  <div
-                    className={`
-                      group relative flex h-9 items-center gap-2.5 rounded-lg px-2.5 cursor-pointer select-none
-                      transition-colors duration-100
-                      ${active
-                        ? "bg-primary text-primary-foreground"
-                        : "text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      }
-                      ${isRail ? "justify-center px-0" : ""}
-                    `}
-                  >
-                    <item.icon className="shrink-0 h-4 w-4" />
-                    {!isRail && (
-                      <>
-                        <span className="text-body-sm font-medium flex-1 whitespace-nowrap">{item.title}</span>
-                        {(item.badge ?? 0) > 0 && (
-                          // FIX: h-4.5 doesn't exist in Tailwind → h-[18px]
-                          <span
-                            title={item.badgeNoun ? `${item.badge} ${item.badgeNoun}` : undefined}
-                            aria-label={item.badgeNoun ? `${item.badge} ${item.badgeNoun}` : undefined}
-                            className={`flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-micro font-semibold
-                            ${active ? "bg-white/20 text-white" : "bg-primary/15 text-primary"}`}
-                          >
-                            {item.badge}
-                          </span>
-                        )}
-                      </>
-                    )}
-                    {isRail && (item.badge ?? 0) > 0 && (
-                      <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-sidebar" />
-                    )}
-                    {/* Tooltip */}
-                    {isRail && (
-                      <div className="pointer-events-none absolute left-full ml-2.5 z-50 origin-left scale-95 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-100">
-                        <div className="rounded-lg border border-border bg-popover px-2.5 py-1.5 text-label font-medium text-popover-foreground shadow-lg whitespace-nowrap">
-                          {item.title}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
-
-            {/* Account items — pushed to bottom */}
-            <div className="mt-auto">
-              {!isRail && (
-                <div className="mx-2 mb-4 rounded-xl border border-border/60 bg-card p-3 shadow-sm">
-                  <p className="text-body-sm font-semibold text-foreground">Need help?</p>
-                  <p className="mt-1 text-caption text-muted-foreground leading-snug">Read the docs or reach out to our team.</p>
-                  <Link href="/contact" className="mt-2 inline-block text-label font-semibold text-primary hover:underline">
-                    Contact Support &rarr;
-                  </Link>
-                </div>
-              )}
-              <div className="my-2 border-t border-sidebar-border/50" />
-              {!isRail && (
-                <p className="px-2 pb-2 text-micro font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/40 select-none">
-                  Account
-                </p>
-              )}
-              {accountItems.map((item) => {
+            <div className="space-y-1 px-2">
+              {navItems.map((item) => {
                 const active = isRouteActive(item.url);
                 return (
                   <Link
                     key={item.title}
                     href={item.url}
                     aria-current={active ? "page" : undefined}
-                    className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                    className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
                   >
                     <div
                       className={`
-                        group relative flex h-9 items-center gap-2.5 rounded-lg px-2.5 cursor-pointer select-none
-                        transition-colors duration-100
+                        group relative flex h-9 items-center gap-3 rounded-lg px-2.5 cursor-pointer select-none
+                        transition-all duration-150
                         ${active
-                          ? "bg-primary/10 text-primary"
-                          : "text-sidebar-foreground/55 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                          ? "bg-primary/10 text-foreground font-semibold"
+                          : "text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground font-medium"
                         }
                         ${isRail ? "justify-center px-0" : ""}
                       `}
                     >
-                      <item.icon className="shrink-0 h-4 w-4" />
-                      {!isRail && <span className="text-body-sm font-medium whitespace-nowrap">{item.title}</span>}
+                      {/* Left-edge 3px brand accent bar for active item */}
+                      {active && (
+                        <span
+                          className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <item.icon className={`shrink-0 h-5 w-5 stroke-[1.5] ${active ? "text-primary" : ""}`} />
+                      {!isRail && (
+                        <>
+                          <span className="text-body-sm flex-1 whitespace-nowrap">{item.title}</span>
+                          {(item.badge ?? 0) > 0 && (
+                            <span
+                              title={item.badgeNoun ? `${item.badge} ${item.badgeNoun}` : undefined}
+                              aria-label={item.badgeNoun ? `${item.badge} ${item.badgeNoun}` : undefined}
+                              className={`flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-micro font-semibold
+                              ${active ? "bg-primary/20 text-primary" : "bg-primary/15 text-primary"}`}
+                            >
+                              {item.badge}
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {isRail && (item.badge ?? 0) > 0 && (
+                        <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-sidebar" />
+                      )}
+                      {/* Tooltip */}
                       {isRail && (
                         <div className="pointer-events-none absolute left-full ml-2.5 z-50 origin-left scale-95 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-100">
                           <div className="rounded-lg border border-border bg-popover px-2.5 py-1.5 text-label font-medium text-popover-foreground shadow-lg whitespace-nowrap">
@@ -278,6 +232,83 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
                   </Link>
                 );
               })}
+            </div>
+
+            {/* Account section — visually separated bottom zone */}
+            <div className="mt-auto pt-3 border-t border-sidebar-border/60 bg-muted/20 px-2 pb-2">
+              {!isRail && (
+                <p className="px-2 pt-1 pb-2 text-micro font-semibold uppercase tracking-[0.1em] text-sidebar-foreground/40 select-none">
+                  Account
+                </p>
+              )}
+              <div className="space-y-1">
+                {accountItems.map((item) => {
+                  const active = isRouteActive(item.url);
+                  return (
+                    <Link
+                      key={item.title}
+                      href={item.url}
+                      aria-current={active ? "page" : undefined}
+                      className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                    >
+                      <div
+                        className={`
+                          group relative flex h-9 items-center gap-3 rounded-lg px-2.5 cursor-pointer select-none
+                          transition-all duration-150
+                          ${active
+                            ? "bg-primary/10 text-foreground font-semibold"
+                            : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground font-medium"
+                          }
+                          ${isRail ? "justify-center px-0" : ""}
+                        `}
+                      >
+                        {/* Left-edge 3px brand accent bar */}
+                        {active && (
+                          <span
+                            className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-primary"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <item.icon className={`shrink-0 h-5 w-5 stroke-[1.5] ${active ? "text-primary" : ""}`} />
+                        {!isRail && <span className="text-body-sm flex-1 whitespace-nowrap">{item.title}</span>}
+                        {isRail && (
+                          <div className="pointer-events-none absolute left-full ml-2.5 z-50 origin-left scale-95 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-100">
+                            <div className="rounded-lg border border-border bg-popover px-2.5 py-1.5 text-label font-medium text-popover-foreground shadow-lg whitespace-nowrap">
+                              {item.title}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Persistent System Status Micro-Indicator */}
+              {!isRail ? (
+                <Link
+                  href="/app/admin?tab=overview"
+                  className="mt-3 flex items-center gap-2.5 rounded-lg border border-border/50 bg-background/50 px-2.5 py-2 transition-all hover:bg-background hover:border-border group"
+                >
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span className="text-caption font-medium text-muted-foreground group-hover:text-foreground truncate flex-1">
+                    All systems operational
+                  </span>
+                </Link>
+              ) : (
+                <Link
+                  href="/app/admin?tab=overview"
+                  title="All systems operational"
+                  className="mt-3 flex justify-center py-1.5"
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                </Link>
+              )}
             </div>
           </nav>
 
