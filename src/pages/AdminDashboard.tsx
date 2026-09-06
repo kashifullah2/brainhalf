@@ -7,17 +7,16 @@
 // ---------------------------------------------------------------------------
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useLocation } from "wouter";
 import {
   Activity,
   AlertTriangle,
   Check,
   CheckCircle2,
-  Clock,
   Copy,
   Cpu,
   Download,
   Eye,
-  Gauge,
   FileText,
   FileUp,
   Globe,
@@ -53,7 +52,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ErrorState, ListSkeleton, PageHeader, StatCard } from "@/components/app";
+import { ErrorState, ListSkeleton, PageHeader } from "@/components/app";
 import { usePageTitle } from "@/lib/use-page-title";
 import {
   useAdminMetrics,
@@ -228,6 +227,7 @@ function StateBadge({ state }: { state: boolean | string | null }) {
 
 export default function AdminDashboard() {
   usePageTitle("Admin console · BrainHalf", { canonicalPath: "/app/admin", noindex: true });
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const { data, isLoading, isError, error, refetch, isFetching } = useAdminMetrics({
@@ -675,114 +675,179 @@ export default function AdminDashboard() {
           {/* TAB 1: OVERVIEW & HEALTH */}
           {activeTab === "overview" && (
             <div className="space-y-6 animate-in fade-in duration-300">
-              <section aria-labelledby="admin-throughput">
-                <h2 id="admin-throughput" className="sr-only">Throughput</h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <StatCard
-                    label="Documents"
-                    value={integer(data.counts.documents)}
-                    hint={`in ${integer(data.counts.batches)} batches`}
-                    icon={FileText}
-                    tone="primary"
-                  />
-                  <StatCard
-                    label="Completed"
-                    value={integer(data.counts.completed)}
-                    hint={`${integer(data.counts.completedLastDay)} in the last day`}
-                    icon={CheckCircle2}
-                    tone={data.counts.completed > 0 ? "success" : "muted"}
-                  />
-                  <StatCard
-                    label="In flight"
-                    value={integer(data.counts.queued + data.counts.processing)}
-                    hint={`${integer(data.counts.queued)} queued`}
-                    icon={Activity}
-                    tone={data.counts.queued + data.counts.processing > 0 ? "warning" : "muted"}
-                  />
-                  <StatCard
-                    label="Failed"
-                    value={integer(data.counts.failed)}
-                    hint={data.counts.failed > 0 ? "needs a retry" : undefined}
-                    icon={AlertTriangle}
-                    tone={data.counts.failed > 0 ? "destructive" : "muted"}
-                  />
-                </div>
-              </section>
-
-              <section aria-labelledby="admin-quality">
-                <h2 id="admin-quality" className="sr-only">
-                  Extraction quality
-                </h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <StatCard
-                    label="Completion rate"
-                    value={percent(data.quality.successRate)}
-                    hint={
-                      data.quality.successRate === null
-                        ? "nothing finished yet"
-                        : "of documents that finished"
-                    }
-                    icon={Gauge}
-                    tone={
-                      data.quality.successRate === null
-                        ? "muted"
-                        : data.quality.successRate >= 0.95
-                          ? "success"
-                          : "warning"
-                    }
-                  />
-                  <StatCard
-                    label="Mean confidence"
-                    value={percent(data.quality.meanConfidence)}
-                    hint={
-                      data.quality.meanConfidence === null
-                        ? "nothing scored yet"
-                        : "across scored documents"
-                    }
-                    icon={Cpu}
-                    tone={
-                      data.quality.meanConfidence === null
-                        ? "muted"
-                        : data.quality.meanConfidence >= data.quality.threshold
-                          ? "success"
-                          : "warning"
-                    }
-                  />
-                  <StatCard
-                    label="Below threshold"
-                    value={integer(data.quality.belowThreshold)}
-                    hint={`under ${Math.round(data.quality.threshold * 100)}%`}
-                    icon={AlertTriangle}
-                    tone={data.quality.belowThreshold > 0 ? "warning" : "muted"}
-                  />
-                  <StatCard
-                    label="Registered users"
-                    value={integer(data.counts.users)}
-                    icon={Users}
-                    tone="primary"
-                  />
-                </div>
-              </section>
-
-              {data.counts.stuck > 0 && (
-                <div
-                  role="status"
-                  className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4"
-                >
-                  <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-                  <div className="space-y-1">
-                    <p className="text-body font-semibold text-foreground">
-                      {integer(data.counts.stuck)} document
-                      {data.counts.stuck === 1 ? "" : "s"} interrupted mid-extraction
-                    </p>
-                    <p className="text-body-sm text-muted-foreground">
-                      These have been processing longer than the recovery threshold. The sweep returns them to the queue automatically.
-                    </p>
+              {/* Top Inline Attention Banner (Surfaced if Failures/Stuck Documents Exist) */}
+              {(data.counts.failed > 0 || data.counts.stuck > 0) && (
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-destructive/40 bg-destructive/10 px-5 py-3.5 text-destructive">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="h-5 w-5 shrink-0 stroke-[1.5]" />
+                    <div>
+                      <h3 className="text-body-sm font-semibold text-foreground">
+                        {data.counts.failed > 0
+                          ? `${data.counts.failed} document${data.counts.failed > 1 ? "s" : ""} failed and require attention`
+                          : `${data.counts.stuck} document${data.counts.stuck > 1 ? "s" : ""} stuck mid-extraction`}
+                      </h3>
+                      <p className="text-caption text-muted-foreground mt-0.5">
+                        Flagged by worker queue or confidence threshold evaluation.
+                      </p>
+                    </div>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setLocation("/app/review-queue?status=failed")}
+                    className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 shrink-0 text-xs font-semibold"
+                  >
+                    Open Review Queue →
+                  </Button>
                 </div>
               )}
 
-              {/* Deployment Configuration Table */}
+              {/* ZONE 1: THROUGHPUT PIPELINE FLOW (Connected Progress-Flow Visualization) */}
+              <section aria-labelledby="admin-throughput-flow" className="rounded-xl border border-border/80 bg-card p-6 shadow-xs">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                      Throughput Pipeline Flow
+                    </span>
+                    <h3 className="text-body-lg font-bold text-foreground">Document Processing Relationship</h3>
+                  </div>
+                  <span className="text-caption font-mono text-muted-foreground">
+                    {integer(data.counts.batches)} Total Batches Created
+                  </span>
+                </div>
+
+                {/* Connected Pipeline Flow Bar */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-border/60 rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
+                  {/* Stage 1: Total Documents */}
+                  <div className="p-4 relative">
+                    <div className="flex items-center justify-between text-muted-foreground mb-1">
+                      <span className="text-xs font-semibold">1. Input Total</span>
+                      <FileText className="h-4 w-4 text-primary stroke-[1.5]" />
+                    </div>
+                    <p className="text-3xl font-mono font-bold text-foreground tabular-nums">{integer(data.counts.documents)}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">100% of pipeline volume</p>
+                  </div>
+
+                  {/* Stage 2: Completed */}
+                  <div className="p-4 relative bg-emerald-500/5">
+                    <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
+                      <span className="text-xs font-semibold">2. Completed</span>
+                      <CheckCircle2 className="h-4 w-4 stroke-[1.5]" />
+                    </div>
+                    <p className="text-3xl font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{integer(data.counts.completed)}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {data.counts.documents > 0 ? `${Math.round((data.counts.completed / data.counts.documents) * 100)}% output rate` : "0%"}
+                    </p>
+                  </div>
+
+                  {/* Stage 3: In-Flight */}
+                  <div className="p-4 relative bg-blue-500/5">
+                    <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1">
+                      <span className="text-xs font-semibold">3. In Flight</span>
+                      <Activity className="h-4 w-4 stroke-[1.5]" />
+                    </div>
+                    <p className="text-3xl font-mono font-bold text-blue-600 dark:text-blue-400 tabular-nums">{integer(data.counts.queued + data.counts.processing)}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">{integer(data.counts.queued)} queued in worker</p>
+                  </div>
+
+                  {/* Stage 4: Failed / Needs Attention */}
+                  <div className="p-4 relative bg-destructive/5">
+                    <div className="flex items-center justify-between text-destructive mb-1">
+                      <span className="text-xs font-semibold">4. Interrupted</span>
+                      <AlertTriangle className="h-4 w-4 stroke-[1.5]" />
+                    </div>
+                    <p className="text-3xl font-mono font-bold text-destructive tabular-nums">{integer(data.counts.failed)}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Requires human review</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* ZONE 2: QUALITY (Radial Progress Gauges) & ZONE 3: ACCOUNT (De-emphasized) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Zone 2: Quality Radial Gauges (Spans 2 cols) */}
+                <div className="md:col-span-2 rounded-xl border border-border/80 bg-card p-6 shadow-xs">
+                  <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground block mb-4">
+                    Extraction Quality &amp; Precision Gauges
+                  </span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {/* Radial 1: Completion Rate */}
+                    <div className="flex items-center gap-4 p-4 rounded-xl border border-border/60 bg-muted/20">
+                      <div className="relative flex items-center justify-center h-20 w-20 shrink-0">
+                        <svg className="h-20 w-20 transform -rotate-90" viewBox="0 0 36 36">
+                          <path className="text-muted/40 stroke-current" strokeWidth="3.5" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                          <path
+                            className="text-emerald-500 stroke-current transition-all duration-500"
+                            strokeWidth="3.5"
+                            strokeDasharray={`${data.quality.successRate ? Math.round(data.quality.successRate * 100) : 0}, 100`}
+                            strokeLinecap="round"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                        </svg>
+                        <span className="absolute text-sm font-mono font-bold text-foreground">
+                          {percent(data.quality.successRate)}
+                        </span>
+                      </div>
+                      <div>
+                        <h4 className="text-body-sm font-semibold text-foreground">Completion Rate</h4>
+                        <p className="text-caption text-muted-foreground mt-0.5">
+                          {data.quality.successRate !== null ? "Finished without unhandled error" : "No runs evaluated yet"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Radial 2: Mean Confidence */}
+                    <div className="flex items-center gap-4 p-4 rounded-xl border border-border/60 bg-muted/20">
+                      <div className="relative flex items-center justify-center h-20 w-20 shrink-0">
+                        <svg className="h-20 w-20 transform -rotate-90" viewBox="0 0 36 36">
+                          <path className="text-muted/40 stroke-current" strokeWidth="3.5" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                          <path
+                            className="text-primary stroke-current transition-all duration-500"
+                            strokeWidth="3.5"
+                            strokeDasharray={`${data.quality.meanConfidence ? Math.round(data.quality.meanConfidence * 100) : 0}, 100`}
+                            strokeLinecap="round"
+                            fill="none"
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                          />
+                        </svg>
+                        <span className="absolute text-sm font-mono font-bold text-foreground">
+                          {percent(data.quality.meanConfidence)}
+                        </span>
+                      </div>
+                      <div>
+                        <h4 className="text-body-sm font-semibold text-foreground">Mean Confidence Score</h4>
+                        <p className="text-caption text-muted-foreground mt-0.5">
+                          {data.quality.belowThreshold} document{data.quality.belowThreshold === 1 ? "" : "s"} under threshold ({Math.round(data.quality.threshold * 100)}%)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Zone 3: Account (De-emphasized Standalone Stat) */}
+                <div className="rounded-xl border border-border/70 bg-card/60 p-6 flex flex-col justify-between">
+                  <div>
+                    <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground block mb-1">
+                      Platform Account
+                    </span>
+                    <p className="text-caption text-muted-foreground">Registered user accounts</p>
+                  </div>
+                  <div className="mt-4 flex items-baseline justify-between">
+                    <p className="text-4xl font-mono font-bold text-foreground tabular-nums">{integer(data.counts.users)}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleTabChange("users")}
+                      className="text-xs text-primary hover:underline p-0 h-auto font-medium"
+                    >
+                      View Directory →
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Deployment Configuration Grid (3-Column Layout) */}
               <section
                 aria-labelledby="admin-config"
                 className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
@@ -817,19 +882,31 @@ export default function AdminDashboard() {
                     </Button>
                   </div>
                 </div>
-                <dl className="divide-y divide-border/50">
+
+                {/* 3-Column Status Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-5">
                   {rows.map((row) => (
                     <div
                       key={row.label}
-                      className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3.5 hover:bg-muted/10 transition-colors"
+                      className="flex flex-col justify-between p-4 rounded-xl border border-border/60 bg-muted/20 hover:bg-muted/40 transition-colors"
                     >
-                      <div className="min-w-0">
-                        <dt className="text-body-sm font-semibold text-foreground">{row.label}</dt>
-                        <dd className="text-caption text-muted-foreground">{row.detail}</dd>
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-body-sm font-semibold text-foreground truncate">
+                            {row.label}
+                          </span>
+                          <StateBadge state={row.state} />
+                        </div>
+                        <p className="text-caption text-muted-foreground line-clamp-2 leading-relaxed">
+                          {row.detail}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <StateBadge state={row.state} />
-                        {row.testTarget && (
+
+                      {row.testTarget && (
+                        <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between">
+                          <span className="text-[10px] font-mono text-muted-foreground uppercase">
+                            Diagnostic Ready
+                          </span>
                           <Button
                             variant="outline"
                             size="sm"
@@ -839,13 +916,13 @@ export default function AdminDashboard() {
                             title={`Run live test for ${row.label}`}
                           >
                             <PlayCircle className="h-3.5 w-3.5" />
-                            Test
+                            Test Engine
                           </Button>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   ))}
-                </dl>
+                </div>
               </section>
             </div>
           )}
