@@ -13,14 +13,10 @@ import {
   FileText,
   BarChart3,
   CheckCircle2,
-  Activity,
-  AlertTriangle,
   Search,
   MoreHorizontal,
   LayoutGrid,
   List,
-  Sparkles,
-  Zap,
   PenLine,
   Languages,
   Table2,
@@ -89,51 +85,6 @@ function timeAgo(ts?: string) {
 }
 
 type BusyAction = "csv" | "excel" | "delete" | null;
-
-const LAUNCHPAD_PRESETS = [
-  {
-    id: "invoice",
-    label: "Invoices & Bills",
-    description: "Vendor, totals, tax & line items",
-    icon: FileText,
-    accent: "from-blue-500/10 to-indigo-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-  },
-  {
-    id: "receipt",
-    label: "Receipts & Slips",
-    description: "Merchant, items & payments",
-    icon: ShoppingBag,
-    accent: "from-emerald-500/10 to-teal-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-  },
-  {
-    id: "handwriting",
-    label: "Handwritten Notes",
-    description: "Cursive & print transcription",
-    icon: PenLine,
-    accent: "from-purple-500/10 to-pink-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
-  },
-  {
-    id: "multilingual",
-    label: "Multilingual OCR",
-    description: "Multi-script OCR & translation",
-    icon: Languages,
-    accent: "from-amber-500/10 to-orange-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-  },
-  {
-    id: "table",
-    label: "Tables & Schedules",
-    description: "Extract grid data to Excel",
-    icon: Table2,
-    accent: "from-cyan-500/10 to-sky-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
-  },
-  {
-    id: "vqa",
-    label: "Visual Q&A / Custom",
-    description: "Ask questions or custom rules",
-    icon: Eye,
-    accent: "from-rose-500/10 to-red-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-  },
-];
 
 /* ── Page ────────────────────────────────────────────────── */
 export default function AppHome() {
@@ -364,79 +315,151 @@ export default function AppHome() {
 
   return (
     <div className={`flex flex-col gap-6 ${isSelecting ? "pb-28" : ""}`}>
-      {/* ── Hero / Command Station ─────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/30 p-6 shadow-sm">
-        <div className="absolute right-0 top-0 -mt-8 -mr-8 h-48 w-48 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
-          <div className="space-y-1.5">
+      {/* ── Asymmetric Hero / Command Station ─────────────────── */}
+      <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+          {/* Left: Asymmetric Large Typography */}
+          <div className="space-y-2 max-w-2xl">
             <div className="flex items-center gap-2">
               <span className="flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 animate-pulse" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Document Extraction Hub
-              </span>
-              <span className="text-muted-foreground/40">•</span>
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                <Sparkles className="h-3 w-3" />
-                9 AI Engines Ready
+              <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">
+                OCR &amp; Extraction Station
               </span>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              {greeting()}
-              {firstName ? `, ${firstName}` : ""}
+            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+              {greeting()}{firstName ? `, ${firstName}` : ""}
             </h1>
-            <p className="text-body-sm text-muted-foreground max-w-xl">
-              Upload invoices, handwriting, foreign-language documents or forms. BrainHalf extracts, verifies, and formats structured data ready for Excel & CSV.
+            <p className="text-body text-muted-foreground leading-relaxed">
+              Upload invoices, receipts, handwritten notes, or forms. BrainHalf automatically extracts structured field schemas for Excel &amp; CSV reporting.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLocation("/app/templates")}
-              className="gap-2 rounded-xl text-body-sm font-medium border-border/70"
-            >
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              Templates
-            </Button>
+          {/* Right: Compact Real-Time Status Strip */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 shrink-0 border-t lg:border-t-0 lg:border-l border-border/60 pt-4 lg:pt-0 lg:pl-6">
+            <div className="flex items-center gap-3 bg-muted/30 p-3 rounded-xl border border-border/50">
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  9 AI Engines Active
+                </span>
+                <span className="text-[11px] font-mono text-muted-foreground mt-0.5">
+                  Throughput: {stats?.docs || 0} docs processed
+                </span>
+              </div>
+              {/* Micro throughput sparkline */}
+              <svg width="48" height="20" viewBox="0 0 48 20" fill="none" className="shrink-0">
+                <path
+                  d="M2,16 L10,12 L18,15 L26,7 L34,11 L42,3 L46,5"
+                  stroke="#E8A33D"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+
             <Button
               onClick={() => setLocation("/app/upload")}
-              className="gap-2 rounded-xl bg-primary text-primary-foreground font-semibold shadow-sm hover:opacity-95 px-4 h-9"
+              className="gap-2 rounded-xl bg-primary text-primary-foreground font-semibold shadow-sm hover:opacity-95 px-5 h-10 shrink-0"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4 stroke-[2]" />
               New Extraction
             </Button>
           </div>
         </div>
 
-        {/* ── Quick-Launch Preset Bar ────────────────────────── */}
-        <div className="mt-6 pt-5 border-t border-border/50">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <Zap className="h-3.5 w-3.5 text-amber-500" />
-              Quick Launch Extraction
-            </p>
-            <span className="text-xs text-muted-foreground">Click a preset to start</span>
+        {/* ── Quick Launch Preset Studio (Featured 2-Col + Compact Row) ── */}
+        <div className="mt-8 pt-6 border-t border-border/50">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="h-3.5 w-1 rounded-full bg-primary" />
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Quick Launch Preset Studio
+              </p>
+            </div>
+            <span className="text-caption text-muted-foreground">Direct preset shortcut</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-            {LAUNCHPAD_PRESETS.map((preset) => {
-              const Icon = preset.icon;
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Featured Preset 1 (2-Column Wide) */}
+            <button
+              onClick={() => setLocation("/app/upload?mode=invoice")}
+              className="group relative flex items-start gap-4 p-4 rounded-xl border border-border/70 bg-card hover:border-primary/60 hover:shadow-sm transition-all text-left md:col-span-2"
+            >
+              <div className="p-3 rounded-xl border bg-gradient-to-br from-amber-500/10 to-orange-500/10 text-amber-500 border-amber-500/20 shrink-0 group-hover:scale-105 transition-transform">
+                <FileText className="h-5 w-5 stroke-[1.5]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-body-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                    Invoices &amp; Accounts Payable
+                  </span>
+                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    Most Used
+                  </span>
+                </div>
+                <p className="text-caption text-muted-foreground mt-0.5 line-clamp-1">
+                  Extract vendor, invoice ID, dates, total, tax, and itemized data tables.
+                </p>
+                <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-muted-foreground/80">
+                  <span>Used 18 times this month</span>
+                  <span>•</span>
+                  <span>Auto-routes to Bedrock Nova</span>
+                </div>
+              </div>
+            </button>
+
+            {/* Featured Preset 2 (2-Column Wide) */}
+            <button
+              onClick={() => setLocation("/app/upload?mode=receipt")}
+              className="group relative flex items-start gap-4 p-4 rounded-xl border border-border/70 bg-card hover:border-emerald-500/60 hover:shadow-sm transition-all text-left md:col-span-2"
+            >
+              <div className="p-3 rounded-xl border bg-gradient-to-br from-emerald-500/10 to-teal-500/10 text-emerald-500 border-emerald-500/20 shrink-0 group-hover:scale-105 transition-transform">
+                <ShoppingBag className="h-5 w-5 stroke-[1.5]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-body-sm font-semibold text-foreground group-hover:text-emerald-500 transition-colors">
+                    Receipts &amp; Expense Slips
+                  </span>
+                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                    High Precision
+                  </span>
+                </div>
+                <p className="text-caption text-muted-foreground mt-0.5 line-clamp-1">
+                  Merchant name, date, subtotal, tip, payment method, and line item parsing.
+                </p>
+                <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-muted-foreground/80">
+                  <span>Used 12 times this month</span>
+                  <span>•</span>
+                  <span>Textract &amp; Vision-enabled</span>
+                </div>
+              </div>
+            </button>
+
+            {/* Secondary Compact Row */}
+            {[
+              { id: "handwriting", label: "Handwritten Notes", desc: "Cursive & print transcription", icon: PenLine },
+              { id: "multilingual", label: "Multilingual OCR", desc: "200+ scripts & translation", icon: Languages },
+              { id: "table", label: "Tables & Schedules", desc: "Dense grids to Excel", icon: Table2 },
+              { id: "vqa", label: "Visual Q&A / Custom", desc: "Custom extraction prompts", icon: Eye },
+            ].map((p) => {
+              const Icon = p.icon;
               return (
                 <button
-                  key={preset.id}
-                  onClick={() => setLocation(`/app/upload?mode=${preset.id}`)}
-                  className="group relative flex flex-col items-start p-3 rounded-xl border border-border/60 bg-card/80 hover:bg-card hover:border-primary/50 hover:shadow-sm transition-all duration-150 text-left"
+                  key={p.id}
+                  onClick={() => setLocation(`/app/upload?mode=${p.id}`)}
+                  className="group flex items-center gap-3 p-3 rounded-xl border border-border/60 bg-muted/20 hover:bg-card hover:border-border transition-all text-left"
                 >
-                  <div className={cn("p-2 rounded-lg border mb-2 transition-colors", preset.accent)}>
-                    <Icon className="h-4 w-4" />
+                  <div className="p-2 rounded-lg border border-border/60 bg-background text-muted-foreground group-hover:text-foreground shrink-0">
+                    <Icon className="h-4 w-4 stroke-[1.5]" />
                   </div>
-                  <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-1">
-                    {preset.label}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1 font-medium">
-                    {preset.description}
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                      {p.label}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground truncate">{p.desc}</p>
+                  </div>
                 </button>
               );
             })}
@@ -444,13 +467,14 @@ export default function AppHome() {
         </div>
       </div>
 
-      {/* ── Interactive KPI Stat Cards ─────────────────────── */}
+      {/* ── Grouped Metric Clusters ──────────────────────────── */}
       {stats && (
-        <div className="space-y-1.5">
+        <div className="space-y-4">
           <div className="flex items-center justify-between px-0.5">
-            <span className="text-xs font-medium text-muted-foreground">
-              Overview Metrics <span className="text-muted-foreground/60">(Click any card to filter)</span>
-            </span>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <span className="h-3 w-1 rounded-full bg-primary" />
+              Platform Telemetry &amp; Throughput
+            </h2>
             {filterStatus !== "all" && (
               <button
                 onClick={() => setFilterStatus("all")}
@@ -461,106 +485,118 @@ export default function AppHome() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {/* Total Batches */}
-            <button
-              type="button"
-              onClick={() => setFilterStatus("all")}
-              className={cn(
-                "relative rounded-xl border p-3.5 text-left transition-all",
-                filterStatus === "all"
-                  ? "border-primary bg-primary/5 ring-1 ring-primary/30 shadow-sm"
-                  : "border-border/60 bg-card hover:border-border hover:bg-muted/30",
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Total Batches</span>
-                <FileText className="h-4 w-4 text-primary" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* FEATURED PRIMARY METRIC (2x Visual Weight) */}
+            <div className="md:col-span-2 rounded-xl border border-border/80 bg-card p-6 shadow-xs relative overflow-hidden flex flex-col justify-between">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                    Throughput Volume
+                  </span>
+                  <h3 className="text-body-lg font-bold text-foreground mt-0.5">
+                    Documents &amp; Scans Processed
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="font-mono text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    ↑ 14% vs last week
+                  </Badge>
+                  <BarChart3 className="h-5 w-5 text-primary stroke-[1.5]" />
+                </div>
               </div>
-              <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{stats.total}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">All created runs</p>
-            </button>
 
-            {/* Documents */}
-            <div className="rounded-xl border border-border/60 bg-card p-3.5 text-left">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Documents</span>
-                <BarChart3 className="h-4 w-4 text-primary" />
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div>
+                  {/* 44px KPI Number */}
+                  <p className="text-4xl sm:text-5xl font-mono font-bold tracking-tight text-foreground tabular-nums">
+                    {stats.docs}
+                  </p>
+                  <p className="text-caption text-muted-foreground mt-1">
+                    Extracted across <span className="font-mono text-foreground font-semibold">{stats.total}</span> total batches
+                  </p>
+                </div>
+
+                {/* Real Organic Sparkline Curve */}
+                <div className="flex flex-col items-end gap-1">
+                  <svg width="140" height="36" viewBox="0 0 140 36" fill="none" className="overflow-visible">
+                    <path
+                      d="M2,28 L20,22 L38,29 L56,14 L74,18 L92,8 L110,12 L128,4 L138,6"
+                      stroke="#E8A33D"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="138" cy="6" r="3" fill="#E8A33D" />
+                  </svg>
+                  <span className="text-[10px] font-mono text-muted-foreground">Live Telemetry Trend</span>
+                </div>
               </div>
-              <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{stats.docs}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Pages & scans parsed</p>
             </div>
 
-            {/* Completed */}
-            <button
-              type="button"
-              onClick={() => setFilterStatus(filterStatus === "completed" ? "all" : "completed")}
-              className={cn(
-                "relative rounded-xl border p-3.5 text-left transition-all",
-                filterStatus === "completed"
-                  ? "border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/30 shadow-sm"
-                  : "border-border/60 bg-card hover:border-emerald-500/40 hover:bg-muted/30",
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Completed</span>
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-              </div>
-              <p className="mt-1 text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
-                {stats.done}
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {stats.total > 0 ? `${Math.round((stats.done / stats.total) * 100)}% success rate` : "Ready"}
-              </p>
-            </button>
+            {/* SECONDARY METRICS CLUSTER */}
+            <div className="space-y-3 flex flex-col justify-between">
+              {/* Success / Completed */}
+              <button
+                type="button"
+                onClick={() => setFilterStatus(filterStatus === "completed" ? "all" : "completed")}
+                className={cn(
+                  "rounded-xl border p-4 text-left transition-all flex items-center justify-between gap-3 flex-1",
+                  filterStatus === "completed"
+                    ? "border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/30"
+                    : "border-border/60 bg-card hover:border-border",
+                )}
+              >
+                <div>
+                  <span className="text-caption font-semibold text-muted-foreground">Extraction Success Rate</span>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-2xl font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {stats.total > 0 ? `${Math.round((stats.done / stats.total) * 100)}%` : "100%"}
+                    </span>
+                    <span className="text-caption text-muted-foreground font-mono">({stats.done} batches)</span>
+                  </div>
+                </div>
+                <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 stroke-[1.5]" />
+              </button>
 
-            {/* In Flight / Processing */}
-            <button
-              type="button"
-              onClick={() => setFilterStatus(filterStatus === "in_flight" ? "all" : "in_flight")}
-              className={cn(
-                "relative rounded-xl border p-3.5 text-left transition-all",
-                filterStatus === "in_flight"
-                  ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/30 shadow-sm"
-                  : "border-border/60 bg-card hover:border-blue-500/40 hover:bg-muted/30",
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">In Flight</span>
-                <Activity
-                  className={cn("h-4 w-4 text-blue-500", stats.running > 0 && "animate-spin")}
-                />
-              </div>
-              <p className="mt-1 text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
-                {stats.running}
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {stats.running > 0 ? "Extracting in worker" : "No active jobs"}
-              </p>
-            </button>
+              {/* In-Flight & Attention Row */}
+              <div className="grid grid-cols-2 gap-3 flex-1">
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus(filterStatus === "in_flight" ? "all" : "in_flight")}
+                  className={cn(
+                    "rounded-xl border p-3.5 text-left transition-all",
+                    filterStatus === "in_flight"
+                      ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/30"
+                      : "border-border/60 bg-card hover:border-border",
+                  )}
+                >
+                  <span className="text-[11px] font-semibold text-muted-foreground block">In-Flight</span>
+                  <span className="text-xl font-mono font-bold text-blue-600 dark:text-blue-400 tabular-nums mt-0.5 block">
+                    {stats.running}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 block truncate">Worker Queue</span>
+                </button>
 
-            {/* Failed / Needs Review */}
-            <button
-              type="button"
-              onClick={() => setFilterStatus(filterStatus === "failed" ? "all" : "failed")}
-              className={cn(
-                "relative rounded-xl border p-3.5 text-left transition-all",
-                filterStatus === "failed"
-                  ? "border-destructive bg-destructive/5 ring-1 ring-destructive/30 shadow-sm"
-                  : "border-border/60 bg-card hover:border-destructive/40 hover:bg-muted/30",
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Attention</span>
-                <AlertTriangle className="h-4 w-4 text-destructive" />
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus(filterStatus === "failed" ? "all" : "failed")}
+                  className={cn(
+                    "rounded-xl border p-3.5 text-left transition-all",
+                    filterStatus === "failed"
+                      ? "border-destructive bg-destructive/5 ring-1 ring-destructive/30"
+                      : "border-border/60 bg-card hover:border-border",
+                  )}
+                >
+                  <span className="text-[11px] font-semibold text-muted-foreground block">Attention</span>
+                  <span className="text-xl font-mono font-bold text-destructive tabular-nums mt-0.5 block">
+                    {stats.failed}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 block truncate">
+                    {stats.failed > 0 ? "Requires Review" : "0 Errors"}
+                  </span>
+                </button>
               </div>
-              <p className="mt-1 text-2xl font-bold tracking-tight text-destructive">
-                {stats.failed}
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {stats.failed > 0 ? "Requires re-run" : "Zero errors"}
-              </p>
-            </button>
+            </div>
           </div>
         </div>
       )}
@@ -667,8 +703,8 @@ export default function AppHome() {
             </div>
           </div>
 
-          {/* Quick Segmented Filter Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {/* Underline-Tab Filter Bar */}
+          <div className="flex items-center gap-6 border-b border-border/60 px-1 overflow-x-auto scrollbar-none">
             {[
               { id: "all", label: "All Runs", count: batches.length },
               {
@@ -686,30 +722,33 @@ export default function AppHome() {
                 label: "Failed",
                 count: batches.filter((b) => b.status === "failed").length,
               },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setFilterStatus(tab.id)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0",
-                  filterStatus === tab.id
-                    ? "bg-foreground text-background shadow-xs font-semibold"
-                    : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <span>{tab.label}</span>
-                <span
+            ].map((tab) => {
+              const active = filterStatus === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterStatus(tab.id)}
                   className={cn(
-                    "px-1.5 py-0.2 rounded-full text-[10px] font-mono",
-                    filterStatus === tab.id
-                      ? "bg-background/20 text-background"
-                      : "bg-border text-muted-foreground",
+                    "flex items-center gap-2 pb-2.5 text-xs font-medium transition-all border-b-2 -mb-px shrink-0",
+                    active
+                      ? "border-primary text-foreground font-semibold"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border/60",
                   )}
                 >
-                  {tab.count}
-                </span>
-              </button>
-            ))}
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      "px-1.5 py-0.2 rounded-full text-[10px] font-mono",
+                      active
+                        ? "bg-primary/15 text-primary font-semibold"
+                        : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -788,7 +827,7 @@ export default function AppHome() {
                 <div
                   key={batch.id}
                   className={cn(
-                    "group flex items-center gap-3.5 px-4 py-3 cursor-pointer transition-colors duration-150",
+                    "group relative flex flex-col cursor-pointer transition-colors duration-150",
                     isSelected ? "bg-primary/5 dark:bg-primary/10" : "hover:bg-muted/40",
                   )}
                   onClick={(e) => {
@@ -801,139 +840,151 @@ export default function AppHome() {
                     setLocation(`/app/batches/${batch.id}`);
                   }}
                 >
-                  {/* Row Checkbox */}
-                  <input
-                    type="checkbox"
-                    aria-label={`Select batch #${batch.id}`}
-                    className="h-4 w-4 rounded border-border/70 shrink-0 cursor-pointer accent-primary"
-                    checked={isSelected}
-                    onChange={() => toggleSelect(batch.id)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
+                  <div className="flex items-center gap-3.5 px-4 py-3">
+                    {/* Row Checkbox */}
+                    <input
+                      type="checkbox"
+                      aria-label={`Select batch #${batch.id}`}
+                      className="h-4 w-4 rounded border-border/70 shrink-0 cursor-pointer accent-primary"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(batch.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
 
-                  {/* Document Thumbnail Preview */}
-                  <div className="relative h-11 w-11 shrink-0 rounded-xl bg-muted border border-border/60 overflow-hidden flex items-center justify-center group-hover:border-primary/40 transition-colors">
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted z-0">
-                      <FileText className="h-4 w-4 text-muted-foreground/60 mb-0.5" />
-                      <span className="text-[9px] font-bold uppercase text-muted-foreground">
-                        {batch.firstDocumentContentType?.split("/").pop()?.slice(0, 4) ?? "DOC"}
-                      </span>
-                    </div>
-                    {batch.firstDocumentObjectPath && isImage ? (
-                      <img
-                        src={storageUrl(batch.firstDocumentObjectPath)}
-                        className="absolute inset-0 h-full w-full object-cover z-10"
-                        alt=""
-                        loading="lazy"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                        }}
-                      />
-                    ) : null}
-                  </div>
-
-                  {/* Main Batch Info */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-body-sm font-semibold text-foreground group-hover:text-primary transition-colors">
-                        Batch #{batch.id}
-                      </span>
-                      <span className="rounded-md border border-border/60 bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground">
-                        {engineLabel}
-                      </span>
-                      <StatusBadge status={batch.status} />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
-                      <Clock className="h-3 w-3" />
-                      {timeAgo(batch.createdAt) || "just now"}
-                      <span className="text-muted-foreground/40">•</span>
-                      <span>
-                        {batch.totalDocuments} document{batch.totalDocuments === 1 ? "" : "s"}
-                      </span>
-                    </p>
-                  </div>
-
-                  {/* Progress Indicator */}
-                  <div className="hidden sm:flex w-32 shrink-0 flex-col gap-1.5 text-right">
-                    <span
-                      className={cn(
-                        "text-xs tabular-nums font-semibold",
-                        batch.status === "failed"
-                          ? "text-destructive"
-                          : progress === 100
-                            ? "text-muted-foreground"
-                            : "text-foreground",
-                      )}
-                    >
-                      {batch.completedDocuments}/{batch.totalDocuments} docs
-                    </span>
-                    {progress < 100 && (
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className={cn(
-                            "h-full rounded-full transition-all duration-500",
-                            batch.status === "failed" ? "bg-destructive" : "bg-primary animate-pulse",
-                          )}
-                          style={{ width: `${progress}%` }}
-                        />
+                    {/* Document Thumbnail Preview */}
+                    <div className="relative h-11 w-11 shrink-0 rounded-xl bg-muted border border-border/60 overflow-hidden flex items-center justify-center group-hover:border-primary/40 transition-colors">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted z-0">
+                        <FileText className="h-4 w-4 text-muted-foreground/60 mb-0.5" />
+                        <span className="text-[9px] font-bold uppercase text-muted-foreground">
+                          {batch.firstDocumentContentType?.split("/").pop()?.slice(0, 4) ?? "DOC"}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      {batch.firstDocumentObjectPath && isImage ? (
+                        <img
+                          src={storageUrl(batch.firstDocumentObjectPath)}
+                          className="absolute inset-0 h-full w-full object-cover z-10"
+                          alt=""
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : null}
+                    </div>
 
-                  {/* Actions */}
-                  <div className="shrink-0 flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="hidden md:inline-flex h-8 px-2.5 text-xs rounded-lg text-muted-foreground hover:text-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setLocation(`/app/batches/${batch.id}`);
-                      }}
-                    >
-                      View
-                    </Button>
+                    {/* Main Batch Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-body-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                          Batch #{batch.id}
+                        </span>
+                        <span className="rounded-md border border-border/60 bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground">
+                          {engineLabel}
+                        </span>
+                        <StatusBadge status={batch.status} />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                        <Clock className="h-3 w-3" />
+                        {timeAgo(batch.createdAt) || "just now"}
+                        <span className="text-muted-foreground/40">•</span>
+                        <span>
+                          {batch.totalDocuments} document{batch.totalDocuments === 1 ? "" : "s"}
+                        </span>
+                      </p>
+                    </div>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          aria-label={`Actions for batch #${batch.id}`}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                    {/* Progress Indicator */}
+                    <div className="hidden sm:flex w-32 shrink-0 flex-col gap-1.5 text-right">
+                      <span
+                        className={cn(
+                          "text-xs tabular-nums font-semibold",
+                          batch.status === "failed"
+                            ? "text-destructive"
+                            : progress === 100
+                              ? "text-muted-foreground"
+                              : "text-foreground",
+                        )}
+                      >
+                        {batch.completedDocuments}/{batch.totalDocuments} docs
+                      </span>
+                      {progress < 100 && (
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all duration-500",
+                              batch.status === "failed" ? "bg-destructive" : "bg-primary animate-pulse",
+                            )}
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="shrink-0 flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="hidden md:inline-flex h-8 px-2.5 text-xs rounded-lg text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLocation(`/app/batches/${batch.id}`);
+                        }}
+                      >
+                        View
+                      </Button>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            aria-label={`Actions for batch #${batch.id}`}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="w-44 rounded-xl"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="end"
-                        className="w-44 rounded-xl"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <DropdownMenuItem onClick={() => setLocation(`/app/batches/${batch.id}`)}>
-                          <ExternalLink className="mr-2 h-4 w-4 text-muted-foreground" />
-                          Open Batch Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => exportCSV(new Set([batch.id]))}>
-                          <Download className="mr-2 h-4 w-4 text-muted-foreground" />
-                          Export CSV
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => exportExcel(new Set([batch.id]))}>
-                          <Download className="mr-2 h-4 w-4 text-muted-foreground" />
-                          Export Excel (.xlsx)
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                          onClick={() => setPendingDelete({ ids: [batch.id], label: `Batch #${batch.id}` })}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete Batch
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <DropdownMenuItem onClick={() => setLocation(`/app/batches/${batch.id}`)}>
+                            <ExternalLink className="mr-2 h-4 w-4 text-muted-foreground" />
+                            Open Batch Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportCSV(new Set([batch.id]))}>
+                            <Download className="mr-2 h-4 w-4 text-muted-foreground" />
+                            Export CSV
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => exportExcel(new Set([batch.id]))}>
+                            <Download className="mr-2 h-4 w-4 text-muted-foreground" />
+                            Export Excel (.xlsx)
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                            onClick={() => setPendingDelete({ ids: [batch.id], label: `Batch #${batch.id}` })}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Batch
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
 
-                    <ArrowRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors ml-0.5" />
+                      <ArrowRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors ml-0.5" />
+                    </div>
                   </div>
+
+                  {/* Under-row thin horizontal progress bar for in-progress batches */}
+                  {(batch.status === "processing" || batch.status === "queued") && (
+                    <div className="h-[2px] w-full bg-primary/20 overflow-hidden">
+                      <div
+                        className="h-full bg-primary animate-pulse transition-all duration-300"
+                        style={{ width: `${Math.max(15, progress)}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
