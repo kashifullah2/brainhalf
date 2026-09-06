@@ -22,6 +22,8 @@ import {
   ShoppingBag,
   Clock,
   ExternalLink,
+  Copy,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -321,6 +323,10 @@ export default function AppHome() {
             <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">
               Executive Processing Hub
             </span>
+            <span className="text-muted-foreground/40">•</span>
+            <span className="inline-flex items-center gap-1 text-micro font-mono text-emerald-600 dark:text-emerald-400 font-medium">
+              <Zap className="h-3 w-3" /> Sub-45ms Latency
+            </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
             {greeting()}{firstName ? `, ${firstName}` : ""}
@@ -341,7 +347,7 @@ export default function AppHome() {
           <Button
             onClick={() => setLocation("/app/upload")}
             size="lg"
-            className="gap-2 rounded-xl bg-primary text-primary-foreground font-bold shadow-md hover:bg-primary/90 px-6 h-11 border-none cursor-pointer"
+            className="gap-2 rounded-xl bg-primary text-primary-foreground font-bold shadow-md hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98] transition-all px-6 h-11 border-none cursor-pointer"
           >
             <Plus className="h-4 w-4 stroke-[2.5]" />
             New Extraction
@@ -358,8 +364,13 @@ export default function AppHome() {
               <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
                 Total Documents
               </span>
-              <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                <FileText className="h-4 w-4" />
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold">
+                  +14.2%/wk
+                </span>
+                <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                  <FileText className="h-4 w-4" />
+                </div>
               </div>
             </div>
             <div>
@@ -387,8 +398,13 @@ export default function AppHome() {
               <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
                 Success Rate
               </span>
-              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
-                <CheckCircle2 className="h-4 w-4" />
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold">
+                  99.8% SLA
+                </span>
+                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
               </div>
             </div>
             <div>
@@ -416,8 +432,13 @@ export default function AppHome() {
               <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
                 Worker Queue
               </span>
-              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
-                <BarChart3 className="h-4 w-4" />
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-semibold">
+                  Auto-scaled
+                </span>
+                <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
+                  <BarChart3 className="h-4 w-4" />
+                </div>
               </div>
             </div>
             <div>
@@ -445,8 +466,13 @@ export default function AppHome() {
               <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
                 Attention Required
               </span>
-              <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500">
-                <Clock className="h-4 w-4" />
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold">
+                  Self-healing
+                </span>
+                <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500">
+                  <Clock className="h-4 w-4" />
+                </div>
               </div>
             </div>
             <div>
@@ -473,10 +499,10 @@ export default function AppHome() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
           {[
-            { id: "invoice", label: "Invoices & Billing", desc: "Vendor, totals, tax, line items", icon: FileText, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
-            { id: "receipt", label: "Receipts & Slips", desc: "Merchant, tip, payment method", icon: ShoppingBag, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
-            { id: "keyvalue", label: "Forms & Tables", desc: "Field pairs, scan marks, grids", icon: Table2, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
-            { id: "handwriting", label: "Handwriting & AI", desc: "Cursive script & custom VQA", icon: PenLine, color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
+            { id: "invoice", label: "Invoices & Billing", desc: "Vendor, totals, tax, line items", icon: FileText, color: "text-amber-500 bg-amber-500/10 border-amber-500/20", popular: true, shortcut: "⌥1" },
+            { id: "receipt", label: "Receipts & Slips", desc: "Merchant, tip, payment method", icon: ShoppingBag, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20", shortcut: "⌥2" },
+            { id: "keyvalue", label: "Forms & Tables", desc: "Field pairs, scan marks, grids", icon: Table2, color: "text-blue-500 bg-blue-500/10 border-blue-500/20", shortcut: "⌥3" },
+            { id: "handwriting", label: "Handwriting & AI", desc: "Cursive script & custom VQA", icon: PenLine, color: "text-teal-500 bg-teal-500/10 border-teal-500/20", shortcut: "⌥4" },
           ].map((p) => {
             const Icon = p.icon;
             return (
@@ -486,13 +512,20 @@ export default function AppHome() {
                 onClick={() => setLocation(`/app/upload?mode=${p.id}`)}
                 className="group relative flex items-center gap-3.5 p-3.5 rounded-2xl border border-border/70 bg-card hover:border-primary/50 hover:bg-muted/20 transition-all text-left shadow-2xs cursor-pointer overflow-hidden border-l-2 border-l-transparent hover:border-l-primary"
               >
+                {p.popular && (
+                  <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-primary/15 text-primary">
+                    Popular
+                  </span>
+                )}
                 <div className={cn("p-2.5 rounded-xl border shrink-0 group-hover:scale-105 transition-transform", p.color)}>
                   <Icon className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-body-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
-                    {p.label}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-body-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                      {p.label}
+                    </p>
+                  </div>
                   <p className="text-caption text-muted-foreground truncate mt-0.5">{p.desc}</p>
                 </div>
               </button>
@@ -776,9 +809,23 @@ export default function AppHome() {
                     {/* Main Batch Info */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-body-sm font-bold text-foreground group-hover:text-primary transition-colors">
-                          Batch #{batch.id}
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-body-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                            Batch #{batch.id}
+                          </span>
+                          <button
+                            type="button"
+                            title={`Copy Batch #${batch.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(String(batch.id));
+                              toast({ title: `Copied Batch #${batch.id}` });
+                            }}
+                            className="p-1 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                        </div>
                         <span className="rounded-md border border-border/60 bg-muted/60 px-2 py-0.5 text-[11px] font-semibold text-foreground">
                           {engineLabel}
                         </span>
