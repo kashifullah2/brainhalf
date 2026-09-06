@@ -3,6 +3,7 @@ import { authHeaders } from '../../../server/guard';
 import { requireAdmin } from '../../../server/admin';
 import { DEFAULT_CONFIDENCE_THRESHOLD } from '../../../server/threshold';
 import { STUCK_AFTER_MINUTES } from '../../../server/stuck-documents';
+import { getSystemSettings } from '../../../server/system-settings';
 
 /**
  * Real platform metrics for the admin console.
@@ -64,6 +65,36 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
   const failed = Number(documentCounts.failed ?? 0);
   const finished = completed + failed;
 
+  const settings = await getSystemSettings(env.DB);
+  const awsConfigured = Boolean(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY);
+  const bedrockModel = awsConfigured
+    ? settings.AWS_BEDROCK_MODEL || env.AWS_BEDROCK_MODEL || 'amazon.nova-lite-v1:0'
+    : null;
+  const hunyuanConfigured = Boolean(env.HUNYUAN_API_KEY);
+  const openaiConfigured = Boolean(settings.OPENAI_API_KEY || env.OPENAI_API_KEY || env.OCR_API_KEY);
+
+  let defaultTier: string | null = null;
+  if (settings.DEFAULT_TIER_PROVIDER === 'bedrock' && bedrockModel) {
+    defaultTier = 'bedrock';
+  } else if (settings.DEFAULT_TIER_PROVIDER === 'openai' && openaiConfigured) {
+    defaultTier = 'openai';
+  } else if (hunyuanConfigured) {
+    defaultTier = 'hunyuan';
+  } else if (bedrockModel) {
+    defaultTier = 'bedrock';
+  } else if (openaiConfigured) {
+    defaultTier = 'openai';
+  }
+
+  let escalationTier: string | null = null;
+  if (settings.HIGH_ACCURACY_PROVIDER === 'openai' && openaiConfigured) {
+    escalationTier = 'openai';
+  } else if (bedrockModel) {
+    escalationTier = 'bedrock';
+  } else if (openaiConfigured) {
+    escalationTier = 'openai';
+  }
+
   return json(
     {
       counts: {
@@ -91,15 +122,11 @@ export const onRequestGet: PagesFunction<AppEnv> = async ({ request, env }) => {
       // Presence, never values. A configured provider is reported as `true` and
       // nothing more -- not a prefix, not a suffix, not a length.
       providers: {
-        defaultTier: env.HUNYUAN_API_KEY
-          ? 'hunyuan'
-          : env.OPENAI_API_KEY || env.OCR_API_KEY
-            ? 'openai'
-            : null,
-        escalationTier: env.OPENAI_API_KEY || env.OCR_API_KEY ? 'openai' : null,
-        awsConfigured: Boolean(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY),
-        awsRegion: env.AWS_REGION || null,
-        bedrockModel: env.AWS_BEDROCK_MODEL || null,
+        defaultTier,
+        escalationTier,
+        awsConfigured,
+        awsRegion: env.AWS_REGION || 'us-east-1',
+        bedrockModel,
         googleSignIn: Boolean(env.GOOGLE_CLIENT_ID || env.VITE_GOOGLE_CLIENT_ID),
         transactionalEmail: Boolean(env.RESEND_API_KEY),
       },

@@ -55,3 +55,6 @@ max_batch_timeout = 5
 # three upstream calls. server/stuck-documents.ts is the backstop for a consumer
 # that dies mid-document and never reports either way.
 max_retries = 3
+
+[vars]
+AWS_BEDROCK_MODEL = "amazon.nova-lite-v1:0"

@@ -22,6 +22,7 @@
 // ---------------------------------------------------------------------------
 
 import { executeOcrRequest } from '../../server/ocr-provider';
+import { getMergedOcrEnv } from '../../server/system-settings';
 import { extractModelConfidence } from '../../server/confidence';
 import { parseExtraction } from '../../server/extraction-to-fields';
 import {
@@ -199,9 +200,10 @@ async function processDocument(msg: OcrQueueMessage, env: Env): Promise<void> {
     });
 
     const threshold = row.confidence_threshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
+    const mergedEnv = await getMergedOcrEnv(env);
 
     const first = parseOrThrow(
-      await executeOcrRequest(env, 'default', {
+      await executeOcrRequest(mergedEnv, 'default', {
         messages: upstream.messages,
         jsonObject: upstream.jsonObject,
         mode,
@@ -218,7 +220,7 @@ async function processDocument(msg: OcrQueueMessage, env: Env): Promise<void> {
     if (best.fields.length > 0 && documentConfidence(best) < threshold) {
       try {
         const retry = parseOrThrow(
-          await executeOcrRequest(env, 'escalation', {
+          await executeOcrRequest(mergedEnv, 'escalation', {
             messages: upstream.messages,
             jsonObject: upstream.jsonObject,
             mode,

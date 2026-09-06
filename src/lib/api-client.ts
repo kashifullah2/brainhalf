@@ -1230,3 +1230,92 @@ export function useAdminMetrics(options?: { query?: QueryOverrides<AdminMetrics>
     ...queryOpts,
   });
 }
+
+export interface AdminSettings {
+  defaultTierProvider: 'hunyuan' | 'bedrock' | 'openai';
+  hunyuanModel: string;
+  highAccuracyProvider: 'bedrock' | 'openai';
+  bedrockModel: string;
+  openaiModel: string;
+  openaiApiKeyMasked: string | null;
+  providersStatus: {
+    hunyuan: boolean;
+    bedrock: boolean;
+    openai: boolean;
+  };
+}
+
+export interface AdminSettingsResponse {
+  settings: AdminSettings;
+  availableModels: {
+    hunyuan: readonly string[];
+    bedrock: readonly string[];
+    openai: readonly string[];
+  };
+}
+
+export interface AdminSettingsUpdate {
+  defaultTierProvider?: 'hunyuan' | 'bedrock' | 'openai';
+  hunyuanModel?: string;
+  highAccuracyProvider?: 'bedrock' | 'openai';
+  bedrockModel?: string;
+  openaiModel?: string;
+  openaiApiKey?: string;
+}
+
+export interface TestModelPayload {
+  tier?: 'default' | 'escalation';
+  provider?: 'hunyuan' | 'bedrock' | 'textract' | 'openai';
+  model?: string;
+  customPrompt?: string;
+}
+
+export interface TestModelResult {
+  success: boolean;
+  provider: string;
+  model: string;
+  tier?: 'default' | 'escalation';
+  latencyMs: number;
+  tokensUsed?: number;
+  preview?: string | null;
+  error?: string | null;
+}
+
+export function getAdminSettingsQueryKey() {
+  return ["admin", "settings"] as const;
+}
+
+export function useAdminSettings(options?: { query?: QueryOverrides<AdminSettingsResponse> }) {
+  const queryOpts = options?.query ?? {};
+  return useQuery<AdminSettingsResponse>({
+    queryKey: getAdminSettingsQueryKey(),
+    queryFn: () => apiFetch<AdminSettingsResponse>("/admin/settings"),
+    ...queryOpts,
+  });
+}
+
+export function useUpdateAdminSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (updates: AdminSettingsUpdate) =>
+      apiFetch<{ success: boolean; settings: AdminSettings }>("/admin/settings", {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: getAdminSettingsQueryKey() });
+      void queryClient.invalidateQueries({ queryKey: getAdminMetricsQueryKey() });
+    },
+  });
+}
+
+export function useTestModel() {
+  return useMutation({
+    mutationFn: (payload: TestModelPayload) =>
+      apiFetch<TestModelResult>("/admin/test-model", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+  });
+}
+

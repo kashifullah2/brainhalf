@@ -38,6 +38,8 @@ export interface OcrProviderEnv {
   AWS_SESSION_TOKEN?: string;
   AWS_REGION?: string;
   AWS_BEDROCK_MODEL?: string;
+  DEFAULT_TIER_PROVIDER?: 'hunyuan' | 'bedrock' | 'openai';
+  HIGH_ACCURACY_PROVIDER?: 'bedrock' | 'openai';
 }
 
 export interface OcrRequestPayload {
@@ -86,7 +88,7 @@ const MAX_COMPLETION_TOKENS = 8192;
 const UPSTREAM_TEMPERATURE = 0;
 const UPSTREAM_SEED = 42;
 
-interface ResolvedProvider {
+export interface ResolvedProvider {
   name: string;
   baseUrl: string;
   key: string;
@@ -96,7 +98,7 @@ interface ResolvedProvider {
   retryOnReject: boolean;
 }
 
-function resolveProvider(env: OcrProviderEnv, tier: Tier): ResolvedProvider | OcrProviderResult {
+export function resolveProvider(env: OcrProviderEnv, tier: Tier): ResolvedProvider | OcrProviderResult {
   if (tier === 'escalation') {
     const key = env.OPENAI_API_KEY || env.OCR_API_KEY;
     if (!key) {
@@ -180,7 +182,7 @@ function resolveProvider(env: OcrProviderEnv, tier: Tier): ResolvedProvider | Oc
 // AWS branch
 // ---------------------------------------------------------------------------
 
-interface DocumentPart {
+export interface DocumentPart {
   /** The instructions server/ocr-prompts.ts built for this mode. */
   prompt: string;
   contentType: string;
@@ -208,7 +210,7 @@ type MessagePart =
   | { type: 'file'; file?: { file_data?: unknown } }
   | { type?: string };
 
-function readDocumentPart(payload: OcrRequestPayload): DocumentPart | null {
+export function readDocumentPart(payload: OcrRequestPayload): DocumentPart | null {
   const message = payload.messages[0];
   if (!message || !Array.isArray(message.content)) return null;
 
@@ -348,7 +350,7 @@ function bedrockContent(modelId: string, response: unknown): { text: string; tok
   return { text: typeof text === 'string' ? text : '', tokens: Number(tokens) || 0 };
 }
 
-async function runBedrock(
+export async function runBedrock(
   config: AwsOcrConfig,
   modelId: string,
   part: DocumentPart,
@@ -380,7 +382,7 @@ async function runBedrock(
   }
 }
 
-async function runTextract(
+export async function runTextract(
   config: AwsOcrConfig,
   part: DocumentPart,
   mode: string | undefined,
@@ -485,68 +487,10 @@ function awsFailure(error: unknown, providerName: string): OcrProviderResult {
   };
 }
 
-/**
- * The AWS engines, when credentials are configured.
- *
- * Returns null to mean "not applicable, use the chat provider", which is how a
- * PDF on an image-only path and an unconfigured Bedrock model both fall through.
- *
- * Textract is deliberately never used for the escalation tier: escalation exists
- * to re-read a page the default tier scored badly, and Textract is a different
- * class of engine rather than a better one -- it cannot be given instructions at
- * all. Bedrock is a vision model, so it is a legitimate escalation and is used
- * for both tiers when AWS_BEDROCK_MODEL names one.
- */
-async function tryAwsProviders(
-  env: OcrProviderEnv,
-  tier: Tier,
+export async function callChatProvider(
+  provider: ResolvedProvider,
   payload: OcrRequestPayload,
-): Promise<OcrProviderResult | null> {
-  const config = resolveAwsConfig(env);
-  if (!config) return null;
-
-  const part = readDocumentPart(payload);
-  if (!part) {
-    console.error('[ocr-provider] AWS is configured but the request carried no document part.');
-    return null;
-  }
-
-  const bedrockModel = env.AWS_BEDROCK_MODEL?.trim();
-  if (bedrockModel) {
-    const result = await runBedrock(config, bedrockModel, part);
-    if (result.type === 'success') return result;
-    console.warn(
-      `[ocr-provider] Bedrock (${bedrockModel}) failed: ${result.type === 'config-error' ? result.message : result.detail.slice(0, 200)}`,
-    );
-  }
-
-  if (tier === 'escalation') return null;
-
-  const result = await runTextract(config, part, payload.mode);
-  if (result.type === 'success') return result;
-  console.warn(
-    `[ocr-provider] Textract failed: ${result.type === 'config-error' ? result.message : result.detail.slice(0, 200)}`,
-  );
-
-  // A payload Textract will not accept is worth telling the user about directly
-  // rather than silently spending a second upstream call on.
-  if (result.type === 'permanent-error' && result.payloadTooLarge) return result;
-  return null;
-}
-
-export async function executeOcrRequest(
-  env: OcrProviderEnv,
-  tier: Tier,
-  payload: OcrRequestPayload
 ): Promise<OcrProviderResult> {
-  const aws = await tryAwsProviders(env, tier, payload);
-  if (aws) return aws;
-
-  const provider = resolveProvider(env, tier);
-  if ('type' in provider) {
-    return provider; // Config error
-  }
-
   let upstreamBody = provider.buildBody(payload);
   let attemptsRemaining = provider.retryOnReject ? 2 : 1;
 
@@ -576,7 +520,7 @@ export async function executeOcrRequest(
             status: res.status,
             message: 'The OCR service returned an unreadable response.',
             providerName: provider.name,
-            detail: String(error)
+            detail: String(error),
           };
         }
 
@@ -591,7 +535,7 @@ export async function executeOcrRequest(
           providerName: provider.name,
           model: provider.model,
           tokensUsed: tokens,
-          isTruncated
+          isTruncated,
         };
       }
 
@@ -614,11 +558,10 @@ export async function executeOcrRequest(
           message: 'This document is too large to extract.',
           providerName: provider.name,
           detail: detailText,
-          payloadTooLarge: true
+          payloadTooLarge: true,
         };
       }
 
-      // Determine if error is retryable based on our H-1 logic
       const retryableStatuses = [408, 429, 500, 502, 503, 504];
       const isRetryable = retryableStatuses.includes(res.status);
 
@@ -628,7 +571,7 @@ export async function executeOcrRequest(
           status: res.status,
           message: 'The extraction service could not read this document. Try again in a moment.',
           providerName: provider.name,
-          detail: detailText
+          detail: detailText,
         };
       } else {
         return {
@@ -637,7 +580,7 @@ export async function executeOcrRequest(
           message: 'The extraction service refused the request.',
           providerName: provider.name,
           detail: detailText,
-          payloadTooLarge: false
+          payloadTooLarge: false,
         };
       }
     } catch (error) {
@@ -651,7 +594,7 @@ export async function executeOcrRequest(
           status: null,
           message: 'Could not reach the extraction service. Try again in a moment.',
           providerName: provider.name,
-          detail: reason
+          detail: reason,
         };
       }
 
@@ -661,7 +604,7 @@ export async function executeOcrRequest(
         message: 'A fatal error occurred calling the extraction service.',
         providerName: provider.name,
         detail: reason,
-        payloadTooLarge: false
+        payloadTooLarge: false,
       };
     }
   }
@@ -672,6 +615,96 @@ export async function executeOcrRequest(
     message: 'Could not reach the OCR service.',
     providerName: provider.name,
     detail: 'Exhausted upstream attempts',
-    payloadTooLarge: false
+    payloadTooLarge: false,
   };
+}
+
+export async function executeOcrRequest(
+  env: OcrProviderEnv,
+  tier: Tier,
+  payload: OcrRequestPayload,
+): Promise<OcrProviderResult> {
+  const awsConfig = resolveAwsConfig(env);
+  const part = awsConfig ? readDocumentPart(payload) : null;
+  const bedrockModel = env.AWS_BEDROCK_MODEL?.trim();
+
+  // 1. Escalation Tier (High-Accuracy)
+  if (tier === 'escalation') {
+    const preferred = env.HIGH_ACCURACY_PROVIDER;
+    if (preferred === 'openai') {
+      const openaiProvider = resolveProvider(env, 'escalation');
+      if (!('type' in openaiProvider)) {
+        const res = await callChatProvider(openaiProvider, payload);
+        if (res.type === 'success') return res;
+      }
+      if (awsConfig && part && bedrockModel) {
+        return runBedrock(awsConfig, bedrockModel, part);
+      }
+      const errProvider = resolveProvider(env, 'escalation');
+      if ('type' in errProvider) return errProvider;
+      return callChatProvider(errProvider, payload);
+    }
+
+    // Default or preferred is Bedrock if configured
+    if (awsConfig && part && bedrockModel) {
+      const result = await runBedrock(awsConfig, bedrockModel, part);
+      if (result.type === 'success') return result;
+      // If Bedrock failed, try OpenAI if configured before giving up
+      const openaiProvider = resolveProvider(env, 'escalation');
+      if (!('type' in openaiProvider)) {
+        console.warn(`[ocr-provider] Bedrock failed; falling back to OpenAI escalation`);
+        return callChatProvider(openaiProvider, payload);
+      }
+      return result;
+    }
+
+    // Bedrock not configured, try OpenAI
+    const openaiProvider = resolveProvider(env, 'escalation');
+    if (!('type' in openaiProvider)) {
+      return callChatProvider(openaiProvider, payload);
+    }
+
+    return { type: 'config-error', message: 'OCR escalation is not configured on this deployment.' };
+  }
+
+  // 2. Default Tier
+  const defaultPref = env.DEFAULT_TIER_PROVIDER;
+  if (defaultPref === 'bedrock' && awsConfig && part && bedrockModel) {
+    const res = await runBedrock(awsConfig, bedrockModel, part);
+    if (res.type === 'success') return res;
+  } else if (defaultPref === 'openai') {
+    const openaiProvider = resolveProvider(env, 'escalation');
+    if (!('type' in openaiProvider)) {
+      const res = await callChatProvider(openaiProvider, payload);
+      if (res.type === 'success') return res;
+    }
+  }
+
+  // Default Hunyuan tier
+  if (env.HUNYUAN_API_KEY) {
+    const hunyuanProvider = resolveProvider(env, 'default');
+    if (!('type' in hunyuanProvider)) {
+      const res = await callChatProvider(hunyuanProvider, payload);
+      if (res.type === 'success') return res;
+      console.warn(`[ocr-provider] Hunyuan default tier failed (${res.type}); attempting fallback`);
+    }
+  }
+
+  // Fallbacks for default tier if Hunyuan wasn't configured or failed:
+  if (awsConfig && part) {
+    if (bedrockModel) {
+      const result = await runBedrock(awsConfig, bedrockModel, part);
+      if (result.type === 'success') return result;
+    }
+    const textractRes = await runTextract(awsConfig, part, payload.mode);
+    if (textractRes.type === 'success') return textractRes;
+    if (textractRes.type === 'permanent-error' && textractRes.payloadTooLarge) return textractRes;
+  }
+
+  const fallbackProvider = resolveProvider(env, 'default');
+  if (!('type' in fallbackProvider)) {
+    return callChatProvider(fallbackProvider, payload);
+  }
+
+  return { type: 'config-error', message: 'OCR is not configured on this deployment.' };
 }

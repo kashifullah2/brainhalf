@@ -30,6 +30,7 @@ import {
   userIdentity,
 } from '../../server/rate-limit';
 import { executeOcrRequest, type Tier } from '../../server/ocr-provider';
+import { getMergedOcrEnv } from '../../server/system-settings';
 import {
   MAX_CUSTOM_PROMPT_CHARS,
   OCR_DOCUMENT_TYPES,
@@ -211,7 +212,8 @@ export const onRequestPost: PagesFunction<AppEnv> = async (context) => {
     if (escalationLimited) return escalationLimited;
   }
 
-  const result = await executeOcrRequest(env, tier, {
+  const mergedEnv = await getMergedOcrEnv(env);
+  const result = await executeOcrRequest(mergedEnv, tier, {
     messages: upstream.messages,
     jsonObject: upstream.jsonObject,
     // Passed through for the AWS engines only. Textract has one operation per

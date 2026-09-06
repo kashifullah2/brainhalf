@@ -95,3 +95,5 @@ binding = "OCR_QUEUE"
 # own first name, so signing up as "Kashif" was enough to become an administrator.
 # ---------------------------------------------------------------------------
 
+[vars]
+AWS_BEDROCK_MODEL = "amazon.nova-lite-v1:0"
