@@ -18,7 +18,6 @@ import {
   CreditCard,
   PanelLeft,
   ShieldCheck,
-  Users,
 } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -111,10 +110,7 @@ export const AppLayout = React.memo(function AppLayout({ children }: { children:
     },
     { title: "Templates", url: "/app/templates", icon: FileText },
     ...(isAdmin
-      ? [
-          { title: "Admin Console", url: "/app/admin", icon: ShieldCheck },
-          { title: "User Signups", url: "/app/admin?tab=users", icon: Users },
-        ]
+      ? [{ title: "Admin Console", url: "/app/admin", icon: ShieldCheck }]
       : []),
   ];
 
