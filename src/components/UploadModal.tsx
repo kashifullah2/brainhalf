@@ -3,7 +3,6 @@ import { useUpload } from "@/lib/upload";
 import type { CreateBatchProgress, ExtractionTemplate } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import {
   CheckCircle2,
@@ -895,30 +894,6 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
             />
           </div>
 
-          {/* Live Progress region when batch creation starts */}
-          {isCreatingBatch && progress && (
-            <div
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              className="flex flex-col gap-2 rounded-xl border border-border/60 bg-muted/20 p-3"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-label font-semibold text-foreground truncate">
-                  {progress.status === "failed"
-                    ? "Failed: "
-                    : progress.status === "queued"
-                      ? "Queued: "
-                      : "Extracting: "}{" "}
-                  {progress.filename}
-                </p>
-                <span className="text-caption font-semibold text-muted-foreground tabular-nums shrink-0">{progress.current} / {progress.total}</span>
-              </div>
-              <Progress value={Math.round((progress.current / Math.max(1, progress.total)) * 100)} className="h-1.5" />
-              {progress.error && <p className="text-caption font-medium text-destructive">{progress.error}</p>}
-            </div>
-          )}
-
           {batchError && (
             <p role="alert" className="text-label text-destructive font-semibold bg-destructive/10 p-3 rounded-xl">
               {batchError}
@@ -939,6 +914,10 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
                 <p className="text-caption font-medium text-destructive">
                   {failedCount} file{failedCount === 1 ? "" : "s"} failed. Remove or retry to proceed.
                 </p>
+              ) : isCreatingBatch && progress ? (
+                <p className="text-caption font-medium text-primary truncate max-w-xs">
+                  Reading: {progress.filename} ({progress.current}/{progress.total})
+                </p>
               ) : (
                 <p className="text-caption text-muted-foreground">
                   {readyDocuments.length > 0 ? "Ready to launch high-accuracy OCR worker pipeline." : "Add at least one document to start."}
@@ -949,14 +928,34 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
               onClick={handleCreateBatch}
               disabled={readyDocuments.length === 0 || isCreatingBatch || !isSettled}
               size="lg"
-              className="shrink-0 rounded-xl bg-primary px-8 text-body-sm font-bold text-primary-foreground shadow-md transition-all hover:bg-primary/90 disabled:opacity-40 disabled:pointer-events-none"
+              className="relative overflow-hidden shrink-0 rounded-xl bg-primary px-8 text-body-sm font-bold text-primary-foreground shadow-md transition-all hover:bg-primary/90 disabled:opacity-50 border-none min-w-[240px] h-11"
             >
-              {isCreatingBatch ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Extracting batch...</>
+              {isCreatingBatch && progress ? (
+                <>
+                  {/* Inline fill-progress background fill */}
+                  <span
+                    className="absolute inset-0 bg-white/20 dark:bg-black/25 transition-all duration-300 pointer-events-none"
+                    style={{ width: `${Math.round((progress.current / Math.max(1, progress.total)) * 100)}%` }}
+                  />
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                    Uploading {Math.round((progress.current / Math.max(1, progress.total)) * 100)}% ({progress.current}/{progress.total})
+                  </span>
+                </>
+              ) : isCreatingBatch ? (
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  Starting batch…
+                </span>
               ) : !isSettled ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading {inFlightCount} file{inFlightCount === 1 ? "" : "s"}…</>
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  Uploading {inFlightCount} file{inFlightCount === 1 ? "" : "s"}…
+                </span>
               ) : (
-                `Start Extraction (${readyDocuments.length} doc${readyDocuments.length !== 1 ? "s" : ""})`
+                <span className="relative z-10">
+                  Start Extraction ({readyDocuments.length} doc{readyDocuments.length !== 1 ? "s" : ""})
+                </span>
               )}
             </Button>
           </div>
