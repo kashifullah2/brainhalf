@@ -18,9 +18,7 @@ import {
   LayoutGrid,
   List,
   PenLine,
-  Languages,
   Table2,
-  Eye,
   ShoppingBag,
   Clock,
   ExternalLink,
@@ -315,308 +313,210 @@ export default function AppHome() {
 
   return (
     <div className={`flex flex-col gap-6 ${isSelecting ? "pb-28" : ""}`}>
-      {/* ── Asymmetric Hero / Command Station ─────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-muted/20 p-6 md:p-8 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          {/* Left: Asymmetric Large Typography */}
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2">
-              <span className="flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 animate-pulse" />
-              <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">
-                OCR &amp; Extraction Station
-              </span>
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              {greeting()}{firstName ? `, ${firstName}` : ""}
-            </h1>
-            <p className="text-body text-muted-foreground leading-relaxed">
-              Upload invoices, receipts, handwritten notes, or forms. BrainHalf automatically extracts structured field schemas for Excel &amp; CSV reporting.
-            </p>
+      {/* ── MINIMALIST COMMAND HEADER ─────────────────────────────────────── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-border/50">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 animate-pulse" />
+            <span className="text-micro font-semibold uppercase tracking-wider text-muted-foreground">
+              Executive Processing Hub
+            </span>
           </div>
-
-          {/* Right: Compact Real-Time Status Strip */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 shrink-0 border-t lg:border-t-0 lg:border-l border-border/60 pt-4 lg:pt-0 lg:pl-6">
-            <div className="flex items-center gap-3 bg-muted/30 p-3 rounded-xl border border-border/50">
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  9 AI Engines Active
-                </span>
-                <span className="text-[11px] font-mono text-muted-foreground mt-0.5">
-                  Throughput: {stats?.docs || 0} docs processed
-                </span>
-              </div>
-              {/* Micro throughput sparkline */}
-              <svg width="48" height="20" viewBox="0 0 48 20" fill="none" className="shrink-0">
-                <path
-                  d="M2,16 L10,12 L18,15 L26,7 L34,11 L42,3 L46,5"
-                  stroke="#E8A33D"
-                  strokeWidth="1.75"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </div>
-
-            <Button
-              onClick={() => setLocation("/app/upload")}
-              className="gap-2 rounded-xl bg-primary text-primary-foreground font-semibold shadow-sm hover:opacity-95 px-5 h-10 shrink-0"
-            >
-              <Plus className="h-4 w-4 stroke-[2]" />
-              New Extraction
-            </Button>
-          </div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+            {greeting()}{firstName ? `, ${firstName}` : ""}
+          </h1>
+          <p className="text-body-sm text-muted-foreground">
+            AI document extraction engine &amp; schema pipeline station.
+          </p>
         </div>
 
-        {/* ── Quick Launch Preset Studio (Featured 2-Col + Compact Row) ── */}
-        <div className="mt-8 pt-6 border-t border-border/50">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <span className="h-3.5 w-1 rounded-full bg-primary" />
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Quick Launch Preset Studio
-              </p>
-            </div>
-            <span className="text-caption text-muted-foreground">Direct preset shortcut</span>
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-xl border border-border/60 bg-muted/20 text-xs">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="font-semibold text-foreground">9 AI Engines Ready</span>
+            <span className="text-muted-foreground/60">•</span>
+            <span className="font-mono text-muted-foreground">{stats?.docs || 0} docs</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Featured Preset 1 (2-Column Wide) */}
-            <button
-              onClick={() => setLocation("/app/upload?mode=invoice")}
-              className="group relative flex items-start gap-4 p-4 rounded-xl border border-border/70 bg-card hover:border-primary/60 hover:shadow-sm transition-all text-left md:col-span-2"
-            >
-              <div className="p-3 rounded-xl border bg-gradient-to-br from-amber-500/10 to-orange-500/10 text-amber-500 border-amber-500/20 shrink-0 group-hover:scale-105 transition-transform">
-                <FileText className="h-5 w-5 stroke-[1.5]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-body-sm font-semibold text-foreground group-hover:text-primary transition-colors">
-                    Invoices &amp; Accounts Payable
-                  </span>
-                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                    Most Used
-                  </span>
-                </div>
-                <p className="text-caption text-muted-foreground mt-0.5 line-clamp-1">
-                  Extract vendor, invoice ID, dates, total, tax, and itemized data tables.
-                </p>
-                <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-muted-foreground/80">
-                  <span>Used 18 times this month</span>
-                  <span>•</span>
-                  <span>Auto-routes to Bedrock Nova</span>
-                </div>
-              </div>
-            </button>
-
-            {/* Featured Preset 2 (2-Column Wide) */}
-            <button
-              onClick={() => setLocation("/app/upload?mode=receipt")}
-              className="group relative flex items-start gap-4 p-4 rounded-xl border border-border/70 bg-card hover:border-emerald-500/60 hover:shadow-sm transition-all text-left md:col-span-2"
-            >
-              <div className="p-3 rounded-xl border bg-gradient-to-br from-emerald-500/10 to-teal-500/10 text-emerald-500 border-emerald-500/20 shrink-0 group-hover:scale-105 transition-transform">
-                <ShoppingBag className="h-5 w-5 stroke-[1.5]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-body-sm font-semibold text-foreground group-hover:text-emerald-500 transition-colors">
-                    Receipts &amp; Expense Slips
-                  </span>
-                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                    High Precision
-                  </span>
-                </div>
-                <p className="text-caption text-muted-foreground mt-0.5 line-clamp-1">
-                  Merchant name, date, subtotal, tip, payment method, and line item parsing.
-                </p>
-                <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-muted-foreground/80">
-                  <span>Used 12 times this month</span>
-                  <span>•</span>
-                  <span>Textract &amp; Vision-enabled</span>
-                </div>
-              </div>
-            </button>
-
-            {/* Secondary Compact Row */}
-            {[
-              { id: "handwriting", label: "Handwritten Notes", desc: "Cursive & print transcription", icon: PenLine },
-              { id: "multilingual", label: "Multilingual OCR", desc: "200+ scripts & translation", icon: Languages },
-              { id: "table", label: "Tables & Schedules", desc: "Dense grids to Excel", icon: Table2 },
-              { id: "vqa", label: "Visual Q&A / Custom", desc: "Custom extraction prompts", icon: Eye },
-            ].map((p) => {
-              const Icon = p.icon;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setLocation(`/app/upload?mode=${p.id}`)}
-                  className="group flex items-center gap-3 p-3 rounded-xl border border-border/60 bg-muted/20 hover:bg-card hover:border-border transition-all text-left"
-                >
-                  <div className="p-2 rounded-lg border border-border/60 bg-background text-muted-foreground group-hover:text-foreground shrink-0">
-                    <Icon className="h-4 w-4 stroke-[1.5]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">
-                      {p.label}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground truncate">{p.desc}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <Button
+            onClick={() => setLocation("/app/upload")}
+            size="lg"
+            className="gap-2 rounded-xl bg-primary text-primary-foreground font-bold shadow-md hover:bg-primary/90 px-6 h-11 border-none cursor-pointer"
+          >
+            <Plus className="h-4 w-4 stroke-[2.5]" />
+            New Extraction
+          </Button>
         </div>
       </div>
 
-      {/* ── Grouped Metric Clusters ──────────────────────────── */}
+      {/* ── CONNECTED EXECUTIVE TELEMETRY STRIP ──────────────────────────── */}
       {stats && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between px-0.5">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <span className="h-3 w-1 rounded-full bg-primary" />
-              Platform Telemetry &amp; Throughput
-            </h2>
-            {filterStatus !== "all" && (
-              <button
-                onClick={() => setFilterStatus("all")}
-                className="text-xs text-primary hover:underline font-medium"
-              >
-                Reset filter (showing {filteredBatches.length} of {batches?.length})
-              </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Tile 1: Total Docs */}
+          <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-2xs flex flex-col justify-between space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                Total Documents
+              </span>
+              <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                <FileText className="h-4 w-4" />
+              </div>
+            </div>
+            <div>
+              <p className="text-3xl font-mono font-bold tracking-tight text-foreground tabular-nums">
+                {stats.docs}
+              </p>
+              <p className="text-micro text-muted-foreground mt-1 font-mono">
+                Across {stats.total} batch runs
+              </p>
+            </div>
+          </div>
+
+          {/* Tile 2: Extraction Rate */}
+          <button
+            type="button"
+            onClick={() => setFilterStatus(filterStatus === "completed" ? "all" : "completed")}
+            className={cn(
+              "rounded-2xl border p-4 text-left transition-all shadow-2xs flex flex-col justify-between space-y-3 cursor-pointer",
+              filterStatus === "completed"
+                ? "border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/30"
+                : "border-border/70 bg-card hover:border-border"
             )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* FEATURED PRIMARY METRIC (2x Visual Weight) */}
-            <div className="md:col-span-2 rounded-xl border border-border/80 bg-card p-6 shadow-xs relative overflow-hidden flex flex-col justify-between">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                    Throughput Volume
-                  </span>
-                  <h3 className="text-body-lg font-bold text-foreground mt-0.5">
-                    Documents &amp; Scans Processed
-                  </h3>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="font-mono text-xs border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                    ↑ 14% vs last week
-                  </Badge>
-                  <BarChart3 className="h-5 w-5 text-primary stroke-[1.5]" />
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                <div>
-                  {/* 44px KPI Number */}
-                  <p className="text-4xl sm:text-5xl font-mono font-bold tracking-tight text-foreground tabular-nums">
-                    {stats.docs}
-                  </p>
-                  <p className="text-caption text-muted-foreground mt-1">
-                    Extracted across <span className="font-mono text-foreground font-semibold">{stats.total}</span> total batches
-                  </p>
-                </div>
-
-                {/* Real Organic Sparkline Curve */}
-                <div className="flex flex-col items-end gap-1">
-                  <svg width="140" height="36" viewBox="0 0 140 36" fill="none" className="overflow-visible">
-                    <path
-                      d="M2,28 L20,22 L38,29 L56,14 L74,18 L92,8 L110,12 L128,4 L138,6"
-                      stroke="#E8A33D"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <circle cx="138" cy="6" r="3" fill="#E8A33D" />
-                  </svg>
-                  <span className="text-[10px] font-mono text-muted-foreground">Live Telemetry Trend</span>
-                </div>
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                Success Rate
+              </span>
+              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
+                <CheckCircle2 className="h-4 w-4" />
               </div>
             </div>
+            <div>
+              <p className="text-3xl font-mono font-bold tracking-tight text-emerald-600 dark:text-emerald-400 tabular-nums">
+                {stats.total > 0 ? `${Math.round((stats.done / stats.total) * 100)}%` : "100%"}
+              </p>
+              <p className="text-micro text-muted-foreground mt-1 font-mono">
+                {stats.done} completed runs
+              </p>
+            </div>
+          </button>
 
-            {/* SECONDARY METRICS CLUSTER */}
-            <div className="space-y-3 flex flex-col justify-between">
-              {/* Success / Completed */}
-              <button
-                type="button"
-                onClick={() => setFilterStatus(filterStatus === "completed" ? "all" : "completed")}
-                className={cn(
-                  "rounded-xl border p-4 text-left transition-all flex items-center justify-between gap-3 flex-1",
-                  filterStatus === "completed"
-                    ? "border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/30"
-                    : "border-border/60 bg-card hover:border-border",
-                )}
-              >
-                <div>
-                  <span className="text-caption font-semibold text-muted-foreground">Extraction Success Rate</span>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-2xl font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                      {stats.total > 0 ? `${Math.round((stats.done / stats.total) * 100)}%` : "100%"}
-                    </span>
-                    <span className="text-caption text-muted-foreground font-mono">({stats.done} batches)</span>
-                  </div>
-                </div>
-                <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 stroke-[1.5]" />
-              </button>
-
-              {/* In-Flight & Attention Row */}
-              <div className="grid grid-cols-2 gap-3 flex-1">
-                <button
-                  type="button"
-                  onClick={() => setFilterStatus(filterStatus === "in_flight" ? "all" : "in_flight")}
-                  className={cn(
-                    "rounded-xl border p-3.5 text-left transition-all",
-                    filterStatus === "in_flight"
-                      ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/30"
-                      : "border-border/60 bg-card hover:border-border",
-                  )}
-                >
-                  <span className="text-[11px] font-semibold text-muted-foreground block">In-Flight</span>
-                  <span className="text-xl font-mono font-bold text-blue-600 dark:text-blue-400 tabular-nums mt-0.5 block">
-                    {stats.running}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground mt-0.5 block truncate">Worker Queue</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFilterStatus(filterStatus === "failed" ? "all" : "failed")}
-                  className={cn(
-                    "rounded-xl border p-3.5 text-left transition-all",
-                    filterStatus === "failed"
-                      ? "border-destructive bg-destructive/5 ring-1 ring-destructive/30"
-                      : "border-border/60 bg-card hover:border-border",
-                  )}
-                >
-                  <span className="text-[11px] font-semibold text-muted-foreground block">Attention</span>
-                  <span className="text-xl font-mono font-bold text-destructive tabular-nums mt-0.5 block">
-                    {stats.failed}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground mt-0.5 block truncate">
-                    {stats.failed > 0 ? "Requires Review" : "0 Errors"}
-                  </span>
-                </button>
+          {/* Tile 3: In-Flight */}
+          <button
+            type="button"
+            onClick={() => setFilterStatus(filterStatus === "in_flight" ? "all" : "in_flight")}
+            className={cn(
+              "rounded-2xl border p-4 text-left transition-all shadow-2xs flex flex-col justify-between space-y-3 cursor-pointer",
+              filterStatus === "in_flight"
+                ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/30"
+                : "border-border/70 bg-card hover:border-border"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                Worker Queue
+              </span>
+              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
+                <BarChart3 className="h-4 w-4" />
               </div>
             </div>
-          </div>
+            <div>
+              <p className="text-3xl font-mono font-bold tracking-tight text-blue-600 dark:text-blue-400 tabular-nums">
+                {stats.running}
+              </p>
+              <p className="text-micro text-muted-foreground mt-1 font-mono">
+                Active in-flight runs
+              </p>
+            </div>
+          </button>
+
+          {/* Tile 4: Attention */}
+          <button
+            type="button"
+            onClick={() => setFilterStatus(filterStatus === "failed" ? "all" : "failed")}
+            className={cn(
+              "rounded-2xl border p-4 text-left transition-all shadow-2xs flex flex-col justify-between space-y-3 cursor-pointer",
+              filterStatus === "failed"
+                ? "border-destructive bg-destructive/5 ring-1 ring-destructive/30"
+                : "border-border/70 bg-card hover:border-border"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                Attention Required
+              </span>
+              <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500">
+                <Clock className="h-4 w-4" />
+              </div>
+            </div>
+            <div>
+              <p className="text-3xl font-mono font-bold tracking-tight text-rose-600 dark:text-rose-400 tabular-nums">
+                {stats.failed}
+              </p>
+              <p className="text-micro text-muted-foreground mt-1 font-mono">
+                {stats.failed > 0 ? "Requires re-run" : "0 pipeline errors"}
+              </p>
+            </div>
+          </button>
         </div>
       )}
 
-      {/* ── Toolbar & View Mode Switcher ───────────────────── */}
+      {/* ── QUICK LAUNCH PRESETS ─────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-0.5">
+          <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <LayoutGrid className="h-3.5 w-3.5 text-primary" />
+            Quick Launch Presets
+          </span>
+          <span className="text-micro text-muted-foreground font-mono">Instant schema routing</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {[
+            { id: "invoice", label: "Invoices & Billing", desc: "Vendor, totals, tax, line items", icon: FileText, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+            { id: "receipt", label: "Receipts & Slips", desc: "Merchant, tip, payment method", icon: ShoppingBag, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
+            { id: "keyvalue", label: "Forms & Tables", desc: "Field pairs, scan marks, grids", icon: Table2, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
+            { id: "handwriting", label: "Handwriting & AI", desc: "Cursive script & custom VQA", icon: PenLine, color: "text-teal-500 bg-teal-500/10 border-teal-500/20" },
+          ].map((p) => {
+            const Icon = p.icon;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setLocation(`/app/upload?mode=${p.id}`)}
+                className="group relative flex items-center gap-3.5 p-3.5 rounded-2xl border border-border/70 bg-card hover:border-primary/50 hover:bg-muted/20 transition-all text-left shadow-2xs cursor-pointer overflow-hidden border-l-2 border-l-transparent hover:border-l-primary"
+              >
+                <div className={cn("p-2.5 rounded-xl border shrink-0 group-hover:scale-105 transition-transform", p.color)}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-body-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                    {p.label}
+                  </p>
+                  <p className="text-caption text-muted-foreground truncate mt-0.5">{p.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── TOOLBAR & FILTER CONTROLS ───────────────────────────────────── */}
       {batches && batches.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="space-y-4 pt-2">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-muted/20 p-3 rounded-2xl border border-border/60">
             {/* Left: Search & Select */}
             <div className="flex flex-wrap items-center gap-2 flex-1">
               <div className="relative w-full sm:w-64">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   ref={searchInputRef}
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search batches... (Press /)"
+                  placeholder="Search batches… (Press /)"
                   aria-label="Search batches by ID, engine, or filetype"
-                  className="h-9 pl-8 pr-8 text-xs rounded-xl bg-card border-border/70 focus-visible:ring-1"
+                  className="h-9 pl-9 pr-8 text-xs rounded-xl bg-background border-border/70 focus-visible:ring-1"
                 />
                 {searchQuery && (
                   <button
@@ -630,14 +530,14 @@ export default function AppHome() {
 
               <button
                 onClick={handleSelectAll}
-                className="flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-card px-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors shrink-0"
+                className="flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-background px-3 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
               >
                 {allSelected ? <CheckSquare className="h-3.5 w-3.5 text-primary" /> : <Square className="h-3.5 w-3.5" />}
                 {allSelected ? "Deselect all" : "Select all"}
               </button>
 
               <Select value={filterEngine} onValueChange={setFilterEngine}>
-                <SelectTrigger className="h-9 w-[140px] border-border/70 text-xs rounded-xl bg-card">
+                <SelectTrigger className="h-9 w-[140px] border-border/70 text-xs rounded-xl bg-background font-semibold">
                   <SelectValue placeholder="All Engines" />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl">
@@ -653,17 +553,17 @@ export default function AppHome() {
               {(filterStatus !== "all" || filterEngine !== "all" || searchQuery !== "") && (
                 <button
                   onClick={clearFilters}
-                  className="flex h-9 items-center gap-1 rounded-xl border border-border/70 px-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors bg-card shrink-0"
+                  className="flex h-9 items-center gap-1 rounded-xl border border-border/70 px-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors bg-background shrink-0 cursor-pointer"
                 >
                   <X className="h-3 w-3" /> Clear
                 </button>
               )}
             </div>
 
-            {/* Right: Sort & Dual View Switcher */}
+            {/* Right: Sort & View Switcher */}
             <div className="flex items-center gap-2 self-end lg:self-auto">
               <Select value={sortOrder} onValueChange={(v: "newest" | "oldest") => setSortOrder(v)}>
-                <SelectTrigger className="h-9 w-[130px] border-border/70 bg-card text-xs rounded-xl">
+                <SelectTrigger className="h-9 w-[130px] border-border/70 bg-background text-xs rounded-xl font-semibold">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="rounded-xl">
@@ -672,16 +572,16 @@ export default function AppHome() {
                 </SelectContent>
               </Select>
 
-              <div className="flex items-center rounded-xl border border-border/70 bg-card p-0.5">
+              <div className="flex items-center rounded-xl border border-border/70 bg-background p-0.5">
                 <button
                   type="button"
                   onClick={() => setViewMode("table")}
                   aria-label="Table View"
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-colors",
+                    "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-colors cursor-pointer",
                     viewMode === "table"
                       ? "bg-primary text-primary-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground",
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <List className="h-4 w-4" />
@@ -691,10 +591,10 @@ export default function AppHome() {
                   onClick={() => setViewMode("grid")}
                   aria-label="Cards Grid View"
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-colors",
+                    "flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-colors cursor-pointer",
                     viewMode === "grid"
                       ? "bg-primary text-primary-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground",
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <LayoutGrid className="h-4 w-4" />
@@ -703,7 +603,7 @@ export default function AppHome() {
             </div>
           </div>
 
-          {/* Underline-Tab Filter Bar */}
+          {/* Underline Tab Filter Bar */}
           <div className="flex items-center gap-6 border-b border-border/60 px-1 overflow-x-auto scrollbar-none">
             {[
               { id: "all", label: "All Runs", count: batches.length },
@@ -729,19 +629,19 @@ export default function AppHome() {
                   key={tab.id}
                   onClick={() => setFilterStatus(tab.id)}
                   className={cn(
-                    "flex items-center gap-2 pb-2.5 text-xs font-medium transition-all border-b-2 -mb-px shrink-0",
+                    "flex items-center gap-2 pb-2.5 text-xs font-semibold transition-all border-b-2 -mb-px shrink-0 cursor-pointer",
                     active
-                      ? "border-primary text-foreground font-semibold"
-                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border/60",
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border/60"
                   )}
                 >
                   <span>{tab.label}</span>
                   <span
                     className={cn(
-                      "px-1.5 py-0.2 rounded-full text-[10px] font-mono",
+                      "px-2 py-0.5 rounded-full text-[10px] font-mono",
                       active
-                        ? "bg-primary/15 text-primary font-semibold"
-                        : "bg-muted text-muted-foreground",
+                        ? "bg-primary/15 text-primary font-bold"
+                        : "bg-muted text-muted-foreground font-medium"
                     )}
                   >
                     {tab.count}
@@ -753,7 +653,7 @@ export default function AppHome() {
         </div>
       )}
 
-      {/* ── Content: List vs Grid vs Empty State ───────────── */}
+      {/* ── MAIN CONTENT DATA VIEWS ──────────────────────────────────────── */}
       {isLoading ? (
         <ListSkeleton />
       ) : error ? (
@@ -763,8 +663,8 @@ export default function AppHome() {
           onRetry={() => queryClient.refetchQueries({ queryKey: getListBatchesQueryKey() })}
         />
       ) : !batches?.length ? (
-        <div className="rounded-2xl border border-dashed border-border/80 bg-card p-10 text-center shadow-xs">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
+        <div className="rounded-2xl border border-dashed border-border/80 bg-card p-10 text-center shadow-2xs">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 border border-primary/20">
             <FileText className="h-7 w-7" />
           </div>
           <h3 className="text-lg font-bold text-foreground">No extractions yet</h3>
@@ -772,7 +672,6 @@ export default function AppHome() {
             Drop in PDF files, invoices, receipts, or photos of handwriting to automatically extract clean, structured data.
           </p>
 
-          {/* 3-Stage Visual Progression */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-xl mx-auto my-8 text-left">
             <div className="p-3.5 rounded-xl border border-border/60 bg-muted/20 flex flex-col gap-1">
               <span className="text-xs font-bold text-primary">Step 1</span>
@@ -794,7 +693,7 @@ export default function AppHome() {
           <Button
             size="lg"
             onClick={() => setLocation("/app/upload")}
-            className="rounded-xl px-6 font-semibold shadow-sm"
+            className="rounded-xl px-6 font-bold shadow-md bg-primary text-primary-foreground hover:bg-primary/90 border-none cursor-pointer"
           >
             <Plus className="mr-2 h-4 w-4" />
             Start Your First Extraction
@@ -813,8 +712,8 @@ export default function AppHome() {
           }
         />
       ) : viewMode === "table" ? (
-        /* ── TABLE VIEW ─────────────────────────────────────── */
-        <div className="rounded-xl border border-border/70 bg-card overflow-hidden shadow-xs">
+        /* ── TABLE VIEW ─────────────────────────────────────────────────── */
+        <div className="rounded-2xl border border-border/70 bg-card overflow-hidden shadow-2xs">
           <div className="divide-y divide-border/50">
             {filteredBatches.map((batch: BatchSummary) => {
               const isSelected = selectedIds.has(batch.id);
@@ -827,8 +726,10 @@ export default function AppHome() {
                 <div
                   key={batch.id}
                   className={cn(
-                    "group relative flex flex-col cursor-pointer transition-colors duration-150",
-                    isSelected ? "bg-primary/5 dark:bg-primary/10" : "hover:bg-muted/40",
+                    "group relative flex flex-col cursor-pointer transition-all duration-150 border-l-2",
+                    isSelected
+                      ? "border-l-primary bg-primary/5 dark:bg-primary/10"
+                      : "border-l-transparent hover:border-l-primary/80 hover:bg-muted/30"
                   )}
                   onClick={(e) => {
                     const t = e.target as HTMLElement;
@@ -840,7 +741,7 @@ export default function AppHome() {
                     setLocation(`/app/batches/${batch.id}`);
                   }}
                 >
-                  <div className="flex items-center gap-3.5 px-4 py-3">
+                  <div className="flex items-center gap-3.5 px-4 py-3.5">
                     {/* Row Checkbox */}
                     <input
                       type="checkbox"
@@ -875,10 +776,10 @@ export default function AppHome() {
                     {/* Main Batch Info */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-body-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                        <span className="text-body-sm font-bold text-foreground group-hover:text-primary transition-colors">
                           Batch #{batch.id}
                         </span>
-                        <span className="rounded-md border border-border/60 bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground">
+                        <span className="rounded-md border border-border/60 bg-muted/60 px-2 py-0.5 text-[11px] font-semibold text-foreground">
                           {engineLabel}
                         </span>
                         <StatusBadge status={batch.status} />
@@ -902,7 +803,7 @@ export default function AppHome() {
                             ? "text-destructive"
                             : progress === 100
                               ? "text-muted-foreground"
-                              : "text-foreground",
+                              : "text-foreground"
                         )}
                       >
                         {batch.completedDocuments}/{batch.totalDocuments} docs
@@ -912,7 +813,7 @@ export default function AppHome() {
                           <div
                             className={cn(
                               "h-full rounded-full transition-all duration-500",
-                              batch.status === "failed" ? "bg-destructive" : "bg-primary animate-pulse",
+                              batch.status === "failed" ? "bg-destructive" : "bg-primary animate-pulse"
                             )}
                             style={{ width: `${progress}%` }}
                           />
@@ -920,12 +821,12 @@ export default function AppHome() {
                       )}
                     </div>
 
-                    {/* Actions */}
+                    {/* Action buttons */}
                     <div className="shrink-0 flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="hidden md:inline-flex h-8 px-2.5 text-xs rounded-lg text-muted-foreground hover:text-foreground"
+                        className="hidden md:inline-flex h-8 px-2.5 text-xs rounded-lg text-muted-foreground hover:text-foreground font-semibold"
                         onClick={(e) => {
                           e.stopPropagation();
                           setLocation(`/app/batches/${batch.id}`);
@@ -938,7 +839,7 @@ export default function AppHome() {
                         <DropdownMenuTrigger asChild>
                           <button
                             aria-label={`Actions for batch #${batch.id}`}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreHorizontal className="h-4 w-4" />
@@ -946,7 +847,7 @@ export default function AppHome() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="w-44 rounded-xl"
+                          className="w-48 rounded-xl"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <DropdownMenuItem onClick={() => setLocation(`/app/batches/${batch.id}`)}>
@@ -963,7 +864,7 @@ export default function AppHome() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                            className="text-destructive focus:text-destructive focus:bg-destructive/10 font-semibold"
                             onClick={() => setPendingDelete({ ids: [batch.id], label: `Batch #${batch.id}` })}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -975,23 +876,13 @@ export default function AppHome() {
                       <ArrowRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors ml-0.5" />
                     </div>
                   </div>
-
-                  {/* Under-row thin horizontal progress bar for in-progress batches */}
-                  {(batch.status === "processing" || batch.status === "queued") && (
-                    <div className="h-[2px] w-full bg-primary/20 overflow-hidden">
-                      <div
-                        className="h-full bg-primary animate-pulse transition-all duration-300"
-                        style={{ width: `${Math.max(15, progress)}%` }}
-                      />
-                    </div>
-                  )}
                 </div>
               );
             })}
           </div>
         </div>
       ) : (
-        /* ── CARDS GRID VIEW ────────────────────────────────── */
+        /* ── CARDS GRID VIEW ─────────────────────────────────────────────── */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredBatches.map((batch: BatchSummary) => {
             const isSelected = selectedIds.has(batch.id);
@@ -1013,14 +904,13 @@ export default function AppHome() {
                   setLocation(`/app/batches/${batch.id}`);
                 }}
                 className={cn(
-                  "group relative flex flex-col justify-between rounded-2xl border p-4.5 cursor-pointer transition-all duration-150 hover:shadow-md",
+                  "group relative flex flex-col justify-between rounded-2xl border p-4.5 cursor-pointer transition-all duration-150 shadow-2xs hover:shadow-md border-l-2",
                   isSelected
-                    ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                    : "border-border/70 bg-card hover:border-primary/50",
+                    ? "border-l-primary border-primary bg-primary/5 ring-1 ring-primary/30"
+                    : "border-l-transparent border-border/70 bg-card hover:border-l-primary hover:border-primary/50"
                 )}
               >
                 <div>
-                  {/* Top Bar: Checkbox, Batch #, Status */}
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <div className="flex items-center gap-2.5">
                       <input
@@ -1031,18 +921,17 @@ export default function AppHome() {
                         onChange={() => toggleSelect(batch.id)}
                         onClick={(e) => e.stopPropagation()}
                       />
-                      <span className="text-body font-bold text-foreground group-hover:text-primary transition-colors">
+                      <span className="text-body-sm font-bold text-foreground group-hover:text-primary transition-colors">
                         Batch #{batch.id}
                       </span>
                     </div>
                     <StatusBadge status={batch.status} />
                   </div>
 
-                  {/* Thumbnail and Details Row */}
                   <div className="flex items-start gap-3 my-2">
-                    <div className="relative h-16 w-16 shrink-0 rounded-xl bg-muted border border-border/60 overflow-hidden flex items-center justify-center group-hover:border-primary/40 transition-colors">
+                    <div className="relative h-14 w-14 shrink-0 rounded-xl bg-muted border border-border/60 overflow-hidden flex items-center justify-center group-hover:border-primary/40 transition-colors">
                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted z-0">
-                        <FileText className="h-5 w-5 text-muted-foreground/60 mb-0.5" />
+                        <FileText className="h-4 w-4 text-muted-foreground/60 mb-0.5" />
                         <span className="text-[9px] font-bold uppercase text-muted-foreground">
                           {batch.firstDocumentContentType?.split("/").pop()?.slice(0, 4) ?? "DOC"}
                         </span>
@@ -1061,11 +950,9 @@ export default function AppHome() {
                     </div>
 
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <Badge variant="outline" className="text-[11px] font-medium border-border/70 bg-muted/50">
-                          {engineLabel}
-                        </Badge>
-                      </div>
+                      <Badge variant="outline" className="text-[11px] font-semibold border-border/70 bg-muted/50">
+                        {engineLabel}
+                      </Badge>
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {timeAgo(batch.createdAt) || "just now"}
@@ -1076,14 +963,13 @@ export default function AppHome() {
                     </div>
                   </div>
 
-                  {/* Progress bar */}
                   {progress < 100 && (
                     <div className="my-2.5">
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                         <div
                           className={cn(
                             "h-full rounded-full transition-all duration-500",
-                            batch.status === "failed" ? "bg-destructive" : "bg-primary animate-pulse",
+                            batch.status === "failed" ? "bg-destructive" : "bg-primary animate-pulse"
                           )}
                           style={{ width: `${progress}%` }}
                         />
@@ -1092,7 +978,6 @@ export default function AppHome() {
                   )}
                 </div>
 
-                {/* Footer Actions */}
                 <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
                   <span className="text-[11px] text-muted-foreground font-mono">
                     ID: {batch.id}
@@ -1102,7 +987,7 @@ export default function AppHome() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 px-2 text-xs rounded-lg"
+                      className="h-7 px-2 text-xs rounded-lg font-semibold"
                       onClick={(e) => {
                         e.stopPropagation();
                         exportCSV(new Set([batch.id]));
@@ -1114,7 +999,7 @@ export default function AppHome() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 px-2 text-xs rounded-lg text-primary"
+                      className="h-7 px-2 text-xs rounded-lg text-primary font-semibold"
                       onClick={(e) => {
                         e.stopPropagation();
                         setLocation(`/app/batches/${batch.id}`);
@@ -1131,9 +1016,9 @@ export default function AppHome() {
         </div>
       )}
 
-      {/* ── Bulk Action Floating Dock ──────────────────────── */}
+      {/* ── BULK ACTION FLOATING DOCK ────────────────────────────────────── */}
       {isSelecting && (
-        <div className="fixed inset-x-4 bottom-5 z-50 mx-auto flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-2.5 rounded-2xl border border-border/80 bg-card/95 px-4 py-2.5 shadow-xl backdrop-blur-md">
+        <div className="fixed inset-x-4 bottom-5 z-50 mx-auto flex w-fit max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-2.5 rounded-2xl border border-border/80 bg-card/95 px-4 py-2.5 shadow-2xl backdrop-blur-md">
           <div className="flex items-center gap-2 pr-1 border-r border-border/60">
             <span className="text-body-sm font-bold text-foreground">
               {selectedIds.size} batch{selectedIds.size === 1 ? "" : "es"} selected
@@ -1188,14 +1073,14 @@ export default function AppHome() {
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
-            className="text-xs text-muted-foreground hover:text-foreground px-1.5 font-medium"
+            className="text-xs text-muted-foreground hover:text-foreground px-1.5 font-medium cursor-pointer"
           >
             Cancel
           </button>
         </div>
       )}
 
-      {/* ── Permanent Delete Confirmation Dialog ───────────── */}
+      {/* ── PERMANENT DELETE CONFIRMATION DIALOG ──────────────────────────── */}
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
@@ -1204,7 +1089,7 @@ export default function AppHome() {
       >
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-lg font-bold">
+            <AlertDialogTitle className="text-body-lg font-bold">
               Permanently delete {pendingDelete?.label}?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-body-sm text-muted-foreground">
@@ -1218,7 +1103,7 @@ export default function AppHome() {
             <AlertDialogAction
               onClick={performDelete}
               disabled={busyAction === "delete"}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl font-semibold"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl font-bold border-none"
             >
               {busyAction === "delete" ? (
                 <>
