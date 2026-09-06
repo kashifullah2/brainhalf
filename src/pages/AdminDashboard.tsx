@@ -20,7 +20,11 @@ import {
   FileText,
   FileUp,
   Gauge,
+  Globe,
   Key,
+  Languages,
+  Mail,
+  PenLine,
   PlayCircle,
   RefreshCw,
   Save,
@@ -56,12 +60,70 @@ import {
   useAdminSettings,
   useUpdateAdminSettings,
   useTestModel,
+  useAdminUsers,
   type AdminMetrics,
+  type AdminUser,
   type TestModelPayload,
   type TestModelResult,
 } from "@/lib/api-client";
 import { downloadBlob } from "@/lib/xlsx-writer";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
+
+function timeAgo(ts?: string | null) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return formatDistanceToNow(d, { addSuffix: true });
+}
+
+export function formatBedrockModelLabel(modelId: string): string {
+  if (modelId === "anthropic.claude-3-7-sonnet-20250219-v1:0") {
+    return "Claude 3.7 Sonnet (✍️ Best Handwriting & 🌐 Multilingual)";
+  }
+  if (modelId === "anthropic.claude-3-5-sonnet-20241022-v2:0") {
+    return "Claude 3.5 Sonnet v2 (🎯 Highest Accuracy OCR)";
+  }
+  if (modelId === "anthropic.claude-3-5-sonnet-20240620-v1:0") {
+    return "Claude 3.5 Sonnet (High-Accuracy Vision)";
+  }
+  if (modelId === "anthropic.claude-3-opus-20240229-v1:0") {
+    return "Claude 3 Opus (✍️ Complex Handwriting & Cursive)";
+  }
+  if (modelId === "amazon.nova-pro-v1:0") {
+    return "Amazon Nova Pro (🌐 200+ Languages & Dense Tables)";
+  }
+  if (modelId === "amazon.nova-lite-v1:0") {
+    return "Amazon Nova Lite (⚡ Ultra-Fast Multimodal)";
+  }
+  if (modelId === "anthropic.claude-3-5-haiku-20241022-v1:0") {
+    return "Claude 3.5 Haiku (⚡ Fast & Modern)";
+  }
+  if (modelId === "anthropic.claude-3-haiku-20240307-v1:0") {
+    return "Claude 3 Haiku (⚡ Fast & Budget)";
+  }
+  if (modelId === "anthropic.claude-3-sonnet-20240229-v1:0") {
+    return "Claude 3 Sonnet (Balanced)";
+  }
+  if (modelId === "anthropic.claude-sonnet-4-20250514-v1:0") {
+    return "Claude Sonnet 4 (Next-Gen Preview)";
+  }
+  if (modelId === "anthropic.claude-opus-4-20250514-v1:0") {
+    return "Claude Opus 4 (Next-Gen Premium)";
+  }
+  if (modelId === "meta.llama3-2-90b-instruct-v1:0") {
+    return "Llama 3.2 90B Vision (Open-Weights Flagship)";
+  }
+  if (modelId === "meta.llama3-2-11b-instruct-v1:0") {
+    return "Llama 3.2 11B Vision (Fast Open-Weights)";
+  }
+  if (modelId === "mistral.pixtral-12b-2409-v1:0") {
+    return "Mistral Pixtral 12B (Multimodal Vision)";
+  }
+  return modelId;
+}
+
 
 /** "—" rather than "0%" or "100%": an unmeasured rate is not a good one. */
 function percent(value: number | null): string {
@@ -203,6 +265,66 @@ export default function AdminDashboard() {
   const testLabRef = useRef<HTMLDivElement>(null);
   const [copiedRaw, setCopiedRaw] = useState(false);
 
+  type AdminTab = "overview" | "users" | "engines" | "testlab";
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [userFilter, setUserFilter] = useState<"all" | "google" | "password" | "verified" | "admins">("all");
+  const [inspectingUser, setInspectingUser] = useState<AdminUser | null>(null);
+
+  const handleTabChange = (tab: AdminTab) => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab);
+      window.history.pushState(null, "", url.toString());
+    }
+  };
+
+  const {
+    data: usersData,
+    isLoading: isUsersLoading,
+    refetch: refetchUsers,
+    isFetching: isUsersFetching,
+  } = useAdminUsers({
+    q: userSearchQuery.trim() || undefined,
+    filter: userFilter,
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const tabParam = new URLSearchParams(window.location.search).get("tab");
+    if (tabParam === "users" || tabParam === "overview" || tabParam === "engines" || tabParam === "testlab") {
+      setActiveTab(tabParam as AdminTab);
+    }
+  }, []);
+
+  const handleExportUsers = () => {
+    if (!usersData?.users?.length) return;
+    const header = "ID,Full Name,Email,Auth Provider,Verified,Created At,Last Login,Total Batches,Total Documents\n";
+    const rows = usersData.users.map((u) =>
+      [
+        u.id,
+        `"${(u.fullName || '').replace(/"/g, '""')}"`,
+        `"${u.email.replace(/"/g, '""')}"`,
+        u.authProvider,
+        u.emailVerified ? "Yes" : "No",
+        u.createdAt,
+        u.lastLoginAt ?? "Never",
+        u.totalBatches,
+        u.totalDocuments,
+      ].join(",")
+    );
+    const csv = header + rows.join("\n");
+    downloadBlob(
+      new Blob([csv], { type: "text/csv;charset=utf-8;" }),
+      `brainhalf-users-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
+    toast({
+      title: "Users exported",
+      description: `${usersData.users.length} accounts exported as CSV.`,
+    });
+  };
+
   const handleCopyRaw = (text: string) => {
     void navigator.clipboard.writeText(text);
     setCopiedRaw(true);
@@ -276,6 +398,10 @@ export default function AdminDashboard() {
       payload = { tier: target };
     } else if (target === "bedrock") {
       payload = { provider: "bedrock", model: bedrockModel };
+    } else if (target === "handwriting") {
+      payload = { provider: "bedrock", model: bedrockModel, mode: "handwriting" };
+    } else if (target === "multilingual") {
+      payload = { provider: "bedrock", model: bedrockModel, mode: "multilingual" };
     } else if (target === "hunyuan") {
       payload = { provider: "hunyuan", model: hunyuanModel };
     } else if (target === "textract") {
@@ -315,7 +441,10 @@ export default function AdminDashboard() {
 
   const handleQuickTest = (target: string) => {
     setTestTarget(target);
-    testLabRef.current?.scrollIntoView({ behavior: "smooth" });
+    handleTabChange("testlab");
+    setTimeout(() => {
+      testLabRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
     executeTest(target, customFile);
   };
 
@@ -354,7 +483,10 @@ export default function AdminDashboard() {
               variant="default"
               size="sm"
               onClick={() => {
-                testLabRef.current?.scrollIntoView({ behavior: "smooth" });
+                handleTabChange("testlab");
+                setTimeout(() => {
+                  testLabRef.current?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
               }}
               className="gap-2 bg-primary text-primary-foreground font-medium shadow-sm hover:opacity-95"
             >
@@ -566,6 +698,72 @@ export default function AdminDashboard() {
         />
       ) : (
         <div className="space-y-8">
+          {/* Navigation Tabs */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-border/70 pb-3">
+            <button
+              onClick={() => handleTabChange("overview")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all",
+                activeTab === "overview"
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+              )}
+            >
+              <Activity className="h-4 w-4" />
+              Overview &amp; Health
+            </button>
+            <button
+              onClick={() => handleTabChange("users")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all",
+                activeTab === "users"
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+              )}
+            >
+              <Users className="h-4 w-4" />
+              User Signups
+              {usersData?.summary?.totalUsers !== undefined && (
+                <span
+                  className={cn(
+                    "px-2 py-0.5 rounded-full text-xs font-mono",
+                    activeTab === "users"
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {usersData.summary.totalUsers}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => handleTabChange("engines")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all",
+                activeTab === "engines"
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+              )}
+            >
+              <Sliders className="h-4 w-4" />
+              AI Models &amp; Engines
+            </button>
+            <button
+              onClick={() => handleTabChange("testlab")}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all",
+                activeTab === "testlab"
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+              )}
+            >
+              <PlayCircle className="h-4 w-4" />
+              OCR Test Lab
+            </button>
+          </div>
+
+          {activeTab === "overview" && (
+            <>
           <section aria-labelledby="admin-throughput">
             <h2 id="admin-throughput" className="sr-only">
               Throughput
@@ -692,15 +890,26 @@ export default function AdminDashboard() {
                   Presence only. Test any engine or tier directly using the test options below.
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 text-xs"
-                onClick={() => setIsTestModalOpen(true)}
-              >
-                <PlayCircle className="h-4 w-4 text-primary" />
-                Open Test Lab
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-xs"
+                  onClick={() => handleTabChange("engines")}
+                >
+                  <Sliders className="h-3.5 w-3.5 text-primary" />
+                  Configure Engines
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-xs"
+                  onClick={() => handleTabChange("testlab")}
+                >
+                  <PlayCircle className="h-3.5 w-3.5 text-primary" />
+                  Test Lab
+                </Button>
+              </div>
             </div>
             <dl className="divide-y divide-border/50">
               {rows.map((row) => (
@@ -732,8 +941,11 @@ export default function AdminDashboard() {
               ))}
             </dl>
           </section>
+            </>
+          )}
 
           {/* Model Configuration & Engine Management Section */}
+          {activeTab === "engines" && (
           <section
             aria-labelledby="model-management"
             className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
@@ -742,7 +954,7 @@ export default function AdminDashboard() {
               <div>
                 <h2 id="model-management" className="flex items-center gap-2 text-body-lg font-semibold text-foreground">
                   <Sliders className="h-5 w-5 text-primary" aria-hidden />
-                  Model Configuration & Engine Management
+                  Model Configuration &amp; Engine Management
                 </h2>
                 <p className="mt-0.5 text-body-sm text-muted-foreground">
                   Select default and high-accuracy extraction engines, models, and credentials. Overrides take effect immediately across all nodes.
@@ -752,11 +964,11 @@ export default function AdminDashboard() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsTestModalOpen(true)}
-                  className="gap-2"
+                  onClick={() => handleTabChange("testlab")}
+                  className="gap-2 text-xs"
                 >
                   <PlayCircle className="h-4 w-4 text-primary" />
-                  Test Engine
+                  Test Lab
                 </Button>
                 <Button
                   size="sm"
@@ -889,21 +1101,29 @@ export default function AdminDashboard() {
                       {settingsData?.availableModels?.bedrock ? (
                         settingsData.availableModels.bedrock.map((m) => (
                           <SelectItem key={m} value={m} className="font-mono text-xs">
-                            {m}
+                            {formatBedrockModelLabel(m)}
                           </SelectItem>
                         ))
                       ) : (
                         <>
-                          <SelectItem value="amazon.nova-lite-v1:0" className="font-mono text-xs">Nova Lite v1 — Fast Multimodal</SelectItem>
-                          <SelectItem value="amazon.nova-pro-v1:0" className="font-mono text-xs">Nova Pro v1 — High Accuracy</SelectItem>
-                          <SelectItem value="anthropic.claude-3-haiku-20240307-v1:0" className="font-mono text-xs">Claude 3 Haiku — Fast &amp; Cheap</SelectItem>
-                          <SelectItem value="anthropic.claude-3-sonnet-20240229-v1:0" className="font-mono text-xs">Claude 3 Sonnet — Balanced</SelectItem>
-                          <SelectItem value="anthropic.claude-3-opus-20240229-v1:0" className="font-mono text-xs">Claude 3 Opus — Premium</SelectItem>
-                          <SelectItem value="anthropic.claude-3-5-haiku-20241022-v1:0" className="font-mono text-xs">Claude 3.5 Haiku — Fast (Newer)</SelectItem>
-                          <SelectItem value="anthropic.claude-3-5-sonnet-20240620-v1:0" className="font-mono text-xs">Claude 3.5 Sonnet — High Quality Vision</SelectItem>
-                          <SelectItem value="anthropic.claude-3-5-sonnet-20241022-v2:0" className="font-mono text-xs">Claude 3.5 Sonnet v2 — Latest 3.5</SelectItem>
-                          <SelectItem value="anthropic.claude-sonnet-4-20250514-v1:0" className="font-mono text-xs">Claude Sonnet 4 — Latest Generation</SelectItem>
-                          <SelectItem value="anthropic.claude-opus-4-20250514-v1:0" className="font-mono text-xs">Claude Opus 4 — Best Quality</SelectItem>
+                          <SelectItem value="anthropic.claude-3-7-sonnet-20250219-v1:0" className="font-mono text-xs">
+                            Claude 3.7 Sonnet (✍️ Best Handwriting &amp; 🌐 Multilingual)
+                          </SelectItem>
+                          <SelectItem value="anthropic.claude-3-5-sonnet-20241022-v2:0" className="font-mono text-xs">
+                            Claude 3.5 Sonnet v2 (🎯 Highest Accuracy Vision &amp; OCR)
+                          </SelectItem>
+                          <SelectItem value="amazon.nova-pro-v1:0" className="font-mono text-xs">
+                            Amazon Nova Pro (🌐 200+ Languages &amp; Tables)
+                          </SelectItem>
+                          <SelectItem value="amazon.nova-lite-v1:0" className="font-mono text-xs">
+                            Amazon Nova Lite (⚡ Ultra-Fast Multimodal)
+                          </SelectItem>
+                          <SelectItem value="anthropic.claude-3-opus-20240229-v1:0" className="font-mono text-xs">
+                            Claude 3 Opus (✍️ Complex Handwriting &amp; Cursive)
+                          </SelectItem>
+                          <SelectItem value="anthropic.claude-3-5-haiku-20241022-v1:0" className="font-mono text-xs">
+                            Claude 3.5 Haiku (⚡ Fast &amp; Modern)
+                          </SelectItem>
                         </>
                       )}
                     </SelectContent>
@@ -973,17 +1193,261 @@ export default function AdminDashboard() {
               </div>
             </div>
           </section>
+          )}
+
+          {/* User Signups & Accounts Tab Content */}
+          {activeTab === "users" && (
+            <div className="space-y-6">
+              {/* Summary Metric Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-border/70 bg-card p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Total Signups</span>
+                    <Users className="h-4 w-4 text-primary" />
+                  </div>
+                  <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">
+                    {usersData?.summary?.totalUsers ?? 0}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Registered user accounts</p>
+                </div>
+
+                <div className="rounded-xl border border-border/70 bg-card p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Verified Email</span>
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  </div>
+                  <p className="mt-1 text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+                    {usersData?.summary?.verifiedUsers ?? 0}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Confirmed emails</p>
+                </div>
+
+                <div className="rounded-xl border border-border/70 bg-card p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Google SSO</span>
+                    <Globe className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <p className="mt-1 text-2xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
+                    {usersData?.summary?.googleUsers ?? 0}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Google linked signups</p>
+                </div>
+
+                <div className="rounded-xl border border-border/70 bg-card p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Active (7 Days)</span>
+                    <Activity className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <p className="mt-1 text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400">
+                    {usersData?.summary?.active7d ?? 0}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Active this week</p>
+                </div>
+              </div>
+
+              {/* Search & Action Bar */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto flex-1">
+                  <div className="relative w-full sm:w-72">
+                    <Input
+                      type="search"
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      placeholder="Search by name or email..."
+                      className="h-9 pr-8 text-xs rounded-xl bg-card border-border/70"
+                    />
+                    {userSearchQuery && (
+                      <button
+                        onClick={() => setUserSearchQuery("")}
+                        className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <Select value={userFilter} onValueChange={(v: "all" | "google" | "password" | "verified" | "admins") => setUserFilter(v)}>
+                    <SelectTrigger className="h-9 w-[150px] border-border/70 text-xs rounded-xl bg-card">
+                      <SelectValue placeholder="Filter users" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                      <SelectItem value="all">All accounts</SelectItem>
+                      <SelectItem value="google">Google SSO only</SelectItem>
+                      <SelectItem value="password">Email / Password</SelectItem>
+                      <SelectItem value="verified">Verified only</SelectItem>
+                      <SelectItem value="admins">Admins only</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {(userSearchQuery || userFilter !== "all") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setUserSearchQuery("");
+                        setUserFilter("all");
+                      }}
+                      className="h-9 px-2 text-xs"
+                    >
+                      <X className="h-3 w-3 mr-1" /> Reset
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchUsers()}
+                    disabled={isUsersFetching}
+                    className="h-9 gap-1.5 rounded-xl text-xs"
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", isUsersFetching && "animate-spin")} />
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportUsers}
+                    disabled={!usersData?.users?.length}
+                    className="h-9 gap-1.5 rounded-xl text-xs font-semibold"
+                  >
+                    <Download className="h-3.5 w-3.5 text-primary" />
+                    Export Users (.csv)
+                  </Button>
+                </div>
+              </div>
+
+              {/* Users Table */}
+              {isUsersLoading ? (
+                <ListSkeleton rows={5} />
+              ) : !usersData?.users?.length ? (
+                <div className="rounded-xl border border-dashed border-border/80 p-8 text-center bg-card">
+                  <Users className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-body-sm font-semibold text-foreground">No users match criteria</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Try widening your search or clearing the filter.</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border/70 bg-card overflow-hidden shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-border/60 bg-muted/30 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          <th className="px-4 py-3">User</th>
+                          <th className="px-4 py-3">Auth Method</th>
+                          <th className="px-4 py-3">Role &amp; Status</th>
+                          <th className="px-4 py-3">Usage Activity</th>
+                          <th className="px-4 py-3">Signed Up</th>
+                          <th className="px-4 py-3">Last Active</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50 text-xs">
+                        {usersData.users.map((u) => (
+                          <tr key={u.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="h-8 w-8 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-xs overflow-hidden border border-border/60 shrink-0">
+                                  {u.pictureUrl ? (
+                                    <img src={u.pictureUrl} alt="" className="h-full w-full object-cover" />
+                                  ) : (
+                                    (u.firstName?.[0] || u.email[0] || "U").toUpperCase()
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-foreground truncate">{u.fullName}</p>
+                                  <p className="text-muted-foreground truncate text-[11px] font-mono">{u.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              {u.authProvider === "google" ? (
+                                <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 gap-1 text-[10px]">
+                                  <Globe className="h-2.5 w-2.5" />
+                                  Google SSO
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="border-border/60 bg-muted/60 text-muted-foreground gap-1 text-[10px]">
+                                  <Mail className="h-2.5 w-2.5" />
+                                  Email / Password
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {u.isAdmin ? (
+                                  <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px]">
+                                    Admin
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-muted-foreground text-[10px]">
+                                    User
+                                  </Badge>
+                                )}
+                                {u.emailVerified ? (
+                                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px]">
+                                    Verified
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-muted-foreground/70 text-[10px]">
+                                    Unverified
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <p className="font-semibold text-foreground">
+                                {u.totalBatches} batch{u.totalBatches === 1 ? "" : "es"}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {u.totalDocuments} doc{u.totalDocuments === 1 ? "" : "s"}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">
+                              <p>{new Date(u.createdAt).toLocaleDateString()}</p>
+                              <p className="text-[10px] text-muted-foreground/70">{timeAgo(u.createdAt)}</p>
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground">
+                              {u.lastLoginAt ? (
+                                <>
+                                  <p>{new Date(u.lastLoginAt).toLocaleDateString()}</p>
+                                  <p className="text-[10px] text-muted-foreground/70">{timeAgo(u.lastLoginAt)}</p>
+                                </>
+                              ) : (
+                                <span className="text-muted-foreground/50">Never</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setInspectingUser(u)}
+                                className="h-7 text-xs px-2 rounded-lg"
+                              >
+                                Inspect
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Interactive Live Model & OCR Testing Lab */}
-          <section
-            ref={testLabRef}
-            id="test-lab"
-            aria-labelledby="test-lab-heading"
-            className="overflow-hidden rounded-xl border border-border bg-card shadow-sm scroll-mt-6"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 bg-muted/30 px-5 py-4">
-              <div>
-                <h2 id="test-lab-heading" className="flex items-center gap-2 text-body-lg font-semibold text-foreground">
+          {activeTab === "testlab" && (
+            <section
+              ref={testLabRef}
+              id="test-lab"
+              aria-labelledby="test-lab-heading"
+              className="overflow-hidden rounded-xl border border-border bg-card shadow-sm scroll-mt-6"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 bg-muted/30 px-5 py-4">
+                <div>
+                  <h2 id="test-lab-heading" className="flex items-center gap-2 text-body-lg font-semibold text-foreground">
                   <PlayCircle className="h-5 w-5 text-primary" aria-hidden />
                   Interactive Model & OCR Testing Lab
                 </h2>
@@ -1043,6 +1507,34 @@ export default function AdminDashboard() {
                   >
                     <Zap className="h-3.5 w-3.5" />
                     AWS Bedrock ({bedrockModel.split(".")[1] || bedrockModel})
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={testTarget === "handwriting" ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => {
+                      setTestTarget("handwriting");
+                      executeTest("handwriting", customFile);
+                    }}
+                    disabled={testModelMutation.isPending}
+                  >
+                    <PenLine className="h-3.5 w-3.5 text-purple-500" />
+                    ✍️ Handwriting Test
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={testTarget === "multilingual" ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={() => {
+                      setTestTarget("multilingual");
+                      executeTest("multilingual", customFile);
+                    }}
+                    disabled={testModelMutation.isPending}
+                  >
+                    <Languages className="h-3.5 w-3.5 text-amber-500" />
+                    🌐 Multilingual Test
                   </Button>
                   <Button
                     type="button"
@@ -1270,8 +1762,87 @@ export default function AdminDashboard() {
               )}
             </div>
           </section>
+          )}
         </div>
       )}
+
+      {/* Inspect User Account Modal */}
+      <Dialog open={inspectingUser !== null} onOpenChange={(open) => !open && setInspectingUser(null)}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg font-bold">
+              <Users className="h-5 w-5 text-primary" />
+              User Account Profile
+            </DialogTitle>
+            <DialogDescription>
+              Registration, authentication, and usage analytics for this account.
+            </DialogDescription>
+          </DialogHeader>
+
+          {inspectingUser && (
+            <div className="space-y-4 pt-2 text-xs">
+              <div className="flex items-center gap-3 p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                <div className="h-10 w-10 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center text-sm overflow-hidden border border-border/60 shrink-0">
+                  {inspectingUser.pictureUrl ? (
+                    <img src={inspectingUser.pictureUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    (inspectingUser.firstName?.[0] || inspectingUser.email[0] || "U").toUpperCase()
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-sm text-foreground truncate">{inspectingUser.fullName}</p>
+                  <p className="text-muted-foreground truncate font-mono text-[11px]">{inspectingUser.email}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 rounded-xl border border-border/50 bg-background/50">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">User ID</span>
+                  <span className="font-mono text-[11px] text-foreground truncate block">{inspectingUser.id}</span>
+                </div>
+                <div className="p-2.5 rounded-xl border border-border/50 bg-background/50">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Auth Method</span>
+                  <span className="font-semibold text-foreground capitalize">{inspectingUser.authProvider} SSO</span>
+                </div>
+                <div className="p-2.5 rounded-xl border border-border/50 bg-background/50">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Email Status</span>
+                  <span className={cn("font-semibold", inspectingUser.emailVerified ? "text-emerald-600" : "text-amber-600")}>
+                    {inspectingUser.emailVerified ? "Verified" : "Unverified"}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl border border-border/50 bg-background/50">
+                  <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Role</span>
+                  <span className={cn("font-semibold", inspectingUser.isAdmin ? "text-primary font-bold" : "text-foreground")}>
+                    {inspectingUser.isAdmin ? "Administrator" : "Standard User"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl border border-border/60 bg-muted/20 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Batches Created:</span>
+                  <span className="font-bold text-foreground">{inspectingUser.totalBatches} runs</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Documents Processed:</span>
+                  <span className="font-bold text-foreground">{inspectingUser.totalDocuments} pages</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Joined:</span>
+                  <span className="text-foreground">{new Date(inspectingUser.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Last Activity:</span>
+                  <span className="text-foreground">
+                    {inspectingUser.lastLoginAt ? new Date(inspectingUser.lastLoginAt).toLocaleString() : "Never"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

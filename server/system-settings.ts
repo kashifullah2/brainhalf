@@ -11,20 +11,27 @@ export interface SystemSettings {
 }
 
 export const KNOWN_BEDROCK_MODELS = [
-  // Amazon Nova — fast multimodal vision
+  // Amazon Nova — fast multimodal vision & multilingual
   'amazon.nova-lite-v1:0',
   'amazon.nova-pro-v1:0',
-  // Anthropic Claude 3 family
+  // Anthropic Claude 3 family (deep comprehension & handwriting)
   'anthropic.claude-3-haiku-20240307-v1:0',
   'anthropic.claude-3-sonnet-20240229-v1:0',
   'anthropic.claude-3-opus-20240229-v1:0',
-  // Anthropic Claude 3.5 family
+  // Anthropic Claude 3.5 family (high precision vision & document OCR)
   'anthropic.claude-3-5-haiku-20241022-v1:0',
   'anthropic.claude-3-5-sonnet-20240620-v1:0',
   'anthropic.claude-3-5-sonnet-20241022-v2:0',
-  // Anthropic Claude 4 family (latest generation)
+  // Anthropic Claude 3.7 family (state-of-the-art vision reasoning, handwriting & multilingual)
+  'anthropic.claude-3-7-sonnet-20250219-v1:0',
+  // Anthropic Claude 4 family (next-gen)
   'anthropic.claude-sonnet-4-20250514-v1:0',
   'anthropic.claude-opus-4-20250514-v1:0',
+  // Meta Llama 3.2 Vision
+  'meta.llama3-2-11b-instruct-v1:0',
+  'meta.llama3-2-90b-instruct-v1:0',
+  // Mistral Pixtral Vision
+  'mistral.pixtral-12b-2409-v1:0',
 ] as const;
 
 export const KNOWN_HUNYUAN_MODELS = [

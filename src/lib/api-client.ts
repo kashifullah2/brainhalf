@@ -1326,3 +1326,64 @@ export function useTestModel() {
   });
 }
 
+export interface AdminUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  pictureUrl: string | null;
+  authProvider: "google" | "password";
+  emailVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+  totalBatches: number;
+  totalDocuments: number;
+  isAdmin: boolean;
+}
+
+export interface AdminUsersSummary {
+  totalUsers: number;
+  verifiedUsers: number;
+  googleUsers: number;
+  passwordUsers: number;
+  active7d: number;
+}
+
+export interface AdminUsersResponse {
+  summary: AdminUsersSummary;
+  users: AdminUser[];
+  count: number;
+}
+
+export interface AdminUsersParams {
+  q?: string;
+  filter?: "all" | "google" | "password" | "verified" | "admins";
+  limit?: number;
+}
+
+export function getAdminUsersQueryKey(params?: AdminUsersParams) {
+  return ["admin", "users", params] as const;
+}
+
+export function useAdminUsers(
+  params?: AdminUsersParams,
+  options?: { query?: QueryOverrides<AdminUsersResponse> },
+) {
+  const queryOpts = options?.query ?? {};
+  const queryParams = new URLSearchParams();
+  if (params?.q) queryParams.set("q", params.q);
+  if (params?.filter && params.filter !== "all") queryParams.set("filter", params.filter);
+  if (params?.limit) queryParams.set("limit", String(params.limit));
+
+  const path = `/admin/users${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+
+  return useQuery<AdminUsersResponse>({
+    queryKey: getAdminUsersQueryKey(params),
+    queryFn: () => apiFetch<AdminUsersResponse>(path),
+    ...queryOpts,
+  });
+}
+
+

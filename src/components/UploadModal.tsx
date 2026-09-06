@@ -33,6 +33,10 @@ import { compressImageForUpload } from "@/lib/ocr-client";
 // ---------------------------------------------------------------------------
 // Preset definitions
 // ---------------------------------------------------------------------------
+// Preset definitions
+// ---------------------------------------------------------------------------
+
+export type PresetCategory = "financial" | "forms" | "vision" | "general" | "custom";
 
 export interface Preset {
   id: string;
@@ -41,6 +45,7 @@ export interface Preset {
   tagline: string;
   description: string;
   extracts: string[];
+  category: PresetCategory;
 }
 
 import { OCR_MODES, type OcrMode } from "../../server/ocr-prompts";
@@ -50,69 +55,88 @@ export const PRESET_MAP: Record<OcrMode, Omit<Preset, "id">> = {
   invoice: {
     label: "Invoice",
     icon: FileText,
-    tagline: "Billing fields",
-    description: "Pulls vendor, amounts, dates, tax lines, and payment status from vendor invoices.",
+    tagline: "Billing & accounts payable",
+    description: "Pulls vendor details, totals, due dates, line items, tax lines, and payment statuses from commercial invoices.",
     extracts: ["Invoice #", "Vendor", "Dates", "Subtotal", "Tax", "Total", "Status"],
-  },
-  fulltext: {
-    label: "Full Text",
-    icon: FileIcon,
-    tagline: "Raw transcription",
-    description: "Transcribes everything on the page as it appears — layout and line breaks intact, no structure imposed.",
-    extracts: ["Full transcription", "Document type"],
+    category: "financial",
   },
   receipt: {
     label: "Receipt",
     icon: ShoppingBag,
-    tagline: "Point of sale",
-    description: "Reads store receipts for merchant info, every line item, tax, tip, and payment method.",
+    tagline: "Point of sale & receipts",
+    description: "Extracts store receipts for merchant info, itemized goods, sales tax, tips, and payment methods.",
     extracts: ["Merchant", "Line items", "Tax", "Tip", "Total", "Payment"],
+    category: "financial",
   },
   keyvalue: {
     label: "Key-Value",
     icon: ListFilter,
-    tagline: "Any form",
-    description: "Finds every labeled field on any document — printed forms, scans, checkboxes and all.",
-    extracts: ["All fields", "Empty fields", "Checkboxes"],
+    tagline: "Structured forms & applications",
+    description: "Locates every labeled field, pair, scan mark, and filled checkbox on printed forms and applications.",
+    extracts: ["All fields", "Empty fields", "Checkboxes", "Key-value pairs"],
+    category: "forms",
   },
   table: {
     label: "Table",
     icon: Table2,
-    tagline: "Rows and columns",
-    description: "Reads a schedule, price list or grid as rows — one exported row per line on the page.",
-    extracts: ["Column headers", "One row per line"],
+    tagline: "Tabular schedules & sheets",
+    description: "Reads tables, rosters, and financial grids into structured rows — perfect for exporting to Excel or CSV.",
+    extracts: ["Column headers", "Structured rows", "Cell data"],
+    category: "forms",
   },
   handwriting: {
     label: "Handwriting",
     icon: PenLine,
-    tagline: "Cursive and print",
-    description: "Transcribes handwritten pages verbatim, keeping line breaks, and reports how legible they were.",
-    extracts: ["Transcription", "Writing style", "Legibility"],
+    tagline: "Cursive & script OCR",
+    description: "Transcribes handwritten letters, doctor notes, and annotations verbatim, reporting legibility scores.",
+    extracts: ["Transcription", "Writing style", "Legibility score"],
+    category: "vision",
   },
   multilingual: {
     label: "Multilingual",
     icon: Languages,
-    tagline: "Any script",
-    description: "Detects the languages and scripts on the page, transcribes them as written, then translates to English.",
-    extracts: ["Original text", "English translation", "Languages"],
+    tagline: "200+ languages & scripts",
+    description: "Identifies languages and scripts (Arabic, Chinese, Cyrillic, Devanagari, Japanese, Latin), transcribes, and translates.",
+    extracts: ["Original script", "English translation", "Detected languages"],
+    category: "vision",
+  },
+  fulltext: {
+    label: "Full Text",
+    icon: FileIcon,
+    tagline: "Raw verbatim transcription",
+    description: "Transcribes every character and word on the document preserving original reading order and layout.",
+    extracts: ["Verbatim text", "Reading flow", "Document type"],
+    category: "general",
   },
   custom: {
     label: "Custom Prompt",
     icon: MessageSquareText,
-    tagline: "Your own rules",
-    description: "Write your own extraction instructions. Tell the AI exactly what to look for and how to structure the output.",
-    extracts: ["User-defined"],
+    tagline: "Custom instructions & schema",
+    description: "Craft your own custom extraction prompt and schema instructions tailored to your proprietary workflow.",
+    extracts: ["User-defined schema", "Custom fields"],
+    category: "custom",
   },
   vqa: {
     label: "Visual Q&A",
     icon: Eye,
-    tagline: "Ask about images",
-    description: "Ask questions about the content of any image or document. The AI reads the visual and answers directly.",
-    extracts: ["Answers", "Document type", "Visual details"],
+    tagline: "Conversational visual queries",
+    description: "Ask specific questions about visual elements, charts, stamps, diagrams, or text in any document.",
+    extracts: ["Direct answers", "Visual details", "Source grounding"],
+    category: "custom",
   },
 };
 
 export const PRESETS: Preset[] = OCR_MODES.map((mode: OcrMode) => ({ id: mode, ...PRESET_MAP[mode] }));
+
+const CATEGORY_LABELS: Record<string, { label: string; icon?: React.ElementType }> = {
+  all: { label: "All Presets" },
+  financial: { label: "💼 Financial" },
+  forms: { label: "📋 Forms & Tables" },
+  vision: { label: "🧠 Vision & AI" },
+  general: { label: "📄 Fulltext" },
+  custom: { label: "✨ Custom & Q&A" },
+  templates: { label: "🔖 Saved Templates" },
+};
 
 // ---------------------------------------------------------------------------
 // Preset selector
@@ -133,40 +157,199 @@ export function PresetSelector({
   className?: string;
   templates?: ExtractionTemplate[];
 }) {
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  const filteredPresets = PRESETS.filter((p) => {
+    if (selectedCategory === "all") return true;
+    if (selectedCategory === "templates") return false;
+    return p.category === selectedCategory;
+  });
+
+  const showTemplates =
+    templates.length > 0 && (selectedCategory === "all" || selectedCategory === "templates");
+
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
+    <div className={cn("flex flex-col gap-5", className)}>
+      {/* Category Filter Pills */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border/60 pb-3">
+        {(["all", "financial", "forms", "vision", "custom", ...(templates.length > 0 ? ["templates"] : [])] as const).map(
+          (cat) => {
+            const active = selectedCategory === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={cn(
+                  "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  active
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {CATEGORY_LABELS[cat]?.label || cat}
+                {cat === "templates" && (
+                  <span className="ml-1.5 rounded-full bg-primary/20 px-1.5 py-0.2 text-[10px]">
+                    {templates.length}
+                  </span>
+                )}
+              </button>
+            );
+          }
+        )}
+      </div>
+
       {/* Saved Templates */}
-      {templates.length > 0 && (
-        <>
-          <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground/70">Your Saved Templates</p>
-          <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 -mt-3")}>
-            {[...templates].sort((a, b) => (b.useCount || 0) - (a.useCount || 0)).map((template) => {
-              const selected = value === `template_${template.id}`;
+      {showTemplates && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground/80">
+              Saved Workflow Templates ({templates.length})
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {[...templates]
+              .sort((a, b) => (b.useCount || 0) - (a.useCount || 0))
+              .map((template) => {
+                const selected = value === `template_${template.id}`;
+                return (
+                  <button
+                    key={`template_${template.id}`}
+                    type="button"
+                    onClick={() =>
+                      onChange(`template_${template.id}`, { prompt: template.prompt || undefined })
+                    }
+                    className={cn(
+                      "relative flex h-full flex-col p-4 rounded-xl border text-left transition-all duration-200 group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      selected
+                        ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-sm ring-2 ring-primary/30"
+                        : "border-border/70 bg-card hover:border-primary/50 hover:shadow-xs"
+                    )}
+                  >
+                    <div className="relative z-10 flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors border",
+                          selected
+                            ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                            : "bg-muted text-muted-foreground border-border/40 group-hover:bg-primary/10 group-hover:text-primary"
+                        )}
+                      >
+                        <FileCode2 className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0 flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <p
+                            className={cn(
+                              "truncate text-body-sm font-semibold",
+                              selected ? "text-primary" : "text-foreground"
+                            )}
+                          >
+                            {template.name}
+                          </p>
+                          {selected ? (
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs">
+                              <Check className="h-3 w-3" strokeWidth={3} />
+                            </span>
+                          ) : (
+                            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                              Template
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-label leading-relaxed font-medium text-muted-foreground line-clamp-2">
+                          {template.description ||
+                            `Preset: ${PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}`}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                            Base: {PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}
+                          </span>
+                          {template.useCount !== undefined && template.useCount > 0 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              · Used {template.useCount}x
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* Built-in Presets */}
+      {selectedCategory !== "templates" && (
+        <div className="space-y-3">
+          {showTemplates && (
+            <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground/80">
+              Core OCR & Vision Engines ({filteredPresets.length})
+            </p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredPresets.map((preset) => {
+              const Icon = preset.icon;
+              const selected = value === preset.id;
               return (
                 <button
-                  key={`template_${template.id}`}
+                  key={preset.id}
                   type="button"
-                  onClick={() => onChange(`template_${template.id}`, { prompt: template.prompt || undefined })}
+                  onClick={() => onChange(preset.id)}
                   className={cn(
-                    "relative flex h-full flex-col p-4 rounded-xl border text-left transition-all duration-300 group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "relative flex h-full flex-col p-4 rounded-xl border text-left transition-all duration-200 group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     selected
-                      ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-sm ring-1 ring-primary/20"
-                      : "border-border/60 bg-card hover:border-primary/40 hover:shadow-sm"
+                      ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-sm ring-2 ring-primary/30"
+                      : "border-border/70 bg-card hover:border-primary/50 hover:shadow-xs"
                   )}
                 >
                   <div className="relative z-10 flex items-start gap-3">
-                    <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors border", selected ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border/40 group-hover:bg-primary/10 group-hover:text-primary")}>
-                      <FileCode2 className="h-4 w-4" />
+                    <div
+                      className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors border",
+                        selected
+                          ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                          : "bg-muted text-muted-foreground border-border/40 group-hover:bg-primary/10 group-hover:text-primary"
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0 flex flex-col gap-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className={cn("truncate text-body-sm font-semibold", selected ? "text-primary" : "text-foreground")}>{template.name}</p>
-                        {selected && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-2.5 w-2.5" strokeWidth={3} /></span>}
+                        <p
+                          className={cn(
+                            "truncate text-body-sm font-semibold",
+                            selected ? "text-primary" : "text-foreground"
+                          )}
+                        >
+                          {preset.label}
+                        </p>
+                        {selected ? (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs">
+                            <Check className="h-3 w-3" strokeWidth={3} />
+                          </span>
+                        ) : (
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                            {preset.category}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-caption font-medium text-muted-foreground">Saved template</p>
-                      <p className="mt-1.5 text-label leading-relaxed font-medium text-muted-foreground">{template.description || `Based on ${PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}`}</p>
+                      <p className="text-caption font-semibold text-primary/80 dark:text-primary/90">
+                        {preset.tagline}
+                      </p>
+                      <p className="mt-1 text-label leading-relaxed font-normal text-muted-foreground line-clamp-2">
+                        {preset.description}
+                      </p>
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-caption font-medium text-primary">{PRESETS.find((p) => p.id === template.baseMode)?.label || template.baseMode}</span>
+                        {preset.extracts.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                          >
+                            {tag}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -174,82 +357,51 @@ export function PresetSelector({
               );
             })}
           </div>
-        </>
+        </div>
       )}
 
-      {/* Built-in Presets */}
-      {templates.length > 0 && (
-        <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground/70">Built-in Presets</p>
-      )}
-      <div className={cn("grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4", templates.length > 0 && "-mt-3")}>
-        {PRESETS.map((preset) => {
-          const Icon = preset.icon;
-          const selected = value === preset.id;
-          return (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => onChange(preset.id)}
-              className={cn(
-                "relative flex h-full flex-col p-4 rounded-xl border text-left transition-all duration-300 group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                selected
-                  ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-sm ring-1 ring-primary/20"
-                  : "border-border/60 bg-card hover:border-primary/40 hover:shadow-sm"
-              )}
-            >
-              <div className="relative z-10 flex items-start gap-3">
-                <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors border", selected ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-border/40 group-hover:bg-primary/10 group-hover:text-primary")}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0 flex flex-col gap-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={cn("truncate text-body-sm font-semibold", selected ? "text-primary" : "text-foreground")}>{preset.label}</p>
-                    {selected && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-2.5 w-2.5" strokeWidth={3} /></span>}
-                  </div>
-                  <p className="text-caption font-medium text-muted-foreground">{preset.tagline}</p>
-                  <p className="mt-1.5 text-label leading-relaxed font-medium text-muted-foreground">{preset.description}</p>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {preset.extracts.slice(0, 3).map((tag) => (
-                      <span key={tag} className="rounded bg-primary/10 px-1.5 py-0.5 text-caption font-medium text-primary">{tag}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
+      {/* Custom Prompt Textarea */}
       {(value === "custom" || value.startsWith("template_")) && (
-        <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300 shadow-sm">
-          <div className="flex items-center gap-2">
-            <MessageSquareText className="h-4 w-4 text-primary" />
-            <label htmlFor="custom-prompt-input" className="text-body-sm font-semibold text-foreground">Your Extraction Instructions</label>
+        <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-300 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquareText className="h-4 w-4 text-primary" />
+              <label htmlFor="custom-prompt-input" className="text-body-sm font-semibold text-foreground">
+                Extraction Prompt Instructions
+              </label>
+            </div>
+            <span className="text-caption text-muted-foreground">Markdown & schema instructions supported</span>
           </div>
           <textarea
             id="custom-prompt-input"
             rows={4}
-            placeholder="Extract the student name, roll number, subject, and marks..."
+            placeholder="e.g., Extract student name, registration number, course title, exam scores, and letter grade..."
             value={customPrompt ?? ""}
             onChange={(e) => onCustomPromptChange?.(e.target.value)}
-            className="w-full resize-y rounded-lg border border-border/60 bg-background p-3 text-body-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50 min-h-[100px]"
+            className="w-full resize-y rounded-lg border border-border/70 bg-background p-3.5 text-body-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/60 min-h-[110px]"
           />
         </div>
       )}
 
+      {/* Visual Q&A Textarea */}
       {value === "vqa" && (
-        <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Eye className="h-4 w-4 text-primary" />
-            <label htmlFor="vqa-prompt-input" className="text-body-sm font-semibold text-foreground">Your Question(s)</label>
+        <div className="rounded-xl border border-primary/30 bg-card p-5 space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-300 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-primary" />
+              <label htmlFor="vqa-prompt-input" className="text-body-sm font-semibold text-foreground">
+                Document Questions (Visual Q&A)
+              </label>
+            </div>
+            <span className="text-caption text-muted-foreground">The AI reads visual cues, stamps & text</span>
           </div>
           <textarea
             id="vqa-prompt-input"
             rows={4}
-            placeholder="What is the total amount on this invoice?"
+            placeholder="e.g., What is the total invoice balance after discounts? Is there an authorized manager signature present?"
             value={customPrompt ?? ""}
             onChange={(e) => onCustomPromptChange?.(e.target.value)}
-            className="w-full resize-y rounded-lg border border-border/60 bg-background p-3 text-body-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/50 min-h-[100px]"
+            className="w-full resize-y rounded-lg border border-border/70 bg-background p-3.5 text-body-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-primary/60 min-h-[110px]"
           />
         </div>
       )}
@@ -297,6 +449,8 @@ function FileUploadRow({ file, onSuccess, onRemove, autoStart, onStatusChange }:
   const [status, setStatus] = useState<RowStatus>(typeError ? "error" : "pending");
   const [failureMessage, setFailureMessage] = useState<string | null>(null);
 
+  const isPdf = file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf";
+
   useEffect(() => {
     onStatusChange(status);
   }, [status, onStatusChange]);
@@ -308,7 +462,14 @@ function FileUploadRow({ file, onSuccess, onRemove, autoStart, onStatusChange }:
     try {
       const res = await uploadFile(file);
       setStatus("success");
-      onSuccess({ filename: file.name, objectPath: res.objectPath, contentType: res.contentType || file.type, sizeBytes: res.sizeBytes, contentHash: res.contentHash, rawFile: file });
+      onSuccess({
+        filename: file.name,
+        objectPath: res.objectPath,
+        contentType: res.contentType || file.type,
+        sizeBytes: res.sizeBytes,
+        contentHash: res.contentHash,
+        rawFile: file,
+      });
     } catch (error) {
       setStatus("error");
       setFailureMessage(errorMessage(error, "Upload failed."));
@@ -320,23 +481,88 @@ function FileUploadRow({ file, onSuccess, onRemove, autoStart, onStatusChange }:
   }, [autoStart, status, startUpload]);
 
   return (
-    <div className={cn("flex flex-col gap-2 p-3 border rounded-lg bg-card transition-colors", status === "error" ? "border-destructive/40 bg-destructive/5" : "border-border/60")}>
+    <div
+      className={cn(
+        "flex flex-col gap-2 p-3.5 border rounded-xl bg-card transition-all duration-200 shadow-2xs",
+        status === "error"
+          ? "border-destructive/40 bg-destructive/5"
+          : status === "success"
+            ? "border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-500/10"
+            : "border-border/70 hover:border-border"
+      )}
+    >
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-muted"><FileIcon className="h-4 w-4 text-muted-foreground" /></div>
+        <div
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border font-mono text-[10px] font-bold uppercase",
+            isPdf
+              ? "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+              : "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400"
+          )}
+        >
+          {isPdf ? "PDF" : "IMG"}
+        </div>
         <div className="flex-1 min-w-0">
           <p className="text-body-sm font-semibold truncate text-foreground">{file.name}</p>
-          <p className="text-caption font-medium text-muted-foreground mt-0.5">{formatFileSize(file.size)}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-caption font-medium text-muted-foreground">{formatFileSize(file.size)}</span>
+            <span className="text-muted-foreground/40">·</span>
+            {status === "pending" && <span className="text-caption text-muted-foreground">Queued</span>}
+            {status === "uploading" && (
+              <span className="text-caption font-medium text-primary animate-pulse">Uploading {progress}%...</span>
+            )}
+            {status === "success" && (
+              <span className="text-caption font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <Check className="h-3 w-3" /> Ready
+              </span>
+            )}
+            {status === "error" && (
+              <span className="text-caption font-medium text-destructive">Failed</span>
+            )}
+          </div>
         </div>
         <div className="shrink-0 flex items-center gap-2">
-          {status === "success" && <CheckCircle2 className="h-4 w-4 text-success" />}
-          {status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-          {status === "pending" && <Button variant="ghost" size="sm" className="h-7 px-2.5 text-caption font-semibold rounded-md hover:text-destructive hover:bg-destructive/10" onClick={onRemove}>Remove</Button>}
-          {status === "error" && !typeError && <Button variant="outline" size="sm" className="h-7 px-2.5 text-caption font-semibold rounded-md" onClick={startUpload}>Retry</Button>}
-          {status === "error" && typeError && <Button variant="ghost" size="sm" className="h-7 px-2.5 text-caption font-semibold rounded-md hover:text-destructive hover:bg-destructive/10" onClick={onRemove}>Remove</Button>}
+          {status === "success" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+          {status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+          {status === "pending" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2.5 text-caption font-semibold rounded-md hover:text-destructive hover:bg-destructive/10"
+              onClick={onRemove}
+            >
+              Remove
+            </Button>
+          )}
+          {status === "error" && !typeError && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-caption font-semibold rounded-md border-primary/30 text-primary"
+              onClick={startUpload}
+            >
+              Retry
+            </Button>
+          )}
+          {(status === "error" || status === "success") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-caption font-semibold rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              onClick={onRemove}
+              title="Remove file from queue"
+            >
+              Remove
+            </Button>
+          )}
         </div>
       </div>
-      {status === "uploading" && <Progress value={progress} className="h-1 mx-0.5 mt-1" />}
-      {status === "error" && <p className="text-caption font-medium text-destructive px-0.5 mt-0.5">{typeError ?? failureMessage ?? "Upload failed."}</p>}
+      {status === "uploading" && <Progress value={progress} className="h-1.5 mx-0.5 mt-1" />}
+      {status === "error" && (
+        <p className="text-caption font-medium text-destructive px-0.5 mt-0.5">
+          {typeError ?? failureMessage ?? "Upload failed."}
+        </p>
+      )}
     </div>
   );
 }
@@ -409,13 +635,15 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
     setStatuses((prev) => { const next = { ...prev }; delete next[id]; return next; });
   };
 
+  const handleClearAll = () => {
+    setQueue([]);
+    setUploaded({});
+    setStatuses({});
+    setIsStarted(false);
+  };
+
   const readyDocuments = queue.map((item) => uploaded[item.id]).filter((doc): doc is UploadedDocument => Boolean(doc));
 
-  // Which files are still moving, and which are never going to arrive.
-  //
-  // The Process button used to be enabled the moment ONE upload succeeded, so
-  // clicking while the rest were still in flight created a batch that silently
-  // omitted them -- no warning, no record, and the files looked uploaded on screen.
   const inFlightCount = queue.filter((item) => {
     const status = statuses[item.id] ?? "pending";
     return status === "pending" || status === "uploading";
@@ -440,8 +668,6 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
   };
 
   const selectedPreset = PRESETS.find((p) => p.id === mode) ?? null;
-  // Drag feedback. onDragOver only called preventDefault, so the dropzone gave
-  // no sign it would accept the file being held over it.
   const [isDragging, setIsDragging] = useState(false);
 
   return (
@@ -490,18 +716,63 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
       )}
 
       {queue.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-body-sm font-semibold text-foreground">{queue.length} file{queue.length !== 1 ? "s" : ""} selected</p>
-              <p className="text-caption font-medium text-muted-foreground mt-0.5">Mode: {selectedPreset?.label ?? "Custom Template"}</p>
+        <div className="flex flex-col gap-3.5">
+          {/* Drop more banner */}
+          <label
+            htmlFor="file-upload-more-zone"
+            className={cn(
+              "group relative flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-3 transition-all duration-200",
+              isDragging
+                ? "border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs"
+                : "border-border/80 bg-muted/20 hover:border-primary/50 hover:bg-muted/40"
+            )}
+            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
+                <UploadCloud className="h-4 w-4" />
+              </div>
+              <p className="text-body-sm text-foreground">
+                <span className="font-semibold text-primary">Drop more documents</span> here or click to browse
+              </p>
             </div>
-            <label htmlFor="file-upload-more" className="cursor-pointer text-label font-semibold text-primary hover:underline">
-              Add more
-              <input id="file-upload-more" type="file" accept={ACCEPT_ATTRIBUTE} multiple className="sr-only" onChange={handleFileChange} />
-            </label>
+            <span className="text-caption font-semibold text-primary hover:underline">Browse files</span>
+            <input id="file-upload-more-zone" type="file" accept={ACCEPT_ATTRIBUTE} multiple className="sr-only" onChange={handleFileChange} />
+          </label>
+
+          {/* Staging header */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <p className="text-body-sm font-semibold text-foreground">
+                {queue.length} document{queue.length !== 1 ? "s" : ""} staged
+              </p>
+              <span className="text-muted-foreground/50">·</span>
+              <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                {selectedPreset?.label ?? "Custom Template"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="text-caption font-semibold text-muted-foreground hover:text-destructive transition-colors"
+            >
+              Clear all
+            </button>
           </div>
-          <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
+
+          <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto pr-1">
             {queue.map((item) => (
               <FileUploadRow
                 key={item.id}
@@ -517,7 +788,7 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
       )}
 
       {isStarted && queue.length > 0 && (
-        <div className="flex flex-col gap-4 pt-5 border-t border-border/60">
+        <div className="flex flex-col gap-4 pt-4 border-t border-border/60">
           <label className="flex items-center gap-3 p-3 border border-border/60 rounded-xl bg-card cursor-pointer hover:bg-muted/40 transition-colors">
             <input type="checkbox" checked={forceReprocess} onChange={(e) => setForceReprocess(e.target.checked)} className="rounded border border-primary/30 h-4 w-4 accent-primary" />
             <div className="flex flex-col">
@@ -546,14 +817,15 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
             <Button
               onClick={handleCreateBatch}
               disabled={readyDocuments.length === 0 || isCreatingBatch || !isSettled}
-              className="rounded-lg px-6 h-9 text-body-sm font-semibold shadow-sm"
+              size="lg"
+              className="rounded-xl px-7 text-body-sm font-semibold shadow-sm"
             >
               {isCreatingBatch ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Extracting...</>
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Extracting batch...</>
               ) : !isSettled ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</>
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading {inFlightCount} file{inFlightCount === 1 ? "" : "s"}…</>
               ) : (
-                `Process ${readyDocuments.length} doc${readyDocuments.length !== 1 ? "s" : ""}`
+                `Start Extraction (${readyDocuments.length} doc${readyDocuments.length !== 1 ? "s" : ""})`
               )}
             </Button>
           </div>

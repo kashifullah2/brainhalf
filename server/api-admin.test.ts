@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { onRequestGet as adminMetricsGet } from '../functions/api/admin/metrics';
+import { onRequestGet as adminUsersGet } from '../functions/api/admin/users';
 import { onRequestGet as meGet } from '../functions/api/auth/me';
 import type { AppEnv } from './http';
 
@@ -145,3 +146,30 @@ describe('GET /api/auth/me', () => {
     expect(body.isAdmin).toBe(false);
   });
 });
+
+describe('GET /api/admin/users', () => {
+  it('refuses an anonymous caller', async () => {
+    const env = stubEnv('owner@brainhalf.com');
+    const response = await (adminUsersGet as unknown as Handler)({
+      request: new Request('https://app.example.com/api/admin/users'),
+      env,
+      params: {},
+      waitUntil: () => {},
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it('returns 404 for a signed-in non-admin', async () => {
+    const response = await call(adminUsersGet, 'https://app.example.com/api/admin/users', stubEnv('user@example.com'));
+    expect(response.status).toBe(404);
+  });
+
+  it('returns user list and summary metrics for an admin', async () => {
+    const response = await call(adminUsersGet, 'https://app.example.com/api/admin/users', stubEnv('owner@brainhalf.com'));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { summary: { totalUsers: number }; users: unknown[]; count: number };
+    expect(body.summary).toBeDefined();
+    expect(Array.isArray(body.users)).toBe(true);
+  });
+});
+
