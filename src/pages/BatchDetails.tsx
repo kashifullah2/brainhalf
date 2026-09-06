@@ -26,7 +26,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AutoResizingTextarea } from "@/components/ui/auto-resizing-textarea";
-import { ArrowRight, Search, Loader2, Download, Copy, FileText,
+import { Search, Loader2, Download, Copy, FileText,
   ChevronDown, ChevronLeft, ChevronRight, Pencil, AlertTriangle, Trash2, X, Info,
   RotateCcw,
   CircleSlash
@@ -825,8 +825,6 @@ export default function BatchDetails() {
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="search"
-                  // "Search..." said nothing about what it searched. Both the
-                  // visible placeholder and the accessible name now do.
                   placeholder="Search this batch…"
                   aria-label="Search documents in this batch by filename or extracted value"
                   className="pl-9 h-9 rounded-lg bg-background border-border/60 text-body-sm"
@@ -835,29 +833,26 @@ export default function BatchDetails() {
                 />
               </div>
             ) : <div />}
-            {/* FIX: the audit called out "double-click to edit" as
-                undiscoverable — say it where people can see it */}
-            <span className="hidden md:flex items-center gap-1.5 text-label text-muted-foreground shrink-0">
-              <Pencil className="h-3 w-3" /> Double-click a value to edit · click a row to review
-            </span>
+            {/* Visual dual-interaction hint badges */}
+            <div className="hidden md:flex items-center gap-2 text-label text-muted-foreground shrink-0">
+              <span className="flex items-center gap-1 bg-background px-2 py-1 rounded-md border border-border/60 text-[11px] font-medium">
+                <Pencil className="h-3 w-3 text-primary" /> Cell Pencil / Double-click to Edit
+              </span>
+              <span className="flex items-center gap-1 bg-background px-2 py-1 rounded-md border border-border/60 text-[11px] font-medium">
+                <ChevronRight className="h-3 w-3 text-primary" /> Row / Chevron to Review
+              </span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse table-fixed min-w-[720px]">
+            <table className="w-full text-left border-collapse table-fixed min-w-[840px]">
               <colgroup>
                 <col style={{ width: "48px" }} />
                 <col style={{ width: "260px" }} />
-                {/* Wide enough for the badge plus the retry control a failed row
-                    carries; at 120px they collided. */}
                 <col style={{ width: "176px" }} />
-                {cols.map((col) => <col key={col} style={{ width: "200px" }} />)}
-                <col style={{ width: "40px" }} />
+                {cols.map((col) => <col key={col} style={{ width: "280px" }} />)}
+                <col style={{ width: "56px" }} />
               </colgroup>
-              {/* A batch with many extracted fields scrolls sideways, and the
-                  Document column used to scroll away with it — leaving rows of
-                  values with no way to tell which file they came from. The first
-                  two columns are pinned; opaque backgrounds (not the /80 tint)
-                  because scrolling cells pass underneath them. */}
               <thead className="sticky top-0 z-20 border-b border-border/60 bg-muted shadow-sm">
                 <tr>
                   <th scope="col" className="sticky left-0 z-10 whitespace-nowrap bg-muted px-4 py-3">
@@ -869,11 +864,6 @@ export default function BatchDetails() {
                       onChange={toggleSelectAll}
                     />
                   </th>
-                  {/* scope="col" on every header cell. Without it a screen reader
-                      reading a 12-column extraction table has to guess which header
-                      belongs to which cell, which is the whole reason the table
-                      exists. The two spacer headers get an sr-only name rather than
-                      being empty, so the column is announced as something. */}
                   <th scope="col" className="sticky left-12 z-10 whitespace-nowrap border-r border-border/60 bg-muted px-4 py-3 text-label font-semibold text-muted-foreground">Document</th>
                   <th scope="col" className="px-4 py-3 whitespace-nowrap text-label font-semibold text-muted-foreground">Status</th>
                   {cols.map((col) => (
@@ -881,7 +871,7 @@ export default function BatchDetails() {
                       {humanizeFieldLabel(col)}
                     </th>
                   ))}
-                  <th scope="col" className="px-2 py-3">
+                  <th scope="col" className="px-2 py-3 text-right">
                     <span className="sr-only">Open document</span>
                   </th>
                 </tr>
@@ -889,8 +879,6 @@ export default function BatchDetails() {
               <tbody className="divide-y divide-border/50 text-body-sm">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    {/* FIX: was cols.length + 3 — the table has 3 fixed + N data
-                        + 1 arrow columns = N + 4. The empty cell didn't span it. */}
                     <td colSpan={cols.length + 4} className="px-4 py-20 text-center">
                       <p className="font-semibold text-foreground">Nothing found</p>
                       <p className="text-muted-foreground mt-1 text-body-sm">No documents match your search.</p>
@@ -903,9 +891,6 @@ export default function BatchDetails() {
                     const docInfo = docsById.get(docId);
                     const isDuplicate = Boolean(docInfo?.isDuplicate);
                     const isSelected = selectedRows.has(docId);
-                    // The pinned columns cannot use the row's translucent tint —
-                    // scrolling cells would show through them. An inset shadow
-                    // over bg-card produces the same colour, opaquely.
                     const stickyTint = isSelected
                       ? "shadow-[inset_0_0_0_9999px_color-mix(in_oklab,var(--primary)_5%,transparent)]"
                       : "group-hover:shadow-[inset_0_0_0_9999px_color-mix(in_oklab,var(--muted-foreground)_8%,transparent)]";
@@ -913,21 +898,13 @@ export default function BatchDetails() {
                     return (
                       <tr
                         key={docId}
-                        /* Selection is the only state that repaints a row.
-                           "Duplicate" used to wash the entire row in
-                           `bg-warning/5`, which on the dark theme read as a
-                           whole-row error for what is a neutral fact — this file
-                           has been seen before, its data is fine, and the inline
-                           badge under the filename already says so. */
-                        className={`group cursor-pointer transition-colors
+                        className={`group cursor-pointer transition-all duration-150 relative border-l-2
                           ${isSelected
-                            ? "bg-primary/5 hover:bg-primary/10"
-                            : "bg-card hover:bg-muted/50"}`}
+                            ? "border-l-primary bg-primary/5 hover:bg-primary/10"
+                            : "border-l-transparent hover:border-l-primary/80 bg-card hover:bg-muted/30"}`}
                         onClick={(e) => {
                           const t = e.target as HTMLElement;
                           if (t.tagName === "INPUT" || t.tagName === "BUTTON" || t.closest("button")) return;
-                          // FIX: selection-aware row click — clicking rows while
-                          // selecting shouldn't fling the panel open
                           if (selectedRows.size > 0) { toggleRowSelect(docId); return; }
                           setSidePanelDocId(docId);
                         }}
@@ -976,7 +953,6 @@ export default function BatchDetails() {
                                 title="Read this document again"
                                 disabled={retryingIds.has(docId) || isRetryingAll}
                                 onClick={(e) => {
-                                  // The row's own onClick opens the side panel.
                                   e.stopPropagation();
                                   void handleRetryDocument(docId);
                                 }}
@@ -1001,14 +977,12 @@ export default function BatchDetails() {
 
                           if (isFailed) return <td key={col} className="px-4 py-3 text-muted-foreground/40">—</td>;
 
-                          // FIX: fixed-width popovers anchored left got clipped by
-                          // the overflow container on the right-most columns
                           const anchorRight = cols.indexOf(col) >= cols.length - 2;
 
                           return (
                             <td
                               key={col}
-                              className="px-4 py-2.5 relative"
+                              className="px-4 py-3 relative group/cell align-top"
                               onDoubleClick={(e) => {
                                 e.stopPropagation();
                                 setEditingCell({ docId, field: col });
@@ -1016,12 +990,9 @@ export default function BatchDetails() {
                               }}
                             >
                               {isEditing ? (
-                                <div className={`absolute top-0 z-30 w-[min(300px,80vw)] p-1.5 bg-card rounded-lg shadow-xl border border-primary ${anchorRight ? "right-0" : "left-0"}`}>
+                                <div className={`absolute top-0 z-30 w-[min(320px,80vw)] p-2 bg-card rounded-xl shadow-xl border border-primary ${anchorRight ? "right-0" : "left-0"}`}>
                                   <AutoResizingTextarea
                                     ref={editInputRef}
-                                    // Without this the editor announced only its
-                                    // value, so a screen-reader user editing a
-                                    // 12-column table had no idea which cell.
                                     aria-label={`Edit ${humanizeFieldLabel(col)} for ${docInfo?.filename ?? `document ${docId}`}`}
                                     value={editValue}
                                     onChange={(e) => setEditValue(e.target.value)}
@@ -1030,68 +1001,95 @@ export default function BatchDetails() {
                                       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); }
                                       if (e.key === "Escape") setEditingCell(null);
                                     }}
-                                    minRows={1} maxRows={8}
+                                    minRows={2} maxRows={8}
                                     className="text-body-sm h-auto p-2"
                                     onClick={(e) => e.stopPropagation()}
                                   />
-                                </div>
-                              ) : (
-                                <div className="flex flex-col min-w-0 group/cell">
-                                  <div className="flex items-start justify-between gap-1">
-                                    <span className={`line-clamp-2 whitespace-pre-wrap break-words leading-relaxed text-label ${corrected ? "text-foreground font-semibold" : "text-foreground"}`} title={val}>
-                                      {val}
-                                    </span>
-                                    {/* A button, not a decorative icon in a div.
-                                        Double-clicking the cell was the only way
-                                        to edit an extracted value, and there is no
-                                        keyboard equivalent of a double-click — so
-                                        the table's primary interaction was
-                                        unreachable without a mouse. Revealed on
-                                        focus as well as hover, or it would be a
-                                        tab stop nobody can see. */}
+                                  <div className="flex items-center justify-between pt-1.5 text-[10px] text-muted-foreground">
+                                    <span>Press Enter to save</span>
                                     <button
                                       type="button"
+                                      onClick={(e) => { e.stopPropagation(); handleSaveEdit(); }}
+                                      className="px-2 py-0.5 rounded bg-primary text-primary-foreground font-semibold"
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col min-w-0">
+                                  <div className="flex items-start justify-between gap-1.5">
+                                    <div className="relative overflow-hidden max-h-[2.85rem] flex-1">
+                                      <p
+                                        className={`line-clamp-2 whitespace-pre-wrap break-words leading-relaxed text-body-sm ${corrected ? "text-foreground font-semibold" : "text-foreground/90"}`}
+                                        title={val}
+                                      >
+                                        {val}
+                                      </p>
+                                      {val !== "—" && val.length > 40 && (
+                                        <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-card via-card/70 to-transparent pointer-events-none" />
+                                      )}
+                                    </div>
+                                    
+                                    {/* Explicit cell-hover pencil affordance button */}
+                                    <button
+                                      type="button"
+                                      title="Click or double-click to edit cell"
                                       aria-label={`Edit ${humanizeFieldLabel(col)} for ${docInfo?.filename ?? `document ${docId}`}`}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setEditingCell({ docId, field: col });
                                         setEditValue(val === "—" ? "" : val);
                                       }}
-                                      className="shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                      className="shrink-0 rounded-md px-1.5 py-0.5 opacity-0 group-hover/cell:opacity-100 transition-opacity bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 text-[10px] font-semibold flex items-center gap-1 shadow-2xs"
                                     >
-                                      <Pencil className="h-3 w-3 text-muted-foreground" aria-hidden />
+                                      <Pencil className="h-3 w-3" aria-hidden />
+                                      Edit
                                     </button>
                                   </div>
-                                  {corrected ? (
-                                    <span className="text-micro font-semibold text-success mt-1 flex items-center gap-1"><Pencil className="h-2.5 w-2.5" /> Edited</span>
-                                  ) : (
-                                    val !== "—" && confidence !== undefined && confidence < threshold && (
-                                      <div className="mt-1 flex items-center">
+
+                                  <div className="flex items-center justify-between mt-1">
+                                    {corrected ? (
+                                      <span className="text-micro font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                        <Pencil className="h-2.5 w-2.5" /> Edited
+                                      </span>
+                                    ) : (
+                                      val !== "—" && confidence !== undefined && confidence < threshold ? (
                                         <ConfidenceBadge value={confidence} threshold={threshold} />
-                                      </div>
-                                    )
-                                  )}
+                                      ) : <span />
+                                    )}
+
+                                    {val !== "—" && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSidePanelDocId(docId);
+                                        }}
+                                        className="text-[10px] font-semibold text-primary hover:underline inline-flex items-center gap-0.5 opacity-80 hover:opacity-100 transition-opacity ml-auto"
+                                      >
+                                        View full &rarr;
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </td>
                           );
                         })}
-                        <td className="px-2 py-3 text-right">
-                          {/* The row's own onClick opens the drawer, which a
-                              keyboard cannot trigger on a <tr>. This is the same
-                              action as a real control, so the interaction stops
-                              being mouse-only. */}
+                        <td className="px-3 py-3 text-right">
                           <div className="flex justify-end">
                             <button
                               type="button"
+                              title="Open full review panel"
                               aria-label={`Open details for ${row.filename ?? `document ${docId}`}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSidePanelDocId(docId);
                               }}
-                              className="flex h-6 w-6 items-center justify-center rounded bg-muted/60 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground hover:text-primary hover:bg-primary/15 transition-all opacity-80 group-hover:opacity-100"
                             >
-                              <ArrowRight className="h-3 w-3" aria-hidden />
+                              <ChevronRight className="h-4 w-4" aria-hidden />
                             </button>
                           </div>
                         </td>
