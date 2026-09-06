@@ -1479,20 +1479,28 @@ export default function AdminDashboard() {
           {/* TAB 4: LIVE OCR TEST & BENCHMARK LAB (SPLIT WORKBENCH) */}
           {activeTab === "testlab" && (
             <div ref={testLabRef} className="space-y-6 animate-in fade-in duration-300">
-              {/* Quick Benchmark Preset Buttons */}
-              <div className="space-y-2">
-                <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                  Quick Benchmark Targets
-                </span>
-                <div className="flex flex-wrap gap-2">
+              {/* Quick Benchmark Segmented-Control Selector */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Sliders className="h-3.5 w-3.5 text-primary" />
+                    Quick Benchmark Targets
+                  </span>
+                  <Badge variant="outline" className="text-[10px] border-primary/30 bg-primary/10 text-primary font-mono">
+                    Active Target: {testTarget}
+                  </Badge>
+                </div>
+
+                <div className="p-1.5 rounded-2xl border border-border/70 bg-muted/30 flex flex-wrap gap-1.5 shadow-inner">
                   {[
                     { id: "default", label: `Default Tier (${defaultTierProvider})`, icon: Sparkles },
                     { id: "escalation", label: `High-Accuracy (${highAccuracyProvider})`, icon: Cpu },
-                    { id: "bedrock", label: `Nova Lite (⚡ Fast)`, icon: Zap },
-                    { id: "handwriting", label: `Claude 3.7 (✍️ Handwriting)`, icon: PenLine },
-                    { id: "multilingual", label: `Nova Pro (🌐 200+ Langs)`, icon: Languages },
-                    { id: "hunyuan", label: `Tencent Hunyuan OCR`, icon: FileText },
-                    { id: "textract", label: `AWS Textract`, icon: Globe },
+                    { id: "bedrock", label: "Nova Lite (Fast)", icon: Zap },
+                    { id: "handwriting", label: "Claude 3.7 (Handwriting)", icon: PenLine },
+                    { id: "multilingual", label: "Nova Pro (Multilingual)", icon: Languages },
+                    { id: "hunyuan", label: "Tencent Hunyuan OCR", icon: FileText },
+                    { id: "textract", label: "AWS Textract", icon: Globe },
+                    { id: "openai", label: `OpenAI (${openaiModel})`, icon: Cpu },
                   ].map((preset) => {
                     const Icon = preset.icon;
                     const active = testTarget === preset.id;
@@ -1506,14 +1514,14 @@ export default function AdminDashboard() {
                         }}
                         disabled={testModelMutation.isPending}
                         className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 border",
+                          "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer select-none border",
                           active
                             ? "bg-primary text-primary-foreground border-primary shadow-xs ring-2 ring-primary/20"
-                            : "border-border/70 bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                            : "border-transparent text-muted-foreground hover:text-foreground hover:bg-background/60"
                         )}
                       >
-                        <Icon className="h-3.5 w-3.5" />
-                        {preset.label}
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span>{preset.label}</span>
                       </button>
                     );
                   })}
@@ -1522,36 +1530,42 @@ export default function AdminDashboard() {
 
               {/* Split Workbench Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Left Column: Test Configuration & Source Document (5 Cols) */}
+                {/* Left Column: Workbench Controls & Source Document (5 Cols) */}
                 <div className="lg:col-span-5 rounded-2xl border border-border/70 bg-card p-5 space-y-5 shadow-2xs">
                   <div className="flex items-center justify-between border-b border-border/60 pb-3.5">
                     <h3 className="text-body-sm font-bold text-foreground flex items-center gap-2">
                       <Sliders className="h-4 w-4 text-primary" />
                       Workbench Controls
                     </h3>
-                    <Badge variant="outline" className="text-[10px] border-primary/30 bg-primary/10 text-primary font-mono">
-                      Target: {testTarget}
+                    <Badge variant="outline" className="text-[10px] border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono">
+                      Ready
                     </Badge>
                   </div>
 
                   <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-caption font-semibold text-foreground">Target Engine / Tier</label>
-                      <Select value={testTarget} onValueChange={setTestTarget}>
-                        <SelectTrigger className="w-full rounded-xl bg-background border-border/70 text-xs">
-                          <SelectValue placeholder="Select target" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                          <SelectItem value="default">Default Tier ({defaultTierProvider})</SelectItem>
-                          <SelectItem value="escalation">High-Accuracy Tier ({highAccuracyProvider})</SelectItem>
-                          <SelectItem value="bedrock">AWS Bedrock ({bedrockModel})</SelectItem>
-                          <SelectItem value="handwriting">AWS Bedrock (Handwriting Mode)</SelectItem>
-                          <SelectItem value="multilingual">AWS Bedrock (Multilingual Mode)</SelectItem>
-                          <SelectItem value="hunyuan">Tencent Hunyuan ({hunyuanModel})</SelectItem>
-                          <SelectItem value="textract">AWS Textract (Tables &amp; Forms)</SelectItem>
-                          <SelectItem value="openai">OpenAI ({openaiModel})</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    {/* Selected Target Summary Badge */}
+                    <div className="p-3.5 rounded-xl border border-border/60 bg-muted/20 space-y-1">
+                      <p className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">Active Selected Engine</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-body-sm font-bold text-foreground capitalize">{testTarget} Target</span>
+                        <Badge variant="outline" className="font-mono text-[11px] border-primary/30 bg-primary/10 text-primary">
+                          {testTarget === "default"
+                            ? defaultTierProvider
+                            : testTarget === "escalation"
+                            ? highAccuracyProvider
+                            : testTarget === "bedrock"
+                            ? "nova-lite"
+                            : testTarget === "handwriting"
+                            ? "claude-3.7"
+                            : testTarget === "multilingual"
+                            ? "nova-pro"
+                            : testTarget === "hunyuan"
+                            ? hunyuanModel
+                            : testTarget === "textract"
+                            ? "aws-textract"
+                            : openaiModel}
+                        </Badge>
+                      </div>
                     </div>
 
                     {/* Source Document Picker */}
@@ -1563,7 +1577,7 @@ export default function AdminDashboard() {
                             type="button"
                             onClick={() => setTestDocSource("sample")}
                             className={cn(
-                              "px-2 py-0.5 rounded-md transition-all",
+                              "px-2.5 py-0.5 rounded-md transition-all cursor-pointer",
                               testDocSource === "sample" ? "bg-background text-foreground shadow-2xs" : "text-muted-foreground"
                             )}
                           >
@@ -1573,7 +1587,7 @@ export default function AdminDashboard() {
                             type="button"
                             onClick={() => setTestDocSource("custom")}
                             className={cn(
-                              "px-2 py-0.5 rounded-md transition-all",
+                              "px-2.5 py-0.5 rounded-md transition-all cursor-pointer",
                               testDocSource === "custom" ? "bg-background text-foreground shadow-2xs" : "text-muted-foreground"
                             )}
                           >
@@ -1584,7 +1598,7 @@ export default function AdminDashboard() {
 
                       {testDocSource === "sample" ? (
                         <div className="flex items-center gap-3 p-3 rounded-xl border border-border/60 bg-muted/20">
-                          <div className="h-12 w-12 rounded-lg bg-background border border-border/80 flex items-center justify-center text-muted-foreground font-mono text-[10px] shrink-0">
+                          <div className="h-12 w-12 rounded-lg bg-background border border-border/80 flex items-center justify-center text-primary font-mono text-[10px] shrink-0 font-bold">
                             DOC
                           </div>
                           <div className="min-w-0">
@@ -1604,7 +1618,7 @@ export default function AdminDashboard() {
                           <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="w-full flex flex-col items-center justify-center p-5 rounded-xl border-2 border-dashed border-border/80 hover:border-primary/50 bg-background/50 text-center transition-all"
+                            className="w-full flex flex-col items-center justify-center p-5 rounded-xl border-2 border-dashed border-border/80 hover:border-primary/50 bg-background/50 text-center transition-all cursor-pointer"
                           >
                             <FileUp className="h-5 w-5 text-primary mb-1" />
                             <p className="text-xs font-semibold text-foreground">
@@ -1621,7 +1635,7 @@ export default function AdminDashboard() {
                                   setCustomFile(null);
                                   setTestDocSource("sample");
                                 }}
-                                className="text-muted-foreground hover:text-destructive"
+                                className="text-muted-foreground hover:text-destructive cursor-pointer"
                               >
                                 <X className="h-3.5 w-3.5" />
                               </button>
@@ -1631,12 +1645,13 @@ export default function AdminDashboard() {
                       )}
                     </div>
 
+                    {/* Primary Bold Action Button */}
                     <Button
                       onClick={() => executeTest(testTarget, testDocSource === "custom" ? customFile : null)}
                       disabled={testModelMutation.isPending}
-                      className="w-full gap-2 rounded-xl text-xs font-semibold bg-primary text-primary-foreground shadow-xs h-10 mt-2"
+                      className="w-full gap-2.5 rounded-xl text-body-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 shadow-md hover:shadow-lg transition-all duration-200 h-11 border-none cursor-pointer mt-2"
                     >
-                      <PlayCircle className={cn("h-4 w-4", testModelMutation.isPending && "animate-spin")} />
+                      <PlayCircle className={cn("h-4 w-4 shrink-0", testModelMutation.isPending ? "animate-spin" : "animate-pulse")} />
                       {testModelMutation.isPending ? "Executing live extraction…" : "Execute Benchmark Test"}
                     </Button>
                   </div>
@@ -1656,7 +1671,7 @@ export default function AdminDashboard() {
                           type="button"
                           onClick={() => setTestResultTab("parsed")}
                           className={cn(
-                            "px-2.5 py-0.5 rounded-md transition-all",
+                            "px-2.5 py-0.5 rounded-md transition-all cursor-pointer",
                             testResultTab === "parsed" ? "bg-background text-foreground shadow-2xs" : "text-muted-foreground"
                           )}
                         >
@@ -1666,7 +1681,7 @@ export default function AdminDashboard() {
                           type="button"
                           onClick={() => setTestResultTab("raw")}
                           className={cn(
-                            "px-2.5 py-0.5 rounded-md transition-all",
+                            "px-2.5 py-0.5 rounded-md transition-all cursor-pointer",
                             testResultTab === "raw" ? "bg-background text-foreground shadow-2xs" : "text-muted-foreground"
                           )}
                         >
@@ -1700,8 +1715,9 @@ export default function AdminDashboard() {
                         >
                           {testModelMutation.data.success ? "HTTP 200 OK" : "FAILED"}
                         </Badge>
-                        <Badge variant="outline" className="font-mono text-xs border-primary/30 bg-primary/10 text-primary px-2.5 py-1">
-                          ⚡ {testModelMutation.data.latencyMs} ms
+                        <Badge variant="outline" className="font-mono text-xs border-primary/30 bg-primary/10 text-primary px-2.5 py-1 flex items-center gap-1">
+                          <Zap className="h-3 w-3" />
+                          {testModelMutation.data.latencyMs} ms
                         </Badge>
                         <Badge variant="outline" className="font-mono text-xs border-border/60 text-muted-foreground px-2.5 py-1">
                           Engine: {testModelMutation.data.provider} ({testModelMutation.data.model})
@@ -1766,11 +1782,74 @@ export default function AdminDashboard() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-muted-foreground space-y-2.5">
-                      <Terminal className="h-8 w-8 text-muted-foreground/40" />
-                      <p className="text-body-sm font-medium text-foreground">Interactive Benchmark Idle</p>
-                      <p className="text-caption text-muted-foreground max-w-sm">
-                        Select an engine target on the left and click &quot;Execute Benchmark Test&quot; to see real-time latency, token usage, and extracted fields.
+                    /* Rich Left-Aligned Pre-Flight Empty State Preview */
+                    <div className="flex-1 flex flex-col space-y-4">
+                      <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-border/50 bg-muted/15 opacity-70">
+                        <Badge variant="outline" className="font-mono text-xs border-primary/20 bg-primary/5 text-primary/80 px-2.5 py-0.5">
+                          PRE-FLIGHT PREVIEW
+                        </Badge>
+                        <Badge variant="outline" className="font-mono text-xs border-border/50 text-muted-foreground px-2.5 py-0.5 flex items-center gap-1">
+                          <Zap className="h-3 w-3 text-primary/70" /> ~340 ms
+                        </Badge>
+                        <Badge variant="outline" className="font-mono text-xs border-border/50 text-muted-foreground px-2.5 py-0.5">
+                          Tokens: 1,240
+                        </Badge>
+                        <Badge variant="outline" className="font-mono text-xs border-emerald-500/30 text-emerald-600/80 dark:text-emerald-400/80 px-2.5 py-0.5">
+                          Confidence: 98.4%
+                        </Badge>
+                      </div>
+
+                      {/* Simulated Latency Breakdown Visualizer */}
+                      <div className="p-3.5 rounded-xl border border-border/50 bg-background/40 space-y-2">
+                        <div className="flex items-center justify-between text-caption text-muted-foreground font-mono">
+                          <span>Pipeline Latency Breakdown (Simulated)</span>
+                          <span className="text-[10px] text-muted-foreground/80">340ms Total</span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-muted/60 overflow-hidden flex">
+                          <div className="h-full bg-primary/70 w-[15%]" title="Pre-process: 45ms" />
+                          <div className="h-full bg-amber-500/70 w-[65%]" title="Inference: 220ms" />
+                          <div className="h-full bg-emerald-500/70 w-[20%]" title="Post-parse: 75ms" />
+                        </div>
+                        <div className="flex items-center gap-4 text-[10px] text-muted-foreground/70 font-mono pt-0.5">
+                          <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-primary/70" /> Pre: 45ms</span>
+                          <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-500/70" /> Inference: 220ms</span>
+                          <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500/70" /> Schema: 75ms</span>
+                        </div>
+                      </div>
+
+                      {/* Mock Output Preview */}
+                      <div className="flex-1 rounded-xl border border-border/50 bg-background/40 p-4 font-mono text-xs space-y-3 opacity-65 min-h-[180px]">
+                        <div className="text-caption font-semibold text-muted-foreground uppercase tracking-wider font-sans border-b border-border/40 pb-2 flex items-center justify-between">
+                          <span>Sample Extracted Payload Schema</span>
+                          <span className="text-[10px] lowercase text-muted-foreground/60">Sample scan output preview</span>
+                        </div>
+                        <div className="space-y-2 text-muted-foreground/80">
+                          <div className="flex items-start justify-between gap-4 border-b border-border/30 pb-1.5">
+                            <span className="font-semibold text-foreground/70">vendor_name:</span>
+                            <span className="text-right">"GLOBAL SUPPLIES INC"</span>
+                          </div>
+                          <div className="flex items-start justify-between gap-4 border-b border-border/30 pb-1.5">
+                            <span className="font-semibold text-foreground/70">invoice_number:</span>
+                            <span className="text-right">"INV-2026-8891"</span>
+                          </div>
+                          <div className="flex items-start justify-between gap-4 border-b border-border/30 pb-1.5">
+                            <span className="font-semibold text-foreground/70">invoice_date:</span>
+                            <span className="text-right">"2026-08-14"</span>
+                          </div>
+                          <div className="flex items-start justify-between gap-4 border-b border-border/30 pb-1.5">
+                            <span className="font-semibold text-foreground/70">total_amount:</span>
+                            <span className="text-right text-emerald-600/80 dark:text-emerald-400/80 font-bold">$1,450.00 USD</span>
+                          </div>
+                          <div className="flex items-start justify-between gap-4">
+                            <span className="font-semibold text-foreground/70">tax_amount:</span>
+                            <span className="text-right">$116.00 USD</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-muted-foreground/70 text-center flex items-center justify-center gap-1.5 pt-1">
+                        <Terminal className="h-3.5 w-3.5 text-primary/60 shrink-0" />
+                        Select an engine target above and click &quot;Execute Benchmark Test&quot; to run a live test.
                       </p>
                     </div>
                   )}
