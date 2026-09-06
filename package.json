@@ -19,9 +19,9 @@
     "verify": "pnpm typecheck:all && pnpm lint && pnpm test && pnpm build",
     "db:migrate:local": "wrangler d1 migrations apply brainhalf-ocr-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply brainhalf-ocr-db --remote",
-    "deploy": "wrangler pages deploy dist --project-name brainhalf",
-    "deploy:pages": "wrangler pages deploy dist --project-name brainhalf",
-    "deploy:worker": "pnpm --filter brainhalf-processor run deploy",
+    "deploy": "NODE_OPTIONS=--dns-result-order=ipv4first CLOUDFLARE_ACCOUNT_ID=12fc31472161e3ebb8a01b4722ec1725 wrangler pages deploy dist --project-name brainhalf",
+    "deploy:pages": "NODE_OPTIONS=--dns-result-order=ipv4first CLOUDFLARE_ACCOUNT_ID=12fc31472161e3ebb8a01b4722ec1725 wrangler pages deploy dist --project-name brainhalf",
+    "deploy:worker": "NODE_OPTIONS=--dns-result-order=ipv4first CLOUDFLARE_ACCOUNT_ID=12fc31472161e3ebb8a01b4722ec1725 pnpm --filter brainhalf-processor run deploy",
     "deploy:all": "pnpm run deploy:pages && pnpm run deploy:worker"
   },
   "dependencies": {

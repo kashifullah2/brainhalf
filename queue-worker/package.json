@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "deploy": "wrangler deploy",
+    "deploy": "NODE_OPTIONS=--dns-result-order=ipv4first CLOUDFLARE_ACCOUNT_ID=12fc31472161e3ebb8a01b4722ec1725 wrangler deploy",
     "dev": "wrangler dev"
   },
   "devDependencies": {
