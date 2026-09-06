@@ -127,88 +127,105 @@ export default function UploadPage() {
         back={<BackLink href="/app" label="Back to dashboard" />}
       />
 
-      {/* Active Engine Command Bar */}
-      <div className="mb-6 rounded-2xl border border-border/70 bg-gradient-to-r from-card via-card/95 to-primary/5 p-4 sm:p-5 shadow-xs transition-all">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3.5">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary shadow-xs">
-              <CurrentIcon className="h-6 w-6" />
-            </div>
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                  Active Preset
-                </span>
-                <span className="text-muted-foreground/40">·</span>
-                <Badge
-                  variant="outline"
-                  className="border-primary/30 bg-primary/10 font-semibold text-primary capitalize text-xs"
-                >
-                  {isTemplate ? "Custom Template" : currentPreset?.category || "Standard"}
-                </Badge>
+      {/* Active Engine / Preset Selection Container */}
+      {!isGalleryOpen ? (
+        /* Active Engine Summary Bar */
+        <div className="mb-6 rounded-2xl border border-border/70 bg-gradient-to-r from-card via-card/95 to-primary/5 p-4 sm:p-5 shadow-xs transition-all">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3.5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary shadow-xs">
+                <CurrentIcon className="h-6 w-6" />
               </div>
-              <h2 className="text-body-lg font-bold text-foreground">
-                {isTemplate ? templateObj?.name || "Template" : currentPreset?.label || mode}
-              </h2>
-              <p className="text-body-sm text-muted-foreground max-w-2xl leading-relaxed">
-                {isTemplate
-                  ? templateObj?.description || "Saved custom extraction prompt template"
-                  : currentPreset?.description}
-              </p>
-              {currentPreset?.extracts && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {currentPreset.extracts.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground/80 border border-border/50"
-                    >
-                      {tag}
-                    </span>
-                  ))}
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                    Active Preset
+                  </span>
+                  <span className="text-muted-foreground/40">·</span>
+                  <Badge
+                    variant="outline"
+                    className="border-primary/30 bg-primary/10 font-semibold text-primary capitalize text-xs"
+                  >
+                    {isTemplate ? "Custom Template" : currentPreset?.category || "Standard"}
+                  </Badge>
                 </div>
-              )}
+                <h2 className="text-body-lg font-bold text-foreground">
+                  {isTemplate ? templateObj?.name || "Template" : currentPreset?.label || mode}
+                </h2>
+                <p className="text-body-sm text-muted-foreground max-w-2xl leading-relaxed">
+                  {isTemplate
+                    ? templateObj?.description || "Saved custom extraction prompt template"
+                    : currentPreset?.description}
+                </p>
+                {currentPreset?.extracts && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {currentPreset.extracts.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground/80 border border-border/50"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
 
-          <div className="flex shrink-0 items-center gap-2 pt-2 sm:pt-0">
-            <Button
-              variant={isGalleryOpen ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setIsGalleryOpen(!isGalleryOpen)}
-              className="gap-2 rounded-xl font-semibold border-border/80 shadow-xs"
-            >
-              <Sliders className="h-4 w-4 text-primary" />
-              {isGalleryOpen ? "Hide Preset Gallery" : "Switch Engine / Preset"}
-              {isGalleryOpen ? (
-                <ChevronUp className="h-4 w-4 text-muted-foreground" />
-              ) : (
+            <div className="flex shrink-0 items-center gap-2 pt-2 sm:pt-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsGalleryOpen(true)}
+                className="gap-2 rounded-xl font-semibold border-border/80 shadow-xs"
+              >
+                <Sliders className="h-4 w-4 text-primary" />
+                Switch Engine / Preset
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              )}
-            </Button>
+              </Button>
+            </div>
           </div>
         </div>
-
-        {/* Expandable Preset Gallery Drawer */}
-        {isGalleryOpen && (
-          <div className="mt-5 border-t border-border/60 pt-5 animate-in fade-in slide-in-from-top-3 duration-300">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-body font-semibold text-foreground">Choose Extraction Engine</h3>
-                <p className="text-caption text-muted-foreground">
-                  Switching engines applies instantly to any queued documents below without losing your files.
-                </p>
+      ) : (
+        /* Expanded Preset Gallery Panel (Summary collapsed into header) */
+        <div className="mb-6 rounded-2xl border border-primary/30 bg-card p-5 sm:p-6 shadow-sm transition-all animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4 mb-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                  Selecting Engine Preset
+                </span>
+                <span className="text-muted-foreground/40">·</span>
+                <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary font-semibold text-xs">
+                  Active: {isTemplate ? templateObj?.name || "Template" : currentPreset?.label || mode}
+                </Badge>
               </div>
+              <h2 className="text-body-lg font-bold text-foreground mt-0.5">
+                Choose Extraction Engine
+              </h2>
+              <p className="text-caption text-muted-foreground mt-0.5">
+                Switching engines applies instantly to staged documents below without losing your files.
+              </p>
             </div>
-            <PresetSelector
-              value={mode}
-              onChange={handleModeChange}
-              customPrompt={customPrompt}
-              onCustomPromptChange={setCustomPrompt}
-              templates={templates}
-            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsGalleryOpen(false)}
+              className="gap-2 rounded-xl font-semibold border-border/80 shadow-xs text-xs"
+            >
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              Collapse Gallery
+            </Button>
           </div>
-        )}
-      </div>
+          <PresetSelector
+            value={mode}
+            onChange={handleModeChange}
+            customPrompt={customPrompt}
+            onCustomPromptChange={setCustomPrompt}
+            templates={templates}
+          />
+        </div>
+      )}
 
       {/* Inline Custom Prompt Studio (Shown when mode is custom, vqa, or template) */}
       {promptRequired && !isGalleryOpen && (

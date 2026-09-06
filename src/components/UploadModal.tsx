@@ -2,7 +2,9 @@ import { useState, useCallback, useEffect } from "react";
 import { useUpload } from "@/lib/upload";
 import type { CreateBatchProgress, ExtractionTemplate } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import {
   CheckCircle2,
   FileIcon,
@@ -20,9 +22,6 @@ import {
   Languages,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-// The type and size rules live in one module now. This file carried its own copy
-// with a single 25 MB cap, which was wrong for PDFs: they upload fine at that size
-// and then fail extraction every time. See src/lib/upload-limits.ts.
 import {
   ACCEPT_ATTRIBUTE,
   LIMIT_SUMMARY,
@@ -30,8 +29,6 @@ import {
 } from "@/lib/upload-limits";
 import { compressImageForUpload } from "@/lib/ocr-client";
 
-// ---------------------------------------------------------------------------
-// Preset definitions
 // ---------------------------------------------------------------------------
 // Preset definitions
 // ---------------------------------------------------------------------------
@@ -46,7 +43,73 @@ export interface Preset {
   description: string;
   extracts: string[];
   category: PresetCategory;
+  mostUsed?: boolean;
 }
+
+export const CATEGORY_ACCENTS: Record<
+  PresetCategory,
+  {
+    iconBg: string;
+    iconText: string;
+    iconBorder: string;
+    badgeBg: string;
+    badgeText: string;
+    badgeBorder: string;
+    cardActive: string;
+    cardRing: string;
+  }
+> = {
+  financial: {
+    iconBg: "bg-amber-500/10",
+    iconText: "text-amber-600 dark:text-amber-400",
+    iconBorder: "border-amber-500/30",
+    badgeBg: "bg-amber-500/10",
+    badgeText: "text-amber-700 dark:text-amber-300",
+    badgeBorder: "border-amber-500/30",
+    cardActive: "border-amber-500 bg-amber-500/5 dark:bg-amber-500/10",
+    cardRing: "ring-2 ring-amber-500/30",
+  },
+  forms: {
+    iconBg: "bg-blue-500/10",
+    iconText: "text-blue-600 dark:text-blue-400",
+    iconBorder: "border-blue-500/30",
+    badgeBg: "bg-blue-500/10",
+    badgeText: "text-blue-700 dark:text-blue-300",
+    badgeBorder: "border-blue-500/30",
+    cardActive: "border-blue-500 bg-blue-500/5 dark:bg-blue-500/10",
+    cardRing: "ring-2 ring-blue-500/30",
+  },
+  vision: {
+    iconBg: "bg-teal-500/10",
+    iconText: "text-teal-600 dark:text-teal-400",
+    iconBorder: "border-teal-500/30",
+    badgeBg: "bg-teal-500/10",
+    badgeText: "text-teal-700 dark:text-teal-300",
+    badgeBorder: "border-teal-500/30",
+    cardActive: "border-teal-500 bg-teal-500/5 dark:bg-teal-500/10",
+    cardRing: "ring-2 ring-teal-500/30",
+  },
+  general: {
+    iconBg: "bg-primary/10",
+    iconText: "text-primary",
+    iconBorder: "border-primary/30",
+    badgeBg: "bg-primary/10",
+    badgeText: "text-primary",
+    badgeBorder: "border-primary/30",
+    cardActive: "border-primary bg-primary/5 dark:bg-primary/10",
+    cardRing: "ring-2 ring-primary/30",
+  },
+  custom: {
+    iconBg: "bg-primary/10",
+    iconText: "text-primary",
+    iconBorder: "border-primary/30",
+    badgeBg: "bg-primary/10",
+    badgeText: "text-primary",
+    badgeBorder: "border-primary/30",
+    cardActive: "border-primary bg-primary/5 dark:bg-primary/10",
+    cardRing: "ring-2 ring-primary/30",
+  },
+};
 
 import { OCR_MODES, type OcrMode } from "../../server/ocr-prompts";
 import { errorMessage } from "@/lib/humanize-error";
@@ -59,6 +122,7 @@ export const PRESET_MAP: Record<OcrMode, Omit<Preset, "id">> = {
     description: "Pulls vendor details, totals, due dates, line items, tax lines, and payment statuses from commercial invoices.",
     extracts: ["Invoice #", "Vendor", "Dates", "Subtotal", "Tax", "Total", "Status"],
     category: "financial",
+    mostUsed: true,
   },
   receipt: {
     label: "Receipt",
@@ -123,6 +187,7 @@ export const PRESET_MAP: Record<OcrMode, Omit<Preset, "id">> = {
     description: "Ask specific questions about visual elements, charts, stamps, diagrams, or text in any document.",
     extracts: ["Direct answers", "Visual details", "Source grounding"],
     category: "custom",
+    mostUsed: true,
   },
 };
 
@@ -288,72 +353,87 @@ export function PresetSelector({
               Core OCR & Vision Engines ({filteredPresets.length})
             </p>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 transition-all duration-150 ease-in-out">
             {filteredPresets.map((preset) => {
               const Icon = preset.icon;
               const selected = value === preset.id;
+              const accent = CATEGORY_ACCENTS[preset.category] || CATEGORY_ACCENTS.custom;
               return (
-                <button
+                <div
                   key={preset.id}
-                  type="button"
-                  onClick={() => onChange(preset.id)}
-                  className={cn(
-                    "relative flex h-full flex-col p-4 rounded-xl border text-left transition-all duration-200 group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected
-                      ? "border-primary bg-primary/5 dark:bg-primary/10 shadow-sm ring-2 ring-primary/30"
-                      : "border-border/70 bg-card hover:border-primary/50 hover:shadow-xs"
-                  )}
+                  className="transition-all duration-150 ease-in-out animate-in fade-in duration-150"
                 >
-                  <div className="relative z-10 flex items-start gap-3">
-                    <div
-                      className={cn(
-                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors border",
-                        selected
-                          ? "bg-primary text-primary-foreground border-primary shadow-xs"
-                          : "bg-muted text-muted-foreground border-border/40 group-hover:bg-primary/10 group-hover:text-primary"
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0 flex flex-col gap-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p
-                          className={cn(
-                            "truncate text-body-sm font-semibold",
-                            selected ? "text-primary" : "text-foreground"
-                          )}
-                        >
-                          {preset.label}
-                        </p>
-                        {selected ? (
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs">
-                            <Check className="h-3 w-3" strokeWidth={3} />
-                          </span>
-                        ) : (
-                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                            {preset.category}
-                          </span>
+                  <button
+                    type="button"
+                    onClick={() => onChange(preset.id)}
+                    className={cn(
+                      "relative flex h-full w-full flex-col p-4 rounded-xl border text-left transition-all duration-150 group overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      selected
+                        ? cn("shadow-sm ring-2", accent.cardActive, accent.cardRing)
+                        : "border-border/70 bg-card hover:border-primary/50 hover:shadow-xs"
+                    )}
+                  >
+                    <div className="relative z-10 flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-all duration-150",
+                          selected
+                            ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                            : cn(accent.iconBg, accent.iconText, accent.iconBorder)
                         )}
+                      >
+                        <Icon className="h-4 w-4 stroke-[1.75]" />
                       </div>
-                      <p className="text-caption font-semibold text-primary/80 dark:text-primary/90">
-                        {preset.tagline}
-                      </p>
-                      <p className="mt-1 text-label leading-relaxed font-normal text-muted-foreground line-clamp-2">
-                        {preset.description}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {preset.extracts.slice(0, 3).map((tag) => (
-                          <span
-                            key={tag}
-                            className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-                          >
-                            {tag}
-                          </span>
-                        ))}
+                      <div className="flex-1 min-w-0 flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p
+                              className={cn(
+                                "truncate text-body-sm font-semibold",
+                                selected ? "text-primary" : "text-foreground"
+                              )}
+                            >
+                              {preset.label}
+                            </p>
+                            {preset.mostUsed && (
+                              <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-bold text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                🔥 Most used
+                              </span>
+                            )}
+                          </div>
+                          {selected ? (
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xs">
+                              <Check className="h-3 w-3" strokeWidth={3} />
+                            </span>
+                          ) : (
+                            <span className={cn(
+                              "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border shrink-0 transition-colors",
+                              accent.badgeBg, accent.badgeText, accent.badgeBorder
+                            )}>
+                              {preset.category}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-caption font-semibold text-primary/80 dark:text-primary/90">
+                          {preset.tagline}
+                        </p>
+                        <p className="mt-1 text-label leading-relaxed font-normal text-muted-foreground line-clamp-2">
+                          {preset.description}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {preset.extracts.slice(0, 3).map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-foreground/80 border border-border/40"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -522,8 +602,30 @@ function FileUploadRow({ file, onSuccess, onRemove, autoStart, onStatusChange }:
           </div>
         </div>
         <div className="shrink-0 flex items-center gap-2">
+          {status === "uploading" && (
+            <div className="relative flex h-7 w-7 items-center justify-center shrink-0">
+              <svg className="h-7 w-7 transform -rotate-90" viewBox="0 0 36 36">
+                <path
+                  className="text-muted/40 stroke-current"
+                  strokeWidth="3.5"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className="text-primary stroke-current transition-all duration-200"
+                  strokeWidth="3.5"
+                  strokeDasharray={`${progress}, 100`}
+                  strokeLinecap="round"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <span className="absolute text-[8px] font-mono font-bold text-primary tabular-nums">
+                {progress}%
+              </span>
+            </div>
+          )}
           {status === "success" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-          {status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
           {status === "pending" && (
             <Button
               variant="ghost"
@@ -557,7 +659,6 @@ function FileUploadRow({ file, onSuccess, onRemove, autoStart, onStatusChange }:
           )}
         </div>
       </div>
-      {status === "uploading" && <Progress value={progress} className="h-1.5 mx-0.5 mt-1" />}
       {status === "error" && (
         <p className="text-caption font-medium text-destructive px-0.5 mt-0.5">
           {typeError ?? failureMessage ?? "Upload failed."}
@@ -671,87 +772,78 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
   const [isDragging, setIsDragging] = useState(false);
 
   return (
-    <div className="flex flex-col gap-6 py-2">
-      {!isStarted && (
-        <div className="flex flex-col h-full min-h-[300px]">
-          <label
-            htmlFor="file-upload"
-            className={cn(
-              "group relative flex w-full flex-1 cursor-pointer flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border-2 border-dashed p-10 text-center shadow-sm transition-colors",
-              isDragging
-                ? "border-primary bg-primary/5"
-                : "border-border bg-background/40 hover:border-primary/50 hover:bg-background/60"
-            )}
-            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              // Only clear when the pointer leaves the dropzone itself, not
-              // when it crosses one of its children.
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsDragging(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
-            }}
-          >
-            <div className="relative z-10 flex flex-col items-center gap-4">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-background border border-border/60 text-muted-foreground shadow-sm group-hover:scale-105 group-hover:text-primary group-hover:border-primary/20 transition-all duration-300">
-                <UploadCloud className="h-8 w-8" />
-              </div>
-              <div className="space-y-1.5">
-                <p className="text-body-lg font-semibold text-foreground">Drop documents here</p>
-                <p className="text-body-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">{LIMIT_SUMMARY}. The sharper the scan, the better the extraction.</p>
-              </div>
+    <div className="flex flex-col gap-5 py-1">
+      {/* Animated Unified Dropzone Component (Transitions smoothly between empty full box & staged horizontal bar) */}
+      <label
+        htmlFor="file-upload"
+        className={cn(
+          "group relative flex w-full cursor-pointer overflow-hidden rounded-xl border-2 border-dashed transition-all duration-300 ease-in-out shadow-2xs",
+          isDragging
+            ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+            : "border-border/80 bg-background/50 hover:border-primary/50 hover:bg-background/80",
+          queue.length === 0
+            ? "flex-col items-center justify-center p-8 text-center min-h-[220px]"
+            : "flex-row items-center justify-between px-4 py-3.5 min-h-[56px]"
+        )}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(true);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(false);
+          if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+        }}
+      >
+        {queue.length === 0 ? (
+          <div className="relative z-10 flex flex-col items-center gap-3.5 transition-all duration-300">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20 text-primary shadow-xs group-hover:scale-105 transition-transform duration-300">
+              <UploadCloud className="h-7 w-7 stroke-[1.75]" />
             </div>
-            <Button type="button" variant="secondary" className="relative z-10 pointer-events-none rounded-lg px-6 h-9 shadow-sm font-semibold text-label bg-primary text-primary-foreground hover:bg-primary/90 transition-all mt-2">
+            <div className="space-y-1">
+              <p className="text-body-lg font-bold text-foreground">Drop documents here</p>
+              <p className="text-caption text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                {LIMIT_SUMMARY}. High resolution scans yield higher extraction confidence.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              className="relative z-10 pointer-events-none rounded-xl px-5 h-9 shadow-xs font-semibold text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-all mt-1"
+            >
               Browse files
             </Button>
-            <input id="file-upload" type="file" accept={ACCEPT_ATTRIBUTE} multiple className="sr-only" onChange={handleFileChange} />
-          </label>
-        </div>
-      )}
-
-      {queue.length > 0 && (
-        <div className="flex flex-col gap-3.5">
-          {/* Drop more banner */}
-          <label
-            htmlFor="file-upload-more-zone"
-            className={cn(
-              "group relative flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-dashed px-4 py-3 transition-all duration-200",
-              isDragging
-                ? "border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs"
-                : "border-border/80 bg-muted/20 hover:border-primary/50 hover:bg-muted/40"
-            )}
-            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsDragging(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragging(false);
-              if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
-            }}
-          >
+          </div>
+        ) : (
+          <div className="relative z-10 flex items-center justify-between w-full gap-3 transition-all duration-300">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20 shrink-0">
                 <UploadCloud className="h-4 w-4" />
               </div>
               <p className="text-body-sm text-foreground">
                 <span className="font-semibold text-primary">Drop more documents</span> here or click to browse
               </p>
             </div>
-            <span className="text-caption font-semibold text-primary hover:underline">Browse files</span>
-            <input id="file-upload-more-zone" type="file" accept={ACCEPT_ATTRIBUTE} multiple className="sr-only" onChange={handleFileChange} />
-          </label>
+            <span className="text-caption font-semibold text-primary hover:underline shrink-0">Browse files</span>
+          </div>
+        )}
+        <input id="file-upload" type="file" accept={ACCEPT_ATTRIBUTE} multiple className="sr-only" onChange={handleFileChange} />
+      </label>
 
+      {queue.length > 0 && (
+        <div className="flex flex-col gap-4 animate-in fade-in duration-200">
           {/* Staging header */}
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
@@ -759,9 +851,9 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
                 {queue.length} document{queue.length !== 1 ? "s" : ""} staged
               </p>
               <span className="text-muted-foreground/50">·</span>
-              <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+              <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary font-semibold text-xs">
                 {selectedPreset?.label ?? "Custom Template"}
-              </span>
+              </Badge>
             </div>
             <button
               type="button"
@@ -772,7 +864,8 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
             </button>
           </div>
 
-          <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto pr-1">
+          {/* Staged files list */}
+          <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
             {queue.map((item) => (
               <FileUploadRow
                 key={item.id}
@@ -784,57 +877,26 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
               />
             ))}
           </div>
-        </div>
-      )}
 
-      {isStarted && queue.length > 0 && (
-        <div className="flex flex-col gap-4 pt-4 border-t border-border/60">
-          <label className="flex items-center gap-3 p-3 border border-border/60 rounded-xl bg-card cursor-pointer hover:bg-muted/40 transition-colors">
-            <input type="checkbox" checked={forceReprocess} onChange={(e) => setForceReprocess(e.target.checked)} className="rounded border border-primary/30 h-4 w-4 accent-primary" />
-            <div className="flex flex-col">
-              <span className="text-body-sm font-semibold text-foreground">Re-extract duplicates</span>
-              <span className="text-caption text-muted-foreground">Process files again even if this account already has them. Off means a duplicate is flagged and reused.</span>
-            </div>
-          </label>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-label font-semibold text-muted-foreground">
-                {readyDocuments.length} of {queue.length} uploaded
+          {/* SETTINGS: Re-extract duplicates toggle switch */}
+          <div className="flex items-center justify-between p-4 border border-border/70 rounded-xl bg-card shadow-2xs">
+            <div className="space-y-0.5 pr-4">
+              <label htmlFor="reextract-switch" className="text-body-sm font-semibold text-foreground cursor-pointer">
+                Re-extract duplicates
+              </label>
+              <p className="text-caption text-muted-foreground">
+                Force fresh extraction — bypasses cached OCR results (Default: off — duplicates reuse cached results)
               </p>
-              {/* Say what will happen, before it happens. */}
-              {inFlightCount > 0 ? (
-                <p className="mt-0.5 text-caption font-medium text-muted-foreground">
-                  Waiting for {inFlightCount} more upload{inFlightCount === 1 ? "" : "s"} to finish.
-                </p>
-              ) : failedCount > 0 ? (
-                <p className="mt-0.5 text-caption font-medium text-destructive">
-                  {failedCount} file{failedCount === 1 ? "" : "s"} failed to upload and{" "}
-                  {failedCount === 1 ? "will" : "will"} not be included. Retry or remove{" "}
-                  {failedCount === 1 ? "it" : "them"} first.
-                </p>
-              ) : null}
             </div>
-            <Button
-              onClick={handleCreateBatch}
-              disabled={readyDocuments.length === 0 || isCreatingBatch || !isSettled}
-              size="lg"
-              className="rounded-xl px-7 text-body-sm font-semibold shadow-sm"
-            >
-              {isCreatingBatch ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Extracting batch...</>
-              ) : !isSettled ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading {inFlightCount} file{inFlightCount === 1 ? "" : "s"}…</>
-              ) : (
-                `Start Extraction (${readyDocuments.length} doc${readyDocuments.length !== 1 ? "s" : ""})`
-              )}
-            </Button>
+            <Switch
+              id="reextract-switch"
+              checked={forceReprocess}
+              onCheckedChange={setForceReprocess}
+            />
           </div>
+
+          {/* Live Progress region when batch creation starts */}
           {isCreatingBatch && progress && (
-            // A polite live region rather than silent visual progress: extraction
-            // takes minutes on a large batch, and a bar with no announcement means
-            // a screen-reader user cannot tell whether anything is happening.
-            // aria-atomic keeps "Extracting <file>, 7 of 40" as one utterance
-            // instead of reading the changed fragment on its own.
             <div
               role="status"
               aria-live="polite"
@@ -856,16 +918,48 @@ export function UploadFlow({ mode, customPrompt, onBatchCreated, createBatchFn }
               {progress.error && <p className="text-caption font-medium text-destructive">{progress.error}</p>}
             </div>
           )}
-          {/* Appears after "Start extraction" fails, with focus still on the
-              button. role="alert" is what makes it audible. */}
+
           {batchError && (
-            <p
-              role="alert"
-              className="text-label text-destructive font-semibold bg-destructive/10 p-3 rounded-xl"
-            >
+            <p role="alert" className="text-label text-destructive font-semibold bg-destructive/10 p-3 rounded-xl">
               {batchError}
             </p>
           )}
+
+          {/* STICKY CTA FOOTER BAR */}
+          <div className="sticky bottom-0 z-20 mt-2 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/80 bg-background/95 p-4 shadow-xl backdrop-blur-md">
+            <div className="min-w-0">
+              <p className="text-body-sm font-semibold text-foreground">
+                {readyDocuments.length} of {queue.length} document{queue.length !== 1 ? "s" : ""} ready for extraction
+              </p>
+              {inFlightCount > 0 ? (
+                <p className="text-caption font-medium text-muted-foreground">
+                  Uploading {inFlightCount} file{inFlightCount === 1 ? "" : "s"} to secure storage...
+                </p>
+              ) : failedCount > 0 ? (
+                <p className="text-caption font-medium text-destructive">
+                  {failedCount} file{failedCount === 1 ? "" : "s"} failed. Remove or retry to proceed.
+                </p>
+              ) : (
+                <p className="text-caption text-muted-foreground">
+                  {readyDocuments.length > 0 ? "Ready to launch high-accuracy OCR worker pipeline." : "Add at least one document to start."}
+                </p>
+              )}
+            </div>
+            <Button
+              onClick={handleCreateBatch}
+              disabled={readyDocuments.length === 0 || isCreatingBatch || !isSettled}
+              size="lg"
+              className="shrink-0 rounded-xl bg-primary px-8 text-body-sm font-bold text-primary-foreground shadow-md transition-all hover:bg-primary/90 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              {isCreatingBatch ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Extracting batch...</>
+              ) : !isSettled ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading {inFlightCount} file{inFlightCount === 1 ? "" : "s"}…</>
+              ) : (
+                `Start Extraction (${readyDocuments.length} doc${readyDocuments.length !== 1 ? "s" : ""})`
+              )}
+            </Button>
+          </div>
         </div>
       )}
     </div>
