@@ -338,32 +338,33 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             value={selectedModelId}
             onChange={(e) => setSelectedModelId(e.target.value)}
             style={{
-              background: 'rgba(255, 255, 255, 0.04)',
+              background: '#181b28',
               border: '1px solid var(--border-medium)',
               borderRadius: '8px',
-              color: 'var(--text-primary)',
+              color: '#f3f4f6',
               fontSize: '12px',
               fontWeight: 500,
               padding: '5px 10px',
               outline: 'none',
               cursor: 'pointer',
               fontFamily: 'inherit',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
+              boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+              colorScheme: 'dark'
             }}
           >
-            <optgroup label="Xkiro AI Platform (Free)">
+            <optgroup label="Xkiro AI Platform (Free)" style={{ background: '#141724', color: '#c084fc', fontWeight: 600 }}>
               {MODELS.filter(m => m.provider === 'xkiro').map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
               ))}
             </optgroup>
-            <optgroup label="AWS Bedrock (High Perf)">
+            <optgroup label="AWS Bedrock (High Perf)" style={{ background: '#141724', color: '#c084fc', fontWeight: 600 }}>
               {MODELS.filter(m => m.provider === 'aws').map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
               ))}
             </optgroup>
-            <optgroup label="Cloudflare (Free & Fast)">
+            <optgroup label="Cloudflare (Free & Fast)" style={{ background: '#141724', color: '#c084fc', fontWeight: 600 }}>
               {MODELS.filter(m => m.provider === 'cloudflare').map(m => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
               ))}
             </optgroup>
           </select>

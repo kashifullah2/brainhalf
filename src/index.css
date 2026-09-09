@@ -72,6 +72,22 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+select {
+  color-scheme: dark;
+}
+
+select option, select optgroup {
+  background-color: #141724;
+  color: #f3f4f6;
+  padding: 6px 10px;
+}
+
+select optgroup {
+  color: #a855f7;
+  font-weight: 600;
+  font-size: 11px;
+}
+
 /* Typography */
 h1, h2, h3, h4, .brand-text {
   font-family: var(--font-brand);
