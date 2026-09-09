@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, AlertCircle, Terminal, CheckCircle2, Copy, Check, FolderCode, Download } from 'lucide-react';
+import { Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, AlertCircle, Terminal, CheckCircle2, Copy, Check, FolderCode, Download, ArrowDown } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { getWebContainer } from '../lib/webcontainer';
 import { basicReactTemplate } from '../lib/templates';
@@ -372,6 +372,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     return 50;
   }, [status, statusDetail, generatingFile, iframeUrl]);
 
+  const currentStep = useMemo(() => {
+    if (status !== 'Generating') return 3;
+    if (!webcontainerRef.current || isBooting || statusDetail.includes('Installing')) return 1;
+    if (generatingFile || statusDetail.includes('Generating') || statusDetail.includes('Writing')) return 2;
+    return 3;
+  }, [status, isBooting, generatingFile, statusDetail]);
+
   const handleCopyCurrentFile = () => {
     const code = files[activeFile] || '';
     navigator.clipboard.writeText(code);
@@ -430,11 +437,38 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
           </button>
         </div>
 
-        {/* Right side controls */}
+        {/* Right side controls (Item 10: Rich detailed status) */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div className={`status-badge ${status.toLowerCase()}`}>
-            <span className={`status-dot ${status.toLowerCase()}`} />
-            <span>{status === 'Generating' ? (generatingFile ? 'Writing code...' : 'Generating...') : status}</span>
+          <div className={`status-badge ${status.toLowerCase()}`} title={statusDetail || status}>
+            {status === 'Generating' ? (
+              <>
+                <Loader2 size={13} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
+                <div className="status-text-group">
+                  <div className="status-line-top">
+                    <span className="status-title">Building</span>
+                    <span className="status-step-pill">Step {currentStep} of 3</span>
+                  </div>
+                  <span className="status-detail-text">
+                    {generatingFile ? generatingFile.split('/').pop() : (statusDetail || 'Generating components...')}
+                  </span>
+                </div>
+              </>
+            ) : status === 'Ready' ? (
+              <>
+                <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
+                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>Ready</span>
+              </>
+            ) : status === 'Error' ? (
+              <>
+                <AlertCircle size={13} style={{ color: 'var(--color-error)' }} />
+                <span style={{ fontWeight: 600, color: 'var(--color-error)' }}>Build failed</span>
+              </>
+            ) : (
+              <>
+                <span className="status-dot idle" />
+                <span>Idle</span>
+              </>
+            )}
           </div>
 
           <button className="icon-btn" title="Refresh preview" onClick={handleRefresh} disabled={!iframeUrl}>
@@ -478,7 +512,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                       style={{
                         padding: '6px 12px',
                         background: isActive ? 'var(--bg-code-editor)' : 'transparent',
-                        borderBottom: isActive ? '2px solid var(--accent-secondary)' : '2px solid transparent',
+                        borderBottom: isActive ? '2px solid var(--color-info)' : '2px solid transparent',
                         color: isActive ? '#ffffff' : 'var(--text-muted)',
                         fontSize: '12px',
                         fontFamily: 'var(--font-mono)',
@@ -492,7 +526,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                       }}
                       className="hover-bright"
                     >
-                      <Code2 size={13} color={isActive ? 'var(--accent-light)' : undefined} />
+                      <Code2 size={13} color={isActive ? 'var(--color-info)' : undefined} />
                       <span>{name}</span>
                     </div>
                   );
@@ -512,7 +546,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 color: 'var(--text-muted)'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <FolderCode size={12} color="var(--accent-secondary)" />
+                  <FolderCode size={12} color="var(--color-neutral)" />
                   <span>src</span>
                   <span style={{ opacity: 0.4 }}>/</span>
                   <span style={{ color: '#f3f4f6', fontWeight: 600 }}>{activeFile.split('/').pop()}</span>
@@ -660,266 +694,366 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             height: '100%', 
             width: '100%',
             display: 'flex', 
-            background: 'var(--bg-base)',
+            flexDirection: 'column',
+            background: 'var(--bg-preview-canvas)',
             position: 'relative',
             overflow: 'hidden'
           }}>
-            {!hasProject ? (
-              /* Empty State */
-              <div style={{
-                height: '100%',
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '32px',
-                textAlign: 'center',
-                background: 'radial-gradient(circle at 50% 45%, rgba(99, 102, 241, 0.07) 0%, transparent 60%)'
-              }}>
-                <div style={{ position: 'relative', width: '96px', height: '96px', marginBottom: '20px' }}>
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    borderRadius: '16px',
-                    background: 'linear-gradient(135deg, rgba(20, 24, 33, 0.95), rgba(30, 27, 46, 0.95))',
-                    border: '1px solid rgba(168, 85, 247, 0.3)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '10px',
-                    boxShadow: '0 12px 36px rgba(0, 0, 0, 0.4), 0 0 24px rgba(99, 102, 241, 0.2)'
-                  }}>
-                    <Sparkles size={24} color="#c084fc" />
+            {/* Realistic Compact Browser Chrome Bar (Problem #12: 34px Header Bar) */}
+            <div className="browser-chrome">
+              <div className="browser-dots">
+                <span className="browser-dot close" title="Close" />
+                <span className="browser-dot minimize" title="Minimize" />
+                <span className="browser-dot maximize" title="Maximize" />
+              </div>
+
+              <div className="browser-url-pill">
+                <Lock size={11} style={{ opacity: 0.6 }} />
+                <span>preview.brainhalf.app/live</span>
+              </div>
+
+              <div className="browser-actions">
+                <button 
+                  className="browser-action-btn" 
+                  title="Refresh live preview" 
+                  onClick={handleRefresh}
+                  disabled={!iframeUrl}
+                >
+                  <RefreshCw size={12} />
+                </button>
+                <button 
+                  className="browser-action-btn" 
+                  title="Open live preview in new window" 
+                  onClick={() => iframeUrl && window.open(iframeUrl, '_blank')}
+                  disabled={!iframeUrl}
+                >
+                  <ExternalLink size={12} />
+                </button>
+              </div>
+            </div>
+
+            {/* Horizontal Build Pipeline Stepper Bar (Problem #11: Proper Progress Indicator) */}
+            {(status === 'Generating' || (!iframeUrl && hasProject && status !== 'Error')) && (
+              <div className="build-pipeline-bar">
+                <div className="pipeline-stepper">
+                  <div className={`pipeline-step-item ${getStageState('packages') === 'done' ? 'done' : 'active'}`}>
+                    {getStageState('packages') === 'done' ? (
+                      <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
+                    ) : (
+                      <Loader2 size={13} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
+                    )}
+                    <span>✓ Install packages</span>
+                  </div>
+
+                  <div className={`pipeline-connector-line ${getStageState('packages') === 'done' ? 'active' : ''}`} />
+
+                  <div className={`pipeline-step-item ${getStageState('code') === 'done' ? 'done' : (getStageState('code') === 'current' ? 'active' : '')}`}>
+                    {getStageState('code') === 'done' ? (
+                      <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
+                    ) : getStageState('code') === 'current' ? (
+                      <Loader2 size={13} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
+                    ) : (
+                      <span className="status-dot idle" />
+                    )}
+                    <span>● Generate code {generatingFile ? `(${generatingFile.split('/').pop()})` : ''}</span>
+                  </div>
+
+                  <div className={`pipeline-connector-line ${iframeUrl ? 'active' : ''}`} />
+
+                  <div className={`pipeline-step-item ${iframeUrl ? 'done' : (getStageState('server') === 'current' ? 'active' : '')}`}>
+                    {iframeUrl ? (
+                      <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
+                    ) : getStageState('server') === 'current' ? (
+                      <Loader2 size={13} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
+                    ) : (
+                      <span className="status-dot idle" />
+                    )}
+                    <span>○ Launch preview</span>
                   </div>
                 </div>
 
-                <h3 style={{
-                  fontSize: '18px',
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
-                  marginBottom: '8px',
-                  fontFamily: "'Outfit', sans-serif"
-                }}>
-                  Your Live Preview Awaits
-                </h3>
-
-                <p style={{
-                  fontSize: '13px',
-                  color: 'var(--text-secondary)',
-                  maxWidth: '380px',
-                  lineHeight: 1.5,
-                  marginBottom: '20px'
-                }}>
-                  Ask the AI assistant to build any app or component. BrainHalf generates React code and mounts it in WebContainer immediately.
-                </p>
-
-                <button className="button-primary" onClick={bootWebContainer}>
-                  <Play size={14} fill="white" /> Launch WebContainer Preview
-                </button>
-              </div>
-            ) : iframeUrl ? (
-              /* Live Iframe Preview */
-              <iframe
-                ref={iframeRef}
-                src={iframeUrl}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  background: 'white'
-                }}
-                title="Live Application Preview"
-                allow="cross-origin-isolated"
-              />
-            ) : status === 'Error' ? (
-              /* Error State */
-              <div style={{
-                height: '100%',
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '14px',
-                padding: '32px',
-                textAlign: 'center'
-              }}>
-                <div style={{
-                  width: '52px',
-                  height: '52px',
-                  borderRadius: '50%',
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '1px solid rgba(239, 68, 68, 0.3)'
-                }}>
-                  <AlertCircle size={28} color="#ef4444" />
-                </div>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#f87171' }}>Preview Generation Error</h3>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '380px', lineHeight: 1.5 }}>
-                  {statusDetail || 'An error occurred while compiling code.'}
-                </p>
-                <button className="button-primary" onClick={bootWebContainer}>
-                  <Play size={14} fill="white" /> Retry Preview
-                </button>
-              </div>
-            ) : (
-              /* Intentional, High-Polish Generation Experience (Solves Problem #9) */
-              <div style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '24px',
-                background: 'radial-gradient(circle at 50% 40%, rgba(168, 85, 247, 0.08) 0%, transparent 70%)'
-              }}>
-                <div style={{
-                  width: '100%',
-                  maxWidth: '440px',
-                  background: 'rgba(18, 21, 32, 0.85)',
-                  border: '1px solid rgba(168, 85, 247, 0.25)',
-                  borderRadius: '16px',
-                  padding: '28px 24px',
-                  boxShadow: '0 16px 48px rgba(0, 0, 0, 0.45), 0 0 32px rgba(168, 85, 247, 0.12)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  textAlign: 'center',
-                  backdropFilter: 'blur(12px)'
-                }}>
-                  {/* Glowing Sparkles Avatar */}
-                  <div style={{
-                    width: '56px',
-                    height: '56px',
-                    borderRadius: '14px',
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.35))',
-                    border: '1px solid rgba(168, 85, 247, 0.4)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: '16px',
-                    boxShadow: '0 0 20px rgba(168, 85, 247, 0.35)'
-                  }}>
-                    <Sparkles size={24} color="#c084fc" />
-                  </div>
-
-                  <h3 style={{
-                    fontSize: '17px',
-                    fontWeight: 600,
-                    color: '#ffffff',
-                    margin: '0 0 6px 0',
-                    fontFamily: 'var(--font-brand)'
-                  }}>
-                    Building your application
-                  </h3>
-
-                  <p style={{
-                    fontSize: '12.5px',
-                    color: 'var(--text-secondary)',
-                    margin: '0 0 22px 0',
-                    maxWidth: '340px',
-                    lineHeight: 1.5
-                  }}>
-                    {generatingFile ? `Writing ${generatingFile}...` : statusDetail || 'Generating React components and launching live preview...'}
-                  </p>
-
-                  {/* Staged Checklist */}
-                  <div style={{
-                    width: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    padding: '14px 16px',
-                    borderRadius: '10px',
-                    border: '1px solid var(--border-subtle)',
-                    marginBottom: '20px',
-                    textAlign: 'left'
-                  }}>
-                    {/* Stage 1: Workspace */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px' }}>
-                      <CheckCircle2 size={15} color="#10b981" />
-                      <span style={{ color: '#e2e8f0' }}>Project workspace initialized</span>
-                    </div>
-
-                    {/* Stage 2: Runtime */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px' }}>
-                      {getStageState('packages') === 'done' ? (
-                        <CheckCircle2 size={15} color="#10b981" />
-                      ) : (
-                        <Loader2 size={15} className="lucide-spin" color="#a855f7" />
-                      )}
-                      <span style={{ color: getStageState('packages') === 'done' ? '#e2e8f0' : '#ffffff' }}>
-                        Dependencies & runtime ready
-                      </span>
-                    </div>
-
-                    {/* Stage 3: Code Generation */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px' }}>
-                      {getStageState('code') === 'done' ? (
-                        <CheckCircle2 size={15} color="#10b981" />
-                      ) : getStageState('code') === 'current' ? (
-                        <Loader2 size={15} className="lucide-spin" color="#a855f7" />
-                      ) : (
-                        <span style={{ width: '15px', height: '15px', borderRadius: '50%', border: '1px solid #4b5563', display: 'inline-block' }} />
-                      )}
-                      <span style={{ color: getStageState('code') === 'current' ? '#ffffff' : '#94a3b8' }}>
-                        Generating {generatingFile ? generatingFile.split('/').pop() : 'components'}
-                      </span>
-                    </div>
-
-                    {/* Stage 4: Preview Launch */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px' }}>
-                      {iframeUrl ? (
-                        <CheckCircle2 size={15} color="#10b981" />
-                      ) : getStageState('server') === 'current' ? (
-                        <Loader2 size={15} className="lucide-spin" color="#a855f7" />
-                      ) : (
-                        <span style={{ width: '15px', height: '15px', borderRadius: '50%', border: '1px solid #4b5563', display: 'inline-block' }} />
-                      )}
-                      <span style={{ color: getStageState('server') === 'current' ? '#ffffff' : '#94a3b8' }}>
-                        Launching live preview
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Animated Progress Bar */}
-                  <div style={{
-                    width: '100%',
-                    height: '6px',
-                    borderRadius: '3px',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    overflow: 'hidden',
-                    marginBottom: '8px'
-                  }}>
-                    <div style={{
-                      height: '100%',
-                      width: `${progressPercent}%`,
-                      background: 'linear-gradient(90deg, #6366f1, #a855f7)',
-                      borderRadius: '3px',
-                      transition: 'width 0.4s ease'
-                    }} />
-                  </div>
-
-                  <div style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    fontSize: '11px',
-                    color: 'var(--text-muted)',
-                    fontFamily: 'var(--font-mono)'
-                  }}>
-                    <span>{progressPercent}% completed</span>
-                    <span>Vite Hot Reload</span>
-                  </div>
+                <div className="pipeline-progress-track">
+                  <div className="pipeline-progress-fill" style={{ width: `${progressPercent}%` }} />
                 </div>
               </div>
             )}
+
+            {/* Application Area below browser chrome */}
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+              {!hasProject ? (
+                /* Empty State */
+                <div style={{
+                  height: '100%',
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '32px',
+                  textAlign: 'center',
+                  background: 'radial-gradient(circle at 50% 45%, rgba(59, 130, 246, 0.05) 0%, transparent 60%)'
+                }}>
+                  <div style={{ position: 'relative', width: '96px', height: '96px', marginBottom: '20px' }}>
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: '16px',
+                      background: 'linear-gradient(135deg, rgba(20, 24, 33, 0.95), rgba(26, 30, 44, 0.95))',
+                      border: '1px solid var(--border-medium)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                      boxShadow: '0 12px 36px rgba(0, 0, 0, 0.4), 0 0 24px rgba(59, 130, 246, 0.15)'
+                    }}>
+                      <Sparkles size={26} color="var(--color-info)" />
+                    </div>
+                  </div>
+
+                  <h3 style={{
+                    fontSize: '18px',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    marginBottom: '8px',
+                    fontFamily: 'var(--font-brand)'
+                  }}>
+                    Your Live Preview Awaits
+                  </h3>
+
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'var(--text-secondary)',
+                    maxWidth: '380px',
+                    lineHeight: 1.5,
+                    marginBottom: '20px'
+                  }}>
+                    Ask the AI assistant to build any app or component. BrainHalf generates React code and mounts it in WebContainer immediately.
+                  </p>
+
+                  <button className="button-primary" onClick={bootWebContainer}>
+                    <Play size={14} fill="white" /> Launch WebContainer Preview
+                  </button>
+                </div>
+              ) : iframeUrl ? (
+                /* Live Iframe Preview */
+                <iframe
+                  ref={iframeRef}
+                  src={iframeUrl}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    background: 'white'
+                  }}
+                  title="Live Application Preview"
+                  allow="cross-origin-isolated"
+                />
+              ) : status === 'Error' ? (
+                /* Error State */
+                <div style={{
+                  height: '100%',
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '14px',
+                  padding: '32px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{
+                    width: '52px',
+                    height: '52px',
+                    borderRadius: '50%',
+                    background: 'var(--color-error-bg)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid var(--color-error-border)'
+                  }}>
+                    <AlertCircle size={28} color="var(--color-error)" />
+                  </div>
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-error)' }}>Preview Generation Error</h3>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '380px', lineHeight: 1.5 }}>
+                    {statusDetail || 'An error occurred while compiling code.'}
+                  </p>
+                  <button className="button-primary" onClick={bootWebContainer}>
+                    <Play size={14} fill="white" /> Retry Preview
+                  </button>
+                </div>
+              ) : (
+                /* Intentional, High-Polish Generation Experience with Proper Stepper (Problems #9, #11) */
+                <div style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '24px',
+                  background: 'radial-gradient(circle at 50% 40%, rgba(59, 130, 246, 0.05) 0%, transparent 70%)'
+                }}>
+                  <div style={{
+                    width: '100%',
+                    maxWidth: '460px',
+                    background: 'rgba(17, 20, 31, 0.92)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: '16px',
+                    padding: '28px 24px',
+                    boxShadow: '0 16px 48px rgba(0, 0, 0, 0.5), 0 0 32px rgba(59, 130, 246, 0.12)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    backdropFilter: 'blur(16px)'
+                  }}>
+                    {/* Pulsing AI Generator Icon */}
+                    <div style={{
+                      width: '54px',
+                      height: '54px',
+                      borderRadius: '14px',
+                      background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(168, 85, 247, 0.25))',
+                      border: '1px solid var(--border-accent)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: '16px',
+                      boxShadow: '0 0 20px rgba(168, 85, 247, 0.25)'
+                    }}>
+                      <Sparkles size={24} color="var(--accent-light)" />
+                    </div>
+
+                    <h3 style={{
+                      fontSize: '17.5px',
+                      fontWeight: 600,
+                      color: '#ffffff',
+                      margin: '0 0 6px 0',
+                      fontFamily: 'var(--font-brand)'
+                    }}>
+                      Building your application
+                    </h3>
+
+                    <p style={{
+                      fontSize: '12.5px',
+                      color: 'var(--text-secondary)',
+                      margin: '0 0 20px 0',
+                      maxWidth: '360px',
+                      lineHeight: 1.5
+                    }}>
+                      {generatingFile ? `Writing ${generatingFile}...` : statusDetail || 'Generating React components and launching live preview...'}
+                    </p>
+
+                    {/* Proper Vertical Stepper Indicator (Problem #11) */}
+                    <div style={{
+                      width: '100%',
+                      background: 'rgba(0, 0, 0, 0.35)',
+                      padding: '16px 18px',
+                      borderRadius: '12px',
+                      border: '1px solid var(--border-subtle)',
+                      marginBottom: '20px',
+                      textAlign: 'left'
+                    }}>
+                      <div style={{
+                        fontSize: '10.5px',
+                        fontWeight: 700,
+                        color: 'var(--color-neutral)',
+                        letterSpacing: '0.08em',
+                        marginBottom: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}>
+                        <span>BUILD PIPELINE</span>
+                        <span style={{ color: 'var(--color-ai)' }}>Step {currentStep} of 3</span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {/* Step 1: Install Packages */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12.5px' }}>
+                          {getStageState('packages') === 'done' ? (
+                            <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
+                          ) : (
+                            <Loader2 size={16} className="lucide-spin" style={{ color: 'var(--color-ai)', flexShrink: 0 }} />
+                          )}
+                          <span style={{ color: getStageState('packages') === 'done' ? 'var(--color-success)' : '#ffffff', fontWeight: 500 }}>
+                            Install packages & runtime
+                          </span>
+                        </div>
+
+                        {/* Stepper Arrow */}
+                        <div style={{ paddingLeft: '7px', color: 'var(--text-muted)' }}>
+                          <ArrowDown size={13} style={{ opacity: 0.4 }} />
+                        </div>
+
+                        {/* Step 2: Generate Code */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12.5px' }}>
+                          {getStageState('code') === 'done' ? (
+                            <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
+                          ) : getStageState('code') === 'current' ? (
+                            <Loader2 size={16} className="lucide-spin" style={{ color: 'var(--color-ai)', flexShrink: 0 }} />
+                          ) : (
+                            <span style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1.5px solid #4b5563', display: 'inline-block', flexShrink: 0 }} />
+                          )}
+                          <span style={{ color: getStageState('code') === 'current' ? '#ffffff' : getStageState('code') === 'done' ? 'var(--color-success)' : 'var(--text-muted)', fontWeight: 500 }}>
+                            Generate code {generatingFile ? `(${generatingFile.split('/').pop()})` : ''}
+                          </span>
+                        </div>
+
+                        {/* Stepper Arrow */}
+                        <div style={{ paddingLeft: '7px', color: 'var(--text-muted)' }}>
+                          <ArrowDown size={13} style={{ opacity: 0.4 }} />
+                        </div>
+
+                        {/* Step 3: Launch Preview */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12.5px' }}>
+                          {iframeUrl ? (
+                            <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
+                          ) : getStageState('server') === 'current' ? (
+                            <Loader2 size={16} className="lucide-spin" style={{ color: 'var(--color-ai)', flexShrink: 0 }} />
+                          ) : (
+                            <span style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1.5px solid #4b5563', display: 'inline-block', flexShrink: 0 }} />
+                          )}
+                          <span style={{ color: iframeUrl ? 'var(--color-success)' : getStageState('server') === 'current' ? '#ffffff' : 'var(--text-muted)', fontWeight: 500 }}>
+                            Launch preview (Vite Server)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Animated Progress Bar */}
+                    <div style={{
+                      width: '100%',
+                      height: '6px',
+                      borderRadius: '3px',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      overflow: 'hidden',
+                      marginBottom: '8px'
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${progressPercent}%`,
+                        background: 'linear-gradient(90deg, #3b82f6, #a855f7)',
+                        borderRadius: '3px',
+                        transition: 'width 0.4s ease'
+                      }} />
+                    </div>
+
+                    <div style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      fontFamily: 'var(--font-mono)'
+                    }}>
+                      <span>{progressPercent}% completed</span>
+                      <span>Vite Dev Server</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

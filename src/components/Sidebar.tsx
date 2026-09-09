@@ -148,7 +148,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             alignItems: 'center',
             gap: '6px'
           }}>
-            <Layers size={12} color="var(--accent-secondary)" />
+            <Layers size={12} color="var(--color-neutral)" />
             <span>Projects</span>
           </div>
         )}
@@ -163,9 +163,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               className="sidebar-nav-item"
               title={collapsed ? proj.name : undefined}
               style={{
-                background: isActive ? 'rgba(168, 85, 247, 0.12)' : 'transparent',
+                background: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
                 color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                borderLeft: isActive && !collapsed ? '2px solid var(--accent-secondary)' : '2px solid transparent',
+                borderLeft: isActive && !collapsed ? '2px solid var(--color-info)' : '2px solid transparent',
                 borderRadius: isActive && !collapsed ? '0 8px 8px 0' : '8px',
                 cursor: 'pointer',
                 display: 'flex',
@@ -177,7 +177,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               } as any}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1, justifyContent: collapsed ? 'center' : 'flex-start' }}>
-                <ProjectIcon size={16} color={isActive ? 'var(--accent-light)' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
+                <ProjectIcon size={16} color={isActive ? '#ffffff' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
                 {!collapsed && (
                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
                     <span style={{ 
@@ -192,7 +192,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                     </span>
                     <span style={{
                       fontSize: '10px',
-                      color: isActive ? '#c084fc' : 'var(--text-muted)',
+                      color: 'var(--text-muted)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '5px',
@@ -202,8 +202,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                         width: '5px',
                         height: '5px',
                         borderRadius: '50%',
-                        background: isActive ? '#10b981' : '#6b7280',
-                        boxShadow: isActive ? '0 0 6px rgba(16, 185, 129, 0.8)' : 'none'
+                        background: isActive ? 'var(--color-success)' : '#6b7280',
+                        boxShadow: isActive ? '0 0 6px var(--color-success)' : 'none'
                       }} />
                       {isActive ? 'React App • Active' : 'React App • Saved'}
                     </span>
@@ -251,10 +251,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               justifyContent: 'space-between'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Code2 size={12} color="var(--accent-secondary)" />
+                <Code2 size={12} color="var(--color-neutral)" />
                 <span>Workspace Files</span>
               </div>
-              <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 500 }}>Vite HMR</span>
+              <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 500 }}>Vite HMR</span>
             </div>
             
             {/* Quick list of primary generated files */}
@@ -282,7 +282,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                   className="hover-bright"
                   title={`Open ${f.path}`}
                 >
-                  <f.icon size={13} color="var(--accent-light)" />
+                  <f.icon size={13} color="var(--color-neutral)" />
                   <span style={{ fontFamily: 'var(--font-mono)' }}>{f.name}</span>
                 </div>
               ))}
@@ -305,16 +305,16 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>Runtime Engine</span>
-                <span style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                  <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#10b981' }} /> Online
+                <span style={{ fontSize: '10px', color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                  <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-success)' }} /> Online
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                <Cpu size={12} color="var(--accent-secondary)" />
+                <Cpu size={12} color="var(--color-info)" />
                 <span>WebContainer Node 18</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                <Server size={12} color="var(--accent-secondary)" />
+                <Server size={12} color="var(--color-info)" />
                 <span>SQLite Multi-Turn DB</span>
               </div>
             </div>
@@ -374,7 +374,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Settings size={20} color="var(--accent-secondary)" />
+                <Settings size={20} color="var(--color-info)" />
                 <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)' }}>BrainHalf Studio Settings</h3>
               </div>
               <button className="icon-btn" onClick={() => setShowSettings(false)}>
