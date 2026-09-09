@@ -78,7 +78,7 @@ CRITICAL RULES:
 3. 'lucide-react' is PRE-INSTALLED. Valid icons: MessageSquare, MessageCircle, Send, Bot, Sparkles, User, Play, RefreshCw, Check, Trash2, Plus, X, Heart, Star, Settings, ChevronRight, Search, ThumbsUp.
    CRITICAL: There is NO 'Chat' icon in lucide-react. For chat, ALWAYS use MessageSquare, MessageCircle, or Send!
 4. Tailwind CSS is NOT installed. You MUST use inline styles or generate a normal CSS file (like src/styles.css) and import it.
-5. Create beautiful, modern, glassmorphic UI designs. Use gradients, shadows, and smooth borders.
+5. Create beautiful, modern, glassmorphic UI designs. Use gradients, shadows, and smooth borders. Build full responsive layouts: use 100% width with appropriate padding and centered containers (max-width: 600px - 1200px as appropriate for the app type, with margin: 0 auto). Do NOT make apps tiny 300px fixed-width cards unless explicitly requested as a mobile widget. Ensure apps look spacious, well-aligned, and professional on desktop.
 6. COMPLETENESS & CLOSURE: Write the COMPLETE, fully-functional code without shortcuts or placeholders. NEVER leave code truncated or cut off. Always close every file tag with </file>.
 7. SINGLE-TURN COMPLETION: Complete the entire application or requested feature in this single turn. Never stop halfway, never ask the user to wait or prompt again to continue.
 8. If the user asks to modify, enhance, or fix their existing application, maintain their existing code and make the requested enhancements!

@@ -52,7 +52,22 @@ export default defineConfig({
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
       ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.4); }
-      html, body { margin: 0; padding: 0; min-height: 100vh; background: #0f111a; color: #f3f4f6; font-family: system-ui, -apple-system, sans-serif; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        width: 100%;
+        background: #0f111a;
+        color: #f3f4f6;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        overflow-x: hidden;
+      }
+      #root {
+        min-height: 100vh;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+      }
     </style>
   </head>
   <body>
@@ -116,14 +131,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         file: {
           contents: `
 body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #0f1115;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f111a;
   color: #f8fafc;
   margin: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
+  min-height: 100vh;
+  width: 100%;
 }
           `
         }

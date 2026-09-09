@@ -60,6 +60,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const webcontainerRef = useRef<any>(null);
   const isBootingRef = useRef(false);
+  const handleRefreshRef = useRef<() => void>(() => {});
 
   const addBuildLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -118,22 +119,36 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         }
       }
 
-      setStatusDetail('Installing npm packages...');
-      addBuildLog('Executing npm install...', 'info');
-      const installProcess = await wc.spawn('npm', ['install']);
-      
-      installProcess.output.pipeTo(new WritableStream({
-        write(data) {
-          console.log('[npm install]', data);
-          setConsoleLogs(prev => [...prev.slice(-300), `[npm] ${data}`]);
+      // Check if node_modules already exists from previous session (instant boot optimization)
+      let needsInstall = true;
+      try {
+        const entries = await wc.fs.readdir('/node_modules');
+        if (entries && entries.includes('react') && entries.includes('vite')) {
+          needsInstall = false;
+          addBuildLog('⚡ Cached dependencies detected: skipping npm install (instant 0s boot)', 'success');
         }
-      }));
-
-      const installExitCode = await installProcess.exit;
-      if (installExitCode !== 0) {
-        throw new Error('Package install failed with code ' + installExitCode);
+      } catch {
+        needsInstall = true;
       }
-      addBuildLog('Dependencies resolved and installed', 'success');
+
+      if (needsInstall) {
+        setStatusDetail('Installing npm packages...');
+        addBuildLog('Executing fast npm install (--prefer-offline)...', 'info');
+        const installProcess = await wc.spawn('npm', ['install', '--prefer-offline', '--no-audit', '--no-fund']);
+        
+        installProcess.output.pipeTo(new WritableStream({
+          write(data) {
+            console.log('[npm install]', data);
+            setConsoleLogs(prev => [...prev.slice(-300), `[npm] ${data}`]);
+          }
+        }));
+
+        const installExitCode = await installProcess.exit;
+        if (installExitCode !== 0) {
+          throw new Error('Package install failed with code ' + installExitCode);
+        }
+        addBuildLog('Dependencies resolved and installed', 'success');
+      }
 
       setStatusDetail('Starting Vite dev server...');
       addBuildLog('Spawning Vite dev server (npm run dev)...', 'info');
@@ -141,11 +156,37 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       
       let devErrorBuffer = '';
       let errorTimeout: any = null;
+      let installingPackage = false;
 
       startProcess.output.pipeTo(new WritableStream({
         write(data) {
           console.log('[npm run dev]', data);
           setConsoleLogs(prev => [...prev.slice(-300), data]);
+
+          // Auto-detect missing packages from Vite error stream and auto-install them
+          const matchMissing = data.match(/Failed to resolve import "([^"@./][^"/\n]*)"/);
+          if (matchMissing && matchMissing[1] && !installingPackage) {
+            const pkg = matchMissing[1];
+            installingPackage = true;
+            addBuildLog(`Auto-installing missing dependency: ${pkg}...`, 'info');
+            setStatusDetail(`Installing ${pkg}...`);
+            wc.spawn('npm', ['install', pkg, '--prefer-offline', '--no-audit', '--no-fund'])
+              .then((p: any) => p.exit)
+              .then((exitCode: number) => {
+                installingPackage = false;
+                if (exitCode === 0) {
+                  addBuildLog(`Successfully installed ${pkg}`, 'success');
+                  setStatusDetail('');
+                  if (handleRefreshRef.current) {
+                    handleRefreshRef.current();
+                  }
+                } else {
+                  addBuildLog(`Auto-install failed for ${pkg}`, 'warn');
+                }
+              })
+              .catch(() => { installingPackage = false; });
+          }
+
           if (data.includes('Error:') || data.includes('ERR_') || data.includes('Failed to parse source') || data.includes('Internal server error')) {
             devErrorBuffer += data + '\n';
             if (errorTimeout) clearTimeout(errorTimeout);
@@ -386,6 +427,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       addBuildLog('Preview reloaded', 'info');
     }
   };
+
+  useEffect(() => {
+    handleRefreshRef.current = handleRefresh;
+  });
 
   // Calculate stages for the progress checklist
   const getStageState = (stageName: string) => {
@@ -900,13 +945,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             {/* Realistic Compact Browser Chrome Bar */}
             <div className="browser-chrome">
               {/* Left: Window Dots & Navigation Controls */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <div className="browser-chrome-left">
                 <div className="browser-dots">
                   <span className="browser-dot close" title="Close" />
                   <span className="browser-dot minimize" title="Minimize" />
                   <span className="browser-dot maximize" title="Maximize" />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div className="browser-nav-actions">
                   <button 
                     className="browser-action-btn" 
                     title="Refresh live preview" 
@@ -928,93 +973,50 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 </div>
               </div>
 
-              {/* Center: URL Pill */}
-              <div className="browser-url-pill">
-                <Lock size={11} style={{ opacity: 0.6 }} />
-                <span>preview.brainhalf.app/live</span>
-                {viewportMode !== 'desktop' && (
-                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', opacity: 0.8, marginLeft: '4px' }}>
-                    ({viewportMode === 'tablet' ? '768px' : '375px'})
-                  </span>
-                )}
+              {/* Center: Centered URL Pill */}
+              <div className="browser-chrome-center">
+                <div className="browser-url-pill">
+                  <Lock size={11} style={{ opacity: 0.6 }} />
+                  <span>preview.brainhalf.app/live</span>
+                  {viewportMode !== 'desktop' && (
+                    <span className="browser-viewport-badge">
+                      {viewportMode === 'tablet' ? '768px' : '375px'}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Right: Viewport Mode Switcher (Desktop / Tablet / Mobile) */}
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                background: 'rgba(255, 255, 255, 0.05)', 
-                borderRadius: '6px', 
-                padding: '2px', 
-                gap: '2px',
-                flexShrink: 0
-              }}>
-                <button
-                  onClick={() => setViewportMode('desktop')}
-                  style={{
-                    background: viewportMode === 'desktop' ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
-                    border: 'none',
-                    color: viewportMode === 'desktop' ? '#ffffff' : 'var(--text-muted)',
-                    borderRadius: '4px',
-                    padding: '3px 8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '11px',
-                    fontWeight: viewportMode === 'desktop' ? 600 : 400,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  title="Desktop View (Full Width)"
-                  aria-label="Desktop View"
-                >
-                  <Monitor size={12} />
-                  <span>Desktop</span>
-                </button>
-                <button
-                  onClick={() => setViewportMode('tablet')}
-                  style={{
-                    background: viewportMode === 'tablet' ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
-                    border: 'none',
-                    color: viewportMode === 'tablet' ? '#ffffff' : 'var(--text-muted)',
-                    borderRadius: '4px',
-                    padding: '3px 8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '11px',
-                    fontWeight: viewportMode === 'tablet' ? 600 : 400,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  title="Tablet View (768px)"
-                  aria-label="Tablet View"
-                >
-                  <Tablet size={12} />
-                  <span>Tablet</span>
-                </button>
-                <button
-                  onClick={() => setViewportMode('mobile')}
-                  style={{
-                    background: viewportMode === 'mobile' ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
-                    border: 'none',
-                    color: viewportMode === 'mobile' ? '#ffffff' : 'var(--text-muted)',
-                    borderRadius: '4px',
-                    padding: '3px 8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '11px',
-                    fontWeight: viewportMode === 'mobile' ? 600 : 400,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  title="Mobile View (375px)"
-                  aria-label="Mobile View"
-                >
-                  <Smartphone size={12} />
-                  <span>Mobile</span>
-                </button>
+              <div className="browser-chrome-right">
+                <div className="viewport-segmented-control">
+                  <button
+                    onClick={() => setViewportMode('desktop')}
+                    className={`viewport-pill-btn ${viewportMode === 'desktop' ? 'active' : ''}`}
+                    title="Desktop View (Full Width)"
+                    aria-label="Desktop View"
+                  >
+                    <Monitor size={12} />
+                    <span>Desktop</span>
+                  </button>
+                  <button
+                    onClick={() => setViewportMode('tablet')}
+                    className={`viewport-pill-btn ${viewportMode === 'tablet' ? 'active' : ''}`}
+                    title="Tablet View (768px)"
+                    aria-label="Tablet View"
+                  >
+                    <Tablet size={12} />
+                    <span>Tablet</span>
+                  </button>
+                  <button
+                    onClick={() => setViewportMode('mobile')}
+                    className={`viewport-pill-btn ${viewportMode === 'mobile' ? 'active' : ''}`}
+                    title="Mobile View (375px)"
+                    aria-label="Mobile View"
+                  >
+                    <Smartphone size={12} />
+                    <span>Mobile</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1065,7 +1067,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             )}
 
             {/* Application Area below browser chrome */}
-            <div style={{ flex: 1, width: '100%', height: 'calc(100% - 36px)', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
               {!hasProject ? (
                 /* Empty State */
                 <div style={{
