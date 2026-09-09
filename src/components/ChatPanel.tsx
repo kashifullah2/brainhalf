@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, Loader2, Trash2, RefreshCw, ImagePlus, X } from 'lucide-react';
+import { Send, Bot, Loader2, Trash2, RefreshCw, ImagePlus, X, Sparkles, User } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments } from '../lib/message-parser';
 import CodeFileBlock from './CodeFileBlock';
