@@ -787,21 +787,41 @@ CRITICAL RULES:
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BrainHalf Edge Preview</title>
+    <link rel="preconnect" href="https://esm.sh" crossorigin />
+    <link rel="modulepreload" href="https://esm.sh/react@18.2.0" />
+    <link rel="modulepreload" href="https://esm.sh/react-dom@18.2.0/client" />
+    <link rel="modulepreload" href="https://esm.sh/lucide-react@0.294.0?external=react" />
     <script type="importmap">
       {
         "imports": {
-          "react": "https://esm.sh/react@18.2.0?dev",
-          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev",
+          "react": "https://esm.sh/react@18.2.0",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
           "lucide-react": "https://esm.sh/lucide-react@0.294.0?external=react"
         }
       }
     </script>
     <style>
-      body { margin: 0; padding: 0; font-family: system-ui, sans-serif; background: #0a0a0a; color: #fff; }
+      body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; background: #090a0f; color: #fff; }
+      @keyframes bh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      @keyframes bh-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+      .bh-preview-loader {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        min-height: 100vh; gap: 14px; color: #94a3b8; font-size: 13px; font-weight: 500;
+        animation: bh-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      .bh-spinner {
+        width: 24px; height: 24px; border: 2.5px solid rgba(99, 102, 241, 0.2);
+        border-top-color: #6366f1; border-radius: 50%; animation: bh-spin 0.8s linear infinite;
+      }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="bh-preview-loader">
+        <div class="bh-spinner"></div>
+        <span>Rendering preview...</span>
+      </div>
+    </div>
     <script type="module">
       import { createRoot } from 'react-dom/client';
       import React from 'react';
@@ -821,7 +841,8 @@ CRITICAL RULES:
       return new Response(html, { 
         headers: { 
           ...corsHeaders,
-          'Content-Type': 'text/html; charset=utf-8' 
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache'
         } 
       });
     }
