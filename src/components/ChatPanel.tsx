@@ -308,19 +308,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
 
   return (
-    <div className="chat-panel-container" style={{ width: width ? `${width}px` : '440px', minWidth: '340px' }}>
+    <div className="chat-panel-container" style={{ width: width ? `${width}px` : '440px', minWidth: '360px' }}>
+      {/* Sleek Chat Panel Header */}
       <div style={{
-        padding: '12px 16px',
+        padding: '10px 14px',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: 'rgba(255, 255, 255, 0.015)'
+        background: 'rgba(255, 255, 255, 0.015)',
+        gap: '8px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <div style={{
-            width: '26px',
-            height: '26px',
+            width: '24px',
+            height: '24px',
             borderRadius: '6px',
             background: 'rgba(168, 85, 247, 0.15)',
             border: '1px solid rgba(168, 85, 247, 0.3)',
@@ -328,28 +330,30 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            <Bot size={15} color="var(--accent-light)" />
+            <Bot size={14} color="var(--accent-light)" />
           </div>
           <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>AI Assistant</span>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <select
             value={selectedModelId}
             onChange={(e) => setSelectedModelId(e.target.value)}
             style={{
-              background: '#181b28',
+              background: '#161926',
               border: '1px solid var(--border-medium)',
-              borderRadius: '8px',
+              borderRadius: '6px',
               color: '#f3f4f6',
-              fontSize: '12px',
+              fontSize: '11.5px',
               fontWeight: 500,
-              padding: '5px 10px',
+              padding: '4px 8px',
               outline: 'none',
               cursor: 'pointer',
               fontFamily: 'inherit',
               boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-              colorScheme: 'dark'
+              colorScheme: 'dark',
+              maxWidth: '150px',
+              textOverflow: 'ellipsis'
             }}
           >
             <optgroup label="Xkiro AI Platform (Free)" style={{ background: '#141724', color: '#c084fc', fontWeight: 600 }}>
@@ -369,17 +373,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             </optgroup>
           </select>
 
-          {/* Vertical Separator Divider */}
-          <div style={{ width: '1px', height: '16px', background: 'var(--border-subtle)' }} />
-
           <div style={{ 
             display: 'flex', 
             alignItems: 'center', 
-            gap: '6px',
+            gap: '5px',
             background: 'rgba(255, 255, 255, 0.03)',
-            padding: '4px 8px',
-            borderRadius: '6px',
-            border: '1px solid var(--border-subtle)'
+            padding: '3px 7px',
+            borderRadius: '5px',
+            border: '1px solid var(--border-subtle)',
+            flexShrink: 0
           }}>
             <span style={{ 
               width: '6px', 
@@ -389,7 +391,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               boxShadow: isConnected ? '0 0 6px rgba(16, 185, 129, 0.6)' : 'none' 
             }} />
             <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
-              {isConnected ? 'Session Active' : 'Connecting'}
+              {isConnected ? 'Active' : 'Connecting'}
             </span>
           </div>
 
@@ -397,9 +399,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             className="icon-btn"
             onClick={handleClearChat}
             title="Clear conversation history"
-            style={{ padding: '4px' }}
+            style={{ padding: '4px', flexShrink: 0 }}
           >
-            <Trash2 size={14} />
+            <Trash2 size={13} />
           </button>
         </div>
       </div>
@@ -407,7 +409,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       {/* Messages List Container */}
       <div style={{ 
         flex: 1, 
-        padding: '16px', 
+        padding: '14px', 
         overflowY: 'auto', 
         display: 'flex', 
         flexDirection: 'column', 
@@ -429,54 +431,85 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 alignItems: 'flex-start'
               }}
             >
-              {/* Professional Avatar Badge */}
+              {/* Avatar Badge */}
               <div style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '8px',
+                width: '26px',
+                height: '26px',
+                borderRadius: '7px',
                 background: isAi 
-                  ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.25))'
-                  : 'linear-gradient(135deg, #6366f1, #a855f7)',
-                border: isAi ? '1px solid rgba(168, 85, 247, 0.35)' : '1px solid rgba(255, 255, 255, 0.2)',
+                  ? 'rgba(168, 85, 247, 0.15)'
+                  : 'rgba(255, 255, 255, 0.08)',
+                border: isAi ? '1px solid rgba(168, 85, 247, 0.35)' : '1px solid rgba(255, 255, 255, 0.15)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                marginTop: '2px',
-                boxShadow: isAi ? '0 2px 8px rgba(168, 85, 247, 0.2)' : '0 2px 10px rgba(99, 102, 241, 0.3)'
+                marginTop: '18px'
               }}>
-                {isAi ? <Bot size={15} color="#c084fc" /> : <Sparkles size={14} color="#ffffff" />}
+                {isAi ? <Bot size={14} color="#c084fc" /> : <Sparkles size={13} color="#ffffff" />}
               </div>
               
               <div style={{ 
-                maxWidth: isAi ? 'calc(100% - 38px)' : '82%',
-                flex: isAi ? 1 : 'none'
+                maxWidth: isAi ? 'calc(100% - 36px)' : '84%',
+                flex: isAi ? 1 : 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: isAi ? 'flex-start' : 'flex-end',
+                gap: '3px'
               }}>
+                {/* Clean Author Header */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '10.5px',
+                  fontWeight: 600,
+                  letterSpacing: '0.04em',
+                  color: 'var(--text-muted)',
+                  padding: '0 2px'
+                }}>
+                  <span>{isAi ? 'BRAINHALF' : 'YOU'}</span>
+                  {isAi && (
+                    <span style={{
+                      fontSize: '9.5px',
+                      background: 'rgba(168, 85, 247, 0.12)',
+                      color: '#c084fc',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      fontWeight: 500
+                    }}>
+                      {MODELS.find(m => m.id === selectedModelId)?.name || 'AI'}
+                    </span>
+                  )}
+                </div>
+
                 {msg.role === 'user' ? (
+                  /* Modern, Light User Message Card */
                   <div style={{
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.95), rgba(168, 85, 247, 0.95))',
-                    color: '#ffffff',
+                    background: 'rgba(255, 255, 255, 0.045)',
+                    color: '#f3f4f6',
                     padding: '10px 14px',
                     borderRadius: '12px 2px 12px 12px',
                     fontSize: '13.5px',
                     lineHeight: 1.55,
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
-                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)'
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
                   }}>
                     {msg.content}
                   </div>
                 ) : (
+                  /* Structured AI Response Card */
                   <div style={{
-                    background: '#121520',
+                    background: '#11141e',
                     color: '#e2e8f0',
-                    padding: '14px',
+                    padding: '12px 14px',
                     borderRadius: '2px 12px 12px 12px',
                     fontSize: '13.5px',
                     lineHeight: 1.6,
                     border: '1px solid var(--border-subtle)',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
+                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
                     width: '100%',
                     boxSizing: 'border-box'
                   }}>

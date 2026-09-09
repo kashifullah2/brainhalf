@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, AlertCircle, Terminal, CheckCircle2, Copy, Check, FolderCode, Download } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { getWebContainer } from '../lib/webcontainer';
 import { basicReactTemplate } from '../lib/templates';
@@ -15,13 +15,16 @@ interface WorkspaceProps {
 }
 
 const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
-  const [activeTab, setActiveTab] = useState<'code' | 'preview'>('preview');
+  const [activeTab, setActiveTab] = useState<'code' | 'preview' | 'console'>('preview');
   const [iframeUrl, setIframeUrl] = useState('');
   const [isBooting, setIsBooting] = useState(false);
   const [status, setStatus] = useState<GenerationStatus>('Idle');
   const [statusDetail, setStatusDetail] = useState('');
   const [hasProject, setHasProject] = useState(false);
   const [generatingFile, setGeneratingFile] = useState('');
+  const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const consoleEndRef = useRef<HTMLDivElement>(null);
   
   const [files, setFiles] = useState<{ [path: string]: string }>({
     '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
@@ -248,6 +251,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       installProcess.output.pipeTo(new WritableStream({
         write(data) {
           console.log('[npm install]', data);
+          setConsoleLogs(prev => [...prev.slice(-300), `[npm] ${data}`]);
         }
       }));
 
@@ -265,6 +269,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       startProcess.output.pipeTo(new WritableStream({
         write(data) {
           console.log('[npm run dev]', data);
+          setConsoleLogs(prev => [...prev.slice(-300), data]);
           if (data.includes('Error:') || data.includes('ERR_') || data.includes('Failed to parse source') || data.includes('Internal server error')) {
             devErrorBuffer += data + '\n';
             if (errorTimeout) clearTimeout(errorTimeout);
@@ -331,30 +336,52 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     }
   };
 
-  // Calculate stages for the top progress checklist
+  // Calculate stages for the progress checklist
   const getStageState = (stageName: string) => {
-    if (status === 'Ready') return 'done';
-    if (status !== 'Generating') return 'idle';
+    if (status === 'Ready' && iframeUrl) return 'done';
+    if (stageName === 'init') return 'done';
     if (stageName === 'packages') {
-      if (statusDetail.includes('Mounting') || statusDetail.includes('Booting')) return 'current';
-      if (statusDetail.includes('Installing')) return 'current';
+      if (status === 'Idle') return 'pending';
+      if (statusDetail.includes('Mounting') || statusDetail.includes('Installing') || statusDetail.includes('Booting')) return 'current';
       return 'done';
     }
-    if (stageName === 'build') {
+    if (stageName === 'code') {
+      if (status === 'Idle') return 'pending';
       if (statusDetail.includes('Mounting') || statusDetail.includes('Installing') || statusDetail.includes('Booting')) return 'pending';
-      if (statusDetail.includes('Starting') || statusDetail.includes('Writing')) return 'current';
-      return 'done';
-    }
-    if (stageName === 'server') {
-      if (statusDetail.includes('Starting')) return 'current';
+      if (status === 'Generating' || generatingFile) return 'current';
+      if (status === 'Ready') return 'done';
       return 'pending';
     }
-    return 'idle';
+    if (stageName === 'server') {
+      if (iframeUrl) return 'done';
+      if (statusDetail.includes('Starting') || statusDetail.includes('dev server')) return 'current';
+      return 'pending';
+    }
+    return 'pending';
+  };
+
+  const progressPercent = useMemo(() => {
+    if (status === 'Ready' && iframeUrl) return 100;
+    if (status === 'Idle') return 0;
+    if (status === 'Generating') {
+      if (statusDetail.includes('Starting') || iframeUrl) return 85;
+      if (generatingFile) return 65;
+      if (statusDetail.includes('Installing')) return 35;
+      return 25;
+    }
+    return 50;
+  }, [status, statusDetail, generatingFile, iframeUrl]);
+
+  const handleCopyCurrentFile = () => {
+    const code = files[activeFile] || '';
+    navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
   };
 
   return (
     <div className="workspace-panel-container">
-      {/* Workspace Header Tabs & Status */}
+      {/* Workspace Header Segmented Control & Status */}
       <div style={{
         padding: '8px 16px',
         borderBottom: '1px solid var(--border-subtle)',
@@ -364,21 +391,42 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         background: 'rgba(255, 255, 255, 0.015)',
         flexShrink: 0
       }}>
-        {/* Active-tab underline brand tabs */}
-        <div className="workspace-tabs">
+        {/* Modern 3-Way Segmented Control */}
+        <div className="segmented-control">
           <button 
             onClick={() => setActiveTab('code')}
-            className={`workspace-tab ${activeTab === 'code' ? 'active' : ''}`}
+            className={`segmented-tab ${activeTab === 'code' ? 'active' : ''}`}
+            title="Inspect & Edit Code"
           >
             <Code2 size={13} /> 
             <span>Code</span>
           </button>
           <button 
             onClick={() => setActiveTab('preview')}
-            className={`workspace-tab ${activeTab === 'preview' ? 'active' : ''}`}
+            className={`segmented-tab ${activeTab === 'preview' ? 'active' : ''}`}
+            title="Live Application Preview"
           >
             <Monitor size={13} /> 
             <span>Preview</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('console')}
+            className={`segmented-tab ${activeTab === 'console' ? 'active' : ''}`}
+            title="Terminal & Dev Server Logs"
+          >
+            <Terminal size={13} /> 
+            <span>Console</span>
+            {consoleLogs.length > 0 && (
+              <span style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                color: 'var(--text-muted)'
+              }}>
+                {consoleLogs.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -386,89 +434,22 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div className={`status-badge ${status.toLowerCase()}`}>
             <span className={`status-dot ${status.toLowerCase()}`} />
-            <span>{status}</span>
+            <span>{status === 'Generating' ? (generatingFile ? 'Writing code...' : 'Generating...') : status}</span>
           </div>
 
           <button className="icon-btn" title="Refresh preview" onClick={handleRefresh} disabled={!iframeUrl}>
             <RefreshCw size={14} />
           </button>
-          <button className="icon-btn" title="Open in new tab" onClick={() => iframeUrl && window.open(iframeUrl, '_blank')} disabled={!iframeUrl}>
+          <button className="icon-btn" title="Open preview in new tab" onClick={() => iframeUrl && window.open(iframeUrl, '_blank')} disabled={!iframeUrl}>
             <ExternalLink size={14} />
           </button>
         </div>
       </div>
 
-      {/* Slim Top-of-Panel Staged Checklist Progress Bar when Generating */}
-      {status === 'Generating' && (
-        <div style={{
-          background: 'rgba(15, 18, 28, 0.95)',
-          borderBottom: '1px solid rgba(168, 85, 247, 0.25)',
-          padding: '8px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: '11px',
-          fontFamily: 'var(--font-mono)',
-          color: 'var(--text-secondary)',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
-          zIndex: 15
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <span style={{ color: '#c084fc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Loader2 size={12} className="lucide-spin" />
-              BUILD PIPELINE:
-            </span>
-            
-            {/* Stage 1: Installing Packages */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={{
-                width: '6px', height: '6px', borderRadius: '50%',
-                background: getStageState('packages') === 'done' ? '#10b981' : getStageState('packages') === 'current' ? '#a855f7' : '#4b5563',
-                boxShadow: getStageState('packages') === 'current' ? '0 0 6px #a855f7' : 'none'
-              }} />
-              <span style={{ color: getStageState('packages') === 'current' ? '#ffffff' : 'inherit' }}>
-                1. Install Packages
-              </span>
-            </div>
-
-            <span style={{ opacity: 0.3 }}>→</span>
-
-            {/* Stage 2: Code Generation */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={{
-                width: '6px', height: '6px', borderRadius: '50%',
-                background: getStageState('build') === 'done' ? '#10b981' : getStageState('build') === 'current' ? '#a855f7' : '#4b5563',
-                boxShadow: getStageState('build') === 'current' ? '0 0 6px #a855f7' : 'none'
-              }} />
-              <span style={{ color: getStageState('build') === 'current' ? '#ffffff' : 'inherit' }}>
-                2. Generate Code
-              </span>
-            </div>
-
-            <span style={{ opacity: 0.3 }}>→</span>
-
-            {/* Stage 3: Live Dev Server */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={{
-                width: '6px', height: '6px', borderRadius: '50%',
-                background: getStageState('server') === 'done' ? '#10b981' : getStageState('server') === 'current' ? '#a855f7' : '#4b5563',
-                boxShadow: getStageState('server') === 'current' ? '0 0 6px #a855f7' : 'none'
-              }} />
-              <span style={{ color: getStageState('server') === 'current' ? '#ffffff' : 'inherit' }}>
-                3. Launch Preview
-              </span>
-            </div>
-          </div>
-
-          <div style={{ color: '#c084fc', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {generatingFile ? `writing ${generatingFile}` : statusDetail}
-          </div>
-        </div>
-      )}
-
       {/* Workspace Content Area */}
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden' }}>
         {activeTab === 'code' ? (
+          /* CODE EDITOR TAB */
           <div style={{ display: 'flex', width: '100%', height: '100%' }}>
             <FileExplorer 
               files={files} 
@@ -476,7 +457,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               onSelectFile={setActiveFile} 
             />
             <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden' }}>
-              {/* Proper Tab Bar above Monaco Editor */}
+              {/* File Tabs */}
               <div style={{
                 height: '36px',
                 background: 'rgba(0, 0, 0, 0.4)',
@@ -518,7 +499,72 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 })}
               </div>
 
-              <div style={{ flex: 1, height: 'calc(100% - 36px)' }}>
+              {/* Breadcrumbs & Editor Action Toolbar */}
+              <div style={{
+                padding: '5px 14px',
+                background: 'rgba(255, 255, 255, 0.015)',
+                borderBottom: '1px solid var(--border-subtle)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-muted)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <FolderCode size={12} color="var(--accent-secondary)" />
+                  <span>src</span>
+                  <span style={{ opacity: 0.4 }}>/</span>
+                  <span style={{ color: '#f3f4f6', fontWeight: 600 }}>{activeFile.split('/').pop()}</span>
+                  <span style={{ opacity: 0.4 }}>•</span>
+                  <span>{(files[activeFile] || '').split('\n').length} lines</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    onClick={handleCopyCurrentFile}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: copiedCode ? '#34d399' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '11px',
+                      fontFamily: 'inherit'
+                    }}
+                    className="hover-bright"
+                    title="Copy full file code"
+                  >
+                    {copiedCode ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                    <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => exportProjectAsZip(filesRef.current, 'brainhalf-project')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '11px',
+                      fontFamily: 'inherit'
+                    }}
+                    className="hover-bright"
+                    title="Export full project as ZIP"
+                  >
+                    <Download size={12} />
+                    <span>Export ZIP</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Monaco Editor Container */}
+              <div style={{ flex: 1, height: 'calc(100% - 66px)' }}>
                 <Editor 
                   height="100%"
                   language={
@@ -545,7 +591,71 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               </div>
             </div>
           </div>
+        ) : activeTab === 'console' ? (
+          /* TERMINAL / CONSOLE TAB */
+          <div style={{
+            width: '100%',
+            height: '100%',
+            background: '#090b10',
+            color: '#e2e8f0',
+            display: 'flex',
+            flexDirection: 'column',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '12px'
+          }}>
+            <div style={{
+              padding: '8px 14px',
+              background: 'rgba(255, 255, 255, 0.02)',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Terminal size={14} color="#a855f7" />
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Terminal & Dev Server Logs</span>
+                <span style={{ fontSize: '10px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>WebContainer Active</span>
+              </div>
+              <button
+                onClick={() => setConsoleLogs([])}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-muted)',
+                  borderRadius: '4px',
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  cursor: 'pointer'
+                }}
+                className="hover-bright"
+              >
+                Clear Output
+              </button>
+            </div>
+            <div style={{ flex: 1, padding: '12px 16px', overflowY: 'auto', lineHeight: 1.6 }}>
+              {consoleLogs.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  $ WebContainer runtime connected. Waiting for build and dev server logs...
+                </div>
+              ) : (
+                consoleLogs.map((log, lIdx) => (
+                  <div 
+                    key={lIdx} 
+                    style={{ 
+                      color: log.includes('Error') || log.includes('ERR_') ? '#f87171' : log.includes('ready') || log.includes('VITE') ? '#34d399' : '#cbd5e1',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    {log}
+                  </div>
+                ))
+              )}
+              <div ref={consoleEndRef} />
+            </div>
+          </div>
         ) : (
+          /* PREVIEW TAB */
           <div style={{ 
             height: '100%', 
             width: '100%',
@@ -567,7 +677,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 textAlign: 'center',
                 background: 'radial-gradient(circle at 50% 45%, rgba(99, 102, 241, 0.07) 0%, transparent 60%)'
               }}>
-                <div style={{ position: 'relative', width: '110px', height: '110px', marginBottom: '20px' }}>
+                <div style={{ position: 'relative', width: '96px', height: '96px', marginBottom: '20px' }}>
                   <div style={{
                     position: 'absolute',
                     inset: 0,
@@ -602,7 +712,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                   lineHeight: 1.5,
                   marginBottom: '20px'
                 }}>
-                  Ask the AI assistant to build any component or app. BrainHalf generates modular React code and mounts it in WebContainer immediately.
+                  Ask the AI assistant to build any app or component. BrainHalf generates React code and mounts it in WebContainer immediately.
                 </p>
 
                 <button className="button-primary" onClick={bootWebContainer}>
@@ -657,43 +767,155 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 </button>
               </div>
             ) : (
-              /* Content-Aware App Skeleton Mock Browser */
-              <div className="preview-browser-mock">
-                <div className="preview-browser-header">
-                  <div className="browser-dots">
-                    <div className="browser-dot" style={{ background: '#ef4444' }} />
-                    <div className="browser-dot" style={{ background: '#eab308' }} />
-                    <div className="browser-dot" style={{ background: '#22c55e' }} />
+              /* Intentional, High-Polish Generation Experience (Solves Problem #9) */
+              <div style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '24px',
+                background: 'radial-gradient(circle at 50% 40%, rgba(168, 85, 247, 0.08) 0%, transparent 70%)'
+              }}>
+                <div style={{
+                  width: '100%',
+                  maxWidth: '440px',
+                  background: 'rgba(18, 21, 32, 0.85)',
+                  border: '1px solid rgba(168, 85, 247, 0.25)',
+                  borderRadius: '16px',
+                  padding: '28px 24px',
+                  boxShadow: '0 16px 48px rgba(0, 0, 0, 0.45), 0 0 32px rgba(168, 85, 247, 0.12)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  backdropFilter: 'blur(12px)'
+                }}>
+                  {/* Glowing Sparkles Avatar */}
+                  <div style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '14px',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.35))',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '16px',
+                    boxShadow: '0 0 20px rgba(168, 85, 247, 0.35)'
+                  }}>
+                    <Sparkles size={24} color="#c084fc" />
                   </div>
-                  <div className="browser-url-pill">
-                    <Lock size={11} style={{ color: 'var(--accent-secondary)' }} />
-                    <span>preview.brainhalf.app/live</span>
-                  </div>
-                </div>
 
-                <div className="preview-skeleton-content" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {/* Content-Aware Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div className="skeleton-shimmer" style={{ width: '28px', height: '28px', borderRadius: '6px' }} />
-                      <div className="skeleton-shimmer" style={{ width: '110px', height: '14px', borderRadius: '4px' }} />
+                  <h3 style={{
+                    fontSize: '17px',
+                    fontWeight: 600,
+                    color: '#ffffff',
+                    margin: '0 0 6px 0',
+                    fontFamily: 'var(--font-brand)'
+                  }}>
+                    Building your application
+                  </h3>
+
+                  <p style={{
+                    fontSize: '12.5px',
+                    color: 'var(--text-secondary)',
+                    margin: '0 0 22px 0',
+                    maxWidth: '340px',
+                    lineHeight: 1.5
+                  }}>
+                    {generatingFile ? `Writing ${generatingFile}...` : statusDetail || 'Generating React components and launching live preview...'}
+                  </p>
+
+                  {/* Staged Checklist */}
+                  <div style={{
+                    width: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    padding: '14px 16px',
+                    borderRadius: '10px',
+                    border: '1px solid var(--border-subtle)',
+                    marginBottom: '20px',
+                    textAlign: 'left'
+                  }}>
+                    {/* Stage 1: Workspace */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px' }}>
+                      <CheckCircle2 size={15} color="#10b981" />
+                      <span style={{ color: '#e2e8f0' }}>Project workspace initialized</span>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <div className="skeleton-shimmer" style={{ width: '60px', height: '14px', borderRadius: '4px' }} />
-                      <div className="skeleton-shimmer" style={{ width: '70px', height: '24px', borderRadius: '6px' }} />
+
+                    {/* Stage 2: Runtime */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px' }}>
+                      {getStageState('packages') === 'done' ? (
+                        <CheckCircle2 size={15} color="#10b981" />
+                      ) : (
+                        <Loader2 size={15} className="lucide-spin" color="#a855f7" />
+                      )}
+                      <span style={{ color: getStageState('packages') === 'done' ? '#e2e8f0' : '#ffffff' }}>
+                        Dependencies & runtime ready
+                      </span>
+                    </div>
+
+                    {/* Stage 3: Code Generation */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px' }}>
+                      {getStageState('code') === 'done' ? (
+                        <CheckCircle2 size={15} color="#10b981" />
+                      ) : getStageState('code') === 'current' ? (
+                        <Loader2 size={15} className="lucide-spin" color="#a855f7" />
+                      ) : (
+                        <span style={{ width: '15px', height: '15px', borderRadius: '50%', border: '1px solid #4b5563', display: 'inline-block' }} />
+                      )}
+                      <span style={{ color: getStageState('code') === 'current' ? '#ffffff' : '#94a3b8' }}>
+                        Generating {generatingFile ? generatingFile.split('/').pop() : 'components'}
+                      </span>
+                    </div>
+
+                    {/* Stage 4: Preview Launch */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px' }}>
+                      {iframeUrl ? (
+                        <CheckCircle2 size={15} color="#10b981" />
+                      ) : getStageState('server') === 'current' ? (
+                        <Loader2 size={15} className="lucide-spin" color="#a855f7" />
+                      ) : (
+                        <span style={{ width: '15px', height: '15px', borderRadius: '50%', border: '1px solid #4b5563', display: 'inline-block' }} />
+                      )}
+                      <span style={{ color: getStageState('server') === 'current' ? '#ffffff' : '#94a3b8' }}>
+                        Launching live preview
+                      </span>
                     </div>
                   </div>
 
-                  {/* Content-Aware Body Grid / Dashboard Layout */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', flex: 1 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div className="skeleton-shimmer" style={{ width: '100%', height: '120px', borderRadius: '8px' }} />
-                      <div className="skeleton-shimmer" style={{ width: '100%', height: '160px', borderRadius: '8px' }} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div className="skeleton-shimmer" style={{ width: '100%', height: '80px', borderRadius: '8px' }} />
-                      <div className="skeleton-shimmer" style={{ width: '100%', height: '200px', borderRadius: '8px' }} />
-                    </div>
+                  {/* Animated Progress Bar */}
+                  <div style={{
+                    width: '100%',
+                    height: '6px',
+                    borderRadius: '3px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    overflow: 'hidden',
+                    marginBottom: '8px'
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${progressPercent}%`,
+                      background: 'linear-gradient(90deg, #6366f1, #a855f7)',
+                      borderRadius: '3px',
+                      transition: 'width 0.4s ease'
+                    }} />
+                  </div>
+
+                  <div style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '11px',
+                    color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono)'
+                  }}>
+                    <span>{progressPercent}% completed</span>
+                    <span>Vite Hot Reload</span>
                   </div>
                 </div>
               </div>

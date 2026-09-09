@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FileCode, Check, Copy, ExternalLink, Code2 } from 'lucide-react';
+import { FileCode, Check, Copy, ExternalLink, Code2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { getLanguageFromPath, highlightCodeToLines } from '../lib/prism-loader';
 import { appEvents } from '../lib/events';
 
@@ -11,12 +11,18 @@ interface CodeFileBlockProps {
 
 const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStreaming }) => {
   const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const language = useMemo(() => getLanguageFromPath(filePath), [filePath]);
   
+  const lineCount = useMemo(() => {
+    return (content || '').split('\n').length;
+  }, [content]);
+
   const highlightedLines = useMemo(() => {
+    if (!isExpanded && !isStreaming) return [];
     return highlightCodeToLines(content || '', language);
-  }, [content, language]);
+  }, [content, language, isExpanded, isStreaming]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -30,159 +36,197 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
   };
 
   return (
-    <div className="code-file-card" style={{
+    <div className="code-artifact-card" style={{
       borderRadius: '8px',
-      border: '1px solid var(--border-subtle)',
-      background: '#12141a',
+      border: isStreaming ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--border-subtle)',
+      background: 'rgba(18, 21, 30, 0.7)',
       overflow: 'hidden',
-      margin: '8px 0',
-      boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)'
+      margin: '6px 0',
+      boxShadow: '0 2px 12px rgba(0, 0, 0, 0.2)',
+      transition: 'all 0.2s ease'
     }}>
-      {/* File Card Header */}
+      {/* File Card Header Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '8px 12px',
-        background: 'rgba(255, 255, 255, 0.03)',
-        borderBottom: '1px solid var(--border-subtle)',
-        fontSize: '12px'
+        background: isStreaming ? 'rgba(168, 85, 247, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+        fontSize: '12px',
+        gap: '8px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <FileCode size={14} color="var(--accent-secondary)" style={{ flexShrink: 0 }} />
-          <span style={{ 
-            fontFamily: 'var(--font-mono)', 
-            fontWeight: 600, 
-            color: 'var(--text-primary)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            {filePath}
-          </span>
-          <span style={{
-            fontSize: '10px',
-            padding: '1px 6px',
-            borderRadius: '4px',
-            background: 'rgba(99, 102, 241, 0.15)',
-            color: 'var(--accent-primary)',
-            fontWeight: 600,
-            textTransform: 'uppercase',
+        {/* Left: Icon & File Path */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+          <div style={{
+            width: '24px',
+            height: '24px',
+            borderRadius: '5px',
+            background: 'rgba(168, 85, 247, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             flexShrink: 0
           }}>
-            {language}
-          </span>
-          {isStreaming && (
+            <FileCode size={13} color="var(--accent-light)" />
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span style={{ 
+              fontFamily: 'var(--font-mono)', 
+              fontWeight: 600, 
+              color: 'var(--text-primary)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontSize: '12.5px'
+            }}>
+              {filePath}
+            </span>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              {lineCount} lines • {language.toUpperCase()}
+            </span>
+          </div>
+        </div>
+
+        {/* Right: Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          {isStreaming ? (
             <span style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '4px',
+              gap: '5px',
               fontSize: '11px',
               color: '#c084fc',
-              flexShrink: 0
+              background: 'rgba(168, 85, 247, 0.12)',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              fontWeight: 500
             }}>
               <span className="status-dot generating" style={{ width: '5px', height: '5px' }} />
-              Streaming...
+              Writing...
             </span>
+          ) : (
+            <>
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                title={isExpanded ? "Collapse inline preview" : "Expand inline preview"}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: '3px 7px',
+                  borderRadius: '5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  transition: 'all 0.15s'
+                }}
+                className="hover-bright"
+              >
+                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                <span>{isExpanded ? 'Hide' : 'Code'}</span>
+              </button>
+
+              <button
+                onClick={handleCopy}
+                title="Copy code"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid var(--border-subtle)',
+                  color: copied ? '#34d399' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: '3px 7px',
+                  borderRadius: '5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  transition: 'all 0.15s'
+                }}
+                className="hover-bright"
+              >
+                {copied ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+
+              <button
+                onClick={handleOpenInEditor}
+                title="Open and edit this file in the full editor"
+                style={{
+                  background: 'rgba(168, 85, 247, 0.18)',
+                  border: '1px solid rgba(168, 85, 247, 0.35)',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  padding: '3px 8px',
+                  borderRadius: '5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  transition: 'all 0.15s'
+                }}
+                className="hover-bright"
+              >
+                <Code2 size={12} color="var(--accent-light)" />
+                <span>Editor ↗</span>
+              </button>
+            </>
           )}
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-          <button
-            onClick={handleOpenInEditor}
-            title="Open in Code Editor"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              padding: '4px 6px',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '11px',
-              transition: 'all 0.15s'
-            }}
-            className="hover-bright"
-          >
-            <Code2 size={12} /> Editor
-          </button>
-          <button
-            onClick={handleCopy}
-            title="Copy code"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: copied ? '#34d399' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              padding: '4px 6px',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '11px',
-              transition: 'all 0.15s'
-            }}
-            className="hover-bright"
-          >
-            {copied ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
       </div>
 
-      {/* Code with Line Numbers */}
-      <div style={{
-        maxHeight: '420px',
-        overflowY: 'auto',
-        fontFamily: 'var(--font-mono)',
-        fontSize: '12px',
-        lineHeight: 1.5,
-        padding: '8px 0',
-        background: '#0d0f14'
-      }}>
-        <div style={{ display: 'table', width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-          {highlightedLines.map((lineHtml, idx) => (
-            <div 
-              key={idx} 
-              style={{ 
-                display: 'table-row',
-                backgroundColor: 'transparent'
-              }}
-              className="code-line-row"
-            >
-              {/* Line number gutter */}
-              <span style={{
-                display: 'table-cell',
-                textAlign: 'right',
-                paddingRight: '12px',
-                paddingLeft: '10px',
-                color: '#4b5563',
-                userSelect: 'none',
-                width: '36px',
-                verticalAlign: 'top',
-                fontSize: '11px'
-              }}>
-                {idx + 1}
-              </span>
-
-              {/* Code content with proper wrapping */}
-              <span 
-                style={{
+      {/* Collapsible Inline Code Area (Only shown when expanded or streaming) */}
+      {(isExpanded || isStreaming) && (
+        <div style={{
+          maxHeight: isStreaming ? '140px' : '280px',
+          overflowY: 'auto',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '11.5px',
+          lineHeight: 1.5,
+          padding: '8px 0',
+          background: '#090b10',
+          borderTop: '1px solid var(--border-subtle)'
+        }}>
+          <div style={{ display: 'table', width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            {highlightedLines.map((lineHtml, idx) => (
+              <div 
+                key={idx} 
+                style={{ display: 'table-row', backgroundColor: 'transparent' }}
+                className="code-line-row"
+              >
+                <span style={{
                   display: 'table-cell',
-                  paddingRight: '12px',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
+                  textAlign: 'right',
+                  paddingRight: '10px',
+                  paddingLeft: '8px',
+                  color: '#4b5563',
+                  userSelect: 'none',
+                  width: '32px',
                   verticalAlign: 'top',
-                  color: '#e2e8f0'
-                }}
-                dangerouslySetInnerHTML={{ __html: lineHtml || '&nbsp;' }}
-              />
-            </div>
-          ))}
+                  fontSize: '10.5px'
+                }}>
+                  {idx + 1}
+                </span>
+
+                <span 
+                  style={{
+                    display: 'table-cell',
+                    paddingRight: '10px',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    verticalAlign: 'top',
+                    color: '#e2e8f0'
+                  }}
+                  dangerouslySetInnerHTML={{ __html: lineHtml || '&nbsp;' }}
+                />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

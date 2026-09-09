@@ -870,3 +870,65 @@ h1, h2, h3, h4, .brand-text {
   background: rgba(255, 255, 255, 0.08) !important;
   color: var(--text-primary) !important;
 }
+
+/* ==========================================================================
+   Segmented Control Pill Bar
+   ========================================================================== */
+.segmented-control {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.segmented-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.segmented-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.segmented-tab.active {
+  color: #ffffff;
+  background: rgba(168, 85, 247, 0.18);
+  border-color: rgba(168, 85, 247, 0.35);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.segmented-tab.active svg {
+  color: var(--accent-light);
+}
+
+@keyframes pulseSparkle {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.6));
+  }
+  50% {
+    transform: scale(1.12);
+    filter: drop-shadow(0 0 14px rgba(168, 85, 247, 0.9));
+  }
+}
+
+.pulse-sparkle {
+  animation: pulseSparkle 2.2s infinite ease-in-out;
+}
+

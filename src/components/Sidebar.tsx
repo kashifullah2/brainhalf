@@ -98,19 +98,39 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
         )}
       </div>
 
-      {/* New Project Action */}
-      <div style={{ padding: '0 10px', marginBottom: '16px' }}>
+      {/* Primary New Project Action */}
+      <div style={{ padding: '0 12px', marginBottom: '14px' }}>
         <button 
-          className="sidebar-new-btn" 
           onClick={handleNewProject} 
           title={collapsed ? "New Project" : undefined}
           style={{
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            padding: collapsed ? '10px' : '9px 12px'
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: collapsed ? 'center' : 'center',
+            gap: '8px',
+            background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+            color: '#ffffff',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '8px',
+            padding: collapsed ? '10px' : '9px 14px',
+            fontWeight: 600,
+            fontSize: '13px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 10px rgba(168, 85, 247, 0.3)',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.boxShadow = '0 4px 16px rgba(168, 85, 247, 0.45)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 10px rgba(168, 85, 247, 0.3)';
           }}
         >
-          <Plus size={16} />
-          {!collapsed && <span>New Project</span>}
+          <Plus size={16} strokeWidth={2.5} />
+          {!collapsed && <span>New project</span>}
         </button>
       </div>
 
@@ -123,19 +143,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             textTransform: 'uppercase', 
             padding: '6px 8px 4px 8px', 
             fontWeight: 600,
-            letterSpacing: '0.05em',
+            letterSpacing: '0.06em',
             display: 'flex',
             alignItems: 'center',
             gap: '6px'
           }}>
             <Layers size={12} color="var(--accent-secondary)" />
-            <span>Recent Projects</span>
+            <span>Projects</span>
           </div>
         )}
         
         {projects.map((proj, idx) => {
           const isActive = proj.id === activeProjectId;
-          // Assign contextual visual icon per project type or index
           const ProjectIcon = idx % 3 === 0 ? Code2 : idx % 3 === 1 ? Layers : MessageSquare;
           return (
             <div
@@ -147,27 +166,48 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                 background: isActive ? 'rgba(168, 85, 247, 0.12)' : 'transparent',
                 color: isActive ? '#ffffff' : 'var(--text-secondary)',
                 borderLeft: isActive && !collapsed ? '2px solid var(--accent-secondary)' : '2px solid transparent',
-                borderRadius: isActive && !collapsed ? '0 6px 6px 0' : '6px',
+                borderRadius: isActive && !collapsed ? '0 8px 8px 0' : '8px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'space-between',
-                padding: collapsed ? '9px 0' : '7px 10px',
-                transition: 'all 0.15s ease'
+                padding: collapsed ? '9px 0' : '8px 10px',
+                transition: 'all 0.15s ease',
+                marginBottom: '2px'
               } as any}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, justifyContent: collapsed ? 'center' : 'flex-start' }}>
-                <ProjectIcon size={15} color={isActive ? 'var(--accent-light)' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1, justifyContent: collapsed ? 'center' : 'flex-start' }}>
+                <ProjectIcon size={16} color={isActive ? 'var(--accent-light)' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
                 {!collapsed && (
-                  <span style={{ 
-                    fontSize: '13px', 
-                    whiteSpace: 'nowrap', 
-                    overflow: 'hidden', 
-                    textOverflow: 'ellipsis',
-                    fontWeight: isActive ? 500 : 400
-                  }}>
-                    {proj.name}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                    <span style={{ 
+                      fontSize: '13px', 
+                      whiteSpace: 'nowrap', 
+                      overflow: 'hidden', 
+                      textOverflow: 'ellipsis',
+                      fontWeight: isActive ? 600 : 400,
+                      color: isActive ? '#ffffff' : 'var(--text-primary)'
+                    }}>
+                      {proj.name}
+                    </span>
+                    <span style={{
+                      fontSize: '10px',
+                      color: isActive ? '#c084fc' : 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      marginTop: '1px'
+                    }}>
+                      <span style={{
+                        width: '5px',
+                        height: '5px',
+                        borderRadius: '50%',
+                        background: isActive ? '#10b981' : '#6b7280',
+                        boxShadow: isActive ? '0 0 6px rgba(16, 185, 129, 0.8)' : 'none'
+                      }} />
+                      {isActive ? 'React App • Active' : 'React App • Saved'}
+                    </span>
+                  </div>
                 )}
               </div>
               {!collapsed && projects.length > 1 && (
@@ -179,14 +219,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                     border: 'none',
                     color: 'var(--text-muted)',
                     cursor: 'pointer',
-                    padding: '2px',
+                    padding: '3px',
                     display: 'flex',
                     alignItems: 'center',
-                    opacity: 0.6,
-                    transition: 'all 0.2s'
+                    opacity: 0.5,
+                    transition: 'all 0.2s',
+                    borderRadius: '4px'
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#f87171'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-muted)'; }}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -195,33 +236,94 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           );
         })}
 
-        {/* Subtle divider & Onboarding hint to collapse dead empty space */}
+        {/* Workspace Quick File Explorer to occupy empty middle sidebar space */}
+        {!collapsed && (
+          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ 
+              fontSize: '11px', 
+              color: 'var(--text-muted)', 
+              textTransform: 'uppercase', 
+              padding: '6px 8px 4px 8px', 
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Code2 size={12} color="var(--accent-secondary)" />
+                <span>Workspace Files</span>
+              </div>
+              <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 500 }}>Vite HMR</span>
+            </div>
+            
+            {/* Quick list of primary generated files */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {[
+                { name: 'App.jsx', path: '/src/App.jsx', icon: Code2 },
+                { name: 'styles.css', path: '/src/styles.css', icon: Layers },
+                { name: 'main.jsx', path: '/src/main.jsx', icon: Code2 },
+                { name: 'package.json', path: '/package.json', icon: Server }
+              ].map(f => (
+                <div
+                  key={f.path}
+                  onClick={() => appEvents.emit('open-file', { path: f.path })}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '5px 8px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  className="hover-bright"
+                  title={`Open ${f.path}`}
+                >
+                  <f.icon size={13} color="var(--accent-light)" />
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{f.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Clean System Status Indicator (Replacing disconnected Studio Workflow card) */}
         {!collapsed && (
           <div style={{ marginTop: 'auto', paddingTop: '16px', paddingBottom: '8px' }}>
-            <div style={{ height: '1px', background: 'var(--border-subtle)', marginBottom: '14px' }} />
+            <div style={{ height: '1px', background: 'var(--border-subtle)', marginBottom: '12px' }} />
             <div style={{
               background: 'rgba(255, 255, 255, 0.02)',
               border: '1px solid var(--border-subtle)',
               borderRadius: '8px',
-              padding: '12px',
+              padding: '10px 12px',
               display: 'flex',
               flexDirection: 'column',
               gap: '6px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--accent-light)', fontWeight: 600 }}>
-                <Sparkles size={12} />
-                <span>STUDIO WORKFLOW</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.05em' }}>Runtime Engine</span>
+                <span style={{ fontSize: '10px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                  <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#10b981' }} /> Online
+                </span>
               </div>
-              <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                Each project maintains isolated SQLite chat history, WebContainer virtual node, and hot-reload state.
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                <Cpu size={12} color="var(--accent-secondary)" />
+                <span>WebContainer Node 18</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                <Server size={12} color="var(--accent-secondary)" />
+                <span>SQLite Multi-Turn DB</span>
+              </div>
             </div>
           </div>
         )}
       </div>
       
       {/* Bottom Footer Actions */}
-      <div style={{ padding: '12px 10px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ padding: '10px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
         {collapsed && onToggleCollapse && (
           <button 
             className="button-ghost"
@@ -236,10 +338,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           className="button-ghost" 
           onClick={() => setShowSettings(true)}
           title={collapsed ? "Settings" : undefined}
-          style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start', padding: collapsed ? '9px 0' : '9px 10px' }}
+          style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start', padding: collapsed ? '9px 0' : '8px 10px' }}
         >
-          <Settings size={16} />
-          {!collapsed && <span>Settings</span>}
+          <Settings size={15} />
+          {!collapsed && <span>Settings & Keys</span>}
         </button>
       </div>
 
