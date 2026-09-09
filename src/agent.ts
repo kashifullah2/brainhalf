@@ -267,7 +267,7 @@ CRITICAL RULES:
         console.warn('Error reading history for context:', e);
       }
 
-      let actualPrompt = data.prompt || 'Hello';
+      let actualPrompt = data.prompt || data.message || 'Hello';
       let isPlannerMode = false;
       if (actualPrompt.startsWith('/plan ')) {
         isPlannerMode = true;
@@ -837,6 +837,8 @@ CRITICAL RULES:
         // Edge Transpilation for React/TSX
         if (path.endsWith('.jsx') || path.endsWith('.tsx') || path.endsWith('.ts')) {
           try {
+            // Strip any wrapping markdown code fences if the model included them inside the tag
+            content = content.replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/, '').replace(/\r?\n```\s*$/, '');
             content = transform(content, { transforms: ['typescript', 'jsx'] }).code;
             
             // Fix CSS imports (inject link tag dynamically)

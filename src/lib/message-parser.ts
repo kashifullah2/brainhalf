@@ -184,8 +184,13 @@ export function parseMessageSegments(rawText: string, isStreamDone: boolean = fa
     
     const endTagIndex = afterStartTag.indexOf(endTag);
 
+    const cleanContent = (str: string) => {
+      let c = str.replace(/^\r?\n/, '');
+      return c.replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/, '').replace(/\r?\n```\s*$/, '');
+    };
+
     if (endTagIndex !== -1) {
-      const content = afterStartTag.substring(0, endTagIndex).replace(/^\r?\n/, '');
+      const content = cleanContent(afterStartTag.substring(0, endTagIndex));
       
       if (isCommand) {
         segments.push({ type: 'command', command: content, isStreaming: false });
@@ -202,7 +207,7 @@ export function parseMessageSegments(rawText: string, isStreamDone: boolean = fa
       
       remaining = afterStartTag.substring(endTagIndex + endTag.length);
     } else {
-      const content = afterStartTag.replace(/^\r?\n/, '');
+      const content = cleanContent(afterStartTag);
       
       if (isCommand) {
         segments.push({ type: 'command', command: content, isStreaming: !isStreamDone });
