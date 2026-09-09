@@ -1,10 +1,24 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, Loader2, Trash2, RefreshCw, ImagePlus, X, Sparkles, User } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Bot, Loader2, Trash2, ImagePlus, X, User, CheckCircle2, ArrowRight } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments } from '../lib/message-parser';
 import CodeFileBlock from './CodeFileBlock';
 import CommandBlock from './CommandBlock';
 import PlanBlock from './PlanBlock';
+
+const QUICK_ACTIONS = [
+  '✦ Add dark mode toggle',
+  '✦ Make responsive for mobile',
+  '✦ Add smooth animations',
+  '✦ Refactor into clean components',
+  '✦ Explain architecture',
+];
+
+const STARTER_PROMPTS = [
+  { title: 'Crypto & Stock Dashboard', desc: 'Real-time charts, asset cards & metrics' },
+  { title: 'Interactive Kanban Board', desc: 'Drag-and-drop tasks with column states' },
+  { title: 'Analytics SaaS Platform', desc: 'Key metrics, conversion funnels & tables' },
+];
 
 const MODELS = [
   { id: 'qwen/qwen3.8-max:free', name: 'Qwen 3.8 Max (Xkiro)', provider: 'xkiro' },
@@ -62,10 +76,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     aiMessageRef.current = '';
 
     const connect = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/agents/chat-agent/${activeProjectId}`;
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const backendHost = isLocal 
+        ? (import.meta.env.VITE_BACKEND_HOST || 'brainhalf.com')
+        : window.location.host;
+      const isHttpsOrRemote = window.location.protocol === 'https:' || isLocal;
+      const protocol = isHttpsOrRemote ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${backendHost}/agents/chat-agent/${activeProjectId}`;
       
-      console.log(`Connecting to Durable Object session: ${activeProjectId}`);
+      console.log(`Connecting to Durable Object session: ${activeProjectId} (${wsUrl})`);
       ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -211,7 +230,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     }
   };
 
-  const handleSendMessage = (overrideMessage?: string, overrideImage?: string | null, overrideImageType?: string) => {
+  const handleSendMessage = useCallback((overrideMessage?: string, overrideImage?: string | null, overrideImageType?: string) => {
     const textToSend = overrideMessage && typeof overrideMessage === 'string' ? overrideMessage : input;
     if (!textToSend.trim() || isGeneratingRef.current) return;
 
@@ -283,7 +302,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
-  };
+  }, [activeProjectId, imageType, input, selectedImage, selectedModelId]);
 
   useEffect(() => {
     const handleAutoFix = (payload: { error: string }) => {
@@ -304,20 +323,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       unsubFix();
       unsubReply();
     };
-  }, [activeProjectId, selectedModelId]); // Add deps to avoid stale closures, though handleSendMessage references refs mostly.
+  }, [handleSendMessage]);
 
 
   return (
     <div className="chat-panel-container" style={{ width: width ? `${width}px` : '440px', minWidth: '360px' }}>
-      {/* Sleek Chat Panel Header */}
+      {/* Sleek Chat Panel Header (48px height, 24px padding matching horizontal grid) */}
       <div style={{
-        padding: '10px 14px',
+        height: '48px',
+        padding: '0 24px',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         background: 'rgba(255, 255, 255, 0.015)',
-        gap: '8px'
+        gap: '8px',
+        flexShrink: 0
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <div style={{
@@ -325,7 +346,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             height: '24px',
             borderRadius: '6px',
             background: 'rgba(168, 85, 247, 0.15)',
-            border: '1px solid rgba(168, 85, 247, 0.3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
@@ -335,13 +355,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>AI Assistant</span>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, justifyContent: 'flex-end' }}>
           <select
             value={selectedModelId}
             onChange={(e) => setSelectedModelId(e.target.value)}
+            aria-label="Select AI Model"
             style={{
-              background: '#161926',
-              border: '1px solid var(--border-medium)',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: '6px',
               color: '#f3f4f6',
               fontSize: '11.5px',
@@ -350,9 +371,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               outline: 'none',
               cursor: 'pointer',
               fontFamily: 'inherit',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
               colorScheme: 'dark',
-              maxWidth: '150px',
+              maxWidth: '220px',
+              minWidth: '140px',
               textOverflow: 'ellipsis'
             }}
           >
@@ -376,18 +397,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           <div style={{ 
             display: 'flex', 
             alignItems: 'center', 
-            gap: '5px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            padding: '3px 7px',
-            borderRadius: '5px',
-            border: '1px solid var(--border-subtle)',
+            gap: '6px',
+            padding: '2px 4px',
             flexShrink: 0
           }}>
             <span style={{ 
               width: '6px', 
               height: '6px', 
               borderRadius: '50%', 
-              background: isConnected ? '#10b981' : '#f59e0b', 
+              background: isConnected ? 'var(--color-success)' : '#f59e0b', 
               boxShadow: isConnected ? '0 0 6px rgba(16, 185, 129, 0.6)' : 'none' 
             }} />
             <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
@@ -406,14 +424,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         </div>
       </div>
       
-      {/* Messages List Container */}
+      {/* Message Stream (24px spacing, unboxed natural typography flow) */}
       <div style={{ 
         flex: 1, 
-        padding: '14px', 
+        padding: '24px', 
         overflowY: 'auto', 
         display: 'flex', 
         flexDirection: 'column', 
-        gap: '16px',
+        gap: '24px',
         scrollBehavior: 'smooth'
       }}>
         {messages.map((msg, idx) => {
@@ -426,43 +444,43 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               key={idx} 
               style={{ 
                 display: 'flex', 
-                gap: '10px', 
+                gap: '12px', 
                 flexDirection: isAi ? 'row' : 'row-reverse',
                 alignItems: 'flex-start'
               }}
             >
               {/* Avatar Badge */}
               <div style={{
-                width: '26px',
-                height: '26px',
-                borderRadius: '7px',
+                width: '24px',
+                height: '24px',
+                borderRadius: '6px',
                 background: isAi 
-                  ? 'rgba(168, 85, 247, 0.15)'
+                  ? 'rgba(168, 85, 247, 0.12)'
                   : 'rgba(255, 255, 255, 0.08)',
-                border: isAi ? '1px solid rgba(168, 85, 247, 0.35)' : '1px solid rgba(255, 255, 255, 0.15)',
+                border: isAi ? '1px solid rgba(168, 85, 247, 0.25)' : 'none',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                marginTop: '18px'
+                marginTop: '4px'
               }}>
-                {isAi ? <Bot size={14} color="#c084fc" /> : <Sparkles size={13} color="#ffffff" />}
+                {isAi ? <Bot size={13} color="var(--color-ai)" /> : <User size={13} color="#ffffff" />}
               </div>
               
               <div style={{ 
-                maxWidth: isAi ? 'calc(100% - 36px)' : '84%',
+                maxWidth: isAi ? 'calc(100% - 36px)' : '85%',
                 flex: isAi ? 1 : 'none',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: isAi ? 'flex-start' : 'flex-end',
-                gap: '3px'
+                gap: '6px'
               }}>
                 {/* Clean Author Header */}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '10.5px',
+                  gap: '8px',
+                  fontSize: '11px',
                   fontWeight: 600,
                   letterSpacing: '0.04em',
                   color: 'var(--text-muted)',
@@ -472,9 +490,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   {isAi && (
                     <span style={{
                       fontSize: '9.5px',
-                      background: 'rgba(168, 85, 247, 0.12)',
-                      color: '#c084fc',
-                      padding: '1px 5px',
+                      background: 'rgba(168, 85, 247, 0.1)',
+                      color: 'var(--color-ai)',
+                      padding: '1px 6px',
                       borderRadius: '4px',
                       fontWeight: 500
                     }}>
@@ -484,32 +502,32 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 </div>
 
                 {msg.role === 'user' ? (
-                  /* Modern, Light User Message Card */
+                  /* Clean User Message (Subtle contrast, no harsh box) */
                   <div style={{
-                    background: 'rgba(255, 255, 255, 0.045)',
+                    background: 'rgba(255, 255, 255, 0.05)',
                     color: '#f3f4f6',
-                    padding: '10px 14px',
-                    borderRadius: '12px 2px 12px 12px',
+                    padding: '12px 16px',
+                    borderRadius: '6px',
                     fontSize: '13.5px',
                     lineHeight: 1.55,
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
+                    border: 'none',
+                    boxShadow: 'none'
                   }}>
                     {msg.content}
                   </div>
                 ) : (
-                  /* Structured AI Response Card */
+                  /* Structured AI Response (Unboxed natural flow, no nested card) */
                   <div style={{
-                    background: '#11141e',
+                    background: 'transparent',
                     color: '#e2e8f0',
-                    padding: '12px 14px',
-                    borderRadius: '2px 12px 12px 12px',
+                    padding: '2px 0',
+                    borderRadius: '0',
                     fontSize: '13.5px',
-                    lineHeight: 1.6,
-                    border: '1px solid var(--border-subtle)',
-                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+                    lineHeight: 1.65,
+                    border: 'none',
+                    boxShadow: 'none',
                     width: '100%',
                     boxSizing: 'border-box'
                   }}>
@@ -518,19 +536,33 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
                       if (segments.length === 0) {
                         return isCurrentGenerating ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#c084fc', fontSize: '13px', fontWeight: 500 }}>
-                            <Loader2 size={15} className="lucide-spin" style={{ color: 'var(--accent-secondary)' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-light)', fontSize: '13px', fontWeight: 500 }}>
+                            <Loader2 size={15} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
                             <span>Thinking and writing code...</span>
                           </div>
                         ) : null;
                       }
 
+                      const fileSegments = segments.filter(s => s.type === 'file');
+
                       return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {fileSegments.length > 1 && (
+                            <div className="file-change-summary-bar">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <CheckCircle2 size={13} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
+                                <span style={{ fontWeight: 600 }}>AI generated {fileSegments.length} files</span>
+                              </div>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                                {fileSegments.map(f => f.path.split('/').pop()).join(' • ')}
+                              </span>
+                            </div>
+                          )}
+
                           {segments.map((seg, sIdx) => {
                             if (seg.type === 'text') {
                               return (
-                                <div key={sIdx} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: '#e2e8f0' }}>
+                                <div key={sIdx} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.65, color: '#e2e8f0' }}>
                                   {seg.content}
                                 </div>
                               );
@@ -571,23 +603,80 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             </div>
           );
         })}
+
+        {/* Starter suggestions when conversation is fresh */}
+        {messages.length <= 1 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.06em' }}>
+              Quick Templates
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+              {STARTER_PROMPTS.map((sp, sIdx) => (
+                <div
+                  key={sIdx}
+                  onClick={() => handleSendMessage(`Build an app: ${sp.title} - ${sp.desc}`)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.025)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '6px',
+                    padding: '10px 14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    transition: 'all 0.15s ease'
+                  }}
+                  className="hover-bright"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSendMessage(`Build an app: ${sp.title} - ${sp.desc}`); }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{sp.title}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{sp.desc}</span>
+                  </div>
+                  <ArrowRight size={13} style={{ color: 'var(--color-neutral)', opacity: 0.6 }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Composer Box */}
+      {/* Input Form Bar with Quick Action Chips */}
       <div style={{
-        padding: '12px 16px',
+        padding: '12px 24px 24px 24px',
         borderTop: '1px solid var(--border-subtle)',
-        background: 'rgba(13, 15, 23, 0.65)'
+        background: 'transparent',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
       }}>
+        {/* Action Chips Bar */}
+        <div className="action-chips-container">
+          {QUICK_ACTIONS.map((action, aIdx) => (
+            <button
+              key={aIdx}
+              className="action-chip"
+              onClick={() => handleSendMessage(action.replace('✦ ', ''))}
+              disabled={isGenerating}
+              type="button"
+            >
+              <span>{action}</span>
+            </button>
+          ))}
+        </div>
+
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          background: isGenerating ? 'rgba(168, 85, 247, 0.04)' : '#0d1017',
-          border: isGenerating ? '1px solid rgba(168, 85, 247, 0.45)' : '1px solid var(--border-medium)',
-          borderRadius: '10px',
-          padding: '10px 12px',
-          boxShadow: isGenerating ? '0 0 16px rgba(168, 85, 247, 0.15)' : 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
+          background: isGenerating ? 'rgba(168, 85, 247, 0.03)' : 'rgba(255, 255, 255, 0.03)',
+          border: isGenerating ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--border-subtle)',
+          borderRadius: '6px',
+          padding: '12px 14px',
           transition: 'all 0.2s ease',
           position: 'relative'
         }} className="chat-input-wrapper">
@@ -676,15 +765,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   : 'var(--accent-gradient)',
                 color: ((!input.trim() && !selectedImage) || isGenerating) ? 'var(--text-muted)' : '#ffffff',
                 border: 'none',
-                borderRadius: '8px',
+                borderRadius: '6px',
                 width: '32px',
                 height: '32px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: ((!input.trim() && !selectedImage) || isGenerating) ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: ((!input.trim() && !selectedImage) || isGenerating) ? 'none' : '0 2px 10px rgba(168, 85, 247, 0.4)'
+                transition: 'all 0.15s ease',
+                boxShadow: ((!input.trim() && !selectedImage) || isGenerating) ? 'none' : '0 2px 8px rgba(168, 85, 247, 0.35)'
               }}
               title="Send Message (Enter)"
             >

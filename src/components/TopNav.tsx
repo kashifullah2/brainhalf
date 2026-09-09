@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Download, Share2, Sparkles, Check, Edit2, X, Terminal, ExternalLink, ChevronDown, MoreHorizontal, Cloud, Settings, RotateCcw, Info } from 'lucide-react';
+import { Play, Download, Share2, Check, Edit2, X, ExternalLink, ChevronDown, MoreHorizontal, Cloud, Settings, RotateCcw } from 'lucide-react';
 import { appEvents } from '../lib/events';
-import { getProjects, getActiveProjectId, updateProjectName } from '../lib/project-store';
+import { getProjects, updateProjectName } from '../lib/project-store';
 
 interface TopNavProps {
   activeProjectId: string;
@@ -40,8 +40,23 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
         setShowMoreMenu(false);
       }
     };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowDeployDropdown(false);
+        setShowMoreMenu(false);
+        setShowDeployModal(false);
+        setShowSettingsModal(false);
+        setIsEditing(false);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const handleSaveName = () => {
@@ -59,7 +74,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
-    } catch (e) {
+    } catch (_e) {
       prompt('Copy project URL:', shareUrl);
     }
   };
@@ -76,16 +91,20 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
   };
 
   return (
-    <div className="top-nav">
+    <div className="top-nav" role="banner">
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ 
-            width: '7px', 
-            height: '7px', 
-            borderRadius: '50%', 
-            background: 'var(--color-success)', 
-            boxShadow: '0 0 6px var(--color-success)' 
-          }} />
+          <span 
+            style={{ 
+              width: '7px', 
+              height: '7px', 
+              borderRadius: '50%', 
+              background: 'var(--color-success)', 
+              boxShadow: '0 0 6px var(--color-success)' 
+            }}
+            title="Session active"
+            aria-label="Session active"
+          />
 
           {isEditing ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -98,6 +117,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
                   if (e.key === 'Escape') setIsEditing(false);
                 }}
                 autoFocus
+                aria-label="Rename project input"
                 style={{
                   background: 'rgba(255, 255, 255, 0.08)',
                   border: '1px solid var(--border-medium)',
@@ -115,6 +135,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
                 className="icon-btn" 
                 style={{ padding: '3px' }}
                 title="Save name"
+                aria-label="Save name"
               >
                 <Check size={13} color="var(--color-success)" />
               </button>
@@ -123,6 +144,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
                 className="icon-btn" 
                 style={{ padding: '3px' }}
                 title="Cancel"
+                aria-label="Cancel editing name"
               >
                 <X size={13} color="var(--color-error)" />
               </button>
@@ -131,7 +153,15 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
             <div 
               onClick={() => { setIsEditing(true); setEditedName(projectName); }}
               title="Click to rename project"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+              tabIndex={0}
+              role="button"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  setIsEditing(true);
+                  setEditedName(projectName);
+                }
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', outline: 'none' }}
             >
               <h2 style={{ 
                 fontSize: '13.5px', 
@@ -149,11 +179,11 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
         </div>
         <span style={{
           fontSize: '9.5px',
-          padding: '2px 7px',
+          padding: '2px 6px',
           borderRadius: '4px',
-          background: 'var(--color-neutral-bg)',
-          border: '1px solid var(--color-neutral-border)',
-          color: 'var(--color-neutral)',
+          background: 'rgba(255, 255, 255, 0.06)',
+          border: 'none',
+          color: 'var(--text-muted)',
           fontWeight: 600,
           letterSpacing: '0.05em'
         }}>
@@ -161,12 +191,13 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
         </span>
       </div>
       
-      {/* Clear Action Hierarchy (Item 13: Share  ⋯  [Export]  [Deploy ↗ ▾]) */}
+      {/* Clear Action Hierarchy: Share  ⋯  [Export]  [Deploy ↗ ▾] */}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
         <button 
           className="button-ghost" 
           onClick={handleShare} 
           title="Share project link"
+          aria-label="Share project link"
           style={{ padding: '6px 12px', fontSize: '12px' }}
         >
           {copied ? <Check size={13} color="var(--color-success)" /> : <Share2 size={13} />}
@@ -179,6 +210,8 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
             className="icon-btn" 
             onClick={() => setShowMoreMenu(prev => !prev)}
             title="More project actions"
+            aria-label="More project actions"
+            aria-expanded={showMoreMenu}
             style={{ width: '30px', height: '30px' }}
           >
             <MoreHorizontal size={15} />
@@ -235,19 +268,21 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
           className="button-ghost" 
           onClick={handleExport} 
           title="Download complete project as a ZIP"
+          aria-label="Download complete project as a ZIP"
           style={{ padding: '6px 12px', fontSize: '12px' }}
         >
           <Download size={13} /> 
           <span>Export</span>
         </button>
 
-        {/* Primary CTA: Deploy ↗ with Dropdown Menu (Item 13) */}
+        {/* Primary CTA: Deploy ↗ with Dropdown Menu */}
         <div className="deploy-menu-container" ref={deployDropdownRef}>
           <div className="deploy-split-btn">
             <button 
               className="deploy-main-action"
               onClick={() => setShowDeployModal(true)}
               title="Deploy project to Cloudflare"
+              aria-label="Deploy project to Cloudflare"
             >
               <Play size={12} fill="white" /> 
               <span>Deploy ↗</span>
@@ -256,6 +291,8 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
               className="deploy-toggle-action"
               onClick={() => setShowDeployDropdown(prev => !prev)}
               title="Open deployment targets"
+              aria-label="Open deployment targets"
+              aria-expanded={showDeployDropdown}
             >
               <ChevronDown size={12} />
             </button>
@@ -315,10 +352,13 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
       {showDeployModal && (
         <div 
           onClick={() => setShowDeployModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="deploy-modal-title"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.7)',
+            background: 'rgba(0,0,0,0.75)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
@@ -331,35 +371,41 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
             style={{
               background: 'var(--bg-chat-panel)',
               border: '1px solid var(--border-subtle)',
-              borderRadius: '16px',
-              padding: '24px',
-              maxWidth: '480px',
+              borderRadius: '8px',
+              padding: '32px',
+              maxWidth: '520px',
               width: '90%',
               boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Cloud size={20} color="var(--color-info)" />
-                <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)' }}>Deploy {projectName}</h3>
+                <h3 id="deploy-modal-title" style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>
+                  Deploy {projectName}
+                </h3>
               </div>
-              <button className="icon-btn" onClick={() => setShowDeployModal(false)}>
+              <button 
+                className="icon-btn" 
+                onClick={() => setShowDeployModal(false)}
+                aria-label="Close modal"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '16px' }}>
-              You can deploy this project to Cloudflare Pages or Workers with zero configuration:
+            <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
+              Deploy this project directly to Cloudflare Pages with automatic edge SSL and instant global CDN distribution:
             </p>
 
-            <div style={{ background: 'var(--bg-canvas)', border: '1px solid var(--border-subtle)', borderRadius: '10px', padding: '14px', marginBottom: '16px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#93c5fd' }}>
+            <div style={{ background: '#090b10', borderRadius: '6px', padding: '16px', marginBottom: '24px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#93c5fd' }}>
               <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}># 1. Export your project ZIP & extract it</div>
               <div style={{ color: 'var(--text-primary)', marginBottom: '10px' }}>npm install</div>
               <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}># 2. Deploy instantly to Cloudflare</div>
               <div style={{ color: 'var(--color-success)' }}>npx wrangler pages deploy dist</div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button 
                 className="button-ghost"
                 onClick={() => {
@@ -387,10 +433,13 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
       {showSettingsModal && (
         <div 
           onClick={() => setShowSettingsModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settings-modal-title"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.7)',
+            background: 'rgba(0,0,0,0.75)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
@@ -403,47 +452,53 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
             style={{
               background: 'var(--bg-chat-panel)',
               border: '1px solid var(--border-subtle)',
-              borderRadius: '16px',
-              padding: '24px',
-              maxWidth: '460px',
+              borderRadius: '8px',
+              padding: '32px',
+              maxWidth: '500px',
               width: '90%',
               boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Settings size={18} color="var(--color-info)" />
-                <h3 style={{ margin: 0, fontSize: '17px', color: 'var(--text-primary)' }}>Deployment Settings</h3>
+                <h3 id="settings-modal-title" style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>
+                  Deployment Settings
+                </h3>
               </div>
-              <button className="icon-btn" onClick={() => setShowSettingsModal(false)}>
+              <button 
+                className="icon-btn" 
+                onClick={() => setShowSettingsModal(false)}
+                aria-label="Close modal"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px', color: 'var(--text-secondary)' }}>
               <div>
-                <label style={{ display: 'block', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '4px' }}>Build Framework</label>
-                <div style={{ padding: '8px 12px', background: 'var(--bg-canvas)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+                <label style={{ display: 'block', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '6px' }}>Build Framework</label>
+                <div style={{ padding: '10px 14px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '6px', color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
                   Vite + React 18 (Client SPA)
                 </div>
               </div>
 
               <div>
-                <label style={{ display: 'block', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '4px' }}>Build Output Directory</label>
-                <div style={{ padding: '8px 12px', background: 'var(--bg-canvas)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+                <label style={{ display: 'block', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '6px' }}>Build Output Directory</label>
+                <div style={{ padding: '10px 14px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '6px', color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
                   dist/
                 </div>
               </div>
 
               <div>
-                <label style={{ display: 'block', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '4px' }}>Deploy Targets</label>
+                <label style={{ display: 'block', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '6px' }}>Deploy Targets</label>
                 <p style={{ margin: 0, lineHeight: 1.5 }}>
                   Compatible with Cloudflare Pages, Vercel, Netlify, and GitHub Pages. Export as ZIP to run locally with <code style={{ color: 'var(--color-success)' }}>npm run build</code>.
                 </p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button 
                 className="button-primary"
                 onClick={() => setShowSettingsModal(false)}

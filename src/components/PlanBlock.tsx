@@ -9,12 +9,13 @@ interface PlanBlockProps {
 const PlanBlock: React.FC<PlanBlockProps> = ({ content, isStreaming }) => {
   return (
     <div style={{
-      background: 'rgba(59, 130, 246, 0.1)',
-      border: '1px solid rgba(59, 130, 246, 0.2)',
-      borderRadius: '8px',
+      background: 'rgba(59, 130, 246, 0.05)',
+      border: 'none',
+      borderLeft: '2px solid #3b82f6',
+      borderRadius: '4px',
       padding: '12px 16px',
       margin: '8px 0',
-      fontSize: '14px',
+      fontSize: '13.5px',
       color: 'var(--text-primary)'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>

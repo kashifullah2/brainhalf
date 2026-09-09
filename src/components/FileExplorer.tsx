@@ -27,7 +27,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelect
   const filePaths = Object.keys(files).sort();
 
   return (
-    <div className="file-explorer-container">
+    <div className="file-explorer-container" role="tree" aria-label="Project files">
       <div style={{
         padding: '12px 16px',
         borderBottom: '1px solid var(--border-subtle)',
@@ -54,8 +54,16 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelect
           return (
             <div
               key={path}
+              role="treeitem"
+              aria-selected={isActive}
+              tabIndex={0}
               className={`file-tree-item ${isActive ? 'active' : ''}`}
               onClick={() => onSelectFile(path)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  onSelectFile(path);
+                }
+              }}
               title={path}
             >
               {getFileIcon(path)}

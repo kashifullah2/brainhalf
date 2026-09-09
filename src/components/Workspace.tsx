@@ -1,5 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, AlertCircle, Terminal, CheckCircle2, Copy, Check, FolderCode, Download, ArrowDown } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { 
+  Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, 
+  AlertCircle, Terminal, CheckCircle2, Copy, Check, FolderCode, Download, 
+  ArrowDown, Tablet, Smartphone, WrapText, Wrench, RotateCcw, ListFilter
+} from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { getWebContainer } from '../lib/webcontainer';
 import { basicReactTemplate } from '../lib/templates';
@@ -9,13 +13,24 @@ import { exportProjectAsZip } from '../lib/zip-export';
 import FileExplorer from './FileExplorer';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error';
+type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
+type ViewportMode = 'desktop' | 'tablet' | 'mobile';
+
+interface BuildLogItem {
+  id: string;
+  time: string;
+  text: string;
+  type: 'info' | 'success' | 'warn' | 'error';
+}
 
 interface WorkspaceProps {
   activeProjectId: string;
 }
 
 const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
-  const [activeTab, setActiveTab] = useState<'code' | 'preview' | 'console'>('preview');
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
+  const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
+  const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const [iframeUrl, setIframeUrl] = useState('');
   const [isBooting, setIsBooting] = useState(false);
   const [status, setStatus] = useState<GenerationStatus>('Idle');
@@ -23,6 +38,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const [hasProject, setHasProject] = useState(false);
   const [generatingFile, setGeneratingFile] = useState('');
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
+  const [buildLogs, setBuildLogs] = useState<BuildLogItem[]>([
+    {
+      id: 'init',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      text: 'BrainHalf development studio initialized.',
+      type: 'info'
+    }
+  ]);
   const [copiedCode, setCopiedCode] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
   
@@ -38,10 +61,136 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const webcontainerRef = useRef<any>(null);
   const isBootingRef = useRef(false);
 
+  const addBuildLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setBuildLogs(prev => [...prev.slice(-250), { id: Math.random().toString(36).slice(2), time, text, type }]);
+  }, []);
+
   // Keep filesRef always updated synchronously
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
+
+  // Helper to safely write files with recursive directory creation and sanitization
+  const writeWebContainerFile = useCallback(async (wc: any, filePath: string, content: string) => {
+    if (!wc) return;
+    const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
+    
+    // Ensure parent directory exists before writing
+    const lastSlash = cleanPath.lastIndexOf('/');
+    if (lastSlash > 0) {
+      const dir = cleanPath.substring(0, lastSlash);
+      try {
+        await wc.fs.mkdir(dir, { recursive: true });
+      } catch (_e) {
+        // ignore if directory already exists
+      }
+    }
+
+    const safeCode = sanitizeCodeForPreview(content, cleanPath);
+    await wc.fs.writeFile(cleanPath, safeCode);
+    console.log('Wrote file to WebContainer:', cleanPath);
+  }, []);
+
+  const bootWebContainer = useCallback(async () => {
+    if (isBootingRef.current || webcontainerRef.current) return;
+    
+    isBootingRef.current = true;
+    setIsBooting(true);
+    setStatus('Generating');
+    setStatusDetail('Booting WebContainer runtime...');
+    addBuildLog('Initializing browser-native WebContainer runtime...', 'info');
+
+    try {
+      const wc = await getWebContainer();
+      webcontainerRef.current = wc;
+
+      setStatusDetail('Mounting template files...');
+      addBuildLog('Mounting project file tree...', 'info');
+      await wc.mount(basicReactTemplate);
+
+      // Write any generated files from filesRef
+      for (const [filePath, content] of Object.entries(filesRef.current)) {
+        try {
+          await writeWebContainerFile(wc, filePath, content);
+        } catch (err) {
+          console.warn('Pre-mount file write note:', filePath, err);
+        }
+      }
+
+      setStatusDetail('Installing npm packages...');
+      addBuildLog('Executing npm install...', 'info');
+      const installProcess = await wc.spawn('npm', ['install']);
+      
+      installProcess.output.pipeTo(new WritableStream({
+        write(data) {
+          console.log('[npm install]', data);
+          setConsoleLogs(prev => [...prev.slice(-300), `[npm] ${data}`]);
+        }
+      }));
+
+      const installExitCode = await installProcess.exit;
+      if (installExitCode !== 0) {
+        throw new Error('Package install failed with code ' + installExitCode);
+      }
+      addBuildLog('Dependencies resolved and installed', 'success');
+
+      setStatusDetail('Starting Vite dev server...');
+      addBuildLog('Spawning Vite dev server (npm run dev)...', 'info');
+      const startProcess = await wc.spawn('npm', ['run', 'dev']);
+      
+      let devErrorBuffer = '';
+      let errorTimeout: any = null;
+
+      startProcess.output.pipeTo(new WritableStream({
+        write(data) {
+          console.log('[npm run dev]', data);
+          setConsoleLogs(prev => [...prev.slice(-300), data]);
+          if (data.includes('Error:') || data.includes('ERR_') || data.includes('Failed to parse source') || data.includes('Internal server error')) {
+            devErrorBuffer += data + '\n';
+            if (errorTimeout) clearTimeout(errorTimeout);
+            errorTimeout = setTimeout(() => {
+              if (devErrorBuffer.trim().length > 0) {
+                appEvents.emit('auto-fix-error', { error: devErrorBuffer.trim() });
+                addBuildLog(`Dev server error captured: ${devErrorBuffer.trim().slice(0, 100)}...`, 'error');
+                devErrorBuffer = '';
+              }
+            }, 1500); // wait 1.5s to gather full error trace
+          } else if (devErrorBuffer.length > 0) {
+            devErrorBuffer += data + '\n';
+          }
+        }
+      }));
+
+      wc.on('server-ready', async (port: number, url: string) => {
+        console.log('Dev server ready at:', url);
+        addBuildLog(`Vite dev server running at ${url} (port ${port})`, 'success');
+        
+        // Push all latest generated files from filesRef.current
+        for (const [filePath, content] of Object.entries(filesRef.current)) {
+          try {
+            await writeWebContainerFile(wc, filePath, content);
+          } catch (e) {
+            console.warn('Sync on server-ready error:', filePath, e);
+          }
+        }
+
+        setStatus('Ready');
+        setStatusDetail('');
+        setIframeUrl(url);
+        setIsBooting(false);
+        isBootingRef.current = false;
+      });
+
+    } catch (error: any) {
+      console.error('WebContainer Boot Error:', error);
+      setStatus('Error');
+      setStatusDetail(error.message || 'WebContainer error');
+      addBuildLog(`WebContainer Boot Error: ${error.message}`, 'error');
+      setIsBooting(false);
+      isBootingRef.current = false;
+    }
+  }, [addBuildLog, writeWebContainerFile]);
 
   // Reset workspace when project changes or when cleared
   useEffect(() => {
@@ -57,6 +206,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       setStatus('Idle');
       setStatusDetail('');
       setActiveFile('/src/App.jsx');
+      addBuildLog('Workspace reset to baseline React 18 template', 'warn');
       
       if (webcontainerRef.current) {
         webcontainerRef.current.mount(basicReactTemplate).catch(console.error);
@@ -67,35 +217,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
 
     const unsubClear = appEvents.on('clear-workspace', handleClearWorkspace);
     return () => unsubClear();
-  }, [activeProjectId]);
-
-  // Helper to safely write files with recursive directory creation and sanitization
-  const writeWebContainerFile = async (wc: any, filePath: string, content: string) => {
-    if (!wc) return;
-    const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
-    
-    // Ensure parent directory exists before writing
-    const lastSlash = cleanPath.lastIndexOf('/');
-    if (lastSlash > 0) {
-      const dir = cleanPath.substring(0, lastSlash);
-      try {
-        await wc.fs.mkdir(dir, { recursive: true });
-      } catch (e) {
-        // ignore if directory already exists
-      }
-    }
-
-    const safeCode = sanitizeCodeForPreview(content, cleanPath);
-    await wc.fs.writeFile(cleanPath, safeCode);
-    console.log('Wrote file to WebContainer:', cleanPath);
-  };
+  }, [activeProjectId, addBuildLog]);
 
   // Pre-boot WebContainer in background on mount so Vite dev server is ready immediately
   useEffect(() => {
     if (!webcontainerRef.current && !isBootingRef.current) {
       bootWebContainer();
     }
-  }, []);
+  }, [bootWebContainer]);
 
   // Synchronize generation events
   useEffect(() => {
@@ -105,8 +234,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       if (newStatus === 'Generating') {
         setStatus('Generating');
         setHasProject(true);
-        if (detail) setStatusDetail(detail);
-        if (file) setGeneratingFile(file);
+        if (detail) {
+          setStatusDetail(detail);
+          addBuildLog(detail, 'info');
+        }
+        if (file) {
+          setGeneratingFile(file);
+          addBuildLog(`AI generating: ${file}`, 'info');
+        }
 
         if (!webcontainerRef.current && !isBootingRef.current) {
           bootWebContainer();
@@ -114,6 +249,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       } else if (newStatus === 'Ready') {
         setHasProject(true);
         setStatusDetail('');
+        addBuildLog('All components generated successfully', 'success');
         
         // Ensure all generated files are written to WebContainer
         if (webcontainerRef.current) {
@@ -132,7 +268,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         }
       } else if (newStatus === 'Error') {
         setStatus('Error');
-        setStatusDetail(error || 'Generation failed');
+        const errMsg = error || 'Generation failed';
+        setStatusDetail(errMsg);
+        addBuildLog(`Build error: ${errMsg}`, 'error');
       }
     };
 
@@ -152,8 +290,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       if (isComplete && webcontainerRef.current) {
         try {
           await writeWebContainerFile(webcontainerRef.current, cleanPath, content);
+          addBuildLog(`Compiled: ${cleanPath}`, 'success');
         } catch (e) {
           console.error('Failed writing complete file to WebContainer:', e);
+          addBuildLog(`Write failed: ${cleanPath}`, 'error');
         }
       }
     };
@@ -167,8 +307,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     const handleExport = async ({ projectName }: { projectName?: string }) => {
       try {
         await exportProjectAsZip(filesRef.current, projectName || 'brainhalf-project');
+        addBuildLog(`Project bundle exported as ZIP: ${projectName || 'brainhalf-project'}`, 'success');
       } catch (e) {
         console.error('Export project error:', e);
+        addBuildLog('Export ZIP error', 'error');
       }
     };
 
@@ -219,99 +361,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       unsubContext();
       unsubExec();
     };
-  }, [iframeUrl]);
-
-  const bootWebContainer = async () => {
-    if (isBootingRef.current || webcontainerRef.current) return;
-    
-    isBootingRef.current = true;
-    setIsBooting(true);
-    setStatus('Generating');
-    setStatusDetail('Booting preview engine...');
-
-    try {
-      const wc = await getWebContainer();
-      webcontainerRef.current = wc;
-
-      setStatusDetail('Mounting files...');
-      await wc.mount(basicReactTemplate);
-
-      // Write any generated files from filesRef
-      for (const [filePath, content] of Object.entries(filesRef.current)) {
-        try {
-          await writeWebContainerFile(wc, filePath, content);
-        } catch (err) {
-          console.warn('Pre-mount file write note:', filePath, err);
-        }
-      }
-
-      setStatusDetail('Installing packages...');
-      const installProcess = await wc.spawn('npm', ['install']);
-      
-      installProcess.output.pipeTo(new WritableStream({
-        write(data) {
-          console.log('[npm install]', data);
-          setConsoleLogs(prev => [...prev.slice(-300), `[npm] ${data}`]);
-        }
-      }));
-
-      const installExitCode = await installProcess.exit;
-      if (installExitCode !== 0) {
-        throw new Error('Package install failed');
-      }
-
-      setStatusDetail('Starting dev server...');
-      const startProcess = await wc.spawn('npm', ['run', 'dev']);
-      
-      let devErrorBuffer = '';
-      let errorTimeout: any = null;
-
-      startProcess.output.pipeTo(new WritableStream({
-        write(data) {
-          console.log('[npm run dev]', data);
-          setConsoleLogs(prev => [...prev.slice(-300), data]);
-          if (data.includes('Error:') || data.includes('ERR_') || data.includes('Failed to parse source') || data.includes('Internal server error')) {
-            devErrorBuffer += data + '\n';
-            if (errorTimeout) clearTimeout(errorTimeout);
-            errorTimeout = setTimeout(() => {
-              if (devErrorBuffer.trim().length > 0) {
-                appEvents.emit('auto-fix-error', { error: devErrorBuffer.trim() });
-                devErrorBuffer = '';
-              }
-            }, 1500); // wait 1.5s to gather full error trace
-          } else if (devErrorBuffer.length > 0) {
-            devErrorBuffer += data + '\n';
-          }
-        }
-      }));
-
-      wc.on('server-ready', async (port: number, url: string) => {
-        console.log('Dev server ready at:', url);
-        
-        // CRITICAL: Push all latest generated files from filesRef.current
-        for (const [filePath, content] of Object.entries(filesRef.current)) {
-          try {
-            await writeWebContainerFile(wc, filePath, content);
-          } catch (e) {
-            console.warn('Sync on server-ready error:', filePath, e);
-          }
-        }
-
-        setStatus('Ready');
-        setStatusDetail('');
-        setIframeUrl(url);
-        setIsBooting(false);
-        isBootingRef.current = false;
-      });
-
-    } catch (error: any) {
-      console.error('WebContainer Boot Error:', error);
-      setStatus('Error');
-      setStatusDetail(error.message || 'WebContainer error');
-      setIsBooting(false);
-      isBootingRef.current = false;
-    }
-  };
+  }, [iframeUrl, addBuildLog, bootWebContainer, writeWebContainerFile]);
 
   const handleEditorChange = async (value: string | undefined) => {
     if (!value) return;
@@ -333,6 +383,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const handleRefresh = () => {
     if (iframeRef.current && iframeUrl) {
       iframeRef.current.src = iframeUrl;
+      addBuildLog('Preview reloaded', 'info');
     }
   };
 
@@ -374,7 +425,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
 
   const currentStep = useMemo(() => {
     if (status !== 'Generating') return 3;
-    if (!webcontainerRef.current || isBooting || statusDetail.includes('Installing')) return 1;
+    if (isBooting || statusDetail.includes('Installing') || statusDetail.includes('Booting')) return 1;
     if (generatingFile || statusDetail.includes('Generating') || statusDetail.includes('Writing')) return 2;
     return 3;
   }, [status, isBooting, generatingFile, statusDetail]);
@@ -390,7 +441,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     <div className="workspace-panel-container">
       {/* Workspace Header Segmented Control & Status */}
       <div style={{
-        padding: '8px 16px',
+        height: '48px',
+        padding: '0 20px',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
@@ -398,17 +450,21 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         background: 'rgba(255, 255, 255, 0.015)',
         flexShrink: 0
       }}>
-        {/* Modern 3-Way Segmented Control */}
-        <div className="segmented-control">
+        {/* Professional 4-Way Workspace Navigation */}
+        <div className="segmented-control" role="tablist" aria-label="Workspace navigation">
           <button 
+            role="tab"
+            aria-selected={activeTab === 'code'}
             onClick={() => setActiveTab('code')}
             className={`segmented-tab ${activeTab === 'code' ? 'active' : ''}`}
-            title="Inspect & Edit Code"
+            title="Inspect & Edit Code (Monaco Editor)"
           >
             <Code2 size={13} /> 
             <span>Code</span>
           </button>
           <button 
+            role="tab"
+            aria-selected={activeTab === 'preview'}
             onClick={() => setActiveTab('preview')}
             className={`segmented-tab ${activeTab === 'preview' ? 'active' : ''}`}
             title="Live Application Preview"
@@ -417,9 +473,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             <span>Preview</span>
           </button>
           <button 
+            role="tab"
+            aria-selected={activeTab === 'console'}
             onClick={() => setActiveTab('console')}
             className={`segmented-tab ${activeTab === 'console' ? 'active' : ''}`}
-            title="Terminal & Dev Server Logs"
+            title="Terminal & Runtime Server Output"
           >
             <Terminal size={13} /> 
             <span>Console</span>
@@ -428,16 +486,37 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 fontSize: '9px',
                 padding: '1px 5px',
                 borderRadius: '4px',
-                background: 'rgba(255, 255, 255, 0.1)',
+                background: 'rgba(255, 255, 255, 0.08)',
                 color: 'var(--text-muted)'
               }}>
                 {consoleLogs.length}
               </span>
             )}
           </button>
+          <button 
+            role="tab"
+            aria-selected={activeTab === 'logs'}
+            onClick={() => setActiveTab('logs')}
+            className={`segmented-tab ${activeTab === 'logs' ? 'active' : ''}`}
+            title="Build Pipeline & Event Timeline"
+          >
+            <ListFilter size={13} /> 
+            <span>Logs</span>
+            {buildLogs.length > 1 && (
+              <span style={{
+                fontSize: '9px',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                background: 'rgba(59, 130, 246, 0.15)',
+                color: '#93c5fd'
+              }}>
+                {buildLogs.length}
+              </span>
+            )}
+          </button>
         </div>
 
-        {/* Right side controls (Item 10: Rich detailed status) */}
+        {/* Right side controls: Rich detailed status badge & quick actions */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div className={`status-badge ${status.toLowerCase()}`} title={statusDetail || status}>
             {status === 'Generating' ? (
@@ -471,10 +550,22 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             )}
           </div>
 
-          <button className="icon-btn" title="Refresh preview" onClick={handleRefresh} disabled={!iframeUrl}>
+          <button 
+            className="icon-btn" 
+            title="Refresh preview" 
+            aria-label="Refresh preview"
+            onClick={handleRefresh} 
+            disabled={!iframeUrl}
+          >
             <RefreshCw size={14} />
           </button>
-          <button className="icon-btn" title="Open preview in new tab" onClick={() => iframeUrl && window.open(iframeUrl, '_blank')} disabled={!iframeUrl}>
+          <button 
+            className="icon-btn" 
+            title="Open preview in new tab" 
+            aria-label="Open preview in new tab"
+            onClick={() => iframeUrl && window.open(iframeUrl, '_blank')} 
+            disabled={!iframeUrl}
+          >
             <ExternalLink size={14} />
           </button>
         </div>
@@ -535,9 +626,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
 
               {/* Breadcrumbs & Editor Action Toolbar */}
               <div style={{
-                padding: '5px 14px',
-                background: 'rgba(255, 255, 255, 0.015)',
-                borderBottom: '1px solid var(--border-subtle)',
+                padding: '6px 16px',
+                background: 'rgba(0, 0, 0, 0.25)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -552,9 +642,42 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                   <span style={{ color: '#f3f4f6', fontWeight: 600 }}>{activeFile.split('/').pop()}</span>
                   <span style={{ opacity: 0.4 }}>•</span>
                   <span>{(files[activeFile] || '').split('\n').length} lines</span>
+                  <span style={{
+                    fontSize: '9.5px',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    color: 'var(--text-muted)',
+                    marginLeft: '4px'
+                  }}>
+                    {activeFile.endsWith('.css') ? 'CSS' : activeFile.endsWith('.json') ? 'JSON' : 'React (JSX)'}
+                  </span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    onClick={() => setWordWrap(prev => prev === 'on' ? 'off' : 'on')}
+                    style={{
+                      background: wordWrap === 'on' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                      border: 'none',
+                      color: wordWrap === 'on' ? '#ffffff' : 'var(--text-muted)',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '11px',
+                      fontFamily: 'inherit'
+                    }}
+                    className="hover-bright"
+                    title={`Toggle Word Wrap (Currently ${wordWrap})`}
+                    aria-label="Toggle Word Wrap"
+                  >
+                    <WrapText size={12} />
+                    <span>Wrap</span>
+                  </button>
+
                   <button
                     onClick={handleCopyCurrentFile}
                     style={{
@@ -570,6 +693,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     }}
                     className="hover-bright"
                     title="Copy full file code"
+                    aria-label="Copy full file code"
                   >
                     {copiedCode ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
                     <span>{copiedCode ? 'Copied' : 'Copy'}</span>
@@ -590,6 +714,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     }}
                     className="hover-bright"
                     title="Export full project as ZIP"
+                    aria-label="Export ZIP"
                   >
                     <Download size={12} />
                     <span>Export ZIP</span>
@@ -616,7 +741,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     minimap: { enabled: false }, 
                     fontSize: 13, 
                     lineNumbers: 'on',
-                    wordWrap: 'on',
+                    wordWrap: wordWrap,
                     scrollBeyondLastLine: false,
                     automaticLayout: true,
                     tabSize: 2
@@ -688,6 +813,79 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               <div ref={consoleEndRef} />
             </div>
           </div>
+        ) : activeTab === 'logs' ? (
+          /* BUILD PIPELINE TIMELINE & LOGS TAB */
+          <div style={{
+            width: '100%',
+            height: '100%',
+            background: '#090b10',
+            color: '#e2e8f0',
+            display: 'flex',
+            flexDirection: 'column',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '12px'
+          }}>
+            <div style={{
+              padding: '8px 14px',
+              background: 'rgba(255, 255, 255, 0.02)',
+              borderBottom: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ListFilter size={14} color="#3b82f6" />
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Build Pipeline Timeline & Activity</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'rgba(255, 255, 255, 0.06)', padding: '2px 6px', borderRadius: '4px' }}>
+                  {buildLogs.length} events
+                </span>
+              </div>
+              <button
+                onClick={() => setBuildLogs([])}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-muted)',
+                  borderRadius: '4px',
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                  cursor: 'pointer'
+                }}
+                className="hover-bright"
+              >
+                Clear Activity
+              </button>
+            </div>
+            <div style={{ flex: 1, padding: '14px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {buildLogs.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: '16px 0' }}>
+                  No build pipeline events recorded yet. Pipeline steps, file generation, and server states will be logged here.
+                </div>
+              ) : (
+                buildLogs.map(item => (
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', lineHeight: 1.5 }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '11px', flexShrink: 0, minWidth: '60px' }}>
+                      [{item.time}]
+                    </span>
+                    <span style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      marginTop: '6px',
+                      flexShrink: 0,
+                      background: item.type === 'success' ? '#10b981' : item.type === 'error' ? '#ef4444' : item.type === 'warn' ? '#f59e0b' : '#3b82f6'
+                    }} />
+                    <span style={{
+                      color: item.type === 'error' ? '#fca5a5' : item.type === 'success' ? '#86efac' : item.type === 'warn' ? '#fde68a' : '#e2e8f0',
+                      wordBreak: 'break-word'
+                    }}>
+                      {item.text}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         ) : (
           /* PREVIEW TAB */
           <div style={{ 
@@ -699,7 +897,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             position: 'relative',
             overflow: 'hidden'
           }}>
-            {/* Realistic Compact Browser Chrome Bar (Problem #12: 34px Header Bar) */}
+            {/* Realistic Compact Browser Chrome Bar with Viewport Switcher */}
             <div className="browser-chrome">
               <div className="browser-dots">
                 <span className="browser-dot close" title="Close" />
@@ -707,15 +905,83 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 <span className="browser-dot maximize" title="Maximize" />
               </div>
 
+              {/* Viewport Switcher (Desktop / Tablet / Mobile) */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                background: 'rgba(255, 255, 255, 0.05)', 
+                borderRadius: '6px', 
+                padding: '2px', 
+                gap: '2px' 
+              }}>
+                <button
+                  onClick={() => setViewportMode('desktop')}
+                  style={{
+                    background: viewportMode === 'desktop' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                    border: 'none',
+                    color: viewportMode === 'desktop' ? '#ffffff' : 'var(--text-muted)',
+                    borderRadius: '4px',
+                    padding: '3px 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer'
+                  }}
+                  title="Desktop View (100%)"
+                  aria-label="Desktop View"
+                >
+                  <Monitor size={12} />
+                </button>
+                <button
+                  onClick={() => setViewportMode('tablet')}
+                  style={{
+                    background: viewportMode === 'tablet' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                    border: 'none',
+                    color: viewportMode === 'tablet' ? '#ffffff' : 'var(--text-muted)',
+                    borderRadius: '4px',
+                    padding: '3px 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer'
+                  }}
+                  title="Tablet View (768px)"
+                  aria-label="Tablet View"
+                >
+                  <Tablet size={12} />
+                </button>
+                <button
+                  onClick={() => setViewportMode('mobile')}
+                  style={{
+                    background: viewportMode === 'mobile' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
+                    border: 'none',
+                    color: viewportMode === 'mobile' ? '#ffffff' : 'var(--text-muted)',
+                    borderRadius: '4px',
+                    padding: '3px 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer'
+                  }}
+                  title="Mobile View (375px)"
+                  aria-label="Mobile View"
+                >
+                  <Smartphone size={12} />
+                </button>
+              </div>
+
               <div className="browser-url-pill">
                 <Lock size={11} style={{ opacity: 0.6 }} />
                 <span>preview.brainhalf.app/live</span>
+                {viewportMode !== 'desktop' && (
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', opacity: 0.8, marginLeft: '4px' }}>
+                    ({viewportMode === 'tablet' ? '768px' : '375px'})
+                  </span>
+                )}
               </div>
 
               <div className="browser-actions">
                 <button 
                   className="browser-action-btn" 
                   title="Refresh live preview" 
+                  aria-label="Refresh live preview"
                   onClick={handleRefresh}
                   disabled={!iframeUrl}
                 >
@@ -724,6 +990,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 <button 
                   className="browser-action-btn" 
                   title="Open live preview in new window" 
+                  aria-label="Open live preview in new window"
                   onClick={() => iframeUrl && window.open(iframeUrl, '_blank')}
                   disabled={!iframeUrl}
                 >
@@ -732,7 +999,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               </div>
             </div>
 
-            {/* Horizontal Build Pipeline Stepper Bar (Problem #11: Proper Progress Indicator) */}
+            {/* Horizontal Build Pipeline Stepper Bar */}
             {(status === 'Generating' || (!iframeUrl && hasProject && status !== 'Error')) && (
               <div className="build-pipeline-bar">
                 <div className="pipeline-stepper">
@@ -793,22 +1060,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                   textAlign: 'center',
                   background: 'radial-gradient(circle at 50% 45%, rgba(59, 130, 246, 0.05) 0%, transparent 60%)'
                 }}>
-                  <div style={{ position: 'relative', width: '96px', height: '96px', marginBottom: '20px' }}>
-                    <div style={{
-                      position: 'absolute',
-                      inset: 0,
-                      borderRadius: '16px',
-                      background: 'linear-gradient(135deg, rgba(20, 24, 33, 0.95), rgba(26, 30, 44, 0.95))',
-                      border: '1px solid var(--border-medium)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '10px',
-                      boxShadow: '0 12px 36px rgba(0, 0, 0, 0.4), 0 0 24px rgba(59, 130, 246, 0.15)'
-                    }}>
-                      <Sparkles size={26} color="var(--color-info)" />
-                    </div>
+                  <div style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '8px',
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '24px'
+                  }}>
+                    <Sparkles size={24} color="var(--color-info)" />
                   </div>
 
                   <h3 style={{
@@ -826,7 +1088,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     color: 'var(--text-secondary)',
                     maxWidth: '380px',
                     lineHeight: 1.5,
-                    marginBottom: '20px'
+                    marginBottom: '24px'
                   }}>
                     Ask the AI assistant to build any app or component. BrainHalf generates React code and mounts it in WebContainer immediately.
                   </p>
@@ -836,21 +1098,25 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                   </button>
                 </div>
               ) : iframeUrl ? (
-                /* Live Iframe Preview */
-                <iframe
-                  ref={iframeRef}
-                  src={iframeUrl}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    border: 'none',
-                    background: 'white'
-                  }}
-                  title="Live Application Preview"
-                  allow="cross-origin-isolated"
-                />
+                /* Live Iframe Preview with Viewport Chassis */
+                <div className="viewport-frame-container">
+                  <div className={`viewport-device-chassis ${viewportMode}`}>
+                    <iframe
+                      ref={iframeRef}
+                      src={iframeUrl}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        background: 'white'
+                      }}
+                      title="Live Application Preview"
+                      allow="cross-origin-isolated"
+                    />
+                  </div>
+                </div>
               ) : status === 'Error' ? (
-                /* Error State */
+                /* Actionable Error State */
                 <div style={{
                   height: '100%',
                   width: '100%',
@@ -858,107 +1124,133 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '14px',
                   padding: '32px',
                   textAlign: 'center'
                 }}>
                   <div style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '50%',
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '8px',
                     background: 'var(--color-error-bg)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: '1px solid var(--color-error-border)'
+                    border: '1px solid var(--color-error-border)',
+                    marginBottom: '16px'
                   }}>
-                    <AlertCircle size={28} color="var(--color-error)" />
+                    <AlertCircle size={26} color="var(--color-error)" />
                   </div>
-                  <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--color-error)' }}>Preview Generation Error</h3>
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '380px', lineHeight: 1.5 }}>
-                    {statusDetail || 'An error occurred while compiling code.'}
+
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px', fontFamily: 'var(--font-brand)' }}>
+                    Preview Generation Error
+                  </h3>
+
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '440px', lineHeight: 1.5, marginBottom: '8px' }}>
+                    {statusDetail || 'A compilation, build, or package resolution error occurred in WebContainer.'}
                   </p>
-                  <button className="button-primary" onClick={bootWebContainer}>
-                    <Play size={14} fill="white" /> Retry Preview
-                  </button>
+
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '380px', marginBottom: '24px' }}>
+                    The AI assistant can analyze the stack trace and fix dependencies or syntax automatically.
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <button 
+                      className="button-primary" 
+                      onClick={() => {
+                        appEvents.emit('auto-fix-error', { error: statusDetail || 'Build compilation error' });
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Wrench size={14} />
+                      <span>Fix automatically with AI</span>
+                    </button>
+
+                    <button 
+                      className="button-ghost" 
+                      onClick={() => setActiveTab('console')}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <Terminal size={14} />
+                      <span>View logs</span>
+                    </button>
+
+                    <button 
+                      className="button-ghost" 
+                      onClick={bootWebContainer}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      title="Re-run dev server"
+                    >
+                      <RotateCcw size={14} />
+                      <span>Retry</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
-                /* Intentional, High-Polish Generation Experience with Proper Stepper (Problems #9, #11) */
+                /* Intentional, High-Polish Generation Experience */
                 <div style={{
                   width: '100%',
                   height: '100%',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '24px',
-                  background: 'radial-gradient(circle at 50% 40%, rgba(59, 130, 246, 0.05) 0%, transparent 70%)'
+                  padding: '32px',
+                  background: 'radial-gradient(circle at 50% 40%, rgba(59, 130, 246, 0.04) 0%, transparent 70%)'
                 }}>
                   <div style={{
                     width: '100%',
-                    maxWidth: '460px',
-                    background: 'rgba(17, 20, 31, 0.92)',
-                    border: '1px solid var(--border-medium)',
-                    borderRadius: '16px',
-                    padding: '28px 24px',
-                    boxShadow: '0 16px 48px rgba(0, 0, 0, 0.5), 0 0 32px rgba(59, 130, 246, 0.12)',
+                    maxWidth: '420px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    textAlign: 'center',
-                    backdropFilter: 'blur(16px)'
+                    textAlign: 'center'
                   }}>
                     {/* Pulsing AI Generator Icon */}
                     <div style={{
-                      width: '54px',
-                      height: '54px',
-                      borderRadius: '14px',
-                      background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(168, 85, 247, 0.25))',
-                      border: '1px solid var(--border-accent)',
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '8px',
+                      background: 'rgba(168, 85, 247, 0.12)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginBottom: '16px',
-                      boxShadow: '0 0 20px rgba(168, 85, 247, 0.25)'
+                      marginBottom: '24px'
                     }}>
-                      <Sparkles size={24} color="var(--accent-light)" />
+                      <Sparkles size={24} color="var(--color-ai)" className="pulse-sparkle" />
                     </div>
 
                     <h3 style={{
-                      fontSize: '17.5px',
+                      fontSize: '18px',
                       fontWeight: 600,
                       color: '#ffffff',
-                      margin: '0 0 6px 0',
+                      margin: '0 0 8px 0',
                       fontFamily: 'var(--font-brand)'
                     }}>
                       Building your application
                     </h3>
 
                     <p style={{
-                      fontSize: '12.5px',
+                      fontSize: '13px',
                       color: 'var(--text-secondary)',
-                      margin: '0 0 20px 0',
+                      margin: '0 0 32px 0',
                       maxWidth: '360px',
                       lineHeight: 1.5
                     }}>
                       {generatingFile ? `Writing ${generatingFile}...` : statusDetail || 'Generating React components and launching live preview...'}
                     </p>
 
-                    {/* Proper Vertical Stepper Indicator (Problem #11) */}
+                    {/* Stepper */}
                     <div style={{
                       width: '100%',
-                      background: 'rgba(0, 0, 0, 0.35)',
-                      padding: '16px 18px',
-                      borderRadius: '12px',
-                      border: '1px solid var(--border-subtle)',
-                      marginBottom: '20px',
+                      marginBottom: '32px',
                       textAlign: 'left'
                     }}>
                       <div style={{
-                        fontSize: '10.5px',
+                        fontSize: '11px',
                         fontWeight: 700,
-                        color: 'var(--color-neutral)',
+                        color: 'var(--text-muted)',
                         letterSpacing: '0.08em',
-                        marginBottom: '14px',
+                        marginBottom: '16px',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between'
@@ -967,9 +1259,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                         <span style={{ color: 'var(--color-ai)' }}>Step {currentStep} of 3</span>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {/* Step 1: Install Packages */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12.5px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px' }}>
                           {getStageState('packages') === 'done' ? (
                             <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
                           ) : (
@@ -981,12 +1273,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                         </div>
 
                         {/* Stepper Arrow */}
-                        <div style={{ paddingLeft: '7px', color: 'var(--text-muted)' }}>
-                          <ArrowDown size={13} style={{ opacity: 0.4 }} />
+                        <div style={{ paddingLeft: '8px', color: 'var(--text-muted)' }}>
+                          <ArrowDown size={12} style={{ opacity: 0.35 }} />
                         </div>
 
                         {/* Step 2: Generate Code */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12.5px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px' }}>
                           {getStageState('code') === 'done' ? (
                             <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
                           ) : getStageState('code') === 'current' ? (
@@ -1000,12 +1292,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                         </div>
 
                         {/* Stepper Arrow */}
-                        <div style={{ paddingLeft: '7px', color: 'var(--text-muted)' }}>
-                          <ArrowDown size={13} style={{ opacity: 0.4 }} />
+                        <div style={{ paddingLeft: '8px', color: 'var(--text-muted)' }}>
+                          <ArrowDown size={12} style={{ opacity: 0.35 }} />
                         </div>
 
                         {/* Step 3: Launch Preview */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12.5px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px' }}>
                           {iframeUrl ? (
                             <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
                           ) : getStageState('server') === 'current' ? (
@@ -1020,20 +1312,20 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                       </div>
                     </div>
 
-                    {/* Animated Progress Bar */}
+                    {/* Progress Bar */}
                     <div style={{
                       width: '100%',
-                      height: '6px',
-                      borderRadius: '3px',
-                      background: 'rgba(255, 255, 255, 0.08)',
+                      height: '3px',
+                      borderRadius: '2px',
+                      background: 'rgba(255, 255, 255, 0.06)',
                       overflow: 'hidden',
-                      marginBottom: '8px'
+                      marginBottom: '12px'
                     }}>
                       <div style={{
                         height: '100%',
                         width: `${progressPercent}%`,
                         background: 'linear-gradient(90deg, #3b82f6, #a855f7)',
-                        borderRadius: '3px',
+                        borderRadius: '2px',
                         transition: 'width 0.4s ease'
                       }} />
                     </div>

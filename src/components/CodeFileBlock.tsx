@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FileCode, Check, Copy, ExternalLink, Code2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { FileCode, Check, Copy, Code2, ChevronDown, ChevronUp } from 'lucide-react';
 import { getLanguageFromPath, highlightCodeToLines } from '../lib/prism-loader';
 import { appEvents } from '../lib/events';
 
@@ -37,13 +37,12 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
 
   return (
     <div className="code-artifact-card" style={{
-      borderRadius: '8px',
-      border: isStreaming ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--border-subtle)',
-      background: 'rgba(18, 21, 30, 0.7)',
+      borderRadius: '6px',
+      border: isStreaming ? '1px solid rgba(168, 85, 247, 0.35)' : '1px solid var(--border-subtle)',
+      background: 'rgba(255, 255, 255, 0.025)',
       overflow: 'hidden',
       margin: '6px 0',
-      boxShadow: '0 2px 12px rgba(0, 0, 0, 0.2)',
-      transition: 'all 0.2s ease'
+      transition: 'all 0.15s ease'
     }}>
       {/* File Card Header Bar */}
       <div style={{
@@ -111,12 +110,12 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 onClick={() => setIsExpanded(!isExpanded)}
                 title={isExpanded ? "Collapse inline preview" : "Expand inline preview"}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid var(--border-subtle)',
+                  background: 'transparent',
+                  border: 'none',
                   color: 'var(--text-secondary)',
                   cursor: 'pointer',
-                  padding: '3px 7px',
-                  borderRadius: '5px',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
@@ -133,12 +132,12 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 onClick={handleCopy}
                 title="Copy code"
                 style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid var(--border-subtle)',
+                  background: 'transparent',
+                  border: 'none',
                   color: copied ? '#34d399' : 'var(--text-secondary)',
                   cursor: 'pointer',
-                  padding: '3px 7px',
-                  borderRadius: '5px',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
@@ -155,12 +154,12 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 onClick={handleOpenInEditor}
                 title="Open and edit this file in the full editor"
                 style={{
-                  background: 'rgba(168, 85, 247, 0.18)',
-                  border: '1px solid rgba(168, 85, 247, 0.35)',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: 'none',
                   color: '#ffffff',
                   cursor: 'pointer',
-                  padding: '3px 8px',
-                  borderRadius: '5px',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
@@ -170,7 +169,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 }}
                 className="hover-bright"
               >
-                <Code2 size={12} color="var(--accent-light)" />
+                <Code2 size={12} color="var(--color-info)" />
                 <span>Editor ↗</span>
               </button>
             </>

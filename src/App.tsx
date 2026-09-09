@@ -8,9 +8,26 @@ import './index.css';
 
 function App() {
   const [activeProjectId, setActiveId] = useState<string>(getActiveProjectId());
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 1024;
+    }
+    return false;
+  });
   const [chatWidth, setChatWidth] = useState<number>(440);
+  const [isResizing, setIsResizing] = useState<boolean>(false);
   const isDraggingRef = React.useRef(false);
+
+  // Auto-collapse sidebar on smaller screens
+  React.useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024 && !sidebarCollapsed) {
+        setSidebarCollapsed(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [sidebarCollapsed]);
 
   const handleSelectProject = (id: string) => {
     setActiveProjectId(id);
@@ -20,17 +37,22 @@ function App() {
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingRef.current = true;
+    setIsResizing(true);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
+    const sidebarOffset = sidebarCollapsed ? 56 : 240;
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isDraggingRef.current) return;
-      const newWidth = Math.min(Math.max(moveEvent.clientX - (sidebarCollapsed ? 64 : 250), 340), 750);
-      setChatWidth(newWidth);
+      const calculatedWidth = moveEvent.clientX - sidebarOffset;
+      const clampedWidth = Math.min(Math.max(calculatedWidth, 360), Math.min(window.innerWidth - 500, 720));
+      setChatWidth(clampedWidth);
     };
 
     const handleMouseUp = () => {
       isDraggingRef.current = false;
+      setIsResizing(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       window.removeEventListener('mousemove', handleMouseMove);
@@ -39,6 +61,10 @@ function App() {
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleDoubleClickDivider = () => {
+    setChatWidth(440);
   };
 
   return (
@@ -54,9 +80,10 @@ function App() {
         <div className="workspace-area">
           <ChatPanel activeProjectId={activeProjectId} width={chatWidth} />
           <div 
-            className="panel-resize-handle"
+            className={`panel-resize-handle ${isResizing ? 'active' : ''}`}
             onMouseDown={handleMouseDown}
-            title="Drag to resize panels"
+            onDoubleClick={handleDoubleClickDivider}
+            title="Drag to resize panels (Double-click to reset)"
           />
           <Workspace activeProjectId={activeProjectId} />
         </div>

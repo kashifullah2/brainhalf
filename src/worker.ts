@@ -5,7 +5,7 @@ import { ChatAgent } from './agent';
 export { ChatAgent };
 
 export default {
-  async fetch(request: Request, env: any, ctx: ExecutionContext) {
+  async fetch(request: Request, env: any, _ctx: ExecutionContext) {
     const agentResponse = routeAgentRequest(request, env);
     if (agentResponse) return agentResponse;
     

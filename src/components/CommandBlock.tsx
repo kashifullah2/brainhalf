@@ -17,7 +17,7 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, isStreaming }) => 
       
       const reqId = Math.random().toString(36).substring(7);
       
-      const handleResult = (payload: { output: string }) => {
+      const handleResult = (_payload: { output: string }) => {
         setStatus('completed');
         appEvents.off(`command-result-${reqId}`, handleResult);
       };
@@ -29,9 +29,10 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, isStreaming }) => 
 
   return (
     <div style={{
-      background: 'var(--bg-code-editor)',
-      border: '1px solid var(--border-subtle)',
-      borderRadius: '8px',
+      background: 'rgba(0, 0, 0, 0.25)',
+      border: 'none',
+      borderLeft: '2px solid var(--color-info)',
+      borderRadius: '4px',
       padding: '10px 14px',
       margin: '8px 0',
       fontFamily: 'var(--font-mono)',
