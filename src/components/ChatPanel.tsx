@@ -92,6 +92,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         if (!isMounted) return;
         setIsConnected(true);
         console.log(`Connected to session: ${activeProjectId}`);
+        
+        // Request the workspace context to sync current files on connect
+        const handleWsConnectSync = (data: { files: any }) => {
+          appEvents.off('workspace-context-response-ws-connect', handleWsConnectSync);
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'sync_files', files: data.files }));
+          }
+        };
+        appEvents.on('workspace-context-response-ws-connect', handleWsConnectSync);
+        appEvents.emit('request-workspace-context', { requestId: 'ws-connect' });
       };
 
       ws.onmessage = (event) => {

@@ -636,10 +636,10 @@ CRITICAL RULES:
       import React from 'react';
       
       // Auto-mount main
-      import('/src/main.jsx').catch(e => {
+      import('./src/main.jsx').catch(e => {
         if (e.message.includes('src/main.jsx')) {
-          console.log('Falling back to /src/main.tsx');
-          import('/src/main.tsx').catch(console.error);
+          console.log('Falling back to ./src/main.tsx');
+          import('./src/main.tsx').catch(console.error);
         }
       });
     </script>
@@ -661,6 +661,18 @@ CRITICAL RULES:
           try {
             content = transform(content, { transforms: ['typescript', 'jsx'] }).code;
             
+            // Fix CSS imports (inject link tag dynamically)
+            content = content.replace(/import\s+['"]([^'"]+\.css)['"]/g, (match, p1) => {
+              return `
+                (function() {
+                  const link = document.createElement('link');
+                  link.rel = 'stylesheet';
+                  link.href = '${p1}';
+                  document.head.appendChild(link);
+                })();
+              `;
+            });
+
             // Very basic ESM local path resolution fixing (appending .jsx if no extension provided)
             content = content.replace(/from\s+['"](\.[^'"]+)['"]/g, (match, p1) => {
               if (p1.endsWith('.css') || p1.endsWith('.jsx') || p1.endsWith('.tsx') || p1.endsWith('.ts')) return match;
