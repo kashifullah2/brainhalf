@@ -83,8 +83,10 @@ export default function App() {
 
         const defaultMain = `import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App.jsx';
+import * as AppModule from './App.jsx';
 import './styles.css';
+
+const App = AppModule.default || AppModule.App || Object.values(AppModule).find(v => typeof v === 'function') || (() => React.createElement('div', { style: { padding: '24px', color: '#f87171' } }, 'No component found in App.jsx'));
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -874,6 +876,21 @@ CRITICAL RULES:
               `;
             });
 
+            // If file is main.jsx, make App import resilient
+            if (path.endsWith('main.jsx') || path.endsWith('main.tsx')) {
+              content = content.replace(/import\s+App\s+from\s+['"](\.\/App(?:\.jsx)?)['"]/g, 
+                `import * as AppModule from '$1';\nconst App = AppModule.default || AppModule.App || Object.values(AppModule).find(v => typeof v === 'function');`);
+            }
+
+            // If file is App.jsx and has no export default, automatically provide one
+            if ((path.endsWith('App.jsx') || path.endsWith('App.tsx')) && !content.match(/export\s+default\b/)) {
+              const namedMatch = content.match(/export\s+(?:function|const|class)\s+([A-Za-z0-9_$]+)/) ||
+                                 content.match(/(?:function|const|class)\s+([A-Z][A-Za-z0-9_$]+)/);
+              if (namedMatch && namedMatch[1]) {
+                content += `\nexport default ${namedMatch[1]};\n`;
+              }
+            }
+
             // Very basic ESM local path resolution fixing (appending .jsx if no extension provided)
             content = content.replace(/from\s+['"](\.[^'"]+)['"]/g, (match, p1) => {
               if (p1.endsWith('.css') || p1.endsWith('.jsx') || p1.endsWith('.tsx') || p1.endsWith('.ts')) return match;
@@ -882,7 +899,69 @@ CRITICAL RULES:
             
           } catch (e: any) {
             console.error('Transpile error for', path, e);
-            return new Response(`console.error("Transpile Error:\\n" + ${JSON.stringify(e.message)});`, {
+            const errMsg = e?.message || 'Syntax or transpilation error';
+            const errorFallback = `
+              import React from 'react';
+              console.error("Transpile Error in ${path}:\\n" + ${JSON.stringify(errMsg)});
+              export default function TranspileErrorView() {
+                return React.createElement('div', {
+                  style: {
+                    padding: '32px 20px',
+                    fontFamily: 'system-ui, -apple-system, sans-serif',
+                    background: '#0a0a12',
+                    color: '#f87171',
+                    minHeight: '100vh',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box'
+                  }
+                }, React.createElement('div', {
+                  style: {
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    borderRadius: '16px',
+                    padding: '24px 28px',
+                    maxWidth: '560px',
+                    width: '100%',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+                  }
+                }, [
+                  React.createElement('div', {
+                    key: 'header',
+                    style: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }
+                  }, [
+                    React.createElement('span', { key: 'dot', style: { width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444', display: 'inline-block' } }),
+                    React.createElement('h3', { key: 'title', style: { margin: 0, fontSize: '16px', fontWeight: 600, color: '#fca5a5' } }, 'Code Syntax Error')
+                  ]),
+                  React.createElement('div', {
+                    key: 'file',
+                    style: { fontSize: '12px', color: '#94a3b8', marginBottom: '10px' }
+                  }, 'File: ${path}'),
+                  React.createElement('pre', {
+                    key: 'msg',
+                    style: {
+                      margin: '0 0 16px',
+                      padding: '14px',
+                      background: 'rgba(0,0,0,0.5)',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      color: '#f87171',
+                      fontFamily: 'ui-monospace, monospace',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      border: '1px solid rgba(239, 68, 68, 0.15)'
+                    }
+                  }, ${JSON.stringify(errMsg)}),
+                  React.createElement('p', {
+                    key: 'hint',
+                    style: { margin: 0, fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5' }
+                  }, 'Ask the AI in the chat panel to fix this syntax error, and it will surgically patch the broken lines.')
+                ]));
+              }
+              export const App = TranspileErrorView;
+            `;
+            return new Response(errorFallback, {
               headers: { 
                 ...corsHeaders,
                 'Content-Type': 'application/javascript; charset=utf-8' 
