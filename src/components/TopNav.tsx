@@ -177,18 +177,6 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
             </div>
           )}
         </div>
-        <span style={{
-          fontSize: '9.5px',
-          padding: '2px 6px',
-          borderRadius: '4px',
-          background: 'rgba(255, 255, 255, 0.06)',
-          border: 'none',
-          color: 'var(--text-muted)',
-          fontWeight: 600,
-          letterSpacing: '0.05em'
-        }}>
-          DRAFT
-        </span>
       </div>
       
       {/* Clear Action Hierarchy: Share  ⋯  [Export]  [Deploy ↗ ▾] */}

@@ -62,26 +62,21 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
         {!collapsed ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div className="sidebar-brand-badge">
-              <Sparkles size={15} color="white" />
+              <Sparkles size={14} color="#ffffff" />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ 
-                fontFamily: 'var(--font-brand)', 
-                fontWeight: 700, 
-                fontSize: '15px', 
-                letterSpacing: '-0.3px',
-                color: '#ffffff'
-              }}>
-                BrainHalf
-              </span>
-              <span style={{ fontSize: '9px', color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}>
-                AI Code Studio
-              </span>
-            </div>
+            <span style={{ 
+              fontFamily: 'var(--font-sans)', 
+              fontWeight: 600, 
+              fontSize: '14px', 
+              letterSpacing: '-0.2px',
+              color: '#ffffff'
+            }}>
+              BrainHalf
+            </span>
           </div>
         ) : (
           <div className="sidebar-brand-badge" onClick={onToggleCollapse} style={{ cursor: 'pointer' }} title="Expand Sidebar" aria-label="Expand Sidebar">
-            <Sparkles size={15} color="white" />
+            <Sparkles size={14} color="#ffffff" />
           </div>
         )}
 
@@ -93,13 +88,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             aria-label="Collapse Sidebar"
             style={{ color: 'var(--text-muted)' }}
           >
-            <PanelLeftClose size={16} />
+            <PanelLeftClose size={15} />
           </button>
         )}
       </div>
 
       {/* Primary New Project Action */}
-      <div style={{ padding: '0 12px', marginBottom: '16px' }}>
+      <div style={{ padding: '0 12px', marginBottom: '14px' }}>
         <button 
           onClick={handleNewProject} 
           title={collapsed ? "New Project" : undefined}
@@ -109,26 +104,26 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '8px',
-            background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-            color: '#ffffff',
-            border: 'none',
+            gap: '7px',
+            background: '#ffffff',
+            color: '#09090b',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
             borderRadius: '6px',
-            padding: collapsed ? '8px' : '8px 12px',
+            padding: collapsed ? '8px' : '7px 12px',
             fontWeight: 600,
-            fontSize: '12.5px',
+            fontSize: '12px',
             cursor: 'pointer',
             transition: 'all 0.15s ease',
-            boxShadow: '0 2px 8px rgba(99, 102, 241, 0.35)'
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.background = '#f4f4f5';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.background = '#ffffff';
           }}
         >
-          <Plus size={15} strokeWidth={2.5} />
+          <Plus size={14} strokeWidth={2.5} />
           {!collapsed && <span>New project</span>}
         </button>
       </div>
@@ -194,23 +189,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                       {proj.name}
                     </span>
                     <span style={{
-                      fontSize: '10px',
+                      fontSize: '11px',
                       color: 'var(--text-muted)',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '5px',
-                      marginTop: '1px'
+                      marginTop: '2px'
                     }}>
-                      <span style={{
-                        width: '5px',
-                        height: '5px',
-                        borderRadius: '50%',
-                        background: isActive ? 'var(--color-success)' : '#6b7280',
-                        boxShadow: isActive ? '0 0 6px var(--color-success)' : 'none',
-                        flexShrink: 0
-                      }} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {proj.framework || 'React 18'} • {isActive ? 'Active' : 'Draft'} • {formatRelativeTime(proj.updatedAt)}
+                        {formatRelativeTime(proj.updatedAt)}
                       </span>
                     </span>
                   </div>
@@ -242,9 +229,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           );
         })}
 
-        {/* Workspace Quick File Explorer to occupy empty middle sidebar space */}
+        {/* Workspace Quick File Explorer */}
         {!collapsed && (
-          <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <div style={{ 
               fontSize: '11px', 
               color: 'var(--text-muted)', 
@@ -254,13 +241,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               letterSpacing: '0.06em',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
+              gap: '6px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Code2 size={12} color="var(--color-neutral)" />
-                <span>Workspace Files</span>
-              </div>
-              <span style={{ fontSize: '10px', color: 'var(--color-success)', fontWeight: 500 }}>Vite HMR</span>
+              <Code2 size={12} color="var(--color-neutral)" />
+              <span>Files</span>
             </div>
             
             {/* Quick list of primary generated files */}
@@ -278,7 +262,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    padding: '5px 8px',
+                    padding: '6px 8px',
                     borderRadius: '6px',
                     fontSize: '12px',
                     color: 'var(--text-secondary)',
@@ -292,29 +276,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                   <span style={{ fontFamily: 'var(--font-mono)' }}>{f.name}</span>
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* Clean System Status Indicator (Replacing disconnected Studio Workflow card) */}
-        {!collapsed && (
-          <div style={{ marginTop: 'auto', paddingTop: '16px', paddingBottom: '8px', paddingLeft: '4px', paddingRight: '4px' }}>
-            <div style={{ height: '1px', background: 'var(--border-subtle)', marginBottom: '12px' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '0 4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                <span style={{ fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Runtime Engine</span>
-                <span style={{ color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                  <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-success)' }} /> Online
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                <Cpu size={12} color="var(--color-info)" />
-                <span>WebContainer Node 18</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                <Server size={12} color="var(--color-info)" />
-                <span>SQLite Multi-Turn DO</span>
-              </div>
             </div>
           </div>
         )}
@@ -339,7 +300,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start', padding: collapsed ? '9px 0' : '8px 10px' }}
         >
           <Settings size={15} />
-          {!collapsed && <span>Settings & Keys</span>}
+          {!collapsed && <span>Settings</span>}
         </button>
       </div>
 

@@ -339,31 +339,25 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
           <div className={`status-badge ${status.toLowerCase()}`} title={statusDetail || status}>
             {status === 'Generating' ? (
               <>
-                <Loader2 size={13} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
-                <div className="status-text-group">
-                  <div className="status-line-top">
-                    <span className="status-title">Building</span>
-                    <span className="status-step-pill">Step {currentStep} of 3</span>
-                  </div>
-                  <span className="status-detail-text">
-                    {generatingFile ? generatingFile.split('/').pop() : (statusDetail || 'Generating components...')}
-                  </span>
-                </div>
+                <Loader2 size={12} className="lucide-spin" style={{ color: 'var(--text-primary)' }} />
+                <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '12px' }}>
+                  {generatingFile ? `Updating ${generatingFile.split('/').pop()}` : 'Generating...'}
+                </span>
               </>
             ) : status === 'Ready' ? (
               <>
-                <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
-                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>Ready</span>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-success)' }} />
+                <span style={{ fontWeight: 500, color: 'var(--text-secondary)', fontSize: '12px' }}>Ready</span>
               </>
             ) : status === 'Error' ? (
               <>
-                <AlertCircle size={13} style={{ color: 'var(--color-error)' }} />
-                <span style={{ fontWeight: 600, color: 'var(--color-error)' }}>Build failed</span>
+                <AlertCircle size={12} style={{ color: 'var(--color-error)' }} />
+                <span style={{ fontWeight: 500, color: 'var(--color-error)', fontSize: '12px' }}>Failed</span>
               </>
             ) : (
               <>
-                <span className="status-dot idle" />
-                <span>Idle</span>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--text-muted)' }} />
+                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Idle</span>
               </>
             )}
           </div>
@@ -793,49 +787,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               </div>
             </div>
 
-            {/* Horizontal Build Pipeline Stepper Bar */}
-            {(status === 'Generating' || (!iframeUrl && hasProject && status !== 'Error')) && (
-              <div className="build-pipeline-bar">
-                <div className="pipeline-stepper">
-                  <div className={`pipeline-step-item ${getStageState('packages') === 'done' ? 'done' : 'active'}`}>
-                    {getStageState('packages') === 'done' ? (
-                      <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
-                    ) : (
-                      <Loader2 size={13} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
-                    )}
-                    <span>✓ Install packages</span>
-                  </div>
-
-                  <div className={`pipeline-connector-line ${getStageState('packages') === 'done' ? 'active' : ''}`} />
-
-                  <div className={`pipeline-step-item ${getStageState('code') === 'done' ? 'done' : (getStageState('code') === 'current' ? 'active' : '')}`}>
-                    {getStageState('code') === 'done' ? (
-                      <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
-                    ) : getStageState('code') === 'current' ? (
-                      <Loader2 size={13} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
-                    ) : (
-                      <span className="status-dot idle" />
-                    )}
-                    <span>● Generate code {generatingFile ? `(${generatingFile.split('/').pop()})` : ''}</span>
-                  </div>
-
-                  <div className={`pipeline-connector-line ${iframeUrl ? 'active' : ''}`} />
-
-                  <div className={`pipeline-step-item ${iframeUrl ? 'done' : (getStageState('server') === 'current' ? 'active' : '')}`}>
-                    {iframeUrl ? (
-                      <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
-                    ) : getStageState('server') === 'current' ? (
-                      <Loader2 size={13} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
-                    ) : (
-                      <span className="status-dot idle" />
-                    )}
-                    <span>○ Launch preview</span>
-                  </div>
-                </div>
-
-                <div className="pipeline-progress-track">
-                  <div className="pipeline-progress-fill" style={{ width: `${progressPercent}%` }} />
-                </div>
+            {/* Sleek Minimal Progress Line during generation */}
+            {status === 'Generating' && (
+              <div style={{ height: '2px', width: '100%', background: 'rgba(255, 255, 255, 0.05)', position: 'relative', overflow: 'hidden' }}>
+                <div 
+                  style={{ 
+                    height: '100%', 
+                    width: `${progressPercent}%`, 
+                    background: 'var(--text-primary)', 
+                    transition: 'width 0.3s ease',
+                    boxShadow: '0 0 8px rgba(255, 255, 255, 0.4)'
+                  }} 
+                />
               </div>
             )}
 

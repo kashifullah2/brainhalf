@@ -7,14 +7,6 @@ import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
 import PlanBlock from './PlanBlock';
 
-const QUICK_ACTIONS = [
-  '✦ Add dark mode toggle',
-  '✦ Make responsive for mobile',
-  '✦ Add smooth animations',
-  '✦ Refactor into clean components',
-  '✦ Explain architecture',
-];
-
 const STARTER_PROMPTS = [
   { title: 'Crypto & Stock Dashboard', desc: 'Real-time charts, asset cards & metrics' },
   { title: 'Interactive Kanban Board', desc: 'Drag-and-drop tasks with column states' },
@@ -534,16 +526,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 height: '24px',
                 borderRadius: '6px',
                 background: isAi 
-                  ? 'rgba(168, 85, 247, 0.12)'
+                  ? '#18181b'
                   : 'rgba(255, 255, 255, 0.08)',
-                border: isAi ? '1px solid rgba(168, 85, 247, 0.25)' : 'none',
+                border: isAi ? '1px solid var(--border-subtle)' : 'none',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                marginTop: '4px'
+                marginTop: '3px'
               }}>
-                {isAi ? <Bot size={13} color="var(--color-ai)" /> : <User size={13} color="#ffffff" />}
+                {isAi ? <Bot size={13} color="var(--text-secondary)" /> : <User size={13} color="#ffffff" />}
               </div>
               
               <div style={{ 
@@ -552,7 +544,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: isAi ? 'flex-start' : 'flex-end',
-                gap: '6px'
+                gap: '4px'
               }}>
                 {/* Clean Author Header */}
                 <div style={{
@@ -560,24 +552,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   alignItems: 'center',
                   gap: '8px',
                   fontSize: '11px',
-                  fontWeight: 600,
-                  letterSpacing: '0.04em',
+                  fontWeight: 500,
+                  letterSpacing: '0.02em',
                   color: 'var(--text-muted)',
                   padding: '0 2px'
                 }}>
-                  <span>{isAi ? 'BRAINHALF' : 'YOU'}</span>
-                  {isAi && (
-                    <span style={{
-                      fontSize: '9.5px',
-                      background: 'rgba(168, 85, 247, 0.1)',
-                      color: 'var(--color-ai)',
-                      padding: '1px 6px',
-                      borderRadius: '4px',
-                      fontWeight: 500
-                    }}>
-                      {MODELS.find(m => m.id === selectedModelId)?.name || 'AI'}
-                    </span>
-                  )}
+                  <span>{isAi ? 'BrainHalf' : 'You'}</span>
                 </div>
 
                 {msg.role === 'user' ? (
@@ -740,54 +720,25 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Form Bar with Quick Action Chips */}
+      {/* Input Form Bar */}
       <div style={{
-        padding: '12px 24px 24px 24px',
+        padding: '16px 20px 20px 20px',
         borderTop: '1px solid var(--border-subtle)',
         background: 'transparent',
         display: 'flex',
         flexDirection: 'column',
         gap: '8px'
       }}>
-        {/* Action Chips Bar */}
-        <div className="action-chips-container">
-          {QUICK_ACTIONS.map((action, aIdx) => (
-            <button
-              key={aIdx}
-              className="action-chip"
-              onClick={() => handleSendMessage(action.replace('✦ ', ''))}
-              disabled={isGenerating}
-              type="button"
-            >
-              <span>{action}</span>
-            </button>
-          ))}
-        </div>
-
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          background: isGenerating ? 'rgba(168, 85, 247, 0.03)' : 'rgba(255, 255, 255, 0.03)',
-          border: isGenerating ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--border-subtle)',
-          borderRadius: '6px',
+          background: 'rgba(255, 255, 255, 0.025)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: '8px',
           padding: '12px 14px',
-          transition: 'all 0.2s ease',
+          transition: 'all 0.15s ease',
           position: 'relative'
         }} className="chat-input-wrapper">
-          {isGenerating && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              marginBottom: '6px',
-              fontSize: '11px',
-              color: '#c084fc',
-              fontWeight: 500
-            }}>
-              <Loader2 size={12} className="lucide-spin" />
-              <span>AI is generating code... input locked until complete</span>
-            </div>
-          )}
           {selectedImage && (
             <div style={{ position: 'relative', width: '56px', height: '56px', marginBottom: '8px', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>
               <img src={selectedImage} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '5px' }} />
@@ -835,14 +786,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   handleSendMessage();
                 }
               }}
-              placeholder={isGenerating ? "Synthesizing code..." : "Ask AI to build or refine your app..."}
+              placeholder={isGenerating ? "BrainHalf is working..." : "Ask BrainHalf to build, edit, or style..."}
               rows={2}
               disabled={isGenerating}
               style={{
                 width: '100%',
                 background: 'transparent',
                 border: 'none',
-                color: '#f3f4f6',
+                color: '#f4f4f6',
                 fontSize: '13.5px',
                 fontFamily: 'inherit',
                 resize: 'none',
@@ -856,8 +807,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               style={{ 
                 background: ((!input.trim() && !selectedImage) || isGenerating) 
                   ? 'rgba(255, 255, 255, 0.04)' 
-                  : 'var(--accent-gradient)',
-                color: ((!input.trim() && !selectedImage) || isGenerating) ? 'var(--text-muted)' : '#ffffff',
+                  : '#ffffff',
+                color: ((!input.trim() && !selectedImage) || isGenerating) ? 'var(--text-muted)' : '#09090b',
                 border: 'none',
                 borderRadius: '6px',
                 width: '32px',
@@ -866,8 +817,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: ((!input.trim() && !selectedImage) || isGenerating) ? 'not-allowed' : 'pointer',
-                transition: 'all 0.15s ease',
-                boxShadow: ((!input.trim() && !selectedImage) || isGenerating) ? 'none' : '0 2px 8px rgba(168, 85, 247, 0.35)'
+                transition: 'all 0.15s ease'
               }}
               title="Send Message (Enter)"
             >
