@@ -1,0 +1,104 @@
+export interface Project {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+const STORAGE_KEY = 'brainhalf_projects';
+const ACTIVE_PROJECT_KEY = 'brainhalf_active_project';
+
+export function getProjects(): Project[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list) && list.length > 0) return list;
+    }
+  } catch (e) {
+    console.error('Error reading projects:', e);
+  }
+
+  const defaultProj: Project = {
+    id: 'default',
+    name: 'Untitled Project',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  saveProjects([defaultProj]);
+  return [defaultProj];
+}
+
+export function saveProjects(projects: Project[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  } catch (e) {}
+}
+
+export function getActiveProjectId(): string {
+  // Check URL parameter first (?project=...)
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const urlProj = params.get('project');
+    if (urlProj && /^[a-zA-Z0-9_-]+$/.test(urlProj)) {
+      return urlProj;
+    }
+    const saved = localStorage.getItem(ACTIVE_PROJECT_KEY);
+    if (saved) return saved;
+  }
+  return 'default';
+}
+
+export function setActiveProjectId(id: string) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(ACTIVE_PROJECT_KEY, id);
+    const url = new URL(window.location.href);
+    if (id === 'default') {
+      url.searchParams.delete('project');
+    } else {
+      url.searchParams.set('project', id);
+    }
+    window.history.replaceState({}, '', url.toString());
+  }
+}
+
+export function createProject(name: string = 'Untitled Project'): Project {
+  const id = 'proj-' + Math.random().toString(36).substring(2, 9);
+  const newProj: Project = {
+    id,
+    name,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  const projects = [newProj, ...getProjects().filter(p => p.id !== id)];
+  saveProjects(projects);
+  setActiveProjectId(id);
+  return newProj;
+}
+
+export function updateProjectName(id: string, name: string) {
+  const projects = getProjects().map(p => {
+    if (p.id === id) {
+      return { ...p, name, updatedAt: Date.now() };
+    }
+    return p;
+  });
+  saveProjects(projects);
+}
+
+export function deleteProject(id: string): Project[] {
+  let projects = getProjects().filter(p => p.id !== id);
+  if (projects.length === 0) {
+    projects = [{
+      id: 'default',
+      name: 'Untitled Project',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }];
+  }
+  saveProjects(projects);
+  if (getActiveProjectId() === id) {
+    setActiveProjectId(projects[0].id);
+  }
+  return projects;
+}
