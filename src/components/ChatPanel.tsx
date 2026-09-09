@@ -348,6 +348,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default' }) =>
               fontFamily: 'inherit'
             }}
           >
+            <optgroup label="Xkiro AI Platform (Free)">
+              {MODELS.filter(m => m.provider === 'xkiro').map(m => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </optgroup>
             <optgroup label="AWS Bedrock (High Perf)">
               {MODELS.filter(m => m.provider === 'aws').map(m => (
                 <option key={m.id} value={m.id}>{m.name}</option>
