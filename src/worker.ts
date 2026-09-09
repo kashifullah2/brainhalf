@@ -6,6 +6,19 @@ export { ChatAgent };
 
 export default {
   async fetch(request: Request, env: any, _ctx: ExecutionContext) {
+    const url = new URL(request.url);
+    
+    // Route edge preview requests directly to the ChatAgent Durable Object
+    if (url.pathname.startsWith('/preview/')) {
+      const match = url.pathname.match(/^\/preview\/([^/]+)/);
+      if (match && match[1]) {
+        const agentId = match[1];
+        const id = env.ChatAgent.idFromName(agentId);
+        const obj = env.ChatAgent.get(id);
+        return obj.fetch(request);
+      }
+    }
+
     const agentResponse = routeAgentRequest(request, env);
     if (agentResponse) return agentResponse;
     

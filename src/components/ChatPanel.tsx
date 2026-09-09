@@ -209,9 +209,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
     connect();
 
+    const handleSyncFiles = (data: { files: any }) => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'sync_files', files: data.files }));
+      }
+    };
+    const unsubSyncFiles = appEvents.on('sync-files', handleSyncFiles);
+
     return () => {
       isMounted = false;
       clearTimeout(reconnectTimer);
+      unsubSyncFiles();
       if (ws) {
         ws.close();
       }

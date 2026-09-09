@@ -1,5 +1,6 @@
 import { Agent, type Connection } from 'agents';
 import { tracing } from 'cloudflare:workers';
+import { transform } from 'sucrase';
 
 export class ChatAgent extends Agent {
   private ensureSchema() {
@@ -9,6 +10,12 @@ export class ChatAgent extends Agent {
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );`;
+      
+      this.sql`CREATE TABLE IF NOT EXISTS project_files (
+        path TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );`;
     } catch (e) {
       console.warn('SQLite init note:', e);
@@ -54,6 +61,21 @@ export class ChatAgent extends Agent {
           try { this.broadcast(clearedMsg); } catch (e) {}
         } catch (e) {
           console.error('Error clearing history:', e);
+        }
+        return;
+      }
+
+      // Handle syncing project files to Edge SQLite for preview
+      if (data.type === 'sync_files' && data.files && typeof data.files === 'object') {
+        try {
+          for (const [path, content] of Object.entries(data.files)) {
+            const cleanPath = path.startsWith('/') ? path : '/' + path;
+            const contentStr = content as string;
+            this.sql`INSERT INTO project_files (path, content) VALUES (${cleanPath}, ${contentStr})
+                     ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
+          }
+        } catch (e) {
+          console.error('Error syncing files to SQLite:', e);
         }
         return;
       }
@@ -572,6 +594,102 @@ CRITICAL RULES:
 
   onError(error: unknown) {
     console.error('WebSocket connection error:', error);
+  }
+
+  async onRequest(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const pathMatch = url.pathname.match(/^\/preview\/[^/]+(.*)$/);
+    let path = pathMatch ? pathMatch[1] : url.pathname;
+    
+    if (path === '' || path === '/') {
+      path = '/index.html';
+    }
+
+    this.ensureSchema();
+
+    // Serve custom index.html with ESM Import Map
+    if (path === '/index.html') {
+      const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BrainHalf Edge Preview</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.2.0?dev",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev",
+          "lucide-react": "https://esm.sh/lucide-react@0.294.0?external=react"
+        }
+      }
+    </script>
+    <style>
+      body { margin: 0; padding: 0; font-family: system-ui, sans-serif; background: #0a0a0a; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      // Simple transform wrapper for inline imports to support relative file resolving in edge preview
+      import { createRoot } from 'react-dom/client';
+      import React from 'react';
+      
+      // Auto-mount main
+      import('/src/main.jsx').catch(e => {
+        if (e.message.includes('src/main.jsx')) {
+          console.log('Falling back to /src/main.tsx');
+          import('/src/main.tsx').catch(console.error);
+        }
+      });
+    </script>
+  </body>
+</html>`;
+      return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+    }
+
+    // Serve project files from SQLite
+    try {
+      const cleanPath = path.startsWith('/') ? path : '/' + path;
+      const rows = [...this.sql`SELECT content FROM project_files WHERE path = ${cleanPath}`];
+      
+      if (rows.length > 0) {
+        let content = rows[0].content as string;
+        
+        // Edge Transpilation for React/TSX
+        if (path.endsWith('.jsx') || path.endsWith('.tsx') || path.endsWith('.ts')) {
+          try {
+            content = transform(content, { transforms: ['typescript', 'jsx'] }).code;
+            
+            // Very basic ESM local path resolution fixing (appending .jsx if no extension provided)
+            content = content.replace(/from\s+['"](\.[^'"]+)['"]/g, (match, p1) => {
+              if (p1.endsWith('.css') || p1.endsWith('.jsx') || p1.endsWith('.tsx') || p1.endsWith('.ts')) return match;
+              return `from '${p1}.jsx'`; // default guess for edge preview local components
+            });
+            
+          } catch (e: any) {
+            console.error('Transpile error for', path, e);
+            return new Response(`console.error("Transpile Error:\\n" + ${JSON.stringify(e.message)});`, {
+              headers: { 'Content-Type': 'application/javascript' }
+            });
+          }
+          return new Response(content, { headers: { 'Content-Type': 'application/javascript' } });
+        }
+        
+        if (path.endsWith('.css')) {
+          return new Response(content, { headers: { 'Content-Type': 'text/css' } });
+        }
+        if (path.endsWith('.json')) {
+          return new Response(content, { headers: { 'Content-Type': 'application/json' } });
+        }
+        
+        return new Response(content, { headers: { 'Content-Type': 'text/plain' } });
+      }
+    } catch (e) {
+      console.error('Error querying file:', path, e);
+    }
+
+    return new Response('404 Not Found in Edge Preview', { status: 404 });
   }
 }
 

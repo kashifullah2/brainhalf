@@ -5,10 +5,8 @@ import {
   ArrowDown, Tablet, Smartphone, WrapText, Wrench, RotateCcw, ListFilter
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
-import { getWebContainer } from '../lib/webcontainer';
 import { basicReactTemplate } from '../lib/templates';
 import { appEvents } from '../lib/events';
-import { sanitizeCodeForPreview } from '../lib/code-sanitizer';
 import { exportProjectAsZip } from '../lib/zip-export';
 import FileExplorer from './FileExplorer';
 
@@ -31,8 +29,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
-  const [iframeUrl, setIframeUrl] = useState('');
-  const [isBooting, setIsBooting] = useState(false);
+  const iframeUrl = `/preview/${activeProjectId}/`;
   const [status, setStatus] = useState<GenerationStatus>('Idle');
   const [statusDetail, setStatusDetail] = useState('');
   const [hasProject, setHasProject] = useState(false);
@@ -58,8 +55,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
 
   const filesRef = useRef(files);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const webcontainerRef = useRef<any>(null);
-  const isBootingRef = useRef(false);
   const handleRefreshRef = useRef<() => void>(() => {});
 
   const addBuildLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
@@ -72,166 +67,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     filesRef.current = files;
   }, [files]);
 
-  // Helper to safely write files with recursive directory creation and sanitization
-  const writeWebContainerFile = useCallback(async (wc: any, filePath: string, content: string) => {
-    if (!wc) return;
-    const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
-    
-    // Ensure parent directory exists before writing
-    const lastSlash = cleanPath.lastIndexOf('/');
-    if (lastSlash > 0) {
-      const dir = cleanPath.substring(0, lastSlash);
-      try {
-        await wc.fs.mkdir(dir, { recursive: true });
-      } catch (_e) {
-        // ignore if directory already exists
-      }
-    }
-
-    const safeCode = sanitizeCodeForPreview(content, cleanPath);
-    await wc.fs.writeFile(cleanPath, safeCode);
-    console.log('Wrote file to WebContainer:', cleanPath);
+  // Helper to sync files to backend
+  const syncFilesToEdge = useCallback((currentFiles: any) => {
+    appEvents.emit('sync-files', { files: currentFiles });
   }, []);
-
-  const bootWebContainer = useCallback(async () => {
-    if (isBootingRef.current || webcontainerRef.current) return;
-    
-    isBootingRef.current = true;
-    setIsBooting(true);
-    setStatus('Generating');
-    setStatusDetail('Booting WebContainer runtime...');
-    addBuildLog('Initializing browser-native WebContainer runtime...', 'info');
-
-    try {
-      const wc = await getWebContainer();
-      webcontainerRef.current = wc;
-
-      setStatusDetail('Mounting template files...');
-      addBuildLog('Mounting project file tree...', 'info');
-      await wc.mount(basicReactTemplate);
-
-      // Write any generated files from filesRef
-      for (const [filePath, content] of Object.entries(filesRef.current)) {
-        try {
-          await writeWebContainerFile(wc, filePath, content);
-        } catch (err) {
-          console.warn('Pre-mount file write note:', filePath, err);
-        }
-      }
-
-      // Check if node_modules already exists from previous session (instant boot optimization)
-      let needsInstall = true;
-      try {
-        const entries = await wc.fs.readdir('/node_modules');
-        if (entries && entries.includes('react') && entries.includes('vite')) {
-          needsInstall = false;
-          addBuildLog('⚡ Cached dependencies detected: skipping npm install (instant 0s boot)', 'success');
-        }
-      } catch {
-        needsInstall = true;
-      }
-
-      if (needsInstall) {
-        setStatusDetail('Installing npm packages...');
-        addBuildLog('Executing fast npm install (--prefer-offline)...', 'info');
-        const installProcess = await wc.spawn('npm', ['install', '--prefer-offline', '--no-audit', '--no-fund']);
-        
-        installProcess.output.pipeTo(new WritableStream({
-          write(data) {
-            console.log('[npm install]', data);
-            setConsoleLogs(prev => [...prev.slice(-300), `[npm] ${data}`]);
-          }
-        }));
-
-        const installExitCode = await installProcess.exit;
-        if (installExitCode !== 0) {
-          throw new Error('Package install failed with code ' + installExitCode);
-        }
-        addBuildLog('Dependencies resolved and installed', 'success');
-      }
-
-      setStatusDetail('Starting Vite dev server...');
-      addBuildLog('Spawning Vite dev server (npm run dev)...', 'info');
-      const startProcess = await wc.spawn('npm', ['run', 'dev']);
-      
-      let devErrorBuffer = '';
-      let errorTimeout: any = null;
-      let installingPackage = false;
-
-      startProcess.output.pipeTo(new WritableStream({
-        write(data) {
-          console.log('[npm run dev]', data);
-          setConsoleLogs(prev => [...prev.slice(-300), data]);
-
-          // Auto-detect missing packages from Vite error stream and auto-install them
-          const matchMissing = data.match(/Failed to resolve import "([^"@./][^"/\n]*)"/);
-          if (matchMissing && matchMissing[1] && !installingPackage) {
-            const pkg = matchMissing[1];
-            installingPackage = true;
-            addBuildLog(`Auto-installing missing dependency: ${pkg}...`, 'info');
-            setStatusDetail(`Installing ${pkg}...`);
-            wc.spawn('npm', ['install', pkg, '--prefer-offline', '--no-audit', '--no-fund'])
-              .then((p: any) => p.exit)
-              .then((exitCode: number) => {
-                installingPackage = false;
-                if (exitCode === 0) {
-                  addBuildLog(`Successfully installed ${pkg}`, 'success');
-                  setStatusDetail('');
-                  if (handleRefreshRef.current) {
-                    handleRefreshRef.current();
-                  }
-                } else {
-                  addBuildLog(`Auto-install failed for ${pkg}`, 'warn');
-                }
-              })
-              .catch(() => { installingPackage = false; });
-          }
-
-          if (data.includes('Error:') || data.includes('ERR_') || data.includes('Failed to parse source') || data.includes('Internal server error')) {
-            devErrorBuffer += data + '\n';
-            if (errorTimeout) clearTimeout(errorTimeout);
-            errorTimeout = setTimeout(() => {
-              if (devErrorBuffer.trim().length > 0) {
-                appEvents.emit('auto-fix-error', { error: devErrorBuffer.trim() });
-                addBuildLog(`Dev server error captured: ${devErrorBuffer.trim().slice(0, 100)}...`, 'error');
-                devErrorBuffer = '';
-              }
-            }, 1500); // wait 1.5s to gather full error trace
-          } else if (devErrorBuffer.length > 0) {
-            devErrorBuffer += data + '\n';
-          }
-        }
-      }));
-
-      wc.on('server-ready', async (port: number, url: string) => {
-        console.log('Dev server ready at:', url);
-        addBuildLog(`Vite dev server running at ${url} (port ${port})`, 'success');
-        
-        // Push all latest generated files from filesRef.current
-        for (const [filePath, content] of Object.entries(filesRef.current)) {
-          try {
-            await writeWebContainerFile(wc, filePath, content);
-          } catch (e) {
-            console.warn('Sync on server-ready error:', filePath, e);
-          }
-        }
-
-        setStatus('Ready');
-        setStatusDetail('');
-        setIframeUrl(url);
-        setIsBooting(false);
-        isBootingRef.current = false;
-      });
-
-    } catch (error: any) {
-      console.error('WebContainer Boot Error:', error);
-      setStatus('Error');
-      setStatusDetail(error.message || 'WebContainer error');
-      addBuildLog(`WebContainer Boot Error: ${error.message}`, 'error');
-      setIsBooting(false);
-      isBootingRef.current = false;
-    }
-  }, [addBuildLog, writeWebContainerFile]);
 
   // Reset workspace when project changes or when cleared
   useEffect(() => {
@@ -248,30 +87,19 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       setStatusDetail('');
       setActiveFile('/src/App.jsx');
       addBuildLog('Workspace reset to baseline React 18 template', 'warn');
-      
-      if (webcontainerRef.current) {
-        webcontainerRef.current.mount(basicReactTemplate).catch(console.error);
-      }
+      syncFilesToEdge(defaultFiles);
     };
 
-    handleClearWorkspace();
-
+    // Initial sync
+    syncFilesToEdge(filesRef.current);
+    
     const unsubClear = appEvents.on('clear-workspace', handleClearWorkspace);
     return () => unsubClear();
-  }, [activeProjectId, addBuildLog]);
-
-  // Pre-boot WebContainer in background on mount so Vite dev server is ready immediately
-  useEffect(() => {
-    if (!webcontainerRef.current && !isBootingRef.current) {
-      bootWebContainer();
-    }
-  }, [bootWebContainer]);
+  }, [activeProjectId, addBuildLog, syncFilesToEdge]);
 
   // Synchronize generation events
   useEffect(() => {
-    const handleGenerationStatus = async ({ status: newStatus, detail, file, error }: any) => {
-      console.log('Generation status update:', newStatus, detail, file);
-      
+    const handleGenerationStatus = ({ status: newStatus, detail, file, error }: any) => {
       if (newStatus === 'Generating') {
         setStatus('Generating');
         setHasProject(true);
@@ -283,30 +111,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
           setGeneratingFile(file);
           addBuildLog(`AI generating: ${file}`, 'info');
         }
-
-        if (!webcontainerRef.current && !isBootingRef.current) {
-          bootWebContainer();
-        }
       } else if (newStatus === 'Ready') {
         setHasProject(true);
         setStatusDetail('');
+        setStatus('Ready');
         addBuildLog('All components generated successfully', 'success');
-        
-        // Ensure all generated files are written to WebContainer
-        if (webcontainerRef.current) {
-          for (const [filePath, content] of Object.entries(filesRef.current)) {
-            try {
-              await writeWebContainerFile(webcontainerRef.current, filePath, content);
-            } catch (err) {
-              console.error('Error writing file on Ready:', filePath, err);
-            }
-          }
-          if (iframeUrl) {
-            setStatus('Ready');
-          }
-        } else if (!isBootingRef.current) {
-          bootWebContainer();
-        }
+        syncFilesToEdge(filesRef.current);
+        if (handleRefreshRef.current) handleRefreshRef.current();
       } else if (newStatus === 'Error') {
         setStatus('Error');
         const errMsg = error || 'Generation failed';
@@ -315,27 +126,20 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       }
     };
 
-    const handleFileGenerated = async ({ path, content, isComplete }: { path: string; content: string; isComplete?: boolean }) => {
+    const handleFileGenerated = ({ path, content, isComplete }: { path: string; content: string; isComplete?: boolean }) => {
       const cleanPath = path.startsWith('/') ? path : `/${path}`;
       setHasProject(true);
       setGeneratingFile(path);
       
-      // Update both ref and React state immediately
       filesRef.current[cleanPath] = content;
       setFiles(prev => ({
         ...prev,
         [cleanPath]: content
       }));
 
-      // Write complete file to WebContainer
-      if (isComplete && webcontainerRef.current) {
-        try {
-          await writeWebContainerFile(webcontainerRef.current, cleanPath, content);
-          addBuildLog(`Compiled: ${cleanPath}`, 'success');
-        } catch (e) {
-          console.error('Failed writing complete file to WebContainer:', e);
-          addBuildLog(`Write failed: ${cleanPath}`, 'error');
-        }
+      if (isComplete) {
+        addBuildLog(`Compiled: ${cleanPath}`, 'success');
+        syncFilesToEdge(filesRef.current);
       }
     };
 
@@ -350,7 +154,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         await exportProjectAsZip(filesRef.current, projectName || 'brainhalf-project');
         addBuildLog(`Project bundle exported as ZIP: ${projectName || 'brainhalf-project'}`, 'success');
       } catch (e) {
-        console.error('Export project error:', e);
         addBuildLog('Export ZIP error', 'error');
       }
     };
@@ -360,31 +163,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     };
 
     const handleExecuteCommand = async ({ command, requestId }: { command: string; requestId: string }) => {
-      if (!webcontainerRef.current) {
-        appEvents.emit(`command-result-${requestId}`, { output: 'Error: WebContainer not booted.' });
-        return;
-      }
-      try {
-        const parts = command.split(' ');
-        const cmd = parts[0];
-        const args = parts.slice(1);
-        
-        const process = await webcontainerRef.current.spawn(cmd, args);
-        let output = '';
-        
-        process.output.pipeTo(new WritableStream({
-          write(data) {
-            output += data;
-          }
-        }));
-        
-        const exitCode = await process.exit;
-        appEvents.emit(`command-result-${requestId}`, { 
-          output: `Exit Code: ${exitCode}\n\n${output}` 
-        });
-      } catch (err: any) {
-        appEvents.emit(`command-result-${requestId}`, { output: `Failed to execute: ${err.message}` });
-      }
+      appEvents.emit(`command-result-${requestId}`, { output: 'Edge Preview mode active. Terminal commands are simulated.' });
     };
 
     const unsubStatus = appEvents.on('generation-status', handleGenerationStatus);
@@ -402,7 +181,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       unsubContext();
       unsubExec();
     };
-  }, [iframeUrl, addBuildLog, bootWebContainer, writeWebContainerFile]);
+  }, [addBuildLog, syncFilesToEdge]);
 
   const handleEditorChange = async (value: string | undefined) => {
     if (!value) return;
@@ -412,12 +191,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       [activeFile]: value
     }));
     
-    if (webcontainerRef.current && status === 'Ready') {
-      try {
-        await writeWebContainerFile(webcontainerRef.current, activeFile, value);
-      } catch (err) {
-        console.error('Failed to update file:', err);
-      }
+    if (status === 'Ready' || status === 'Idle') {
+      syncFilesToEdge(filesRef.current);
     }
   };
 
@@ -434,46 +209,30 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
 
   // Calculate stages for the progress checklist
   const getStageState = (stageName: string) => {
-    if (status === 'Ready' && iframeUrl) return 'done';
+    if (status === 'Ready') return 'done';
     if (stageName === 'init') return 'done';
-    if (stageName === 'packages') {
-      if (status === 'Idle') return 'pending';
-      if (statusDetail.includes('Mounting') || statusDetail.includes('Installing') || statusDetail.includes('Booting')) return 'current';
-      return 'done';
-    }
+    if (stageName === 'packages') return 'done';
     if (stageName === 'code') {
-      if (status === 'Idle') return 'pending';
-      if (statusDetail.includes('Mounting') || statusDetail.includes('Installing') || statusDetail.includes('Booting')) return 'pending';
       if (status === 'Generating' || generatingFile) return 'current';
-      if (status === 'Ready') return 'done';
       return 'pending';
     }
     if (stageName === 'server') {
-      if (iframeUrl) return 'done';
-      if (statusDetail.includes('Starting') || statusDetail.includes('dev server')) return 'current';
       return 'pending';
     }
     return 'pending';
   };
 
   const progressPercent = useMemo(() => {
-    if (status === 'Ready' && iframeUrl) return 100;
+    if (status === 'Ready') return 100;
     if (status === 'Idle') return 0;
-    if (status === 'Generating') {
-      if (statusDetail.includes('Starting') || iframeUrl) return 85;
-      if (generatingFile) return 65;
-      if (statusDetail.includes('Installing')) return 35;
-      return 25;
-    }
+    if (status === 'Generating') return 65;
     return 50;
-  }, [status, statusDetail, generatingFile, iframeUrl]);
+  }, [status]);
 
   const currentStep = useMemo(() => {
     if (status !== 'Generating') return 3;
-    if (isBooting || statusDetail.includes('Installing') || statusDetail.includes('Booting')) return 1;
-    if (generatingFile || statusDetail.includes('Generating') || statusDetail.includes('Writing')) return 2;
-    return 3;
-  }, [status, isBooting, generatingFile, statusDetail]);
+    return 2;
+  }, [status]);
 
   const handleCopyCurrentFile = () => {
     const code = files[activeFile] || '';
@@ -818,7 +577,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Terminal size={14} color="#a855f7" />
                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Terminal & Dev Server Logs</span>
-                <span style={{ fontSize: '10px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>WebContainer Active</span>
+                <span style={{ fontSize: '10px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>Edge Preview Active</span>
               </div>
               <button
                 onClick={() => setConsoleLogs([])}
@@ -1114,8 +873,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     Ask the AI assistant to build any app or component. BrainHalf generates React code and mounts it in WebContainer immediately.
                   </p>
 
-                  <button className="button-primary" onClick={bootWebContainer}>
-                    <Play size={14} fill="white" /> Launch WebContainer Preview
+                  <button className="button-primary" onClick={handleRefresh}>
+                    <Play size={14} fill="white" /> Launch Edge Preview
                   </button>
                 </div>
               ) : iframeUrl ? (
@@ -1198,9 +957,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
 
                     <button 
                       className="button-ghost" 
-                      onClick={bootWebContainer}
+                      onClick={handleRefresh}
                       style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      title="Re-run dev server"
+                      title="Re-run edge preview"
                     >
                       <RotateCcw size={14} />
                       <span>Retry</span>
