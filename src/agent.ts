@@ -862,7 +862,35 @@ CRITICAL RULES:
     // Serve project files from SQLite
     try {
       const cleanPath = path.startsWith('/') ? path : '/' + path;
-      const rows = [...this.sql`SELECT content FROM project_files WHERE path = ${cleanPath}`];
+      const strippedPath = cleanPath.replace(/^\//, '');
+      const srcPrefixed = cleanPath.startsWith('/src/') ? cleanPath : '/src' + cleanPath;
+      const srcStripped = cleanPath.startsWith('/src/') ? cleanPath.replace('/src/', '/') : cleanPath;
+
+      let rows = [...this.sql`SELECT content FROM project_files 
+        WHERE path = ${cleanPath} 
+           OR path = ${srcPrefixed} 
+           OR path = ${srcStripped} 
+           OR path = ${strippedPath} 
+           OR path = ${'src/' + strippedPath}`];
+      
+      // Fallback: match by basename if still not found
+      if (rows.length === 0) {
+        const filename = cleanPath.split('/').pop() || '';
+        if (filename) {
+          rows = [...this.sql`SELECT content FROM project_files WHERE path LIKE '%' || ${filename} LIMIT 1`];
+        }
+      }
+
+      // If CSS was requested and genuinely not found yet, return an empty CSS stylesheet (200 OK) to prevent 404 console errors
+      if (rows.length === 0 && cleanPath.endsWith('.css')) {
+        return new Response('/* edge preview styles */', {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'text/css; charset=utf-8',
+            'Cache-Control': 'no-cache'
+          }
+        });
+      }
       
       if (rows.length > 0) {
         let content = rows[0].content as string;
@@ -874,14 +902,19 @@ CRITICAL RULES:
             content = content.replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/, '').replace(/\r?\n```\s*$/, '');
             content = transform(content, { transforms: ['typescript', 'jsx'] }).code;
             
-            // Fix CSS imports (inject link tag dynamically)
+            // Fix CSS imports (inject link tag dynamically with resolved path)
             content = content.replace(/import\s+['"]([^'"]+\.css)['"]/g, (match, p1) => {
+              const filename = p1.split('/').pop() || 'styles.css';
               return `
                 (function() {
-                  const link = document.createElement('link');
-                  link.rel = 'stylesheet';
-                  link.href = '${p1}';
-                  document.head.appendChild(link);
+                  const id = 'bh-css-' + '${filename}'.replace(/[^a-zA-Z0-9]/g, '-');
+                  if (!document.getElementById(id)) {
+                    const link = document.createElement('link');
+                    link.id = id;
+                    link.rel = 'stylesheet';
+                    link.href = '${filename}';
+                    document.head.appendChild(link);
+                  }
                 })();
               `;
             });
