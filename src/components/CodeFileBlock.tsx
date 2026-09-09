@@ -134,16 +134,15 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
 
       {/* Code with Line Numbers */}
       <div style={{
-        maxHeight: '380px',
+        maxHeight: '420px',
         overflowY: 'auto',
-        overflowX: 'auto',
         fontFamily: 'var(--font-mono)',
         fontSize: '12px',
         lineHeight: 1.5,
         padding: '8px 0',
         background: '#0d0f14'
       }}>
-        <div style={{ display: 'table', width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ display: 'table', width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           {highlightedLines.map((lineHtml, idx) => (
             <div 
               key={idx} 
@@ -168,12 +167,13 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 {idx + 1}
               </span>
 
-              {/* Code content */}
+              {/* Code content with proper wrapping */}
               <span 
                 style={{
                   display: 'table-cell',
                   paddingRight: '12px',
-                  whiteSpace: 'pre',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
                   verticalAlign: 'top',
                   color: '#e2e8f0'
                 }}

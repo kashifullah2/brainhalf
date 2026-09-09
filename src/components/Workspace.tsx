@@ -631,21 +631,29 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                   </div>
 
                   {/* Centered Floating 'Generating preview...' Badge */}
-                  <div className="generating-overlay-card">
-                    <div className="generating-spinner-ring" />
+                  <div className="generating-overlay-card" style={{
+                    background: 'rgba(12, 14, 20, 0.88)',
+                    backdropFilter: 'blur(24px)',
+                    WebkitBackdropFilter: 'blur(24px)',
+                    border: '1px solid rgba(168, 85, 247, 0.25)',
+                    borderRadius: '12px',
+                    boxShadow: '0 16px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(168, 85, 247, 0.15)',
+                    padding: '24px 32px'
+                  }}>
+                    <div className="generating-spinner-ring" style={{ width: '40px', height: '40px', borderWidth: '2.5px' }} />
                     <div>
-                      <h3 style={{ fontSize: '17px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px', fontFamily: "'Outfit', sans-serif" }}>
-                        Generating preview...
+                      <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px', fontFamily: "'Outfit', sans-serif" }}>
+                        Generating Application...
                       </h3>
-                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                         {generatingFile ? (
                           <span>Writing <code style={{ color: '#c084fc', background: 'rgba(168, 85, 247, 0.12)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--font-mono)' }}>{generatingFile}</code></span>
                         ) : (
-                          statusDetail || 'AI is writing your files in real time...'
+                          statusDetail || 'Synthesizing layout & components...'
                         )}
                       </p>
                     </div>
-                    <div className="generating-progress-bar">
+                    <div className="generating-progress-bar" style={{ height: '3px' }}>
                       <div className="generating-progress-fill" />
                     </div>
                   </div>

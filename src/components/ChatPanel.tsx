@@ -332,20 +332,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default' }) =>
           <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>AI Assistant</span>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <select
             value={selectedModelId}
             onChange={(e) => setSelectedModelId(e.target.value)}
             style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '6px',
-              color: 'var(--text-secondary)',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--border-medium)',
+              borderRadius: '8px',
+              color: 'var(--text-primary)',
               fontSize: '12px',
-              padding: '4px 8px',
+              fontWeight: 500,
+              padding: '5px 10px',
               outline: 'none',
               cursor: 'pointer',
-              fontFamily: 'inherit'
+              fontFamily: 'inherit',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
             }}
           >
             <optgroup label="Xkiro AI Platform (Free)">
@@ -365,7 +367,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default' }) =>
             </optgroup>
           </select>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Vertical Separator Divider */}
+          <div style={{ width: '1px', height: '16px', background: 'var(--border-subtle)' }} />
+
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            padding: '4px 8px',
+            borderRadius: '6px',
+            border: '1px solid var(--border-subtle)'
+          }}>
             <span style={{ 
               width: '6px', 
               height: '6px', 
@@ -373,7 +386,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default' }) =>
               background: isConnected ? '#10b981' : '#f59e0b', 
               boxShadow: isConnected ? '0 0 6px rgba(16, 185, 129, 0.6)' : 'none' 
             }} />
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
               {isConnected ? 'Session Active' : 'Connecting'}
             </span>
           </div>
@@ -382,9 +395,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default' }) =>
             className="icon-btn"
             onClick={handleClearChat}
             title="Clear conversation history"
-            style={{ padding: '3px' }}
+            style={{ padding: '4px' }}
           >
-            <Trash2 size={13} />
+            <Trash2 size={14} />
           </button>
         </div>
       </div>
