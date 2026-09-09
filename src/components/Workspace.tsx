@@ -897,76 +897,38 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             position: 'relative',
             overflow: 'hidden'
           }}>
-            {/* Realistic Compact Browser Chrome Bar with Viewport Switcher */}
+            {/* Realistic Compact Browser Chrome Bar */}
             <div className="browser-chrome">
-              <div className="browser-dots">
-                <span className="browser-dot close" title="Close" />
-                <span className="browser-dot minimize" title="Minimize" />
-                <span className="browser-dot maximize" title="Maximize" />
+              {/* Left: Window Dots & Navigation Controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                <div className="browser-dots">
+                  <span className="browser-dot close" title="Close" />
+                  <span className="browser-dot minimize" title="Minimize" />
+                  <span className="browser-dot maximize" title="Maximize" />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button 
+                    className="browser-action-btn" 
+                    title="Refresh live preview" 
+                    aria-label="Refresh live preview"
+                    onClick={handleRefresh}
+                    disabled={!iframeUrl}
+                  >
+                    <RefreshCw size={12} />
+                  </button>
+                  <button 
+                    className="browser-action-btn" 
+                    title="Open live preview in new window" 
+                    aria-label="Open live preview in new window"
+                    onClick={() => iframeUrl && window.open(iframeUrl, '_blank')}
+                    disabled={!iframeUrl}
+                  >
+                    <ExternalLink size={12} />
+                  </button>
+                </div>
               </div>
 
-              {/* Viewport Switcher (Desktop / Tablet / Mobile) */}
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                background: 'rgba(255, 255, 255, 0.05)', 
-                borderRadius: '6px', 
-                padding: '2px', 
-                gap: '2px' 
-              }}>
-                <button
-                  onClick={() => setViewportMode('desktop')}
-                  style={{
-                    background: viewportMode === 'desktop' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
-                    border: 'none',
-                    color: viewportMode === 'desktop' ? '#ffffff' : 'var(--text-muted)',
-                    borderRadius: '4px',
-                    padding: '3px 6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title="Desktop View (100%)"
-                  aria-label="Desktop View"
-                >
-                  <Monitor size={12} />
-                </button>
-                <button
-                  onClick={() => setViewportMode('tablet')}
-                  style={{
-                    background: viewportMode === 'tablet' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
-                    border: 'none',
-                    color: viewportMode === 'tablet' ? '#ffffff' : 'var(--text-muted)',
-                    borderRadius: '4px',
-                    padding: '3px 6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title="Tablet View (768px)"
-                  aria-label="Tablet View"
-                >
-                  <Tablet size={12} />
-                </button>
-                <button
-                  onClick={() => setViewportMode('mobile')}
-                  style={{
-                    background: viewportMode === 'mobile' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
-                    border: 'none',
-                    color: viewportMode === 'mobile' ? '#ffffff' : 'var(--text-muted)',
-                    borderRadius: '4px',
-                    padding: '3px 6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title="Mobile View (375px)"
-                  aria-label="Mobile View"
-                >
-                  <Smartphone size={12} />
-                </button>
-              </div>
-
+              {/* Center: URL Pill */}
               <div className="browser-url-pill">
                 <Lock size={11} style={{ opacity: 0.6 }} />
                 <span>preview.brainhalf.app/live</span>
@@ -977,24 +939,81 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 )}
               </div>
 
-              <div className="browser-actions">
-                <button 
-                  className="browser-action-btn" 
-                  title="Refresh live preview" 
-                  aria-label="Refresh live preview"
-                  onClick={handleRefresh}
-                  disabled={!iframeUrl}
+              {/* Right: Viewport Mode Switcher (Desktop / Tablet / Mobile) */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                background: 'rgba(255, 255, 255, 0.05)', 
+                borderRadius: '6px', 
+                padding: '2px', 
+                gap: '2px',
+                flexShrink: 0
+              }}>
+                <button
+                  onClick={() => setViewportMode('desktop')}
+                  style={{
+                    background: viewportMode === 'desktop' ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+                    border: 'none',
+                    color: viewportMode === 'desktop' ? '#ffffff' : 'var(--text-muted)',
+                    borderRadius: '4px',
+                    padding: '3px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    fontWeight: viewportMode === 'desktop' ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Desktop View (Full Width)"
+                  aria-label="Desktop View"
                 >
-                  <RefreshCw size={12} />
+                  <Monitor size={12} />
+                  <span>Desktop</span>
                 </button>
-                <button 
-                  className="browser-action-btn" 
-                  title="Open live preview in new window" 
-                  aria-label="Open live preview in new window"
-                  onClick={() => iframeUrl && window.open(iframeUrl, '_blank')}
-                  disabled={!iframeUrl}
+                <button
+                  onClick={() => setViewportMode('tablet')}
+                  style={{
+                    background: viewportMode === 'tablet' ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+                    border: 'none',
+                    color: viewportMode === 'tablet' ? '#ffffff' : 'var(--text-muted)',
+                    borderRadius: '4px',
+                    padding: '3px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    fontWeight: viewportMode === 'tablet' ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Tablet View (768px)"
+                  aria-label="Tablet View"
                 >
-                  <ExternalLink size={12} />
+                  <Tablet size={12} />
+                  <span>Tablet</span>
+                </button>
+                <button
+                  onClick={() => setViewportMode('mobile')}
+                  style={{
+                    background: viewportMode === 'mobile' ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+                    border: 'none',
+                    color: viewportMode === 'mobile' ? '#ffffff' : 'var(--text-muted)',
+                    borderRadius: '4px',
+                    padding: '3px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11px',
+                    fontWeight: viewportMode === 'mobile' ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Mobile View (375px)"
+                  aria-label="Mobile View"
+                >
+                  <Smartphone size={12} />
+                  <span>Mobile</span>
                 </button>
               </div>
             </div>
@@ -1046,7 +1065,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             )}
 
             {/* Application Area below browser chrome */}
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ flex: 1, width: '100%', height: 'calc(100% - 36px)', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
               {!hasProject ? (
                 /* Empty State */
                 <div style={{
@@ -1099,7 +1118,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 </div>
               ) : iframeUrl ? (
                 /* Live Iframe Preview with Viewport Chassis */
-                <div className="viewport-frame-container">
+                <div className={`viewport-frame-container ${viewportMode}`}>
                   <div className={`viewport-device-chassis ${viewportMode}`}>
                     <iframe
                       ref={iframeRef}
@@ -1108,7 +1127,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                         width: '100%',
                         height: '100%',
                         border: 'none',
-                        background: 'white'
+                        display: 'block',
+                        background: '#0f111a'
                       }}
                       title="Live Application Preview"
                       allow="cross-origin-isolated"

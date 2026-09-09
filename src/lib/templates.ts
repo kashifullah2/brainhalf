@@ -41,12 +41,19 @@ export default defineConfig({
     file: {
       contents: `
 <!doctype html>
-<html lang="en">
+<html lang="en" style="color-scheme: dark;">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
-    <style>body { font-family: sans-serif; background: #111; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }</style>
+    <title>Live Preview</title>
+    <style>
+      * { box-sizing: border-box; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.4); }
+      html, body { margin: 0; padding: 0; min-height: 100vh; background: #0f111a; color: #f3f4f6; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
