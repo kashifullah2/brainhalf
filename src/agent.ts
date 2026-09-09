@@ -17,6 +17,126 @@ export class ChatAgent extends Agent {
         content TEXT NOT NULL,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );`;
+
+      const countRows = [...this.sql`SELECT COUNT(*) as count FROM project_files`];
+      if (countRows.length === 0 || countRows[0].count === 0) {
+        const defaultApp = `import React from 'react';
+
+export default function App() {
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      background: 'linear-gradient(135deg, #0b0c10 0%, #1a1b26 100%)',
+      color: '#f8fafc',
+      padding: '24px',
+      textAlign: 'center'
+    }}>
+      <div style={{
+        maxWidth: '520px',
+        padding: '40px 32px',
+        borderRadius: '20px',
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        backdropFilter: 'blur(16px)',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+      }}>
+        <div style={{
+          width: '56px',
+          height: '56px',
+          borderRadius: '14px',
+          background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 24px',
+          boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)'
+        }}>
+          <span style={{ fontSize: '26px' }}>⚡</span>
+        </div>
+        <h1 style={{
+          fontSize: '24px',
+          fontWeight: '700',
+          margin: '0 0 12px',
+          letterSpacing: '-0.02em',
+          background: 'linear-gradient(to right, #ffffff, #c4b5fd)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}>
+          Cloudflare Edge Preview Live
+        </h1>
+        <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6', margin: '0 0 24px' }}>
+          Your ultra-fast Edge Preview runtime is connected and ready. Send a prompt in the chat panel to generate custom React components!
+        </p>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', borderRadius: '999px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.25)', color: '#4ade80', fontSize: '12px', fontWeight: 500 }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4ade80' }} />
+          Zero Cold-Start Runtime Active
+        </div>
+      </div>
+    </div>
+  );
+}`;
+
+        const defaultMain = `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
+import './styles.css';
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('Edge Preview Error:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '24px', fontFamily: 'system-ui, sans-serif', color: '#f87171', background: '#0f1015', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+          <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '24px', maxWidth: '450px' }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#f87171', marginBottom: '8px' }}>Preview Error</h3>
+            <p style={{ color: '#9ca3af', fontSize: '13px', lineHeight: 1.5, marginBottom: '16px' }}>{this.state.error?.message || 'A render error occurred.'}</p>
+            <button onClick={() => window.location.reload()} style={{ padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>
+              Reload Preview
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  </React.StrictMode>
+);`;
+
+        const defaultCss = `* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  background: #0b0c10;
+  color: #f8fafc;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}`;
+
+        this.sql`INSERT OR IGNORE INTO project_files (path, content) VALUES ('/src/App.jsx', ${defaultApp});`;
+        this.sql`INSERT OR IGNORE INTO project_files (path, content) VALUES ('/src/main.jsx', ${defaultMain});`;
+        this.sql`INSERT OR IGNORE INTO project_files (path, content) VALUES ('/src/styles.css', ${defaultCss});`;
+      }
     } catch (e) {
       console.warn('SQLite init note:', e);
     }
@@ -598,6 +718,24 @@ CRITICAL RULES:
 
   async onRequest(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    // Redirect /preview/:id to /preview/:id/ so relative imports resolve properly
+    if (url.pathname.match(/^\/preview\/[^/]+$/)) {
+      return Response.redirect(`${url.origin}${url.pathname}/`, 301);
+    }
+
+    const corsHeaders: Record<string, string> = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Content-Security-Policy': "frame-ancestors *",
+    };
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
     const pathMatch = url.pathname.match(/^\/preview\/[^/]+(.*)$/);
     let path = pathMatch ? pathMatch[1] : url.pathname;
     
@@ -631,21 +769,27 @@ CRITICAL RULES:
   <body>
     <div id="root"></div>
     <script type="module">
-      // Simple transform wrapper for inline imports to support relative file resolving in edge preview
       import { createRoot } from 'react-dom/client';
       import React from 'react';
       
       // Auto-mount main
       import('./src/main.jsx').catch(e => {
-        if (e.message.includes('src/main.jsx')) {
+        if (e.message && e.message.includes('src/main.jsx')) {
           console.log('Falling back to ./src/main.tsx');
           import('./src/main.tsx').catch(console.error);
+        } else {
+          console.error('Preview Load Error:', e);
         }
       });
     </script>
   </body>
 </html>`;
-      return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+      return new Response(html, { 
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'text/html; charset=utf-8' 
+        } 
+      });
     }
 
     // Serve project files from SQLite
@@ -682,26 +826,55 @@ CRITICAL RULES:
           } catch (e: any) {
             console.error('Transpile error for', path, e);
             return new Response(`console.error("Transpile Error:\\n" + ${JSON.stringify(e.message)});`, {
-              headers: { 'Content-Type': 'application/javascript' }
+              headers: { 
+                ...corsHeaders,
+                'Content-Type': 'application/javascript; charset=utf-8' 
+              }
             });
           }
-          return new Response(content, { headers: { 'Content-Type': 'application/javascript' } });
+          return new Response(content, { 
+            headers: { 
+              ...corsHeaders,
+              'Content-Type': 'application/javascript; charset=utf-8' 
+            } 
+          });
         }
         
         if (path.endsWith('.css')) {
-          return new Response(content, { headers: { 'Content-Type': 'text/css' } });
+          return new Response(content, { 
+            headers: { 
+              ...corsHeaders,
+              'Content-Type': 'text/css; charset=utf-8' 
+            } 
+          });
         }
         if (path.endsWith('.json')) {
-          return new Response(content, { headers: { 'Content-Type': 'application/json' } });
+          return new Response(content, { 
+            headers: { 
+              ...corsHeaders,
+              'Content-Type': 'application/json; charset=utf-8' 
+            } 
+          });
         }
         
-        return new Response(content, { headers: { 'Content-Type': 'text/plain' } });
+        return new Response(content, { 
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'text/plain; charset=utf-8' 
+          } 
+        });
       }
     } catch (e) {
       console.error('Error querying file:', path, e);
     }
 
-    return new Response('404 Not Found in Edge Preview', { status: 404 });
+    return new Response('404 Not Found in Edge Preview', { 
+      status: 404,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/plain'
+      }
+    });
   }
 }
 

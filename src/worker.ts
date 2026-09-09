@@ -25,13 +25,7 @@ export default {
     // Serve static frontend assets for all other routes
     const response = await env.ASSETS.fetch(request);
     
-    // Clone the response so we can modify the headers (Cloudflare ASSETS responses are immutable)
-    const newResponse = new Response(response.body, response);
-    
-    // Add Cross-Origin Isolation headers required by WebContainers for SharedArrayBuffer
-    newResponse.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
-    newResponse.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
-    
-    return newResponse;
+    // Return the response for static assets without blocking iframe embeddings
+    return response;
   }
 }

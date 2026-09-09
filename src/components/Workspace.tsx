@@ -30,9 +30,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const iframeUrl = `/preview/${activeProjectId}/`;
-  const [status, setStatus] = useState<GenerationStatus>('Idle');
+  const [status, setStatus] = useState<GenerationStatus>('Ready');
   const [statusDetail, setStatusDetail] = useState('');
-  const [hasProject, setHasProject] = useState(false);
+  const [hasProject, setHasProject] = useState(true);
   const [generatingFile, setGeneratingFile] = useState('');
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const [buildLogs, setBuildLogs] = useState<BuildLogItem[]>([
@@ -196,10 +196,24 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     }
   };
 
+  const handleLaunchPreview = () => {
+    setHasProject(true);
+    setStatus('Ready');
+    syncFilesToEdge(filesRef.current);
+    addBuildLog('Launching live edge preview...', 'info');
+    setTimeout(() => {
+      if (iframeRef.current && iframeUrl) {
+        iframeRef.current.src = iframeUrl;
+      }
+    }, 50);
+  };
+
   const handleRefresh = () => {
     if (iframeRef.current && iframeUrl) {
       iframeRef.current.src = iframeUrl;
       addBuildLog('Preview reloaded', 'info');
+    } else {
+      handleLaunchPreview();
     }
   };
 
@@ -870,10 +884,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     lineHeight: 1.5,
                     marginBottom: '24px'
                   }}>
-                    Ask the AI assistant to build any app or component. BrainHalf generates React code and mounts it in WebContainer immediately.
+                    Ask the AI assistant to build any app or component, or click below to launch the live Cloudflare Edge preview.
                   </p>
 
-                  <button className="button-primary" onClick={handleRefresh}>
+                  <button className="button-primary" onClick={handleLaunchPreview}>
                     <Play size={14} fill="white" /> Launch Edge Preview
                   </button>
                 </div>
@@ -892,7 +906,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                         background: '#0f111a'
                       }}
                       title="Live Application Preview"
-                      allow="cross-origin-isolated"
+                      allow="fullscreen; clipboard-read; clipboard-write;"
                     />
                   </div>
                 </div>
