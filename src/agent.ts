@@ -583,9 +583,12 @@ CRITICAL RULES:
 
           if (!handledByBedrock) {
             const candidateModels = [
+              '@cf/zai-org/glm-5.3-flash',
+              '@cf/moonshotai/kimi-k2.7-code',
+              '@cf/qwen/qwen3.8-27b',
+              '@cf/qwen/qwen2.5-coder-32b-instruct',
               '@cf/meta/llama-3.1-8b-instruct-fp8',
               '@cf/meta/llama-3.2-3b-instruct',
-              '@cf/qwen/qwen2.5-coder-32b-instruct',
               '@cf/mistral/mistral-7b-instruct-v0.2-lora'
             ];
 
@@ -599,11 +602,20 @@ CRITICAL RULES:
             for (const model of candidateModels) {
               try {
                 console.log(`Attempting Cloudflare AI model: ${model} with max_tokens: 3500`);
-                aiResponse = await (this as any).env.AI.run(model, {
-                  messages: inputMessages,
-                  stream: true,
-                  max_tokens: 3500
-                });
+                try {
+                  aiResponse = await (this as any).env.AI.run(model, {
+                    messages: inputMessages,
+                    stream: true,
+                    max_tokens: 3500,
+                    chat_template_kwargs: { enable_thinking: false }
+                  });
+                } catch {
+                  aiResponse = await (this as any).env.AI.run(model, {
+                    messages: inputMessages,
+                    stream: true,
+                    max_tokens: 3500
+                  });
+                }
                 if (aiResponse) {
                   selectedModel = model;
                   break;
@@ -635,20 +647,23 @@ CRITICAL RULES:
             const decoder = new TextDecoder();
             let sseBuffer = '';
 
+            const extractToken = (obj: any): string | undefined => {
+              if (!obj || typeof obj !== 'object') return undefined;
+              return obj.response ?? obj.choices?.[0]?.delta?.content ?? obj.choices?.[0]?.delta?.reasoning_content ?? obj.choices?.[0]?.text;
+            };
+
             // Stream back to client via WebSocket with robust SSE decoding
             for await (const rawChunk of aiResponse) {
-              // If already parsed object with response
-              if (rawChunk && typeof rawChunk === 'object' && !(rawChunk instanceof Uint8Array) && 'response' in rawChunk) {
-                const text = (rawChunk as any).response;
-                if (text) {
-                  outputContent += text;
-                  const msg = JSON.stringify({ 
-                    type: 'stream', 
-                    chunk: { response: text, done: false } 
-                  });
-                  try { connection.send(msg); } catch (e) {}
-                  try { this.broadcast(msg, [connection.id]); } catch (e) {}
-                }
+              // If already parsed object with response or choices delta
+              const directText = extractToken(rawChunk);
+              if (directText) {
+                outputContent += directText;
+                const msg = JSON.stringify({ 
+                  type: 'stream', 
+                  chunk: { response: directText, done: false } 
+                });
+                try { connection.send(msg); } catch (e) {}
+                try { this.broadcast(msg, [connection.id]); } catch (e) {}
                 continue;
               }
 
@@ -669,7 +684,7 @@ CRITICAL RULES:
 
                 try {
                   const parsed = JSON.parse(jsonStr);
-                  const token = parsed.response;
+                  const token = extractToken(parsed);
                   if (token) {
                     outputContent += token;
                     const msg = JSON.stringify({ 
@@ -691,11 +706,12 @@ CRITICAL RULES:
               if (jsonStr && jsonStr !== '[DONE]') {
                 try {
                   const parsed = JSON.parse(jsonStr);
-                  if (parsed.response) {
-                    outputContent += parsed.response;
+                  const token = extractToken(parsed);
+                  if (token) {
+                    outputContent += token;
                     const msg = JSON.stringify({ 
                       type: 'stream', 
-                      chunk: { response: parsed.response, done: false } 
+                      chunk: { response: token, done: false } 
                     });
                     try { connection.send(msg); } catch (e) {}
                     try { this.broadcast(msg, [connection.id]); } catch (e) {}
