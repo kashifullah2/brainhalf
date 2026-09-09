@@ -79,10 +79,11 @@ CRITICAL RULES:
    CRITICAL: There is NO 'Chat' icon in lucide-react. For chat, ALWAYS use MessageSquare, MessageCircle, or Send!
 4. Tailwind CSS is NOT installed. You MUST use inline styles or generate a normal CSS file (like src/styles.css) and import it.
 5. Create beautiful, modern, glassmorphic UI designs. Use gradients, shadows, and smooth borders.
-6. Do NOT use placeholders. Write the COMPLETE, fully-functional code.
-7. If the user asks to modify, enhance, or fix their existing application, maintain their existing code and make the requested enhancements!
-8. Keep conversational text outside the <file> tags very brief. Output mostly code.
-9. SUPERPOWER: You can execute terminal commands (like npm install) inside the user's WebContainer. If you need a third-party library, output exactly <command>npm install library-name</command>. Stop generating and wait for the system to reply with the terminal output before writing the code using that library.
+6. COMPLETENESS & CLOSURE: Write the COMPLETE, fully-functional code without shortcuts or placeholders. NEVER leave code truncated or cut off. Always close every file tag with </file>.
+7. SINGLE-TURN COMPLETION: Complete the entire application or requested feature in this single turn. Never stop halfway, never ask the user to wait or prompt again to continue.
+8. If the user asks to modify, enhance, or fix their existing application, maintain their existing code and make the requested enhancements!
+9. SELF-CONTAINED CODE: Build components using standard React, CSS, and pre-installed 'lucide-react' icons. Avoid requiring extra npm packages. If you execute a terminal command like <command>npm install library-name</command>, NEVER STOP GENERATING; immediately output the complete code in <file>...</file> tags in the same message.
+10. Keep conversational text outside the <file> tags very brief (1-2 sentences). Output mostly code.
 `;
 
       if (data.workspaceFiles && typeof data.workspaceFiles === 'object') {
@@ -151,11 +152,8 @@ CRITICAL RULES:
               console.log(`Attempting Xkiro API SDK with model: ${xkiroModel}`);
               const url = `https://api.xkiro.com/v1/chat/completions`;
               
-              // Map inputMessages to xkiro/openai format
-              const messagesApi = [
-                { role: 'system', content: systemPrompt },
-                ...inputMessages
-              ];
+              // Map inputMessages to xkiro/openai format (inputMessages already includes system prompt)
+              const messagesApi = [...inputMessages];
               
               // Simple text-only for now unless xkiro supports multi-modal in openai style, we assume yes
               if (data.image && inputMessages.length > 0) {
@@ -178,7 +176,9 @@ CRITICAL RULES:
                 body: JSON.stringify({
                   model: xkiroModel,
                   messages: messagesApi,
-                  stream: true
+                  stream: true,
+                  max_tokens: 4096,
+                  temperature: 0.3
                 })
               });
 
@@ -245,7 +245,7 @@ CRITICAL RULES:
               console.log(`Invoking AWS Bedrock via Bearer API Key with model: ${bedrockModel} in ${awsRegion}`);
               const url = `https://bedrock-runtime.${awsRegion}.amazonaws.com/model/${encodeURIComponent(bedrockModel)}/converse-stream`;
               
-              let userContentApi: any[] = [{ text: data.prompt || 'Hello' }];
+              let userContentApi: any[] = [{ text: actualPrompt }];
               if (data.image) {
                 const base64str = data.image.split(',')[1] || data.image;
                 const formatMatch = data.imageType?.match(/image\/(png|jpeg|gif|webp)/);
@@ -258,6 +258,11 @@ CRITICAL RULES:
                 });
               }
               
+              const bedrockHistory = previousMessages.map(m => ({
+                role: m.role === 'assistant' ? 'assistant' : 'user',
+                content: [{ text: m.content }]
+              }));
+
               const res = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -267,11 +272,16 @@ CRITICAL RULES:
                 body: JSON.stringify({
                   system: [{ text: systemPrompt }],
                   messages: [
+                    ...bedrockHistory,
                     {
                       role: 'user',
                       content: userContentApi
                     }
-                  ]
+                  ],
+                  inferenceConfig: {
+                    maxTokens: 4096,
+                    temperature: 0.3
+                  }
                 })
               });
 
@@ -330,7 +340,7 @@ CRITICAL RULES:
               console.log(`Attempting AWS Bedrock SDK with model: ${bedrockModel} in region: ${awsRegion}`);
               const { BedrockRuntimeClient, ConverseStreamCommand } = await import('@aws-sdk/client-bedrock-runtime');
               
-              let userContentSdk: any[] = [{ text: data.prompt || 'Hello' }];
+              let userContentSdk: any[] = [{ text: actualPrompt }];
               if (data.image) {
                 const base64str = data.image.split(',')[1] || data.image;
                 const formatMatch = data.imageType?.match(/image\/(png|jpeg|gif|webp)/);
@@ -345,6 +355,11 @@ CRITICAL RULES:
                 });
               }
 
+              const bedrockHistory = previousMessages.map(m => ({
+                role: m.role === 'assistant' ? 'assistant' : 'user',
+                content: [{ text: m.content }]
+              }));
+
               const bedrockClient = new BedrockRuntimeClient({
                 region: awsRegion,
                 credentials: {
@@ -357,11 +372,16 @@ CRITICAL RULES:
                 modelId: bedrockModel,
                 system: [{ text: systemPrompt }],
                 messages: [
+                  ...bedrockHistory,
                   {
                     role: 'user',
                     content: userContentSdk
                   }
-                ],
+                ] as any,
+                inferenceConfig: {
+                  maxTokens: 4096,
+                  temperature: 0.3
+                }
               });
 
               const bedrockResponse = await bedrockClient.send(command);
@@ -418,17 +438,31 @@ CRITICAL RULES:
 
             for (const model of candidateModels) {
               try {
-                console.log(`Attempting Cloudflare AI model: ${model}`);
+                console.log(`Attempting Cloudflare AI model: ${model} with max_tokens: 3500`);
                 aiResponse = await (this as any).env.AI.run(model, {
                   messages: inputMessages,
                   stream: true,
+                  max_tokens: 3500
                 });
                 if (aiResponse) {
                   selectedModel = model;
                   break;
                 }
               } catch (mErr) {
-                console.warn(`Model ${model} failed, falling back:`, mErr);
+                console.warn(`Model ${model} failed with max_tokens 3500, trying with 2048:`, mErr);
+                try {
+                  aiResponse = await (this as any).env.AI.run(model, {
+                    messages: inputMessages,
+                    stream: true,
+                    max_tokens: 2048
+                  });
+                  if (aiResponse) {
+                    selectedModel = model;
+                    break;
+                  }
+                } catch (retryErr) {
+                  console.warn(`Model ${model} retry also failed:`, retryErr);
+                }
               }
             }
 
