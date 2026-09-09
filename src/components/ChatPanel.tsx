@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Bot, Loader2, Trash2, ImagePlus, X, User, CheckCircle2, ArrowRight } from 'lucide-react';
 import { appEvents } from '../lib/events';
-import { parseMessageSegments } from '../lib/message-parser';
+import { parseMessageSegments, applyEditsToFile } from '../lib/message-parser';
 import CodeFileBlock from './CodeFileBlock';
+import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
 import PlanBlock from './PlanBlock';
 
@@ -62,9 +63,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
   const isGeneratingRef = useRef(false);
 
-  // File parsing state
+  // File parsing & workspace state
   const bufferRef = useRef('');
   const aiMessageRef = useRef('');
+  const currentFilesRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -96,6 +98,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         // Request the workspace context to sync current files on connect
         const handleWsConnectSync = (data: { files: any }) => {
           appEvents.off('workspace-context-response-ws-connect', handleWsConnectSync);
+          if (data.files) {
+            currentFilesRef.current = { ...data.files };
+          }
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'sync_files', files: data.files }));
           }
@@ -120,9 +125,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               // Rehydrate files into workspace from previous history
               for (const msg of loadedMsgs) {
                 if (msg.role === 'ai') {
-                  const { fileMap } = parseMessageSegments(msg.content, true);
+                  const { fileMap, editsMap } = parseMessageSegments(msg.content, true);
                   for (const [path, content] of Object.entries(fileMap)) {
+                    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+                    currentFilesRef.current[cleanPath] = content;
                     appEvents.emit('file-generated', { path, content, isComplete: true });
+                  }
+                  for (const [path, edits] of Object.entries(editsMap)) {
+                    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+                    const existing = currentFilesRef.current[cleanPath] || '';
+                    if (existing && edits.length > 0) {
+                      const updated = applyEditsToFile(existing, edits);
+                      currentFilesRef.current[cleanPath] = updated;
+                      appEvents.emit('file-generated', { path, content: updated, isComplete: true });
+                    }
                   }
                 }
               }
@@ -138,23 +154,47 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               bufferRef.current += text;
               aiMessageRef.current += text;
 
-              // Parse files into file map without leaking raw wrapper tags
+              // Parse files and edits into file map without leaking raw wrapper tags
               const { segments } = parseMessageSegments(bufferRef.current, false);
               
-              // Sync files to workspace: mark isComplete: true only when </file> was reached
+              // Sync files & targeted patches to workspace
               for (const seg of segments) {
                 if (seg.type === 'file') {
+                  const cleanPath = seg.path.startsWith('/') ? seg.path : `/${seg.path}`;
+                  currentFilesRef.current[cleanPath] = seg.content;
                   appEvents.emit('file-generated', { 
                     path: seg.path, 
                     content: seg.content,
                     isComplete: !seg.isStreaming
                   });
+                } else if (seg.type === 'edit') {
+                  const cleanPath = seg.path.startsWith('/') ? seg.path : `/${seg.path}`;
+                  const existing = currentFilesRef.current[cleanPath] || '';
+                  if (existing && seg.edits.length > 0) {
+                    const updated = applyEditsToFile(existing, seg.edits);
+                    if (updated !== existing) {
+                      currentFilesRef.current[cleanPath] = updated;
+                      appEvents.emit('file-generated', { 
+                        path: seg.path, 
+                        content: updated,
+                        isComplete: !seg.isStreaming
+                      });
+                    }
+                  }
                 }
               }
 
-              // Notify workspace of active file being generated
+              // Notify workspace of active file being generated or patched
+              const activeEditSeg = segments.filter(s => s.type === 'edit').pop();
               const activeFileSeg = segments.filter(s => s.type === 'file').pop();
-              if (activeFileSeg && activeFileSeg.type === 'file') {
+
+              if (activeEditSeg && activeEditSeg.type === 'edit' && activeEditSeg.isStreaming) {
+                appEvents.emit('generation-status', { 
+                  status: 'Generating', 
+                  detail: `Patching ${activeEditSeg.path}...`, 
+                  file: activeEditSeg.path 
+                });
+              } else if (activeFileSeg && activeFileSeg.type === 'file' && activeFileSeg.isStreaming) {
                 appEvents.emit('generation-status', { 
                   status: 'Generating', 
                   detail: `Writing ${activeFileSeg.path}...`, 
@@ -177,13 +217,25 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               setIsGenerating(false);
               isGeneratingRef.current = false;
               
-              // Final parse and dispatch to ensure all completed files are mounted
-              const { fileMap } = parseMessageSegments(bufferRef.current, true);
+              // Final parse and dispatch to ensure all completed files and targeted edits are mounted
+              const { fileMap, editsMap } = parseMessageSegments(bufferRef.current, true);
               for (const [path, content] of Object.entries(fileMap)) {
+                const cleanPath = path.startsWith('/') ? path : `/${path}`;
+                currentFilesRef.current[cleanPath] = content;
                 appEvents.emit('file-generated', { path, content, isComplete: true });
               }
+
+              for (const [path, edits] of Object.entries(editsMap)) {
+                const cleanPath = path.startsWith('/') ? path : `/${path}`;
+                const existing = currentFilesRef.current[cleanPath] || '';
+                if (existing && edits.length > 0) {
+                  const updated = applyEditsToFile(existing, edits);
+                  currentFilesRef.current[cleanPath] = updated;
+                  appEvents.emit('file-generated', { path, content: updated, isComplete: true });
+                }
+              }
               
-              appEvents.emit('generation-status', { status: 'Ready', detail: 'App code generated' });
+              appEvents.emit('generation-status', { status: 'Ready', detail: 'App code updated' });
             }
             
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -220,6 +272,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     connect();
 
     const handleSyncFiles = (data: { files: any }) => {
+      if (data.files) {
+        currentFilesRef.current = { ...data.files };
+      }
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'sync_files', files: data.files }));
       }
@@ -282,6 +337,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       const unsub = appEvents.on(`workspace-context-response-${reqId}`, (payload: any) => {
         contextReceived = true;
         unsub();
+        if (payload.files) {
+          currentFilesRef.current = { ...payload.files };
+        }
         wsRef.current?.send(JSON.stringify({
           prompt: userMessage,
           projectId: activeProjectId,
@@ -562,17 +620,23 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                       }
 
                       const fileSegments = segments.filter(s => s.type === 'file');
+                      const editSegments = segments.filter(s => s.type === 'edit');
+                      const totalChanges = fileSegments.length + editSegments.length;
 
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {fileSegments.length > 1 && (
+                          {totalChanges > 1 && (
                             <div className="file-change-summary-bar">
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <CheckCircle2 size={13} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
-                                <span style={{ fontWeight: 600 }}>AI generated {fileSegments.length} files</span>
+                                <span style={{ fontWeight: 600 }}>
+                                  AI {fileSegments.length > 0 ? `generated ${fileSegments.length} file${fileSegments.length > 1 ? 's' : ''}` : ''}
+                                  {fileSegments.length > 0 && editSegments.length > 0 ? ', ' : ''}
+                                  {editSegments.length > 0 ? `patched ${editSegments.length} file${editSegments.length > 1 ? 's' : ''}` : ''}
+                                </span>
                               </div>
                               <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-                                {fileSegments.map(f => f.path.split('/').pop()).join(' • ')}
+                                {[...fileSegments, ...editSegments].map(f => f.path.split('/').pop()).join(' • ')}
                               </span>
                             </div>
                           )}
@@ -590,6 +654,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                                   key={sIdx}
                                   filePath={seg.path}
                                   content={seg.content}
+                                  isStreaming={seg.isStreaming}
+                                />
+                              );
+                            } else if (seg.type === 'edit') {
+                              return (
+                                <DiffEditBlock
+                                  key={sIdx}
+                                  filePath={seg.path}
+                                  edits={seg.edits}
                                   isStreaming={seg.isStreaming}
                                 />
                               );
