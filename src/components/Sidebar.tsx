@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, MessageSquare, Settings, Plus, Layers, Trash2, X, Cpu, Server, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Sparkles, MessageSquare, Settings, Plus, Layers, Trash2, X, Cpu, Server, PanelLeftClose, PanelLeftOpen, Code2 } from 'lucide-react';
 import { Project, getProjects, createProject, deleteProject } from '../lib/project-store';
 import { appEvents } from '../lib/events';
 
@@ -133,8 +133,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           </div>
         )}
         
-        {projects.map((proj) => {
+        {projects.map((proj, idx) => {
           const isActive = proj.id === activeProjectId;
+          // Assign contextual visual icon per project type or index
+          const ProjectIcon = idx % 3 === 0 ? Code2 : idx % 3 === 1 ? Layers : MessageSquare;
           return (
             <div
               key={proj.id}
@@ -142,19 +144,20 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               className="sidebar-nav-item"
               title={collapsed ? proj.name : undefined}
               style={{
-                background: isActive ? 'rgba(168, 85, 247, 0.14)' : 'transparent',
-                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                background: isActive ? 'rgba(168, 85, 247, 0.12)' : 'transparent',
+                color: isActive ? '#ffffff' : 'var(--text-secondary)',
                 borderLeft: isActive && !collapsed ? '2px solid var(--accent-secondary)' : '2px solid transparent',
-                borderRadius: isActive && !collapsed ? '0 8px 8px 0' : '8px',
+                borderRadius: isActive && !collapsed ? '0 6px 6px 0' : '6px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'space-between',
-                padding: collapsed ? '10px 0' : '8px 10px',
+                padding: collapsed ? '9px 0' : '7px 10px',
+                transition: 'all 0.15s ease'
               } as any}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, justifyContent: collapsed ? 'center' : 'flex-start' }}>
-                <MessageSquare size={16} color={isActive ? 'var(--accent-light)' : undefined} style={{ flexShrink: 0 }} />
+                <ProjectIcon size={15} color={isActive ? 'var(--accent-light)' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
                 {!collapsed && (
                   <span style={{ 
                     fontSize: '13px', 
@@ -191,6 +194,30 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             </div>
           );
         })}
+
+        {/* Subtle divider & Onboarding hint to collapse dead empty space */}
+        {!collapsed && (
+          <div style={{ marginTop: 'auto', paddingTop: '16px', paddingBottom: '8px' }}>
+            <div style={{ height: '1px', background: 'var(--border-subtle)', marginBottom: '14px' }} />
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '8px',
+              padding: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--accent-light)', fontWeight: 600 }}>
+                <Sparkles size={12} />
+                <span>STUDIO WORKFLOW</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                Each project maintains isolated SQLite chat history, WebContainer virtual node, and hot-reload state.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Bottom Footer Actions */}

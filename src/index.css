@@ -2,20 +2,20 @@
 
 :root {
   /* ==========================================================================
-     Layered Dark Theme Hierarchy (Subtly distinct background depths)
+     Layered Dark Theme Hierarchy (Linear / Cursor / Vercel Depth)
      ========================================================================== */
-  --bg-canvas: #07080a;             /* Deepest canvas backdrop */
-  --bg-sidebar: #0a0b0f;            /* Navigation sidebar */
-  --bg-topnav: #0c0d12;             /* Top header navbar */
-  --bg-chat-panel: #111217;         /* AI Assistant chat panel */
-  --bg-workspace: #0e0f14;          /* Main workspace container */
-  --bg-file-explorer: #090a0d;      /* File explorer sidebar in code mode */
-  --bg-code-editor: #08090d;        /* Monaco code editor background */
-  --bg-preview-canvas: #0c0d12;     /* App preview container */
-  --bg-surface: rgba(22, 25, 34, 0.65);
-  --bg-surface-hover: rgba(36, 40, 54, 0.8);
-  --bg-card: #151720;               /* Floating cards & elevated elements */
-  --bg-card-hover: #1c202e;
+  --bg-canvas: #090a0f;             /* Deepest canvas backdrop */
+  --bg-sidebar: #0b0d13;            /* Navigation sidebar */
+  --bg-topnav: #0d0f17;             /* Top header navbar */
+  --bg-chat-panel: #11141f;         /* AI Assistant chat panel */
+  --bg-workspace: #0d0f17;          /* Main workspace container */
+  --bg-file-explorer: #0a0c12;      /* File explorer sidebar in code mode */
+  --bg-code-editor: #090b10;        /* Monaco code editor background */
+  --bg-preview-canvas: #0b0d14;     /* App preview container */
+  --bg-surface: rgba(22, 27, 40, 0.7);
+  --bg-surface-hover: rgba(35, 42, 62, 0.85);
+  --bg-card: #141724;               /* Floating cards & elevated elements */
+  --bg-card-hover: #1a1e2f;
 
   /* 1px Border Depth Tokens */
   --border-subtle: rgba(255, 255, 255, 0.07);
@@ -26,24 +26,31 @@
 
   /* Typography Colors */
   --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
   
   /* Brand Purple / Indigo Accents */
   --accent-primary: #6366f1;        /* Indigo */
   --accent-secondary: #a855f7;      /* Brand Purple */
   --accent-light: #c084fc;          /* Light Lavender Purple */
   --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-  --accent-glow: rgba(168, 85, 247, 0.28);
-  --accent-glow-strong: rgba(168, 85, 247, 0.5);
+  --accent-glow: rgba(168, 85, 247, 0.22);
+  --accent-glow-strong: rgba(168, 85, 247, 0.45);
 
-  /* Spacing & Sizes */
+  /* Unified Design Tokens */
   --sidebar-width: 250px;
-  --header-height: 56px;
+  --header-height: 52px;
+  --radius-xs: 4px;
   --radius-sm: 6px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   
+  /* Standard Box Shadows */
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-overlay: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(168, 85, 247, 0.12);
+
   /* Fonts */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-brand: 'Outfit', var(--font-sans);
@@ -78,10 +85,9 @@ h1, h2, h3, h4, .brand-text {
   height: 100vh;
   width: 100vw;
   background-color: var(--bg-canvas);
-  /* Layered ambient lighting for depth */
   background-image: 
-    radial-gradient(circle at 10% 45%, rgba(99, 102, 241, 0.09) 0%, transparent 35%),
-    radial-gradient(circle at 85% 25%, rgba(168, 85, 247, 0.09) 0%, transparent 35%);
+    radial-gradient(circle at 12% 40%, rgba(99, 102, 241, 0.06) 0%, transparent 40%),
+    radial-gradient(circle at 88% 20%, rgba(168, 85, 247, 0.06) 0%, transparent 40%);
 }
 
 .sidebar-container {
@@ -91,10 +97,10 @@ h1, h2, h3, h4, .brand-text {
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  padding: 16px 0;
+  padding: 14px 0;
   z-index: 10;
   box-shadow: 2px 0 16px rgba(0, 0, 0, 0.2);
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
@@ -117,35 +123,36 @@ h1, h2, h3, h4, .brand-text {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 20px;
   gap: 16px;
   z-index: 10;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
 }
 
 .workspace-area {
   flex: 1;
   display: flex;
-  padding: 16px;
-  gap: 16px;
+  padding: 12px 16px 16px 16px;
+  gap: 12px;
   height: calc(100vh - var(--header-height));
   background: var(--bg-canvas);
+  position: relative;
 }
 
-/* Chat Panel Container - Layered #111217 */
+/* Chat Panel Container */
 .chat-panel-container {
-  width: 420px;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
   background: var(--bg-chat-panel);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  transition: width 0.18s ease;
 }
 
-/* Workspace Panel Container - Layered #0e0f14 */
+/* Workspace Panel Container */
 .workspace-panel-container {
   flex: 1;
   display: flex;
@@ -154,8 +161,27 @@ h1, h2, h3, h4, .brand-text {
   overflow: hidden;
   background: var(--bg-workspace);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+}
+
+/* Resizable Divider Handle between Chat and Workspace */
+.panel-resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  z-index: 20;
+  margin: 0 -3px;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle.active {
+  background: rgba(168, 85, 247, 0.4);
+  border-radius: 3px;
 }
 
 /* File Explorer Container - Layered #090a0d */

@@ -29,9 +29,10 @@ interface Message {
 
 interface ChatPanelProps {
   activeProjectId?: string;
+  width?: number;
 }
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default' }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', width }) => {
   const [input, setInput] = useState('');
   const [selectedModelId, setSelectedModelId] = useState(MODELS[0].id);
   const [messages, setMessages] = useState<Message[]>([
@@ -307,9 +308,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default' }) =>
 
 
   return (
-    <div className="chat-panel-container">
+    <div className="chat-panel-container" style={{ width: width ? `${width}px` : '440px', minWidth: '340px' }}>
       <div style={{
-        padding: '14px 18px',
+        padding: '12px 16px',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
@@ -506,12 +507,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default' }) =>
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--bg-canvas)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: '12px',
+          background: isGenerating ? 'rgba(168, 85, 247, 0.04)' : 'var(--bg-canvas)',
+          border: isGenerating ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--border-subtle)',
+          borderRadius: '10px',
           padding: '8px 12px',
-          boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
+          boxShadow: isGenerating ? '0 0 16px rgba(168, 85, 247, 0.15)' : 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
+          transition: 'all 0.2s ease',
+          position: 'relative'
         }} className="chat-input-wrapper">
+          {isGenerating && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginBottom: '6px',
+              fontSize: '11px',
+              color: '#c084fc',
+              fontWeight: 500
+            }}>
+              <Loader2 size={12} className="lucide-spin" />
+              <span>AI is generating code... input locked until complete</span>
+            </div>
+          )}
           {selectedImage && (
             <div style={{ position: 'relative', width: '60px', height: '60px', marginBottom: '8px', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
               <img src={selectedImage} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '7px' }} />
