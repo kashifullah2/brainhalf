@@ -21,7 +21,8 @@
     "node-pty": "^1.1.0",
     "prismjs": "^1.30.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "sucrase": "^3.35.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260908.1",
