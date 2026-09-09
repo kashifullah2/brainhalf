@@ -404,47 +404,88 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         </div>
       </div>
       
-      <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Messages List Container */}
+      <div style={{ 
+        flex: 1, 
+        padding: '16px', 
+        overflowY: 'auto', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: '16px',
+        scrollBehavior: 'smooth'
+      }}>
         {messages.map((msg, idx) => {
           const isLastMessage = idx === messages.length - 1;
           const isCurrentGenerating = isGenerating && isLastMessage;
+          const isAi = msg.role === 'ai';
 
           return (
-            <div key={idx} style={{ display: 'flex', gap: '10px', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}>
-              {msg.role === 'ai' && (
-                <div style={{
-                  width: '30px', height: '30px', borderRadius: '50%', background: 'var(--bg-base)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-subtle)',
-                  flexShrink: 0, marginTop: '2px'
-                }}>
-                  <Bot size={15} color="var(--accent-primary)" />
-                </div>
-              )}
+            <div 
+              key={idx} 
+              style={{ 
+                display: 'flex', 
+                gap: '10px', 
+                flexDirection: isAi ? 'row' : 'row-reverse',
+                alignItems: 'flex-start'
+              }}
+            >
+              {/* Professional Avatar Badge */}
+              <div style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '8px',
+                background: isAi 
+                  ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.25))'
+                  : 'linear-gradient(135deg, #6366f1, #a855f7)',
+                border: isAi ? '1px solid rgba(168, 85, 247, 0.35)' : '1px solid rgba(255, 255, 255, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginTop: '2px',
+                boxShadow: isAi ? '0 2px 8px rgba(168, 85, 247, 0.2)' : '0 2px 10px rgba(99, 102, 241, 0.3)'
+              }}>
+                {isAi ? <Bot size={15} color="#c084fc" /> : <Sparkles size={14} color="#ffffff" />}
+              </div>
               
               <div style={{ 
-                maxWidth: msg.role === 'user' ? '82%' : '100%',
-                flex: msg.role === 'ai' ? 1 : 'none'
+                maxWidth: isAi ? 'calc(100% - 38px)' : '82%',
+                flex: isAi ? 1 : 'none'
               }}>
                 {msg.role === 'user' ? (
                   <div style={{
-                    background: 'var(--accent-gradient)',
-                    color: 'white',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.95), rgba(168, 85, 247, 0.95))',
+                    color: '#ffffff',
                     padding: '10px 14px',
-                    borderRadius: '16px 16px 0 16px',
-                    fontSize: '14px',
-                    lineHeight: 1.5,
-                    whiteSpace: 'pre-wrap'
+                    borderRadius: '12px 2px 12px 12px',
+                    fontSize: '13.5px',
+                    lineHeight: 1.55,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)'
                   }}>
                     {msg.content}
                   </div>
                 ) : (
-                  <div className="chat-bubble-ai">
+                  <div style={{
+                    background: '#121520',
+                    color: '#e2e8f0',
+                    padding: '14px',
+                    borderRadius: '2px 12px 12px 12px',
+                    fontSize: '13.5px',
+                    lineHeight: 1.6,
+                    border: '1px solid var(--border-subtle)',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
+                    width: '100%',
+                    boxSizing: 'border-box'
+                  }}>
                     {(() => {
                       const { segments } = parseMessageSegments(msg.content, !isCurrentGenerating);
 
                       if (segments.length === 0) {
                         return isCurrentGenerating ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#c084fc', fontSize: '13px', fontWeight: 500 }}>
                             <Loader2 size={15} className="lucide-spin" style={{ color: 'var(--accent-secondary)' }} />
                             <span>Thinking and writing code...</span>
                           </div>
@@ -452,11 +493,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                       }
 
                       return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           {segments.map((seg, sIdx) => {
                             if (seg.type === 'text') {
                               return (
-                                <div key={sIdx} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                                <div key={sIdx} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: '#e2e8f0' }}>
                                   {seg.content}
                                 </div>
                               );
@@ -500,18 +541,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Input Composer Box */}
       <div style={{
-        padding: '14px 16px',
+        padding: '12px 16px',
         borderTop: '1px solid var(--border-subtle)',
-        background: 'rgba(255, 255, 255, 0.015)'
+        background: 'rgba(13, 15, 23, 0.65)'
       }}>
         <div style={{
           display: 'flex',
           flexDirection: 'column',
-          background: isGenerating ? 'rgba(168, 85, 247, 0.04)' : 'var(--bg-canvas)',
-          border: isGenerating ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid var(--border-subtle)',
+          background: isGenerating ? 'rgba(168, 85, 247, 0.04)' : '#0d1017',
+          border: isGenerating ? '1px solid rgba(168, 85, 247, 0.45)' : '1px solid var(--border-medium)',
           borderRadius: '10px',
-          padding: '8px 12px',
+          padding: '10px 12px',
           boxShadow: isGenerating ? '0 0 16px rgba(168, 85, 247, 0.15)' : 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
           transition: 'all 0.2s ease',
           position: 'relative'
@@ -531,8 +573,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             </div>
           )}
           {selectedImage && (
-            <div style={{ position: 'relative', width: '60px', height: '60px', marginBottom: '8px', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}>
-              <img src={selectedImage} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '7px' }} />
+            <div style={{ position: 'relative', width: '56px', height: '56px', marginBottom: '8px', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>
+              <img src={selectedImage} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '5px' }} />
               <button 
                 onClick={() => { setSelectedImage(null); setImageType(''); }}
                 style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}
@@ -546,10 +588,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               className="icon-btn"
               onClick={() => fileInputRef.current?.click()}
               disabled={isGenerating}
-              style={{ padding: '4px', opacity: isGenerating ? 0.5 : 1 }}
-              title="Attach Image"
+              style={{ padding: '6px', opacity: isGenerating ? 0.4 : 0.8, borderRadius: '6px' }}
+              title="Attach Image / Wireframe"
             >
-              <ImagePlus size={18} color="var(--text-secondary)" />
+              <ImagePlus size={16} color="var(--text-secondary)" />
             </button>
             <input 
               type="file" 
@@ -569,36 +611,51 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               }}
             />
             <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSendMessage();
-              }
-            }}
-            placeholder="Ask AI to build or refine your app..."
-            rows={2}
-            disabled={isGenerating}
-            style={{
-              width: '100%',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-primary)',
-              fontSize: '14px',
-              fontFamily: 'inherit',
-              resize: 'none',
-              outline: 'none',
-              lineHeight: 1.5
-            }}
-          />
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder={isGenerating ? "Synthesizing code..." : "Ask AI to build or refine your app..."}
+              rows={2}
+              disabled={isGenerating}
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                color: '#f3f4f6',
+                fontSize: '13.5px',
+                fontFamily: 'inherit',
+                resize: 'none',
+                outline: 'none',
+                lineHeight: 1.5
+              }}
+            />
             <button 
-              className="send-btn"
               onClick={() => handleSendMessage()}
               disabled={(!input.trim() && !selectedImage) || isGenerating}
-              style={{ opacity: ((!input.trim() && !selectedImage) || isGenerating) ? 0.4 : 1, padding: '6px' }}
+              style={{ 
+                background: ((!input.trim() && !selectedImage) || isGenerating) 
+                  ? 'rgba(255, 255, 255, 0.04)' 
+                  : 'var(--accent-gradient)',
+                color: ((!input.trim() && !selectedImage) || isGenerating) ? 'var(--text-muted)' : '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: ((!input.trim() && !selectedImage) || isGenerating) ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: ((!input.trim() && !selectedImage) || isGenerating) ? 'none' : '0 2px 10px rgba(168, 85, 247, 0.4)'
+              }}
+              title="Send Message (Enter)"
             >
-              {isGenerating ? <Loader2 size={16} className="lucide-spin" /> : <Send size={16} />}
+              {isGenerating ? <Loader2 size={15} className="lucide-spin" /> : <Send size={15} />}
             </button>
           </div>
         </div>
