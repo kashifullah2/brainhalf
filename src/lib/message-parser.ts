@@ -132,6 +132,74 @@ export function applyEditsToFile(
   return result;
 }
 
+// Helper to detect and extract standard markdown code blocks when a model forgets <file> tags
+function extractMarkdownCodeBlocks(
+  text: string, 
+  isStreamDone: boolean, 
+  fileMap: Record<string, string>
+): MessageSegment[] {
+  const codeBlockRegex = /```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)(?:```|$)/g;
+  
+  if (!text.includes('```')) {
+    return text.trim() ? [{ type: 'text', content: text }] : [];
+  }
+
+  const resultSegments: MessageSegment[] = [];
+  let lastIdx = 0;
+  let blockMatch: RegExpExecArray | null;
+
+  while ((blockMatch = codeBlockRegex.exec(text)) !== null) {
+    const textBefore = text.substring(lastIdx, blockMatch.index);
+    if (textBefore.trim()) {
+      resultSegments.push({ type: 'text', content: textBefore });
+    }
+
+    const lang = (blockMatch[1] || '').toLowerCase().trim();
+    const rawCode = blockMatch[2] || '';
+    const isClosed = blockMatch[0].endsWith('```');
+    const isStreaming = !isClosed && !isStreamDone;
+
+    // Detect path from code comment, text before, or code language
+    let filePath = 'src/App.jsx';
+    const firstLine = rawCode.trim().split('\n')[0] || '';
+    const commentPathMatch = firstLine.match(/^\/\/\s*([\w/.-]+\.(?:jsx|tsx|js|ts|css|html|json))/i);
+    const beforeTextMatch = textBefore.match(/(?:file|path|in)?\s*[:`*]*([a-zA-Z0-9_\-./]+\.(?:jsx|tsx|js|ts|css|html|json))[`*]*/i);
+
+    if (commentPathMatch) {
+      filePath = commentPathMatch[1].startsWith('/') ? commentPathMatch[1].substring(1) : commentPathMatch[1];
+    } else if (beforeTextMatch) {
+      filePath = beforeTextMatch[1].startsWith('/') ? beforeTextMatch[1].substring(1) : beforeTextMatch[1];
+    } else if (lang === 'css' || rawCode.includes('{') && rawCode.includes(':') && !rawCode.includes('import ') && !rawCode.includes('export ')) {
+      filePath = 'src/styles.css';
+    } else if (lang === 'html') {
+      filePath = 'index.html';
+    } else if (lang === 'json') {
+      filePath = 'package.json';
+    }
+
+    const cleanCode = rawCode.replace(/^\r?\n/, '').replace(/\r?\n$/, '');
+
+    if (cleanCode.trim()) {
+      resultSegments.push({
+        type: 'file',
+        path: filePath,
+        content: cleanCode,
+        isStreaming
+      });
+      fileMap[filePath] = cleanCode;
+    }
+
+    lastIdx = blockMatch.index + blockMatch[0].length;
+  }
+
+  const textAfter = text.substring(lastIdx);
+  if (textAfter.trim()) {
+    resultSegments.push({ type: 'text', content: textAfter });
+  }
+
+  return resultSegments;
+}
+
 export function parseMessageSegments(rawText: string, isStreamDone: boolean = false): ParseResult {
   const segments: MessageSegment[] = [];
   const fileMap: Record<string, string> = {};
@@ -155,14 +223,16 @@ export function parseMessageSegments(rawText: string, isStreamDone: boolean = fa
       }
       
       if (textContent.trim()) {
-        segments.push({ type: 'text', content: textContent });
+        const extracted = extractMarkdownCodeBlocks(textContent, isStreamDone, fileMap);
+        segments.push(...extracted);
       }
       break;
     }
 
     const textBefore = remaining.substring(0, match.index);
     if (textBefore.trim()) {
-      segments.push({ type: 'text', content: textBefore });
+      const extracted = extractMarkdownCodeBlocks(textBefore, isStreamDone, fileMap);
+      segments.push(...extracted);
     }
 
     const fullTag = match[0];

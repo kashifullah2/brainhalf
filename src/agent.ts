@@ -205,8 +205,14 @@ body {
       const agentId = this.name || 'default';
       const conversationId = 'conv-' + agentId;
       
-      let systemPrompt = `You are BrainHalf, an expert AI software developer capable of building beautiful, modern full-stack web applications.
-The user wants you to generate or refine a web application. You must output the application code by specifying one or more files.
+      let systemPrompt = `You are BrainHalf, an autonomous software engineering AGENT, NOT a conversational chatbot.
+Your purpose is to build, edit, and maintain web applications directly in the user's project workspace.
+
+CRITICAL FORMAT REQUIREMENT:
+- You must NEVER write code inside raw markdown code blocks (such as \`\`\`jsx ... \`\`\`) in chat.
+- All code MUST be enclosed in <file path="...">...</file> or <edit path="...">...</edit> tags.
+- The IDE runtime engine CANNOT load or preview code that is written as plain markdown in chat.
+- If you write code, it MUST be wrapped in <file path="src/App.jsx">...</file> or <edit path="...">...</edit>.
 
 CODE GENERATION & SURGICAL EDITING RULES:
 
@@ -245,7 +251,7 @@ CRITICAL RULES:
 7. SINGLE-TURN COMPLETION: Complete the requested feature or bug fix in this single turn. Never stop halfway.
 8. PRESERVE WORKING FEATURES: When fixing an error or bug, preserve all existing working functionality, design, and styling. Never wipe out working components.
 9. SELF-CONTAINED CODE: Build components using standard React, CSS, and pre-installed 'lucide-react' icons. Avoid requiring extra npm packages. If you execute a terminal command like <command>npm install library-name</command>, NEVER STOP GENERATING; immediately output the code in <file> or <edit> tags in the same message.
-10. Keep conversational text outside the tags very brief (1-2 sentences explaining what bug was fixed or what was built).
+10. Keep conversational text outside the tags very brief (1-2 sentences explaining what was created or fixed). Never write code outside <file> or <edit> tags.
 `;
 
       if (data.workspaceFiles && typeof data.workspaceFiles === 'object') {
@@ -277,10 +283,14 @@ CRITICAL RULES:
         systemPrompt += `\n\n10. PLANNER MODE ACTIVE: The user has requested a plan. You MUST first output a detailed, step-by-step implementation strategy wrapped exactly in <plan>...</plan> tags. After closing the </plan> tag, immediately proceed to output the code in <file> tags as usual. Do NOT wait for permission to output the code.`;
       }
 
+      const formattedUserPrompt = actualPrompt.includes('<file') || actualPrompt.includes('<edit')
+        ? actualPrompt
+        : `${actualPrompt}\n\n[FORMAT DIRECTIVE: Output all code inside <file path="src/App.jsx">...</file> or <edit path="...">...</edit> tags so it compiles directly into the workspace files. Do not output raw markdown code blocks.]`;
+
       const inputMessages = [
         { role: 'system', content: systemPrompt },
         ...previousMessages,
-        { role: 'user', content: actualPrompt }
+        { role: 'user', content: formattedUserPrompt }
       ];
 
       // Create the invoke_agent span as required by Cloudflare Agent Tracing
@@ -502,7 +512,7 @@ CRITICAL RULES:
               console.log(`Attempting AWS Bedrock SDK with model: ${bedrockModel} in region: ${awsRegion}`);
               const { BedrockRuntimeClient, ConverseStreamCommand } = await import('@aws-sdk/client-bedrock-runtime');
               
-              let userContentSdk: any[] = [{ text: actualPrompt }];
+              let userContentSdk: any[] = [{ text: formattedUserPrompt }];
               if (data.image) {
                 const base64str = data.image.split(',')[1] || data.image;
                 const formatMatch = data.imageType?.match(/image\/(png|jpeg|gif|webp)/);
