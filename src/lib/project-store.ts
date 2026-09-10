@@ -144,8 +144,80 @@ export function deleteProject(id: string): Project[] {
     }];
   }
   saveProjects(projects);
+  deleteProjectFiles(id);
+  deleteProjectMessages(id);
   if (getActiveProjectId() === id) {
     setActiveProjectId(projects[0].id);
   }
   return projects;
 }
+
+const PROJECT_FILES_PREFIX = 'brainhalf_files_';
+const PROJECT_MESSAGES_PREFIX = 'brainhalf_messages_';
+
+export function getProjectFiles(projectId: string): Record<string, string> | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(`${PROJECT_FILES_PREFIX}${projectId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error reading project files:', e);
+  }
+  return null;
+}
+
+export function saveProjectFiles(projectId: string, files: Record<string, string>) {
+  try {
+    if (typeof localStorage === 'undefined' || !projectId || !files || Object.keys(files).length === 0) return;
+    localStorage.setItem(`${PROJECT_FILES_PREFIX}${projectId}`, JSON.stringify(files));
+  } catch (e) {
+    console.warn('Error saving project files:', e);
+  }
+}
+
+export function deleteProjectFiles(projectId: string) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(`${PROJECT_FILES_PREFIX}${projectId}`);
+    }
+  } catch {}
+}
+
+export function getProjectMessages(projectId: string): any[] | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error('Error reading project messages:', e);
+  }
+  return null;
+}
+
+export function saveProjectMessages(projectId: string, messages: any[]) {
+  try {
+    if (typeof localStorage === 'undefined' || !projectId || !messages) return;
+    localStorage.setItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`, JSON.stringify(messages));
+  } catch (e) {
+    console.warn('Error saving project messages:', e);
+  }
+}
+
+export function deleteProjectMessages(projectId: string) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`);
+    }
+  } catch {}
+}
+

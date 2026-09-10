@@ -3,6 +3,7 @@ import { Send, Bot, Loader2, Trash2, ImagePlus, X, User, CheckCircle2, ArrowRigh
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
+import { getProjectMessages, saveProjectMessages, deleteProjectMessages } from '../lib/project-store';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
@@ -46,9 +47,13 @@ interface ChatPanelProps {
 const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', width }) => {
   const [input, setInput] = useState('');
   const [selectedModelId, setSelectedModelId] = useState(MODELS[0].id);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = getProjectMessages(activeProjectId);
+    if (saved && saved.length > 0) return saved;
+    return [
+      { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
+    ];
+  });
   const [isGenerating, setIsGenerating] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -58,6 +63,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isGeneratingRef = useRef(false);
+  const prevProjectIdRef = useRef<string>(activeProjectId);
+  const messagesRef = useRef<Message[]>(messages);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // File parsing & workspace state
   const bufferRef = useRef('');
@@ -69,9 +80,30 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     let reconnectTimer: any = null;
     let isMounted = true;
 
-    // Reset buffer on project change
+    // 1. If switching from a previous project, save its messages
+    if (prevProjectIdRef.current && prevProjectIdRef.current !== activeProjectId) {
+      saveProjectMessages(prevProjectIdRef.current, messagesRef.current);
+    }
+    prevProjectIdRef.current = activeProjectId;
+
+    // 2. Reset transient states on project change
     bufferRef.current = '';
     aiMessageRef.current = '';
+    currentFilesRef.current = {};
+    setInput('');
+    setSelectedImage(null);
+    setImageType('');
+    setIsGenerating(false);
+    isGeneratingRef.current = false;
+
+    // 3. Load target project messages or fresh clean welcome
+    const saved = getProjectMessages(activeProjectId);
+    const initialWelcome: Message[] = [
+      { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
+    ];
+    const targetMessages = (saved && saved.length > 0) ? saved : initialWelcome;
+    setMessages(targetMessages);
+    messagesRef.current = targetMessages;
 
     const syncFilesAndEdits = (
       fileMap: Record<string, string>,
@@ -139,6 +171,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 content: m.content
               }));
               setMessages(loadedMsgs);
+              messagesRef.current = loadedMsgs;
+              saveProjectMessages(activeProjectId, loadedMsgs);
 
               // Rehydrate files into workspace from previous history
               for (const msg of loadedMsgs) {
@@ -149,9 +183,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               }
               appEvents.emit('generation-status', { status: 'Ready', detail: 'Loaded saved session' });
             } else {
-              setMessages([
-                { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a counter app."' }
-              ]);
+              const localSaved = getProjectMessages(activeProjectId);
+              if (!localSaved || localSaved.length === 0) {
+                const freshWelcome: Message[] = [
+                  { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
+                ];
+                setMessages(freshWelcome);
+                messagesRef.current = freshWelcome;
+                saveProjectMessages(activeProjectId, freshWelcome);
+              }
             }
           } else if (data.type === 'stream') {
             if (data.chunk?.response) {
@@ -214,6 +254,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 } else {
                   newMsgs[newMsgs.length - 1].content = aiMessageRef.current;
                 }
+                messagesRef.current = newMsgs;
                 return newMsgs;
               });
             }
@@ -227,6 +268,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               syncFilesAndEdits(fileMap, editsMap, true);
               
               appEvents.emit('generation-status', { status: 'Ready', detail: 'App code updated' });
+
+              setTimeout(() => {
+                saveProjectMessages(activeProjectId, messagesRef.current);
+              }, 50);
             }
             
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -262,12 +307,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
     connect();
 
-    const handleSyncFiles = (data: { files: any }) => {
+    const handleSyncFiles = (data: { files: any; replaceAll?: boolean }) => {
       if (data.files) {
         currentFilesRef.current = { ...data.files };
       }
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'sync_files', files: data.files }));
+        ws.send(JSON.stringify({ 
+          type: 'sync_files', 
+          files: data.files,
+          replace_all: !!data.replaceAll 
+        }));
       }
     };
     const unsubSyncFiles = appEvents.on('sync-files', handleSyncFiles);
@@ -279,6 +328,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       if (ws) {
         ws.close();
       }
+      if (messagesRef.current && messagesRef.current.length > 0) {
+        saveProjectMessages(activeProjectId, messagesRef.current);
+      }
     };
   }, [activeProjectId]);
 
@@ -287,9 +339,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'clear' }));
       }
-      setMessages([
+      const cleared: Message[] = [
         { role: 'ai', content: 'Chat history cleared. What would you like to build next?' }
-      ]);
+      ];
+      setMessages(cleared);
+      messagesRef.current = cleared;
+      deleteProjectMessages(activeProjectId);
       appEvents.emit('clear-workspace', null);
     }
   };
@@ -311,10 +366,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     bufferRef.current = '';
     aiMessageRef.current = '';
 
-    setMessages(prev => [
-      ...prev,
+    const newMsgs: Message[] = [
+      ...messagesRef.current,
       { role: 'user', content: userMessage }
-    ]);
+    ];
+    setMessages(newMsgs);
+    messagesRef.current = newMsgs;
+    saveProjectMessages(activeProjectId, newMsgs);
 
     setIsGenerating(true);
     isGeneratingRef.current = true;

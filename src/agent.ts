@@ -191,6 +191,9 @@ body {
       // Handle syncing project files to Edge SQLite for preview
       if (data.type === 'sync_files' && data.files && typeof data.files === 'object') {
         try {
+          if (data.replace_all) {
+            this.sql`DELETE FROM project_files;`;
+          }
           for (const [path, content] of Object.entries(data.files)) {
             const cleanPath = normalizePath(path);
             const contentStr = content as string;

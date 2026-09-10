@@ -9,6 +9,7 @@ import { basicReactTemplate } from '../lib/templates';
 import { appEvents } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
 import { normalizePath } from '../lib/utils';
+import { getProjectFiles, saveProjectFiles } from '../lib/project-store';
 import FileExplorer from './FileExplorer';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error';
@@ -31,9 +32,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const iframeUrl = `/preview/${activeProjectId}/`;
-  const [status, setStatus] = useState<GenerationStatus>('Ready');
+  const initialFiles = getProjectFiles(activeProjectId);
+  const isBrandNewInit = !initialFiles;
+  const [status, setStatus] = useState<GenerationStatus>(isBrandNewInit ? 'Idle' : 'Ready');
   const [statusDetail, setStatusDetail] = useState('');
-  const [hasProject, setHasProject] = useState(true);
+  const [hasProject, setHasProject] = useState(!isBrandNewInit);
   const [generatingFile, setGeneratingFile] = useState('');
   const [consoleLogs, setConsoleLogs] = useState<string[]>([
     '$ Cloudflare Edge Preview runtime connected.',
@@ -52,10 +55,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const [copiedCode, setCopiedCode] = useState(false);
   const consoleEndRef = useRef<HTMLDivElement>(null);
   
-  const [files, setFiles] = useState<{ [path: string]: string }>({
-    '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
-    '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
-    '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
+  const [files, setFiles] = useState<{ [path: string]: string }>(() => {
+    if (initialFiles) return initialFiles;
+    return {
+      '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
+      '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
+      '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
+    };
   });
   const [activeFile, setActiveFile] = useState('/src/App.jsx');
 
@@ -77,32 +83,68 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     filesRef.current = files;
   }, [files]);
 
+  const prevProjectIdRef = useRef<string>(activeProjectId);
+
   // Helper to sync files to backend
-  const syncFilesToEdge = useCallback((currentFiles: any) => {
-    appEvents.emit('sync-files', { files: currentFiles });
+  const syncFilesToEdge = useCallback((currentFiles: any, replaceAll: boolean = false) => {
+    appEvents.emit('sync-files', { files: currentFiles, replaceAll });
   }, []);
 
   // Reset workspace when project changes or when cleared
   useEffect(() => {
+    // 1. If switching from a previous project, save its files
+    if (prevProjectIdRef.current && prevProjectIdRef.current !== activeProjectId) {
+      saveProjectFiles(prevProjectIdRef.current, filesRef.current);
+    }
+    prevProjectIdRef.current = activeProjectId;
+
+    // 2. Load the target project files or clean baseline template
+    const saved = getProjectFiles(activeProjectId);
+    const baselineFiles = {
+      '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
+      '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
+      '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
+    };
+
+    const targetFiles = saved || baselineFiles;
+    const isBrandNew = !saved;
+
+    setFiles(targetFiles);
+    filesRef.current = targetFiles;
+    setHasProject(!isBrandNew);
+    setStatus(isBrandNew ? 'Idle' : 'Ready');
+    setStatusDetail('');
+    setActiveFile('/src/App.jsx');
+
+    const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setBuildLogs([
+      { 
+        id: 'init', 
+        text: isBrandNew ? `Clean project session initialized: ${activeProjectId}` : `Switched to project session: ${activeProjectId}`, 
+        type: 'info', 
+        time: timeNow 
+      }
+    ]);
+    setConsoleLogs([
+      `[project] Active session: ${activeProjectId}`,
+      isBrandNew ? '[project] Clean slate: baseline React 18 template ready' : '[project] Restored saved workspace files'
+    ]);
+
+    // Synchronize to the session's Durable Object
+    syncFilesToEdge(targetFiles, isBrandNew);
+
     const handleClearWorkspace = () => {
-      const defaultFiles = {
-        '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
-        '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
-        '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
-      };
-      setFiles(defaultFiles);
-      filesRef.current = defaultFiles;
+      setFiles(baselineFiles);
+      filesRef.current = baselineFiles;
       setHasProject(false);
       setStatus('Idle');
       setStatusDetail('');
       setActiveFile('/src/App.jsx');
       addBuildLog('Workspace reset to baseline React 18 template', 'warn');
-      syncFilesToEdge(defaultFiles);
+      saveProjectFiles(activeProjectId, baselineFiles);
+      syncFilesToEdge(baselineFiles, true);
     };
 
-    // Initial sync
-    syncFilesToEdge(filesRef.current);
-    
     const unsubClear = appEvents.on('clear-workspace', handleClearWorkspace);
     return () => unsubClear();
   }, [activeProjectId, addBuildLog, syncFilesToEdge]);
@@ -154,6 +196,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         addBuildLog(`Compiled: ${cleanPath}`, 'success');
         addConsoleLog(`[transpiler] Successfully compiled ${cleanPath}`);
         syncFilesToEdge(filesRef.current);
+        saveProjectFiles(activeProjectId, filesRef.current);
       }
     };
 
@@ -233,6 +276,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       ...prev,
       [activeFile]: value
     }));
+    saveProjectFiles(activeProjectId, filesRef.current);
     
     if (status === 'Ready' || status === 'Idle') {
       syncFilesToEdge(filesRef.current);

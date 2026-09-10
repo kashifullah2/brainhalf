@@ -7,7 +7,12 @@ import {
   deleteProject,
   formatRelativeTime,
   getActiveProjectId,
-  setActiveProjectId
+  setActiveProjectId,
+  getProjectFiles,
+  saveProjectFiles,
+  getProjectMessages,
+  saveProjectMessages,
+  deleteProjectMessages
 } from '../lib/project-store';
 
 describe('Project Store & LocalStorage State Management', () => {
@@ -107,6 +112,56 @@ describe('Project Store & LocalStorage State Management', () => {
       expect(retrieved[0].name).toBe('Special App');
       expect(retrieved[0].framework).toBe('React 18 + Vite');
       expect(retrieved[0].status).toBe('ready');
+    });
+  });
+
+  describe('Per-Project File & Message Isolation (Clean Sessions)', () => {
+    it('returns null files and messages for brand new projects', () => {
+      const p = createProject('Clean Test Proj');
+      expect(getProjectFiles(p.id)).toBeNull();
+      expect(getProjectMessages(p.id)).toBeNull();
+    });
+
+    it('saves and retrieves files independently between projects', () => {
+      const p1 = createProject('Project 1');
+      const p2 = createProject('Project 2');
+
+      const p1Files = { '/src/App.jsx': '// Project 1 Code' };
+      const p2Files = { '/src/App.jsx': '// Project 2 Code' };
+
+      saveProjectFiles(p1.id, p1Files);
+      saveProjectFiles(p2.id, p2Files);
+
+      expect(getProjectFiles(p1.id)).toEqual(p1Files);
+      expect(getProjectFiles(p2.id)).toEqual(p2Files);
+    });
+
+    it('saves and retrieves messages independently between projects', () => {
+      const p1 = createProject('Chat Project 1');
+      const p2 = createProject('Chat Project 2');
+
+      const p1Msgs = [{ role: 'user' as const, content: 'Build Mario game' }];
+      const p2Msgs = [{ role: 'user' as const, content: 'Build Weather app' }];
+
+      saveProjectMessages(p1.id, p1Msgs);
+      saveProjectMessages(p2.id, p2Msgs);
+
+      expect(getProjectMessages(p1.id)).toEqual(p1Msgs);
+      expect(getProjectMessages(p2.id)).toEqual(p2Msgs);
+    });
+
+    it('cleans up files and messages when project is deleted', () => {
+      const p = createProject('Temporary Project');
+      saveProjectFiles(p.id, { '/src/App.jsx': 'temp' });
+      saveProjectMessages(p.id, [{ role: 'ai', content: 'temp' }]);
+
+      expect(getProjectFiles(p.id)).not.toBeNull();
+      expect(getProjectMessages(p.id)).not.toBeNull();
+
+      deleteProject(p.id);
+
+      expect(getProjectFiles(p.id)).toBeNull();
+      expect(getProjectMessages(p.id)).toBeNull();
     });
   });
 });
