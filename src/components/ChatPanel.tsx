@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Bot, Loader2, Trash2, ImagePlus, X, User, CheckCircle2, ArrowRight } from 'lucide-react';
 import { appEvents } from '../lib/events';
-import { parseMessageSegments, applyEditsToFile } from '../lib/message-parser';
+import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
+import { normalizePath } from '../lib/utils';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
@@ -72,6 +73,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     bufferRef.current = '';
     aiMessageRef.current = '';
 
+    const syncFilesAndEdits = (
+      fileMap: Record<string, string>,
+      editsMap: Record<string, CodeEdit[]>,
+      isComplete: boolean = true
+    ) => {
+      for (const [path, content] of Object.entries(fileMap)) {
+        const cleanPath = normalizePath(path);
+        currentFilesRef.current[cleanPath] = content;
+        appEvents.emit('file-generated', { path: cleanPath, content, isComplete });
+      }
+
+      for (const [path, edits] of Object.entries(editsMap)) {
+        const cleanPath = normalizePath(path);
+        const existing = currentFilesRef.current[cleanPath] || '';
+        if (existing && edits.length > 0) {
+          const updated = applyEditsToFile(existing, edits);
+          currentFilesRef.current[cleanPath] = updated;
+          appEvents.emit('file-generated', { path: cleanPath, content: updated, isComplete });
+        }
+      }
+    };
+
     const connect = () => {
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const backendHost = isLocal 
@@ -121,20 +144,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               for (const msg of loadedMsgs) {
                 if (msg.role === 'ai') {
                   const { fileMap, editsMap } = parseMessageSegments(msg.content, true);
-                  for (const [path, content] of Object.entries(fileMap)) {
-                    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-                    currentFilesRef.current[cleanPath] = content;
-                    appEvents.emit('file-generated', { path, content, isComplete: true });
-                  }
-                  for (const [path, edits] of Object.entries(editsMap)) {
-                    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-                    const existing = currentFilesRef.current[cleanPath] || '';
-                    if (existing && edits.length > 0) {
-                      const updated = applyEditsToFile(existing, edits);
-                      currentFilesRef.current[cleanPath] = updated;
-                      appEvents.emit('file-generated', { path, content: updated, isComplete: true });
-                    }
-                  }
+                  syncFilesAndEdits(fileMap, editsMap, true);
                 }
               }
               appEvents.emit('generation-status', { status: 'Ready', detail: 'Loaded saved session' });
@@ -155,22 +165,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               // Sync files & targeted patches to workspace
               for (const seg of segments) {
                 if (seg.type === 'file') {
-                  const cleanPath = seg.path.startsWith('/') ? seg.path : `/${seg.path}`;
+                  const cleanPath = normalizePath(seg.path);
                   currentFilesRef.current[cleanPath] = seg.content;
                   appEvents.emit('file-generated', { 
-                    path: seg.path, 
+                    path: cleanPath, 
                     content: seg.content,
                     isComplete: !seg.isStreaming
                   });
                 } else if (seg.type === 'edit') {
-                  const cleanPath = seg.path.startsWith('/') ? seg.path : `/${seg.path}`;
+                  const cleanPath = normalizePath(seg.path);
                   const existing = currentFilesRef.current[cleanPath] || '';
                   if (existing && seg.edits.length > 0) {
                     const updated = applyEditsToFile(existing, seg.edits);
                     if (updated !== existing) {
                       currentFilesRef.current[cleanPath] = updated;
                       appEvents.emit('file-generated', { 
-                        path: seg.path, 
+                        path: cleanPath, 
                         content: updated,
                         isComplete: !seg.isStreaming
                       });
@@ -214,21 +224,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               
               // Final parse and dispatch to ensure all completed files and targeted edits are mounted
               const { fileMap, editsMap } = parseMessageSegments(bufferRef.current, true);
-              for (const [path, content] of Object.entries(fileMap)) {
-                const cleanPath = path.startsWith('/') ? path : `/${path}`;
-                currentFilesRef.current[cleanPath] = content;
-                appEvents.emit('file-generated', { path, content, isComplete: true });
-              }
-
-              for (const [path, edits] of Object.entries(editsMap)) {
-                const cleanPath = path.startsWith('/') ? path : `/${path}`;
-                const existing = currentFilesRef.current[cleanPath] || '';
-                if (existing && edits.length > 0) {
-                  const updated = applyEditsToFile(existing, edits);
-                  currentFilesRef.current[cleanPath] = updated;
-                  appEvents.emit('file-generated', { path, content: updated, isComplete: true });
-                }
-              }
+              syncFilesAndEdits(fileMap, editsMap, true);
               
               appEvents.emit('generation-status', { status: 'Ready', detail: 'App code updated' });
             }
@@ -376,9 +372,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   }, [activeProjectId, imageType, input, selectedImage, selectedModelId]);
 
   useEffect(() => {
-    const handleAutoFix = (payload: { error: string }) => {
+    const handleAutoFix = (payload: { error: string; file?: string }) => {
       if (!isGeneratingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-        const autoMsg = `[Auto-Fix] The dev server crashed with this error:\n\n${payload.error}\n\nPlease fix the code.`;
+        const fileTarget = payload.file ? ` in ${payload.file}` : '';
+        const autoMsg = `[Auto-Fix] The dev server encountered an error${fileTarget}:\n\n${payload.error}\n\nPlease inspect the code and use an <edit> block with exact <search> and <replace> to surgically fix the broken lines. Do NOT rewrite the entire component from scratch.`;
         handleSendMessage(autoMsg);
       }
     };

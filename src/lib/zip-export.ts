@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { basicReactTemplate } from './templates';
+import { normalizePath, isSafeFilePath } from './utils';
 
 export async function exportProjectAsZip(files: Record<string, string>, projectName: string = 'brainhalf-project') {
   const zip = new JSZip();
@@ -18,9 +19,11 @@ export async function exportProjectAsZip(files: Record<string, string>, projectN
     zip.file('src/main.jsx', basicReactTemplate['src'].directory['main.jsx'].file.contents.trim());
   }
 
-  // 2. Add all custom generated files
+  // 2. Add all custom generated files (with Zip Slip validation)
   for (const [rawPath, content] of Object.entries(files)) {
-    const cleanPath = rawPath.startsWith('/') ? rawPath.slice(1) : rawPath;
+    if (!isSafeFilePath(rawPath)) continue;
+    const cleanPath = normalizePath(rawPath, { leadingSlash: false });
+    if (!cleanPath) continue;
     zip.file(cleanPath, content);
   }
 

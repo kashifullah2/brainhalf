@@ -9,23 +9,27 @@ interface CommandBlockProps {
 
 const CommandBlock: React.FC<CommandBlockProps> = ({ command, isStreaming }) => {
   const [status, setStatus] = useState<'pending' | 'running' | 'completed'>('pending');
+  const hasTriggeredRef = React.useRef(false);
 
   useEffect(() => {
     // Only execute when the command has fully streamed
-    if (!isStreaming && status === 'pending' && command.trim().length > 0) {
-      setStatus('running');
-      
+    if (!isStreaming && !hasTriggeredRef.current && command.trim().length > 0) {
+      hasTriggeredRef.current = true;
       const reqId = Math.random().toString(36).substring(7);
       
-      const handleResult = (_payload: { output: string }) => {
+      const handleResult = () => {
         setStatus('completed');
-        appEvents.off(`command-result-${reqId}`, handleResult);
       };
       
       appEvents.on(`command-result-${reqId}`, handleResult);
       appEvents.emit('execute-command', { command: command.trim(), requestId: reqId });
+      setStatus('running');
+
+      return () => {
+        appEvents.off(`command-result-${reqId}`, handleResult);
+      };
     }
-  }, [isStreaming, command, status]);
+  }, [isStreaming, command]);
 
   return (
     <div style={{

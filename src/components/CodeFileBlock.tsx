@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { FileCode, Check, Copy, Code2, ChevronDown, ChevronUp } from 'lucide-react';
 import { getLanguageFromPath, highlightCodeToLines } from '../lib/prism-loader';
 import { appEvents } from '../lib/events';
+import { normalizePath } from '../lib/utils';
 
 interface CodeFileBlockProps {
   filePath: string;
@@ -31,7 +32,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
   };
 
   const handleOpenInEditor = () => {
-    const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
+    const cleanPath = normalizePath(filePath);
     appEvents.emit('open-file', { path: cleanPath });
   };
 

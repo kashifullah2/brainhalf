@@ -40,6 +40,7 @@ function App() {
     setIsResizing(true);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    document.body.classList.add('is-resizing');
 
     const sidebarOffset = sidebarCollapsed ? 56 : 240;
 
@@ -55,6 +56,7 @@ function App() {
       setIsResizing(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      document.body.classList.remove('is-resizing');
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };

@@ -19,13 +19,14 @@ export default {
       }
     }
 
-    const agentResponse = routeAgentRequest(request, env);
+    const agentResponse = await routeAgentRequest(request, env);
     if (agentResponse) return agentResponse;
     
     // Serve static frontend assets for all other routes
-    const response = await env.ASSETS.fetch(request);
+    if (env.ASSETS) {
+      return await env.ASSETS.fetch(request);
+    }
     
-    // Return the response for static assets without blocking iframe embeddings
-    return response;
+    return new Response('Not found', { status: 404 });
   }
 }

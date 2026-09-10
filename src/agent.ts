@@ -1,6 +1,7 @@
 import { Agent, type Connection } from 'agents';
 import { tracing } from 'cloudflare:workers';
 import { transform } from 'sucrase';
+import { normalizePath } from './lib/utils';
 
 export class ChatAgent extends Agent {
   private ensureSchema() {
@@ -179,8 +180,8 @@ body {
         try {
           this.sql`DELETE FROM messages;`;
           const clearedMsg = JSON.stringify({ type: 'history', data: [] });
-          try { connection.send(clearedMsg); } catch (e) {}
-          try { this.broadcast(clearedMsg); } catch (e) {}
+          try { connection.send(clearedMsg); } catch {}
+          try { this.broadcast(clearedMsg); } catch {}
         } catch (e) {
           console.error('Error clearing history:', e);
         }
@@ -191,7 +192,7 @@ body {
       if (data.type === 'sync_files' && data.files && typeof data.files === 'object') {
         try {
           for (const [path, content] of Object.entries(data.files)) {
-            const cleanPath = path.startsWith('/') ? path : '/' + path;
+            const cleanPath = normalizePath(path);
             const contentStr = content as string;
             this.sql`INSERT INTO project_files (path, content) VALUES (${cleanPath}, ${contentStr})
                      ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
@@ -254,9 +255,23 @@ CRITICAL RULES:
 10. Keep conversational text outside the tags very brief (1-2 sentences explaining what was created or fixed). Never write code outside <file> or <edit> tags.
 `;
 
-      if (data.workspaceFiles && typeof data.workspaceFiles === 'object') {
+      let filesToInclude: Record<string, string> = {};
+      if (data.workspaceFiles && typeof data.workspaceFiles === 'object' && Object.keys(data.workspaceFiles).length > 0) {
+        filesToInclude = data.workspaceFiles;
+      } else {
+        try {
+          const dbFiles = [...this.sql`SELECT path, content FROM project_files LIMIT 20`];
+          for (const row of dbFiles) {
+            filesToInclude[row.path as string] = row.content as string;
+          }
+        } catch (e) {
+          console.warn('Error reading project_files from DB:', e);
+        }
+      }
+
+      if (Object.keys(filesToInclude).length > 0) {
         let filesSummary = '';
-        for (const [path, content] of Object.entries(data.workspaceFiles)) {
+        for (const [path, content] of Object.entries(filesToInclude)) {
           filesSummary += `\n<file path="${path}">\n${content}\n</file>\n`;
         }
         systemPrompt += `\n\n=== CURRENT WORKSPACE FILES ===\nThe user currently has the following files in their project. You can modify existing files by returning an <edit path="..."> block with <search> and <replace> to surgically fix bugs, or create new files with <file path="...">.\n${filesSummary}\n===============================\n`;
@@ -276,16 +291,29 @@ CRITICAL RULES:
       }
 
       let actualPrompt = data.prompt || data.message || 'Hello';
-      let isPlannerMode = false;
+      let _isPlannerMode = false;
       if (actualPrompt.startsWith('/plan ')) {
-        isPlannerMode = true;
+        _isPlannerMode = true;
         actualPrompt = actualPrompt.substring(6).trim();
         systemPrompt += `\n\n10. PLANNER MODE ACTIVE: The user has requested a plan. You MUST first output a detailed, step-by-step implementation strategy wrapped exactly in <plan>...</plan> tags. After closing the </plan> tag, immediately proceed to output the code in <file> tags as usual. Do NOT wait for permission to output the code.`;
       }
 
+      const isErrorFixing = /\[Auto-Fix\]|error|syntax|transpile|unexpected token|cannot find|not defined|is not a function/i.test(actualPrompt);
+
+      let formatDirective = '';
+      if (isErrorFixing) {
+        formatDirective = `\n\n[ERROR RESOLUTION DIRECTIVE:
+1. SINCERELY FIX THE SPECIFIC ERROR: Inspect the exact error message and the target file in CURRENT WORKSPACE FILES.
+2. SURGICAL EDIT PREFERRED: Use <edit path="..."> with exact <search>...</search> and <replace>...</replace> to fix only the broken lines. DO NOT rewrite the entire component from scratch if only a few lines or imports are broken.
+3. PREVENT TOKEN TRUNCATION: If you must output a full <file path="...">, keep the implementation concise and modular so it finishes completely. Never truncate mid-expression.
+4. SYNTAX INTEGRITY: Ensure all JSX tags have matching closing tags, all brackets/parentheses are balanced, and all imports exist.]`;
+      } else {
+        formatDirective = `\n\n[FORMAT DIRECTIVE: Output all code inside <file path="src/App.jsx">...</file> or targeted <edit path="...">...</edit> tags so it compiles directly into the workspace files. Do not output raw markdown code blocks.]`;
+      }
+
       const formattedUserPrompt = actualPrompt.includes('<file') || actualPrompt.includes('<edit')
         ? actualPrompt
-        : `${actualPrompt}\n\n[FORMAT DIRECTIVE: Output all code inside <file path="src/App.jsx">...</file> or <edit path="...">...</edit> tags so it compiles directly into the workspace files. Do not output raw markdown code blocks.]`;
+        : `${actualPrompt}${formatDirective}`;
 
       const inputMessages = [
         { role: 'system', content: systemPrompt },
@@ -317,11 +345,12 @@ CRITICAL RULES:
           const awsRegion = (this as any).env.AWS_REGION || 'us-east-1';
           const bedrockModel = (data.provider === 'aws' && data.model) ? data.model : ((this as any).env.BEDROCK_MODEL_ID || 'us.meta.llama3-3-70b-instruct-v1:0');
           const xkiroModel = (data.provider === 'xkiro' && data.model) ? data.model : 'qwen/qwen3.8-max:free';
+          const requestedMaxTokens = Number(data.max_tokens || data.maxTokens) || 8192;
 
           // 1. If Xkiro Provider
           if (data.provider === 'xkiro' && xkiroApiKey) {
             try {
-              console.log(`Attempting Xkiro API SDK with model: ${xkiroModel}`);
+              console.log(`Attempting Xkiro API SDK with model: ${xkiroModel} and max_tokens: ${requestedMaxTokens}`);
               const url = `https://api.xkiro.com/v1/chat/completions`;
               
               // Map inputMessages to xkiro/openai format (inputMessages already includes system prompt)
@@ -339,19 +368,23 @@ CRITICAL RULES:
                 }
               }
 
+              const requestBody: any = {
+                model: xkiroModel,
+                messages: messagesApi,
+                stream: true,
+                temperature: 0.3
+              };
+              if (data.max_tokens || data.maxTokens) {
+                requestBody.max_tokens = Number(data.max_tokens || data.maxTokens);
+              }
+
               const res = await fetch(url, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${xkiroApiKey}`,
                   'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                  model: xkiroModel,
-                  messages: messagesApi,
-                  stream: true,
-                  max_tokens: 4096,
-                  temperature: 0.3
-                })
+                body: JSON.stringify(requestBody)
               });
 
               if (res.ok && res.body) {
@@ -384,10 +417,10 @@ CRITICAL RULES:
                           type: 'stream',
                           chunk: { response: text, done: false }
                         });
-                        try { connection.send(msg); } catch (e) {}
-                        try { this.broadcast(msg, [connection.id]); } catch (e) {}
+                        try { connection.send(msg); } catch {}
+                        try { this.broadcast(msg, [connection.id]); } catch {}
                       }
-                    } catch (e) {}
+                    } catch {}
                   }
                 }
 
@@ -396,8 +429,8 @@ CRITICAL RULES:
                   type: 'stream',
                   chunk: { response: '', done: true }
                 });
-                try { connection.send(doneMsg); } catch (e) {}
-                try { this.broadcast(doneMsg, [connection.id]); } catch (e) {}
+                try { connection.send(doneMsg); } catch {}
+                try { this.broadcast(doneMsg, [connection.id]); } catch {}
 
                 const outputMessages = [{ role: 'ai', content: outputContent }];
                 chatSpan.setAttribute('gen_ai.output.messages', JSON.stringify(outputMessages));
@@ -451,7 +484,7 @@ CRITICAL RULES:
                     }
                   ],
                   inferenceConfig: {
-                    maxTokens: 4096,
+                    maxTokens: Math.min(requestedMaxTokens, 8192),
                     temperature: 0.3
                   }
                 })
@@ -479,10 +512,10 @@ CRITICAL RULES:
                           type: 'stream',
                           chunk: { response: text, done: false }
                         });
-                        try { connection.send(msg); } catch (e) {}
-                        try { this.broadcast(msg, [connection.id]); } catch (e) {}
+                        try { connection.send(msg); } catch {}
+                        try { this.broadcast(msg, [connection.id]); } catch {}
                       }
-                    } catch (e) {}
+                    } catch {}
                   }
                 }
 
@@ -491,8 +524,8 @@ CRITICAL RULES:
                   type: 'stream',
                   chunk: { response: '', done: true }
                 });
-                try { connection.send(doneMsg); } catch (e) {}
-                try { this.broadcast(doneMsg, [connection.id]); } catch (e) {}
+                try { connection.send(doneMsg); } catch {}
+                try { this.broadcast(doneMsg, [connection.id]); } catch {}
 
                 const outputMessages = [{ role: 'ai', content: outputContent }];
                 chatSpan.setAttribute('gen_ai.output.messages', JSON.stringify(outputMessages));
@@ -551,7 +584,7 @@ CRITICAL RULES:
                   }
                 ] as any,
                 inferenceConfig: {
-                  maxTokens: 4096,
+                  maxTokens: Math.min(requestedMaxTokens, 8192),
                   temperature: 0.3
                 }
               });
@@ -570,8 +603,8 @@ CRITICAL RULES:
                       type: 'stream',
                       chunk: { response: token, done: false }
                     });
-                    try { connection.send(msg); } catch (e) {}
-                    try { this.broadcast(msg, [connection.id]); } catch (e) {}
+                    try { connection.send(msg); } catch {}
+                    try { this.broadcast(msg, [connection.id]); } catch {}
                   }
                 }
 
@@ -579,8 +612,8 @@ CRITICAL RULES:
                   type: 'stream',
                   chunk: { response: '', done: true }
                 });
-                try { connection.send(doneMsg); } catch (e) {}
-                try { this.broadcast(doneMsg, [connection.id]); } catch (e) {}
+                try { connection.send(doneMsg); } catch {}
+                try { this.broadcast(doneMsg, [connection.id]); } catch {}
 
                 const outputMessages = [{ role: 'ai', content: outputContent }];
                 chatSpan.setAttribute('gen_ai.output.messages', JSON.stringify(outputMessages));
@@ -595,11 +628,11 @@ CRITICAL RULES:
 
           if (!handledByBedrock) {
             const candidateModels = [
+              '@cf/qwen/qwen2.5-coder-32b-instruct',
+              '@cf/meta/llama-3.1-8b-instruct-fp8',
               '@cf/zai-org/glm-5.3-flash',
               '@cf/moonshotai/kimi-k2.7-code',
               '@cf/qwen/qwen3.8-27b',
-              '@cf/qwen/qwen2.5-coder-32b-instruct',
-              '@cf/meta/llama-3.1-8b-instruct-fp8',
               '@cf/meta/llama-3.2-3b-instruct',
               '@cf/mistral/mistral-7b-instruct-v0.2-lora'
             ];
@@ -612,41 +645,42 @@ CRITICAL RULES:
             let selectedModel = '';
 
             for (const model of candidateModels) {
+              // 1. Unlimited generation attempt (no max_tokens restriction)
               try {
-                console.log(`Attempting Cloudflare AI model: ${model} with max_tokens: 3500`);
+                console.log(`Attempting Cloudflare AI model (unlimited tokens): ${model}`);
                 try {
                   aiResponse = await (this as any).env.AI.run(model, {
                     messages: inputMessages,
                     stream: true,
-                    max_tokens: 3500,
                     chat_template_kwargs: { enable_thinking: false }
                   });
                 } catch {
                   aiResponse = await (this as any).env.AI.run(model, {
                     messages: inputMessages,
-                    stream: true,
-                    max_tokens: 3500
+                    stream: true
                   });
                 }
                 if (aiResponse) {
                   selectedModel = model;
                   break;
                 }
-              } catch (mErr) {
-                console.warn(`Model ${model} failed with max_tokens 3500, trying with 2048:`, mErr);
-                try {
-                  aiResponse = await (this as any).env.AI.run(model, {
-                    messages: inputMessages,
-                    stream: true,
-                    max_tokens: 2048
-                  });
-                  if (aiResponse) {
-                    selectedModel = model;
-                    break;
-                  }
-                } catch (retryErr) {
-                  console.warn(`Model ${model} retry also failed:`, retryErr);
+              } catch (unlimitedErr) {
+                console.warn(`Model ${model} unlimited attempt failed, falling back with maximum tokens:`, unlimitedErr);
+                // Fallback for models requiring explicit max_tokens
+                for (const tokens of [16384, 8192, 4096]) {
+                  try {
+                    aiResponse = await (this as any).env.AI.run(model, {
+                      messages: inputMessages,
+                      stream: true,
+                      max_tokens: tokens
+                    });
+                    if (aiResponse) {
+                      selectedModel = model;
+                      break;
+                    }
+                  } catch {}
                 }
+                if (aiResponse) break;
               }
             }
 
@@ -674,8 +708,8 @@ CRITICAL RULES:
                   type: 'stream', 
                   chunk: { response: directText, done: false } 
                 });
-                try { connection.send(msg); } catch (e) {}
-                try { this.broadcast(msg, [connection.id]); } catch (e) {}
+                try { connection.send(msg); } catch {}
+                try { this.broadcast(msg, [connection.id]); } catch {}
                 continue;
               }
 
@@ -703,10 +737,10 @@ CRITICAL RULES:
                       type: 'stream', 
                       chunk: { response: token, done: false } 
                     });
-                    try { connection.send(msg); } catch (e) {}
-                    try { this.broadcast(msg, [connection.id]); } catch (e) {}
+                    try { connection.send(msg); } catch {}
+                    try { this.broadcast(msg, [connection.id]); } catch {}
                   }
-                } catch (e) {
+                } catch {
                   // Ignore partial JSON
                 }
               }
@@ -725,10 +759,10 @@ CRITICAL RULES:
                       type: 'stream', 
                       chunk: { response: token, done: false } 
                     });
-                    try { connection.send(msg); } catch (e) {}
-                    try { this.broadcast(msg, [connection.id]); } catch (e) {}
+                    try { connection.send(msg); } catch {}
+                    try { this.broadcast(msg, [connection.id]); } catch {}
                   }
-                } catch (e) {}
+                } catch {}
               }
             }
 
@@ -737,8 +771,8 @@ CRITICAL RULES:
               type: 'stream', 
               chunk: { response: '', done: true } 
             });
-            try { connection.send(doneMsg); } catch (e) {}
-            try { this.broadcast(doneMsg, [connection.id]); } catch (e) {}
+            try { connection.send(doneMsg); } catch {}
+            try { this.broadcast(doneMsg, [connection.id]); } catch {}
 
             // Store the output payload on the span
             const outputMessages = [{ role: 'ai', content: outputContent }];
@@ -753,8 +787,8 @@ CRITICAL RULES:
         type: 'error',
         error: err?.message || 'Failed to process AI generation.'
       });
-      try { connection.send(errMsg); } catch (e) {}
-      try { this.broadcast(errMsg); } catch (e) {}
+      try { connection.send(errMsg); } catch {}
+      try { this.broadcast(errMsg); } catch {}
     }
   }
 
@@ -807,8 +841,12 @@ CRITICAL RULES:
       {
         "imports": {
           "react": "https://esm.sh/react@18.2.0",
-          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-          "lucide-react": "https://esm.sh/lucide-react@0.294.0?external=react"
+          "react/": "https://esm.sh/react@18.2.0/",
+          "react-dom": "https://esm.sh/react-dom@18.2.0?external=react",
+          "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+          "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?external=react",
+          "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react",
+          "lucide-react/": "https://esm.sh/lucide-react@0.344.0?external=react/"
         }
       }
     </script>
@@ -837,14 +875,72 @@ CRITICAL RULES:
     <script type="module">
       import { createRoot } from 'react-dom/client';
       import React from 'react';
+
+      window.addEventListener('error', (event) => {
+        try {
+          if (window.parent) {
+            window.parent.postMessage({
+              type: 'preview-error',
+              file: event.filename || 'preview',
+              error: event.message || 'Unknown runtime error',
+              lineno: event.lineno,
+              colno: event.colno
+            }, '*');
+          }
+        } catch (_) {}
+      });
+
+      window.addEventListener('unhandledrejection', (event) => {
+        try {
+          if (window.parent) {
+            window.parent.postMessage({
+              type: 'preview-error',
+              file: 'async',
+              error: String(event.reason?.message || event.reason || 'Unhandled Promise Rejection')
+            }, '*');
+          }
+        } catch (_) {}
+      });
       
       // Auto-mount main
-      import('./src/main.jsx').catch(e => {
+      import('./src/main.jsx').then(() => {
+        try {
+          if (window.parent) {
+            window.parent.postMessage({ type: 'preview-success' }, '*');
+          }
+        } catch (_) {}
+      }).catch(e => {
         if (e.message && e.message.includes('src/main.jsx')) {
           console.log('Falling back to ./src/main.tsx');
-          import('./src/main.tsx').catch(console.error);
+          import('./src/main.tsx').then(() => {
+            try {
+              if (window.parent) {
+                window.parent.postMessage({ type: 'preview-success' }, '*');
+              }
+            } catch (_) {}
+          }).catch(err => {
+            console.error('Preview Load Error (main.tsx):', err);
+            try {
+              if (window.parent) {
+                window.parent.postMessage({
+                  type: 'preview-error',
+                  file: 'src/main.tsx',
+                  error: err?.message || 'Failed to mount main.tsx'
+                }, '*');
+              }
+            } catch (_) {}
+          });
         } else {
-          console.error('Preview Load Error:', e);
+          console.error('Preview Load Error (main.jsx):', e);
+          try {
+            if (window.parent) {
+              window.parent.postMessage({
+                type: 'preview-error',
+                file: 'src/main.jsx',
+                error: e?.message || 'Failed to mount main.jsx'
+              }, '*');
+            }
+          } catch (_) {}
         }
       });
     </script>
@@ -861,7 +957,7 @@ CRITICAL RULES:
 
     // Serve project files from SQLite
     try {
-      const cleanPath = path.startsWith('/') ? path : '/' + path;
+      const cleanPath = normalizePath(path);
       const strippedPath = cleanPath.replace(/^\//, '');
       const srcPrefixed = cleanPath.startsWith('/src/') ? cleanPath : '/src' + cleanPath;
       const srcStripped = cleanPath.startsWith('/src/') ? cleanPath.replace('/src/', '/') : cleanPath;
@@ -877,7 +973,8 @@ CRITICAL RULES:
       if (rows.length === 0) {
         const filename = cleanPath.split('/').pop() || '';
         if (filename) {
-          rows = [...this.sql`SELECT content FROM project_files WHERE path LIKE '%' || ${filename} LIMIT 1`];
+          const safeFilename = filename.replace(/[%_\\]/g, '\\$&');
+          rows = [...this.sql`SELECT content FROM project_files WHERE path LIKE '%' || ${safeFilename} ESCAPE '\\' LIMIT 1`];
         }
       }
 
@@ -898,8 +995,116 @@ CRITICAL RULES:
         // Edge Transpilation for React/TSX
         if (path.endsWith('.jsx') || path.endsWith('.tsx') || path.endsWith('.ts')) {
           try {
-            // Strip any wrapping markdown code fences if the model included them inside the tag
-            content = content.replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/, '').replace(/\r?\n```\s*$/, '');
+            // Strip any subsequent tag starts if AI omitted closing tag
+            const nextTagMatch = content.search(/<(?:file|edit)\s+path=/i);
+            if (nextTagMatch !== -1) {
+              content = content.substring(0, nextTagMatch);
+            }
+
+            // Strip any wrapping markdown code fences and trailing conversational text
+            let c = content.trim();
+            const fenceStart = c.match(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/);
+            if (fenceStart) {
+              const afterFence = c.substring(fenceStart[0].length);
+              const fenceEnd = afterFence.search(/\r?\n```/);
+              if (fenceEnd !== -1) {
+                c = afterFence.substring(0, fenceEnd);
+              } else {
+                c = afterFence.replace(/\r?\n```[\s\S]*$/, '');
+              }
+            } else {
+              const trailingFence = c.search(/\r?\n```(?:\s*\r?\n|$)/);
+              if (trailingFence !== -1) {
+                c = c.substring(0, trailingFence);
+              }
+              c = c.replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/, '').replace(/\r?\n```[\s\S]*$/, '');
+            }
+            content = c.trim();
+
+            // 1. Alias common hallucinated Lucide icons before transpiling
+            const lucideAliases: Record<string, string> = {
+              Chat: 'MessageSquare',
+              Dashboard: 'LayoutDashboard',
+              Spinner: 'Loader2',
+              Gear: 'Settings',
+              Robot: 'Bot',
+              Bin: 'Trash2',
+              Cross: 'X',
+              Close: 'X',
+              Logout: 'LogOut',
+              Exit: 'LogOut',
+              Profile: 'User',
+              Graph: 'BarChart2',
+              Stats: 'BarChart',
+              Tick: 'Check',
+              Add: 'Plus',
+              Warning: 'AlertTriangle',
+              Information: 'Info',
+              Magnifier: 'Search',
+              Delete: 'Trash2'
+            };
+            content = content.replace(/import\s*\{([^}]+)\}\s*from\s*['"](?:https:\/\/esm\.sh\/)?lucide-react['"]/g, (match, importsStr) => {
+              const parts = importsStr.split(',').map((p: string) => {
+                const trimmed = p.trim();
+                if (!trimmed) return '';
+                if (trimmed.includes(' as ')) return trimmed;
+                if (lucideAliases[trimmed]) {
+                  return `${lucideAliases[trimmed]} as ${trimmed}`;
+                }
+                return trimmed;
+              }).filter(Boolean);
+              return `import { ${parts.join(', ')} } from 'lucide-react'`;
+            });
+
+            // 2. Auto-inject missing React hooks without creating duplicate imports
+            const commonHooks = ['useState', 'useEffect', 'useRef', 'useCallback', 'useMemo', 'useContext', 'useReducer'];
+            const importedFromReact = new Set<string>();
+
+            // Extract all named imports from any import ... from 'react' clause
+            const reactImportRegex = /import\s+([\s\S]*?)\s+from\s*['"]react['"]/g;
+            let rMatch: RegExpExecArray | null;
+            while ((rMatch = reactImportRegex.exec(content)) !== null) {
+              const clause = rMatch[1];
+              const namedMatch = clause.match(/\{([\s\S]*?)\}/);
+              if (namedMatch) {
+                namedMatch[1].split(',').forEach(item => {
+                  const name = item.trim().split(/\s+as\s+/)[0].trim();
+                  if (name) importedFromReact.add(name);
+                });
+              }
+            }
+
+            const missingHooks: string[] = [];
+            for (const hook of commonHooks) {
+              const usedRegex = new RegExp(`(?<![.\\w])${hook}\\s*\\(`, 'g');
+              if (usedRegex.test(content)) {
+                if (!importedFromReact.has(hook)) {
+                  const definedRegex = new RegExp(`(?:const|let|var|function|type|interface)\\s+${hook}\\b`);
+                  if (!definedRegex.test(content)) {
+                    missingHooks.push(hook);
+                  }
+                }
+              }
+            }
+
+            if (missingHooks.length > 0) {
+              // If there's an import from 'react' with curly braces { ... }, append inside the existing braces
+              const hasBraces = content.match(/import\s+([^;]*?\{)([\s\S]*?)(\}[^;]*?)\s+from\s*['"]react['"]/);
+              if (hasBraces) {
+                content = content.replace(/import\s+([^;]*?\{)([\s\S]*?)(\}[^;]*?)\s+from\s*['"]react['"]/, (match, prefix, inside, suffix) => {
+                  const trimmedInside = inside.trim();
+                  const sep = trimmedInside.length > 0 ? ', ' : '';
+                  return `import ${prefix}${trimmedInside}${sep}${missingHooks.join(', ')}${suffix} from 'react'`;
+                });
+              } else if (content.match(/import\s+React\b[^;]*from\s*['"]react['"]/)) {
+                content = content.replace(/import\s+React\b([^;]*from\s*['"]react['"])/, (match, rest) => {
+                  return `import React, { ${missingHooks.join(', ')} } ${rest}`;
+                });
+              } else {
+                content = `import React, { ${missingHooks.join(', ')} } from 'react';\n${content}`;
+              }
+            }
+
             content = transform(content, { transforms: ['typescript', 'jsx'] }).code;
             
             // Fix CSS imports (inject link tag dynamically with resolved path)
@@ -921,7 +1126,7 @@ CRITICAL RULES:
 
             // If file is main.jsx, make App import resilient
             if (path.endsWith('main.jsx') || path.endsWith('main.tsx')) {
-              content = content.replace(/import\s+App\s+from\s+['"](\.\/App(?:\.jsx)?)['"]/g, 
+              content = content.replace(/import\s+App\s+from\s+['"](\.\/App(?:\.[jt]sx?)?)['"]/g, 
                 `import * as AppModule from '$1';\nconst App = AppModule.default || AppModule.App || Object.values(AppModule).find(v => typeof v === 'function');`);
             }
 
@@ -936,7 +1141,7 @@ CRITICAL RULES:
 
             // Very basic ESM local path resolution fixing (appending .jsx if no extension provided)
             content = content.replace(/from\s+['"](\.[^'"]+)['"]/g, (match, p1) => {
-              if (p1.endsWith('.css') || p1.endsWith('.jsx') || p1.endsWith('.tsx') || p1.endsWith('.ts')) return match;
+              if (p1.endsWith('.css') || p1.endsWith('.jsx') || p1.endsWith('.tsx') || p1.endsWith('.ts') || p1.endsWith('.js') || p1.endsWith('.json')) return match;
               return `from '${p1}.jsx'`; // default guess for edge preview local components
             });
             
@@ -946,7 +1151,29 @@ CRITICAL RULES:
             const errorFallback = `
               import React from 'react';
               console.error("Transpile Error in ${path}:\\n" + ${JSON.stringify(errMsg)});
+              try {
+                if (typeof window !== 'undefined' && window.parent) {
+                  window.parent.postMessage({
+                    type: 'preview-error',
+                    file: ${JSON.stringify(path)},
+                    error: "Transpile Error in " + ${JSON.stringify(path)} + ": " + ${JSON.stringify(errMsg)}
+                  }, '*');
+                }
+              } catch (_) {}
+
               export default function TranspileErrorView() {
+                const handleAutoFixClick = () => {
+                  try {
+                    if (window.parent) {
+                      window.parent.postMessage({
+                        type: 'preview-auto-fix',
+                        file: ${JSON.stringify(path)},
+                        error: "Transpile Error in " + ${JSON.stringify(path)} + ": " + ${JSON.stringify(errMsg)}
+                      }, '*');
+                    }
+                  } catch (_) {}
+                };
+
                 return React.createElement('div', {
                   style: {
                     padding: '32px 20px',
@@ -996,10 +1223,30 @@ CRITICAL RULES:
                       border: '1px solid rgba(239, 68, 68, 0.15)'
                     }
                   }, ${JSON.stringify(errMsg)}),
-                  React.createElement('p', {
-                    key: 'hint',
-                    style: { margin: 0, fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5' }
-                  }, 'Ask the AI in the chat panel to fix this syntax error, and it will surgically patch the broken lines.')
+                  React.createElement('div', {
+                    key: 'actions',
+                    style: { display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px' }
+                  }, [
+                    React.createElement('button', {
+                      key: 'fixBtn',
+                      onClick: handleAutoFixClick,
+                      style: {
+                        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+                      }
+                    }, '⚡ Fix Automatically with AI'),
+                    React.createElement('span', {
+                      key: 'hint',
+                      style: { fontSize: '12px', color: '#94a3b8' }
+                    }, 'AI will surgically patch the broken lines')
+                  ])
                 ]));
               }
               export const App = TranspileErrorView;

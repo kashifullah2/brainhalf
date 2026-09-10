@@ -18,7 +18,14 @@ class EventEmitter {
 
   emit(event: string, payload?: any) {
     if (!this.events[event]) return;
-    this.events[event].forEach(listener => listener(payload));
+    const listeners = [...this.events[event]];
+    for (const listener of listeners) {
+      try {
+        listener(payload);
+      } catch (err) {
+        console.error(`Error in event listener for "${event}":`, err);
+      }
+    }
   }
 }
 

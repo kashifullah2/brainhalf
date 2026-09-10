@@ -11,7 +11,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, collapsed = false, onToggleCollapse }) => {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<Project[]>(() => getProjects());
   const [showSettings, setShowSettings] = useState(false);
 
   const refreshProjects = () => {
@@ -19,8 +19,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
   };
 
   useEffect(() => {
-    refreshProjects();
-
     const unsubRenamed = appEvents.on('project-renamed', () => {
       refreshProjects();
     });
@@ -365,10 +363,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
 
               <div style={{ background: 'rgba(255, 255, 255, 0.025)', borderRadius: '6px', padding: '16px' }}>
                 <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                  WebContainer Virtual Engine
+                  Cloudflare Edge Transpilation Engine (Sucrase)
                 </strong>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                  In-browser Node.js runtime running Vite + React preview with Hot Module Replacement and live code sanitization.
+                  Sub-millisecond on-the-fly JSX/TSX edge transpilation powered by Sucrase inside Cloudflare Durable Objects with zero cold-start latency.
                 </p>
               </div>
             </div>

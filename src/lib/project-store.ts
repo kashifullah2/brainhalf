@@ -58,33 +58,42 @@ export function getProjects(): Project[] {
 export function saveProjects(projects: Project[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-  } catch (_e) {}
+  } catch {}
 }
 
 export function getActiveProjectId(): string {
   // Check URL parameter first (?project=...)
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && window.location?.search) {
     const params = new URLSearchParams(window.location.search);
     const urlProj = params.get('project');
     if (urlProj && /^[a-zA-Z0-9_-]+$/.test(urlProj)) {
       return urlProj;
     }
+  }
+
+  if (typeof localStorage !== 'undefined') {
     const saved = localStorage.getItem(ACTIVE_PROJECT_KEY);
     if (saved) return saved;
   }
+
   return 'default';
 }
 
 export function setActiveProjectId(id: string) {
-  if (typeof window !== 'undefined') {
+  if (typeof localStorage !== 'undefined') {
     localStorage.setItem(ACTIVE_PROJECT_KEY, id);
-    const url = new URL(window.location.href);
-    if (id === 'default') {
-      url.searchParams.delete('project');
-    } else {
-      url.searchParams.set('project', id);
-    }
-    window.history.replaceState({}, '', url.toString());
+  }
+
+  if (typeof window !== 'undefined' && window.location && window.history?.replaceState) {
+    try {
+      const url = new URL(window.location.href);
+      if (id === 'default') {
+        url.searchParams.delete('project');
+      } else {
+        url.searchParams.set('project', id);
+      }
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
   }
 }
 

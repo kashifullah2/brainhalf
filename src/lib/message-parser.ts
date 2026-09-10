@@ -1,3 +1,5 @@
+import { normalizePath } from './utils';
+
 export interface CodeEdit {
   search: string;
   replace: string;
@@ -125,6 +127,27 @@ export function applyEditsToFile(
       if (lineIdx !== -1) {
         resultLines[lineIdx] = normReplace;
         result = resultLines.join('\n');
+        continue;
+      }
+    }
+
+    // 5. Collapsed whitespace block match (handles formatting or indentation differences)
+    const stripWs = (s: string) => s.replace(/\s+/g, '');
+    const strippedSearch = stripWs(normSearch);
+    if (strippedSearch.length > 15) {
+      for (let i = 0; i < resultLines.length; i++) {
+        let accumulated = '';
+        let j = i;
+        while (j < resultLines.length && accumulated.length < strippedSearch.length) {
+          accumulated += stripWs(resultLines[j]);
+          if (accumulated === strippedSearch) {
+            const before = resultLines.slice(0, i);
+            const after = resultLines.slice(j + 1);
+            result = [...before, normReplace, ...after].join('\n');
+            break;
+          }
+          j++;
+        }
       }
     }
   }
@@ -166,9 +189,9 @@ function extractMarkdownCodeBlocks(
     const beforeTextMatch = textBefore.match(/(?:file|path|in)?\s*[:`*]*([a-zA-Z0-9_\-./]+\.(?:jsx|tsx|js|ts|css|html|json))[`*]*/i);
 
     if (commentPathMatch) {
-      filePath = commentPathMatch[1].startsWith('/') ? commentPathMatch[1].substring(1) : commentPathMatch[1];
+      filePath = normalizePath(commentPathMatch[1], { leadingSlash: false });
     } else if (beforeTextMatch) {
-      filePath = beforeTextMatch[1].startsWith('/') ? beforeTextMatch[1].substring(1) : beforeTextMatch[1];
+      filePath = normalizePath(beforeTextMatch[1], { leadingSlash: false });
     } else if (lang === 'css' || rawCode.includes('{') && rawCode.includes(':') && !rawCode.includes('import ') && !rawCode.includes('export ')) {
       filePath = 'src/styles.css';
     } else if (lang === 'html') {
@@ -243,7 +266,7 @@ export function parseMessageSegments(rawText: string, isStreamDone: boolean = fa
     let filePath = '';
     if (!isCommand && !isPlan) {
       const pathMatch = fullTag.match(/path=["']([^"']+)["']/i);
-      filePath = pathMatch ? pathMatch[1] : 'unknown';
+      filePath = pathMatch ? normalizePath(pathMatch[1], { leadingSlash: false }) : 'unknown';
     }
 
     const afterStartTag = remaining.substring((match.index ?? 0) + match[0].length);
@@ -253,13 +276,56 @@ export function parseMessageSegments(rawText: string, isStreamDone: boolean = fa
     else if (isEdit) endTag = '</edit>';
     
     const endTagIndex = afterStartTag.indexOf(endTag);
+    const nextStartMatch = afterStartTag.match(tagStartRegex);
 
     const cleanContent = (str: string) => {
-      let c = str.replace(/^\r?\n/, '');
-      return c.replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/, '').replace(/\r?\n```\s*$/, '');
+      let c = str.trim();
+
+      // 1. If content starts with a markdown code fence: ```jsx ... ```
+      const fenceStartMatch = c.match(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/);
+      if (fenceStartMatch) {
+        const afterFence = c.substring(fenceStartMatch[0].length);
+        const closingFenceIdx = afterFence.search(/\r?\n```/);
+        if (closingFenceIdx !== -1) {
+          return afterFence.substring(0, closingFenceIdx).trim();
+        }
+        return afterFence.replace(/\r?\n```[\s\S]*$/, '').trim();
+      }
+
+      // 2. If content contains a closing code fence with trailing text after it
+      const trailingFenceIdx = c.search(/\r?\n```(?:\s*\r?\n|$)/);
+      if (trailingFenceIdx !== -1) {
+        c = c.substring(0, trailingFenceIdx);
+      }
+
+      // 3. Fallback cleanup: strip any dangling leading/trailing fences
+      c = c.replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/, '');
+      c = c.replace(/\r?\n```[\s\S]*$/, '');
+
+      return c.trim();
     };
 
-    if (endTagIndex !== -1) {
+    // Check if another tag began before the closing tag was found
+    if (nextStartMatch && nextStartMatch.index !== undefined && (endTagIndex === -1 || nextStartMatch.index < endTagIndex)) {
+      // The current tag was NOT properly closed before the next tag started!
+      const content = cleanContent(afterStartTag.substring(0, nextStartMatch.index));
+
+      if (isCommand) {
+        segments.push({ type: 'command', command: content, isStreaming: false });
+      } else if (isPlan) {
+        segments.push({ type: 'plan', content, isStreaming: false });
+      } else if (isEdit) {
+        const edits = parseEditPairs(content);
+        segments.push({ type: 'edit', path: filePath, rawContent: content, edits, isStreaming: false });
+        editsMap[filePath] = edits;
+      } else {
+        segments.push({ type: 'file', path: filePath, content, isStreaming: false });
+        fileMap[filePath] = content;
+      }
+
+      // Continue parsing from the start of the next tag
+      remaining = afterStartTag.substring(nextStartMatch.index);
+    } else if (endTagIndex !== -1) {
       const content = cleanContent(afterStartTag.substring(0, endTagIndex));
       
       if (isCommand) {

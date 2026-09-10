@@ -9,7 +9,19 @@ interface TopNavProps {
 }
 
 const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) => {
-  const [projectName, setProjectName] = useState('Untitled Project');
+  const [overrideName, setOverrideName] = useState<string | null>(null);
+  const [prevId, setPrevId] = useState(activeProjectId);
+  if (prevId !== activeProjectId) {
+    setPrevId(activeProjectId);
+    setOverrideName(null);
+  }
+
+  const currentProjectName = React.useMemo(() => {
+    const projects = getProjects();
+    const curr = projects.find(p => p.id === activeProjectId);
+    return curr?.name || 'Untitled Project';
+  }, [activeProjectId]);
+
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [copied, setCopied] = useState(false);
@@ -18,16 +30,18 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
   const [showDeployDropdown, setShowDeployDropdown] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
+  const projectName = overrideName ?? currentProjectName;
+
   const deployDropdownRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const projects = getProjects();
-    const curr = projects.find(p => p.id === activeProjectId);
-    if (curr) {
-      setProjectName(curr.name);
-      setEditedName(curr.name);
-    }
+    const unsub = appEvents.on('project-renamed', (payload: { id: string; name: string }) => {
+      if (payload.id === activeProjectId) {
+        setOverrideName(payload.name);
+      }
+    });
+    return () => unsub();
   }, [activeProjectId]);
 
   // Click outside to close dropdowns
@@ -61,7 +75,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
 
   const handleSaveName = () => {
     const trimmed = editedName.trim() || 'Untitled Project';
-    setProjectName(trimmed);
+    setOverrideName(trimmed);
     setIsEditing(false);
     updateProjectName(activeProjectId, trimmed);
     if (onProjectRenamed) onProjectRenamed(activeProjectId, trimmed);
@@ -74,7 +88,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
-    } catch (_e) {
+    } catch {
       prompt('Copy project URL:', shareUrl);
     }
   };

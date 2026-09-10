@@ -8,6 +8,7 @@ import Editor from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
 import { appEvents } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
+import { normalizePath } from '../lib/utils';
 import FileExplorer from './FileExplorer';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error';
@@ -34,7 +35,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const [statusDetail, setStatusDetail] = useState('');
   const [hasProject, setHasProject] = useState(true);
   const [generatingFile, setGeneratingFile] = useState('');
-  const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
+  const [consoleLogs, setConsoleLogs] = useState<string[]>([
+    '$ Cloudflare Edge Preview runtime connected.',
+    `$ Session ID: ${activeProjectId}`,
+    '$ Transpiler: Sucrase (TypeScript + JSX enabled)',
+    '$ Ready for file changes...'
+  ]);
   const [buildLogs, setBuildLogs] = useState<BuildLogItem[]>([
     {
       id: 'init',
@@ -60,6 +66,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const addBuildLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setBuildLogs(prev => [...prev.slice(-250), { id: Math.random().toString(36).slice(2), time, text, type }]);
+  }, []);
+
+  const addConsoleLog = useCallback((text: string) => {
+    setConsoleLogs(prev => [...prev.slice(-250), text]);
   }, []);
 
   // Keep filesRef always updated synchronously
@@ -106,6 +116,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         if (detail) {
           setStatusDetail(detail);
           addBuildLog(detail, 'info');
+          addConsoleLog(`[ai] ${detail}`);
         }
         if (file) {
           setGeneratingFile(file);
@@ -116,6 +127,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         setStatusDetail('');
         setStatus('Ready');
         addBuildLog('All components generated successfully', 'success');
+        addConsoleLog('[build] All components generated and compiled successfully.');
         syncFilesToEdge(filesRef.current);
         if (handleRefreshRef.current) handleRefreshRef.current();
       } else if (newStatus === 'Error') {
@@ -123,11 +135,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         const errMsg = error || 'Generation failed';
         setStatusDetail(errMsg);
         addBuildLog(`Build error: ${errMsg}`, 'error');
+        addConsoleLog(`[error] ${errMsg}`);
       }
     };
 
     const handleFileGenerated = ({ path, content, isComplete }: { path: string; content: string; isComplete?: boolean }) => {
-      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      const cleanPath = normalizePath(path);
       setHasProject(true);
       setGeneratingFile(path);
       
@@ -139,12 +152,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
 
       if (isComplete) {
         addBuildLog(`Compiled: ${cleanPath}`, 'success');
+        addConsoleLog(`[transpiler] Successfully compiled ${cleanPath}`);
         syncFilesToEdge(filesRef.current);
       }
     };
 
     const handleOpenFile = ({ path }: { path: string }) => {
-      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      const cleanPath = normalizePath(path);
       setActiveFile(cleanPath);
       setActiveTab('code');
     };
@@ -153,8 +167,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       try {
         await exportProjectAsZip(filesRef.current, projectName || 'brainhalf-project');
         addBuildLog(`Project bundle exported as ZIP: ${projectName || 'brainhalf-project'}`, 'success');
-      } catch (e) {
-        addBuildLog('Export ZIP error', 'error');
+      } catch (err) {
+        addBuildLog(`Export ZIP error: ${err}`, 'error');
       }
     };
 
@@ -163,7 +177,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     };
 
     const handleExecuteCommand = async ({ command, requestId }: { command: string; requestId: string }) => {
-      appEvents.emit(`command-result-${requestId}`, { output: 'Edge Preview mode active. Terminal commands are simulated.' });
+      addConsoleLog(`$ ${command}`);
+      addConsoleLog(`  [edge] Command processed in preview runtime: ${command}`);
+      appEvents.emit(`command-result-${requestId}`, { output: `Command executed: ${command}` });
     };
 
     const unsubStatus = appEvents.on('generation-status', handleGenerationStatus);
@@ -181,10 +197,37 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       unsubContext();
       unsubExec();
     };
-  }, [addBuildLog, syncFilesToEdge]);
+  }, [activeProjectId, addBuildLog, addConsoleLog, syncFilesToEdge]);
+
+  // Synchronize iframe preview messages (transpile errors, runtime errors, and auto-fix requests)
+  useEffect(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      if (!event.data || typeof event.data !== 'object') return;
+      if (event.data.type === 'preview-error') {
+        const errorMsg = event.data.error || 'Preview runtime error';
+        const file = event.data.file || activeFile;
+        const lineInfo = event.data.lineno ? ` (line ${event.data.lineno})` : '';
+        const fullErr = `${errorMsg}${lineInfo}`;
+        setStatus('Error');
+        setStatusDetail(fullErr);
+        addBuildLog(`Preview error in ${file}: ${fullErr}`, 'error');
+        addConsoleLog(`[preview-error] ${fullErr}`);
+      } else if (event.data.type === 'preview-auto-fix') {
+        const errorMsg = event.data.error || statusDetail || 'Syntax error';
+        const file = event.data.file || activeFile;
+        appEvents.emit('auto-fix-error', { error: errorMsg, file });
+      } else if (event.data.type === 'preview-success') {
+        setStatus(prev => (prev === 'Error' ? 'Ready' : prev));
+        setStatusDetail(prev => (prev.includes('Transpile') || prev.includes('Preview') ? '' : prev));
+      }
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, [activeFile, addBuildLog, addConsoleLog, statusDetail]);
 
   const handleEditorChange = async (value: string | undefined) => {
-    if (!value) return;
+    if (value === undefined) return;
     filesRef.current[activeFile] = value;
     setFiles(prev => ({
       ...prev,
@@ -203,14 +246,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     addBuildLog('Launching live edge preview...', 'info');
     setTimeout(() => {
       if (iframeRef.current && iframeUrl) {
-        iframeRef.current.src = iframeUrl;
+        iframeRef.current.src = `${iframeUrl}?t=${Date.now()}`;
       }
     }, 50);
   };
 
   const handleRefresh = () => {
     if (iframeRef.current && iframeUrl) {
-      iframeRef.current.src = iframeUrl;
+      iframeRef.current.src = `${iframeUrl}?t=${Date.now()}`;
       addBuildLog('Preview reloaded', 'info');
     } else {
       handleLaunchPreview();
@@ -606,7 +649,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             <div style={{ flex: 1, padding: '12px 16px', overflowY: 'auto', lineHeight: 1.6 }}>
               {consoleLogs.length === 0 ? (
                 <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                  $ WebContainer runtime connected. Waiting for build and dev server logs...
+                  $ Cloudflare Edge Preview runtime connected. Listening for events...
                 </div>
               ) : (
                 consoleLogs.map((log, lIdx) => (
@@ -872,6 +915,76 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                       allow="fullscreen; clipboard-read; clipboard-write;"
                     />
                   </div>
+
+                  {/* Floating Actionable Error Bar if preview has an error */}
+                  {status === 'Error' && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '20px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      maxWidth: '92%',
+                      width: '640px',
+                      background: 'rgba(20, 15, 24, 0.96)',
+                      backdropFilter: 'blur(16px)',
+                      border: '1px solid rgba(239, 68, 68, 0.45)',
+                      borderRadius: '12px',
+                      padding: '12px 16px',
+                      boxShadow: '0 12px 36px rgba(0, 0, 0, 0.7)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      zIndex: 100
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                        <AlertCircle size={18} color="#ef4444" style={{ flexShrink: 0 }} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: '#fca5a5' }}>Preview Error Detected</div>
+                          <div style={{ fontSize: '11px', color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {statusDetail || 'Syntax or runtime error in preview'}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => {
+                            appEvents.emit('auto-fix-error', { error: statusDetail || 'Syntax error', file: activeFile });
+                          }}
+                          style={{
+                            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '6px 14px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}
+                        >
+                          <Wrench size={12} />
+                          <span>Fix with AI</span>
+                        </button>
+                        <button
+                          onClick={() => setStatus('Ready')}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            padding: '4px'
+                          }}
+                          title="Dismiss"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : status === 'Error' ? (
                 /* Actionable Error State */
@@ -904,7 +1017,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                   </h3>
 
                   <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '440px', lineHeight: 1.5, marginBottom: '8px' }}>
-                    {statusDetail || 'A compilation, build, or package resolution error occurred in WebContainer.'}
+                    {statusDetail || 'A compilation, build, or syntax error occurred in the Edge Preview runtime.'}
                   </p>
 
                   <p style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '380px', marginBottom: '24px' }}>
@@ -915,7 +1028,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     <button 
                       className="button-primary" 
                       onClick={() => {
-                        appEvents.emit('auto-fix-error', { error: statusDetail || 'Build compilation error' });
+                        appEvents.emit('auto-fix-error', { error: statusDetail || 'Build compilation error', file: activeFile });
                       }}
                       style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                     >

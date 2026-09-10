@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Wrench, Check, Copy, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import type { CodeEdit } from '../lib/message-parser';
 import { appEvents } from '../lib/events';
+import { normalizePath } from '../lib/utils';
 
 interface DiffEditBlockProps {
   filePath: string;
@@ -21,7 +22,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
   };
 
   const handleOpenInEditor = () => {
-    const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
+    const cleanPath = normalizePath(filePath);
     appEvents.emit('open-file', { path: cleanPath });
   };
 

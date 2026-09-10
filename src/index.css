@@ -1471,3 +1471,9 @@ textarea:focus-visible {
   }
 }
 
+/* Prevent iframe from intercepting mouse drag events during panel resize */
+.is-resizing iframe {
+  pointer-events: none !important;
+}
+
+

@@ -144,21 +144,66 @@ body {
       'App.jsx': {
         file: {
           contents: `
-import React from 'react'
+import React from 'react';
 
-function App() {
+export default function App() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'system-ui, sans-serif', color: '#a855f7' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: '36px', height: '36px', border: '3px solid rgba(168,85,247,0.2)', borderTopColor: '#a855f7', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
-        <h3 style={{ margin: 0, fontSize: '18px', color: '#f8fafc' }}>Loading App Preview...</h3>
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      background: 'linear-gradient(135deg, #0b0c10 0%, #1a1b26 100%)',
+      color: '#f8fafc',
+      padding: '24px',
+      textAlign: 'center'
+    }}>
+      <div style={{
+        maxWidth: '520px',
+        padding: '40px 32px',
+        borderRadius: '20px',
+        background: 'rgba(255, 255, 255, 0.03)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        backdropFilter: 'blur(16px)',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+      }}>
+        <div style={{
+          width: '56px',
+          height: '56px',
+          borderRadius: '14px',
+          background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 24px',
+          boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)'
+        }}>
+          <span style={{ fontSize: '26px' }}>⚡</span>
+        </div>
+        <h1 style={{
+          fontSize: '24px',
+          fontWeight: '700',
+          margin: '0 0 12px',
+          letterSpacing: '-0.02em',
+          background: 'linear-gradient(to right, #ffffff, #c4b5fd)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}>
+          Cloudflare Edge Preview Live
+        </h1>
+        <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6', margin: '0 0 24px' }}>
+          Your ultra-fast Edge Preview runtime is connected and ready. Send a prompt in the chat panel to generate custom React components!
+        </p>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', borderRadius: '999px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.25)', color: '#4ade80', fontSize: '12px', fontWeight: 500 }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4ade80' }} />
+          Zero Cold-Start Runtime Active
+        </div>
       </div>
-      <style>{\`@keyframes spin { to { transform: rotate(360deg); } }\`}</style>
     </div>
-  )
+  );
 }
-
-export default App
           `,
         },
       },

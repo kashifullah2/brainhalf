@@ -1,6 +1,5 @@
 import * as pty from 'node-pty';
 import { execSync } from 'child_process';
-import fs from 'fs';
 
 console.log('Fetching deployments...');
 const listCmd = execSync('npx wrangler pages deployment list --project-name brainhalf', { encoding: 'utf-8' });
