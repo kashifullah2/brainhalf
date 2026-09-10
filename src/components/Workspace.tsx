@@ -39,16 +39,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   const [hasProject, setHasProject] = useState(!isBrandNewInit);
   const [generatingFile, setGeneratingFile] = useState('');
   const [consoleLogs, setConsoleLogs] = useState<string[]>([
-    '$ Cloudflare Edge Preview runtime connected.',
-    `$ Session ID: ${activeProjectId}`,
-    '$ Transpiler: Sucrase (TypeScript + JSX enabled)',
-    '$ Ready for file changes...'
+    'Preview ready.',
+    'Waiting for changes...'
   ]);
   const [buildLogs, setBuildLogs] = useState<BuildLogItem[]>([
     {
       id: 'init',
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      text: 'BrainHalf development studio initialized.',
+      text: 'Workspace ready.',
       type: 'info'
     }
   ]);
@@ -120,14 +118,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     setBuildLogs([
       { 
         id: 'init', 
-        text: isBrandNew ? `Clean project session initialized: ${activeProjectId}` : `Switched to project session: ${activeProjectId}`, 
+        text: isBrandNew ? 'Workspace initialized' : 'Workspace loaded', 
         type: 'info', 
         time: timeNow 
       }
     ]);
     setConsoleLogs([
-      `[project] Active session: ${activeProjectId}`,
-      isBrandNew ? '[project] Clean slate: baseline React 18 template ready' : '[project] Restored saved workspace files'
+      isBrandNew ? 'Project initialized.' : 'Project loaded.',
+      'Preview ready.'
     ]);
 
     // Synchronize to the session's Durable Object
@@ -448,25 +446,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               </>
             )}
           </div>
-
-          <button 
-            className="icon-btn" 
-            title="Refresh preview" 
-            aria-label="Refresh preview"
-            onClick={handleRefresh} 
-            disabled={!iframeUrl}
-          >
-            <RefreshCw size={14} />
-          </button>
-          <button 
-            className="icon-btn" 
-            title="Open preview in new tab" 
-            aria-label="Open preview in new tab"
-            onClick={() => iframeUrl && window.open(iframeUrl, '_blank')} 
-            disabled={!iframeUrl}
-          >
-            <ExternalLink size={14} />
-          </button>
         </div>
       </div>
 
@@ -502,7 +481,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                       style={{
                         padding: '6px 12px',
                         background: isActive ? 'var(--bg-code-editor)' : 'transparent',
-                        borderBottom: isActive ? '2px solid var(--color-info)' : '2px solid transparent',
+                        borderBottom: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
                         color: isActive ? '#ffffff' : 'var(--text-muted)',
                         fontSize: '12px',
                         fontFamily: 'var(--font-mono)',
@@ -516,7 +495,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                       }}
                       className="hover-bright"
                     >
-                      <Code2 size={13} color={isActive ? 'var(--color-info)' : undefined} />
+                      <Code2 size={13} color={isActive ? 'var(--accent-light)' : undefined} />
                       <span>{name}</span>
                     </div>
                   );
@@ -536,21 +515,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <FolderCode size={12} color="var(--color-neutral)" />
-                  <span>src</span>
-                  <span style={{ opacity: 0.4 }}>/</span>
-                  <span style={{ color: '#f3f4f6', fontWeight: 600 }}>{activeFile.split('/').pop()}</span>
-                  <span style={{ opacity: 0.4 }}>•</span>
-                  <span>{(files[activeFile] || '').split('\n').length} lines</span>
-                  <span style={{
-                    fontSize: '9.5px',
-                    padding: '1px 5px',
-                    borderRadius: '4px',
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    color: 'var(--text-muted)',
-                    marginLeft: '4px'
-                  }}>
-                    {activeFile.endsWith('.css') ? 'CSS' : activeFile.endsWith('.json') ? 'JSON' : 'React (JSX)'}
-                  </span>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{activeFile}</span>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -670,9 +635,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               justifyContent: 'space-between'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Terminal size={14} color="#a855f7" />
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Terminal & Dev Server Logs</span>
-                <span style={{ fontSize: '10px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>Edge Preview Active</span>
+                <Terminal size={14} color="var(--accent-light)" />
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Console</span>
               </div>
               <button
                 onClick={() => setConsoleLogs([])}
@@ -693,7 +657,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             <div style={{ flex: 1, padding: '12px 16px', overflowY: 'auto', lineHeight: 1.6 }}>
               {consoleLogs.length === 0 ? (
                 <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                  $ Cloudflare Edge Preview runtime connected. Listening for events...
+                  Console output will appear here.
                 </div>
               ) : (
                 consoleLogs.map((log, lIdx) => (
@@ -733,11 +697,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               justifyContent: 'space-between'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ListFilter size={14} color="#3b82f6" />
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Build Pipeline Timeline & Activity</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'rgba(255, 255, 255, 0.06)', padding: '2px 6px', borderRadius: '4px' }}>
-                  {buildLogs.length} events
-                </span>
+                <ListFilter size={14} color="var(--accent-light)" />
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Activity</span>
               </div>
               <button
                 onClick={() => setBuildLogs([])}
@@ -758,7 +719,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
             <div style={{ flex: 1, padding: '14px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {buildLogs.length === 0 ? (
                 <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', padding: '16px 0' }}>
-                  No build pipeline events recorded yet. Pipeline steps, file generation, and server states will be logged here.
+                  No activity recorded yet.
                 </div>
               ) : (
                 buildLogs.map(item => (
@@ -908,13 +869,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     width: '48px',
                     height: '48px',
                     borderRadius: '8px',
-                    background: 'rgba(59, 130, 246, 0.1)',
+                    background: 'rgba(99, 102, 241, 0.12)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginBottom: '24px'
                   }}>
-                    <Sparkles size={24} color="var(--color-info)" />
+                    <Sparkles size={24} color="var(--accent-light)" />
                   </div>
 
                   <h3 style={{
@@ -924,7 +885,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     marginBottom: '8px',
                     fontFamily: 'var(--font-brand)'
                   }}>
-                    Your Live Preview Awaits
+                    Ready to Preview
                   </h3>
 
                   <p style={{
@@ -934,11 +895,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     lineHeight: 1.5,
                     marginBottom: '24px'
                   }}>
-                    Ask the AI assistant to build any app or component, or click below to launch the live Cloudflare Edge preview.
+                    Describe what you'd like to build in the chat to see your live preview here.
                   </p>
 
                   <button className="button-primary" onClick={handleLaunchPreview}>
-                    <Play size={14} fill="white" /> Launch Edge Preview
+                    <Play size={14} fill="white" /> Launch Preview
                   </button>
                 </div>
               ) : iframeUrl ? (

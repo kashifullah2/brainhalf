@@ -29,7 +29,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
   }, []);
 
   const handleNewProject = () => {
-    const newProj = createProject(`Project ${projects.length + 1}`);
+    const existingNames = new Set(projects.map(p => p.name));
+    let counter = projects.length + 1;
+    while (existingNames.has(`Project ${counter}`)) {
+      counter++;
+    }
+    const newProj = createProject(`Project ${counter}`);
     refreshProjects();
     onSelectProject(newProj.id);
   };
@@ -161,7 +166,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               style={{
                 background: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
                 color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                borderLeft: isActive && !collapsed ? '2px solid var(--color-info)' : '2px solid transparent',
+                borderLeft: isActive && !collapsed ? '2px solid var(--accent-primary)' : '2px solid transparent',
                 borderRadius: '6px',
                 cursor: 'pointer',
                 display: 'flex',
@@ -226,57 +231,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             </div>
           );
         })}
-
-        {/* Workspace Quick File Explorer */}
-        {!collapsed && (
-          <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ 
-              fontSize: '11px', 
-              color: 'var(--text-muted)', 
-              textTransform: 'uppercase', 
-              padding: '6px 8px 4px 8px', 
-              fontWeight: 600,
-              letterSpacing: '0.06em',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <Code2 size={12} color="var(--color-neutral)" />
-              <span>Files</span>
-            </div>
-            
-            {/* Quick list of primary generated files */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {[
-                { name: 'App.jsx', path: '/src/App.jsx', icon: Code2 },
-                { name: 'styles.css', path: '/src/styles.css', icon: Layers },
-                { name: 'main.jsx', path: '/src/main.jsx', icon: Code2 },
-                { name: 'package.json', path: '/package.json', icon: Server }
-              ].map(f => (
-                <div
-                  key={f.path}
-                  onClick={() => appEvents.emit('open-file', { path: f.path })}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '6px 8px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    color: 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  className="hover-bright"
-                  title={`Open ${f.path}`}
-                >
-                  <f.icon size={13} color="var(--color-neutral)" />
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>{f.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
       
       {/* Bottom Footer Actions */}
@@ -331,8 +285,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Settings size={20} color="var(--color-info)" />
-                <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>BrainHalf Studio Settings</h3>
+                <Settings size={20} color="var(--accent-light)" />
+                <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>Studio Preferences</h3>
               </div>
               <button className="icon-btn" onClick={() => setShowSettings(false)}>
                 <X size={18} />
@@ -343,30 +297,30 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               <div style={{ background: 'rgba(255, 255, 255, 0.025)', borderRadius: '6px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                   <Server size={16} color="#4ade80" />
-                  <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>Cloudflare Edge & SQLite DO</strong>
+                  <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>Storage & Workspace</strong>
                 </div>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                  Active session is connected to Cloudflare Workers Durable Objects with local SQLite persistence per project.
+                  Project files, sessions, and code changes are automatically saved and synchronized in real time.
                 </p>
               </div>
 
               <div style={{ background: 'rgba(255, 255, 255, 0.025)', borderRadius: '6px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <Cpu size={16} color="var(--color-ai)" />
-                  <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>AI Inference Pipeline</strong>
+                  <Sparkles size={16} color="var(--accent-light)" />
+                  <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>AI Generation</strong>
                 </div>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                  Primary: AWS Bedrock Runtime (Claude 3.5 Sonnet / Llama 3.3 70B)<br />
-                  Fallback: Cloudflare Workers AI (Llama 3.1 8B / Qwen 2.5 Coder)
+                  Build full-stack React components, modern styles, state management, and interactive UI in seconds.
                 </p>
               </div>
 
               <div style={{ background: 'rgba(255, 255, 255, 0.025)', borderRadius: '6px', padding: '16px' }}>
-                <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                  Cloudflare Edge Transpilation Engine (Sucrase)
-                </strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <Cpu size={16} color="var(--accent-light)" />
+                  <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>Live Preview Runtime</strong>
+                </div>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                  Sub-millisecond on-the-fly JSX/TSX edge transpilation powered by Sucrase inside Cloudflare Durable Objects with zero cold-start latency.
+                  Sub-second compilation and hot-reloading with zero local environment setup required.
                 </p>
               </div>
             </div>

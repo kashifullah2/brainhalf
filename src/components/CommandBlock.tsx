@@ -35,7 +35,7 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, isStreaming }) => 
     <div style={{
       background: 'rgba(0, 0, 0, 0.25)',
       border: 'none',
-      borderLeft: '2px solid var(--color-info)',
+      borderLeft: '2px solid var(--accent-primary)',
       borderRadius: '4px',
       padding: '10px 14px',
       margin: '8px 0',

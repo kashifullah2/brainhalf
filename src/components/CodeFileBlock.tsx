@@ -170,7 +170,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 }}
                 className="hover-bright"
               >
-                <Code2 size={12} color="var(--color-info)" />
+                <Code2 size={12} color="var(--accent-light)" />
                 <span>Editor ↗</span>
               </button>
             </>

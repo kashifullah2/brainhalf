@@ -309,7 +309,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
                   setShowDeployDropdown(false);
                 }}
               >
-                <Cloud size={14} color="var(--color-info)" />
+                <Cloud size={14} color="var(--accent-light)" />
                 <div>
                   <div style={{ fontWeight: 600 }}>Cloudflare Pages</div>
                   <div className="deploy-menu-item-subtext">Instant edge deployment</div>
@@ -382,7 +382,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Cloud size={20} color="var(--color-info)" />
+                <Cloud size={20} color="var(--accent-light)" />
                 <h3 id="deploy-modal-title" style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>
                   Deploy {projectName}
                 </h3>
@@ -397,13 +397,13 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
             </div>
 
             <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
-              Deploy this project directly to Cloudflare Pages with automatic edge SSL and instant global CDN distribution:
+              Deploy this project with automatic SSL and fast global distribution:
             </p>
 
             <div style={{ background: '#090b10', borderRadius: '6px', padding: '16px', marginBottom: '24px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#93c5fd' }}>
               <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}># 1. Export your project ZIP & extract it</div>
               <div style={{ color: 'var(--text-primary)', marginBottom: '10px' }}>npm install</div>
-              <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}># 2. Deploy instantly to Cloudflare</div>
+              <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}># 2. Deploy instantly</div>
               <div style={{ color: 'var(--color-success)' }}>npx wrangler pages deploy dist</div>
             </div>
 
@@ -463,7 +463,7 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Settings size={18} color="var(--color-info)" />
+                <Settings size={18} color="var(--accent-light)" />
                 <h3 id="settings-modal-title" style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>
                   Deployment Settings
                 </h3>

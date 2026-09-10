@@ -241,7 +241,7 @@ h1, h2, h3, h4, .brand-text {
 
 .panel-resize-handle:hover,
 .panel-resize-handle.active {
-  background: var(--color-info);
+  background: var(--accent-primary);
 }
 
 /* File Explorer Container - Layered Flush Dock */
@@ -1445,7 +1445,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--color-info);
+  outline: 2px solid var(--accent-primary);
   outline-offset: 1px;
 }
 

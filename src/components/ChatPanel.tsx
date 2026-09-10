@@ -16,22 +16,22 @@ const STARTER_PROMPTS = [
 ];
 
 const MODELS = [
-  { id: 'qwen/qwen3.8-max:free', name: 'Qwen 3.8 Max (Xkiro)', provider: 'xkiro' },
-  { id: 'qwen/qwen3.5-omni-plus:free', name: 'Qwen 3.5 Omni (Xkiro)', provider: 'xkiro' },
-  { id: 'minimax/minimax-m3:free', name: 'MiniMax M3 (Xkiro)', provider: 'xkiro' },
-  { id: 'minimax/minimax-m2:free', name: 'MiniMax M2 (Xkiro)', provider: 'xkiro' },
-  { id: 'us.meta.llama3-3-70b-instruct-v1:0', name: 'Llama 3 70B (AWS)', provider: 'aws' },
-  { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet (AWS)', provider: 'aws' },
-  { id: 'us.anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus (AWS)', provider: 'aws' },
-  { id: 'claude-opus-4.6', name: 'Claude Opus 4.6 (AWS)', provider: 'aws' },
-  { id: 'us.anthropic.claude-3-5-sonnet-20240620-v1:0', name: 'Claude 3.5 Sonnet Legacy (AWS)', provider: 'aws' },
-  { id: '@cf/zai-org/glm-5.3-flash', name: 'GLM 5.3 Flash (CF)', provider: 'cloudflare' },
-  { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code (CF)', provider: 'cloudflare' },
-  { id: '@cf/qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (CF)', provider: 'cloudflare' },
-  { id: '@cf/meta/llama-3.1-8b-instruct-fp8', name: 'Llama 3.1 8B (CF)', provider: 'cloudflare' },
-  { id: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B (CF)', provider: 'cloudflare' },
-  { id: '@cf/qwen/qwen2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B (CF)', provider: 'cloudflare' },
-  { id: '@cf/mistral/mistral-7b-instruct-v0.2-lora', name: 'Mistral 7B (CF)', provider: 'cloudflare' },
+  { id: 'qwen/qwen3.8-max:free', name: 'Qwen 3.8 Max', provider: 'xkiro' },
+  { id: 'qwen/qwen3.5-omni-plus:free', name: 'Qwen 3.5 Omni', provider: 'xkiro' },
+  { id: 'minimax/minimax-m3:free', name: 'MiniMax M3', provider: 'xkiro' },
+  { id: 'minimax/minimax-m2:free', name: 'MiniMax M2', provider: 'xkiro' },
+  { id: 'us.meta.llama3-3-70b-instruct-v1:0', name: 'Llama 3.3 70B', provider: 'aws' },
+  { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet', provider: 'aws' },
+  { id: 'us.anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', provider: 'aws' },
+  { id: 'claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'aws' },
+  { id: 'us.anthropic.claude-3-5-sonnet-20240620-v1:0', name: 'Claude 3.5 Sonnet Legacy', provider: 'aws' },
+  { id: '@cf/zai-org/glm-5.3-flash', name: 'GLM 5.3 Flash', provider: 'cloudflare' },
+  { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code', provider: 'cloudflare' },
+  { id: '@cf/qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', provider: 'cloudflare' },
+  { id: '@cf/meta/llama-3.1-8b-instruct-fp8', name: 'Llama 3.1 8B', provider: 'cloudflare' },
+  { id: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B', provider: 'cloudflare' },
+  { id: '@cf/qwen/qwen2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B', provider: 'cloudflare' },
+  { id: '@cf/mistral/mistral-7b-instruct-v0.2-lora', name: 'Mistral 7B', provider: 'cloudflare' },
 ];
 
 interface Message {
@@ -503,17 +503,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               textOverflow: 'ellipsis'
             }}
           >
-            <optgroup label="Xkiro AI Platform (Free)" style={{ background: '#141724', color: '#c084fc', fontWeight: 600 }}>
+            <optgroup label="Standard" style={{ background: '#141724', color: 'var(--accent-light)', fontWeight: 600 }}>
               {MODELS.filter(m => m.provider === 'xkiro').map(m => (
                 <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
               ))}
             </optgroup>
-            <optgroup label="AWS Bedrock (High Perf)" style={{ background: '#141724', color: '#c084fc', fontWeight: 600 }}>
+            <optgroup label="Advanced" style={{ background: '#141724', color: 'var(--accent-light)', fontWeight: 600 }}>
               {MODELS.filter(m => m.provider === 'aws').map(m => (
                 <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
               ))}
             </optgroup>
-            <optgroup label="Cloudflare (Free & Fast)" style={{ background: '#141724', color: '#c084fc', fontWeight: 600 }}>
+            <optgroup label="Fast" style={{ background: '#141724', color: 'var(--accent-light)', fontWeight: 600 }}>
               {MODELS.filter(m => m.provider === 'cloudflare').map(m => (
                 <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
               ))}
