@@ -163,5 +163,13 @@ describe('Project Store & LocalStorage State Management', () => {
       expect(getProjectFiles(p.id)).toBeNull();
       expect(getProjectMessages(p.id)).toBeNull();
     });
+
+    it('allows deleting project messages individually', () => {
+      saveProjectMessages('test-del-msgs', [{ role: 'user', content: 'test' }]);
+      expect(getProjectMessages('test-del-msgs')).toHaveLength(1);
+
+      deleteProjectMessages('test-del-msgs');
+      expect(getProjectMessages('test-del-msgs')).toBeNull();
+    });
   });
 });

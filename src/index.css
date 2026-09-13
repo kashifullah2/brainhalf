@@ -99,6 +99,67 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
+/* ==========================================================================
+   Professional Utility Classes
+   ========================================================================== */
+
+/* Touch Targets (Minimum 44x44px for accessibility) */
+.btn-touch {
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-touch-sm {
+  min-height: 32px;
+  min-width: 32px;
+}
+
+/* Typography Hierarchy */
+.text-h1 {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.text-h2 {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.text-body {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.text-secondary {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.text-micro {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.sidebar-actions {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.sidebar-nav-item:hover .sidebar-actions,
+.sidebar-nav-item:focus-within .sidebar-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .sidebar-actions {
+    opacity: 1;
+  }
+}
+
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -112,10 +173,44 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  /* Standard scrollbar for Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Custom Webkit Scrollbars for Chrome/Edge/Safari */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 select {
   color-scheme: dark;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
 }
 
 select option, select optgroup {
@@ -210,12 +305,14 @@ h1, h2, h3, h4, .brand-text {
   border-right: 1px solid var(--border-subtle);
   border-radius: 0;
   box-shadow: none;
+  flex-shrink: 0;
   transition: width 0.15s ease;
 }
 
 /* Workspace Panel Container - Flush Docked Column (No outer card border, no radius) */
 .workspace-panel-container {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1454,20 +1551,60 @@ textarea:focus-visible {
    ========================================================================== */
 @media (max-width: 1024px) {
   .sidebar-container {
-    width: 64px !important;
+    width: 64px;
   }
 }
 
-@media (max-width: 768px) {
-  .workspace-area {
-    flex-direction: column;
+@media (max-width: 767px) {
+  .sidebar-container {
+    position: fixed !important;
+    top: 0;
+    left: -280px;
+    bottom: 0;
+    width: 260px !important;
+    height: 100vh !important;
+    z-index: 9999;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
+  .sidebar-container.mobile-open {
+    transform: translateX(280px);
+  }
+
+  .sidebar-mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    z-index: 9998;
+  }
+
+  .workspace-area.is-mobile {
+    flex-direction: column;
+    height: calc(100vh - var(--header-height));
+    width: 100vw;
+    overflow: hidden;
+  }
+
   .chat-panel-container {
     width: 100% !important;
-    height: 40vh;
+    min-width: 100% !important;
+    height: 100% !important;
+    border-right: none;
   }
+
+  .workspace-panel-container {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
   .panel-resize-handle {
     display: none;
+  }
+
+  .top-nav {
+    padding: 0 10px;
   }
 }
 

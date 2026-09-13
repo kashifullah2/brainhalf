@@ -1,20 +1,24 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, 
-  AlertCircle, Terminal, CheckCircle2, Copy, Check, FolderCode, Download, 
-  ArrowDown, Tablet, Smartphone, WrapText, Wrench, RotateCcw, ListFilter
+  AlertCircle, Terminal, Copy, Check, FolderCode, Download, 
+  Tablet, Smartphone, WrapText, ListFilter,
+  Zap, Box
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
 import { appEvents } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
+import { exportToGitHub } from '../lib/github-export';
 import { normalizePath } from '../lib/utils';
 import { getProjectFiles, saveProjectFiles } from '../lib/project-store';
 import FileExplorer from './FileExplorer';
+import { SandpackProvider, SandpackPreview } from '@codesandbox/sandpack-react';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error';
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
+type PreviewEngine = 'edge' | 'sandpack';
 
 interface BuildLogItem {
   id: string;
@@ -25,18 +29,26 @@ interface BuildLogItem {
 
 interface WorkspaceProps {
   activeProjectId: string;
+  mobileTab?: 'chat' | 'code' | 'preview';
 }
 
-const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
+const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
+  
+  useEffect(() => {
+    if (mobileTab === 'code' || mobileTab === 'preview') {
+      setActiveTab(mobileTab);
+    }
+  }, [mobileTab]);
+  const [previewEngine, setPreviewEngine] = useState<PreviewEngine>('edge');
+  const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
-  const iframeUrl = `/preview/${activeProjectId}/`;
   const initialFiles = getProjectFiles(activeProjectId);
   const isBrandNewInit = !initialFiles;
   const [status, setStatus] = useState<GenerationStatus>(isBrandNewInit ? 'Idle' : 'Ready');
   const [statusDetail, setStatusDetail] = useState('');
-  const [hasProject, setHasProject] = useState(!isBrandNewInit);
+  const [hasProject, setHasProject] = useState(true);
   const [generatingFile, setGeneratingFile] = useState('');
   const [consoleLogs, setConsoleLogs] = useState<string[]>([
     'Preview ready.',
@@ -63,9 +75,19 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
   });
   const [activeFile, setActiveFile] = useState('/src/App.jsx');
 
+  // GitHub Export State
+  const [showGithubModal, setShowGithubModal] = useState(false);
+  const [githubRepo, setGithubRepo] = useState('');
+  const [githubToken, setGithubToken] = useState(() => {
+    return typeof localStorage !== 'undefined' ? (localStorage.getItem('brainhalf_github_pat') || '') : '';
+  });
+  const [githubStatus, setGithubStatus] = useState<{loading: boolean, error?: string, success?: string}>({loading: false});
+
   const filesRef = useRef(files);
+  const activeFileRef = useRef(activeFile);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const handleRefreshRef = useRef<() => void>(() => {});
+  const lastGenTimeRef = useRef(0);
 
   const addBuildLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -81,60 +103,187 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     filesRef.current = files;
   }, [files]);
 
-  const prevProjectIdRef = useRef<string>(activeProjectId);
+  useEffect(() => {
+    activeFileRef.current = activeFile;
+  }, [activeFile]);
+
+  // Transform files to match Sandpack entry points so live generation always renders
+  const sandpackFiles = useMemo(() => {
+    const spFiles: Record<string, any> = {};
+
+    // Copy all current files
+    for (const [rawPath, content] of Object.entries(files)) {
+      const cleanPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+      spFiles[cleanPath] = content;
+      if (cleanPath.startsWith('/src/')) {
+        const withoutSrc = cleanPath.replace(/^\/src\//, '/');
+        spFiles[withoutSrc] = content;
+      }
+    }
+
+    // Resolve main app component from any possible path
+    const appCode = 
+      files['/src/App.jsx'] || 
+      files['/src/App.tsx'] || 
+      files['/src/App.js'] || 
+      files['/App.jsx'] || 
+      files['/App.tsx'] || 
+      files['/App.js'] || 
+      files['App.jsx'] || 
+      files['App.tsx'] || 
+      files['src/App.jsx'] || 
+      '';
+
+    if (appCode) {
+      spFiles['/App.tsx'] = appCode;
+      spFiles['/App.jsx'] = appCode;
+      spFiles['/App.js'] = appCode;
+      spFiles['/src/App.jsx'] = appCode;
+    }
+
+    // Resolve styles
+    const stylesCode = 
+      files['/src/styles.css'] || 
+      files['/styles.css'] || 
+      files['src/styles.css'] || 
+      files['styles.css'] || 
+      '';
+
+    spFiles['/styles.css'] = stylesCode;
+    spFiles['/src/styles.css'] = stylesCode;
+
+    // Provide explicit Sandpack index entry point
+    spFiles['/index.tsx'] = `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './styles.css';
+
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}
+`;
+
+    // Scan all registered files for relative imports and auto-stub any missing modules
+    // to prevent Sandpack crashes: "Could not find module in path: './components/Header.jsx' relative to '/App.js'"
+    const registeredPaths = new Set(Object.keys(spFiles));
+    const importRegex = /(?:from|import)\s*\(?['"](\.[^'"]+)['"]\)?/g;
+
+    for (const [filePath, content] of Object.entries(spFiles)) {
+      if (typeof content !== 'string') continue;
+      if (!filePath.endsWith('.js') && !filePath.endsWith('.jsx') && !filePath.endsWith('.ts') && !filePath.endsWith('.tsx')) continue;
+
+      let match;
+      importRegex.lastIndex = 0;
+      while ((match = importRegex.exec(content)) !== null) {
+        const relImport = match[1]; // e.g. './components/Header.jsx' or './components/Header'
+        
+        // Resolve path relative to current file's directory
+        const dir = filePath.substring(0, filePath.lastIndexOf('/')) || '';
+        const parts = (dir + '/' + relImport).split('/').filter(Boolean);
+        const resolvedParts: string[] = [];
+        for (const p of parts) {
+          if (p === '.') continue;
+          if (p === '..') resolvedParts.pop();
+          else resolvedParts.push(p);
+        }
+        const resolvedPath = '/' + resolvedParts.join('/');
+        
+        // Check variants: direct, .jsx, .tsx, .js, .ts, /index.jsx, /index.tsx
+        const hasDirect = registeredPaths.has(resolvedPath);
+        const hasJsx = registeredPaths.has(resolvedPath + '.jsx');
+        const hasTsx = registeredPaths.has(resolvedPath + '.tsx');
+        const hasJs = registeredPaths.has(resolvedPath + '.js');
+        const hasTs = registeredPaths.has(resolvedPath + '.ts');
+        const hasIndex = registeredPaths.has(resolvedPath + '/index.jsx') || registeredPaths.has(resolvedPath + '/index.tsx');
+
+        if (!hasDirect && !hasJsx && !hasTsx && !hasJs && !hasTs && !hasIndex) {
+          const compName = resolvedPath.split('/').pop()?.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '') || 'Component';
+          const stubCode = `import React from 'react';
+export default function ${compName}(props) {
+  return (
+    <div style={{
+      padding: '16px 20px',
+      margin: '12px 0',
+      border: '1px dashed rgba(99, 102, 241, 0.4)',
+      borderRadius: '8px',
+      background: 'rgba(99, 102, 241, 0.05)',
+      color: '#818cf8',
+      fontFamily: 'system-ui, sans-serif'
+    }}>
+      <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>${compName}</div>
+      <div style={{ fontSize: '11px', opacity: 0.7 }}>Component loading...</div>
+      {props?.children}
+    </div>
+  );
+}
+export const ${compName} = ${compName};
+`;
+          spFiles[resolvedPath] = stubCode;
+          registeredPaths.add(resolvedPath);
+          if (!resolvedPath.endsWith('.jsx') && !resolvedPath.endsWith('.tsx') && !resolvedPath.endsWith('.js') && !resolvedPath.endsWith('.ts')) {
+            spFiles[resolvedPath + '.jsx'] = stubCode;
+            registeredPaths.add(resolvedPath + '.jsx');
+          }
+          if (resolvedPath.startsWith('/src/')) {
+            const withoutSrc = resolvedPath.replace(/^\/src\//, '/');
+            spFiles[withoutSrc] = stubCode;
+            registeredPaths.add(withoutSrc);
+          } else {
+            const withSrc = '/src' + resolvedPath;
+            spFiles[withSrc] = stubCode;
+            registeredPaths.add(withSrc);
+          }
+        }
+      }
+    }
+
+    return spFiles;
+  }, [files]);
 
   // Helper to sync files to backend
   const syncFilesToEdge = useCallback((currentFiles: any, replaceAll: boolean = false) => {
     appEvents.emit('sync-files', { files: currentFiles, replaceAll });
   }, []);
 
-  // Reset workspace when project changes or when cleared
+  // Synchronize workspace when project changes or when cleared
   useEffect(() => {
-    // 1. If switching from a previous project, save its files
-    if (prevProjectIdRef.current && prevProjectIdRef.current !== activeProjectId) {
-      saveProjectFiles(prevProjectIdRef.current, filesRef.current);
+    const loadedFiles = getProjectFiles(activeProjectId);
+    if (loadedFiles && Object.keys(loadedFiles).length > 0) {
+      setFiles(loadedFiles);
+      filesRef.current = loadedFiles;
+      setHasProject(true);
+      setStatus('Ready');
+      syncFilesToEdge(loadedFiles);
+    } else {
+      const baseline = {
+        '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
+        '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
+        '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
+      };
+      setFiles(baseline);
+      filesRef.current = baseline;
+      setHasProject(true);
+      setStatus('Ready');
+      saveProjectFiles(activeProjectId, baseline);
+      syncFilesToEdge(baseline, true);
     }
-    prevProjectIdRef.current = activeProjectId;
 
-    // 2. Load the target project files or clean baseline template
-    const saved = getProjectFiles(activeProjectId);
     const baselineFiles = {
       '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
       '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
       '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
     };
 
-    const targetFiles = saved || baselineFiles;
-    const isBrandNew = !saved;
-
-    setFiles(targetFiles);
-    filesRef.current = targetFiles;
-    setHasProject(!isBrandNew);
-    setStatus(isBrandNew ? 'Idle' : 'Ready');
-    setStatusDetail('');
-    setActiveFile('/src/App.jsx');
-
-    const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setBuildLogs([
-      { 
-        id: 'init', 
-        text: isBrandNew ? 'Workspace initialized' : 'Workspace loaded', 
-        type: 'info', 
-        time: timeNow 
-      }
-    ]);
-    setConsoleLogs([
-      isBrandNew ? 'Project initialized.' : 'Project loaded.',
-      'Preview ready.'
-    ]);
-
-    // Synchronize to the session's Durable Object
-    syncFilesToEdge(targetFiles, isBrandNew);
-
     const handleClearWorkspace = () => {
       setFiles(baselineFiles);
       filesRef.current = baselineFiles;
-      setHasProject(false);
+      setHasProject(true);
       setStatus('Idle');
       setStatusDetail('');
       setActiveFile('/src/App.jsx');
@@ -169,6 +318,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
         addBuildLog('All components generated successfully', 'success');
         addConsoleLog('[build] All components generated and compiled successfully.');
         syncFilesToEdge(filesRef.current);
+        lastGenTimeRef.current = Date.now();
         if (handleRefreshRef.current) handleRefreshRef.current();
       } else if (newStatus === 'Error') {
         setStatus('Error');
@@ -198,6 +348,23 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       }
     };
 
+    const handleFileDeleted = ({ path }: { path: string }) => {
+      const cleanPath = normalizePath(path);
+      delete filesRef.current[cleanPath];
+      setFiles(prev => {
+        const next = { ...prev };
+        delete next[cleanPath];
+        return next;
+      });
+      if (activeFileRef.current === cleanPath) {
+        setActiveFile('/src/App.jsx');
+      }
+      addBuildLog(`Deleted: ${cleanPath}`, 'info');
+      addConsoleLog(`[transpiler] Deleted file ${cleanPath}`);
+      syncFilesToEdge(filesRef.current);
+      saveProjectFiles(activeProjectId, filesRef.current);
+    };
+
     const handleOpenFile = ({ path }: { path: string }) => {
       const cleanPath = normalizePath(path);
       setActiveFile(cleanPath);
@@ -223,26 +390,53 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       appEvents.emit(`command-result-${requestId}`, { output: `Command executed: ${command}` });
     };
 
+    const handleFilesRefreshed = (newFiles: Record<string, string>) => {
+      if (newFiles && Object.keys(newFiles).length > 0) {
+        setFiles(newFiles);
+        filesRef.current = newFiles;
+        setHasProject(true);
+        setStatus('Ready');
+        if (handleRefreshRef.current) handleRefreshRef.current();
+      }
+    };
+
+    const handleWorkspaceFilesChanged = ({ projectId, files: changedFiles }: { projectId: string; files: Record<string, string> }) => {
+      if (projectId === activeProjectId && changedFiles) {
+        setFiles(changedFiles);
+        filesRef.current = changedFiles;
+        setHasProject(true);
+        if (handleRefreshRef.current) handleRefreshRef.current();
+      }
+    };
+
     const unsubStatus = appEvents.on('generation-status', handleGenerationStatus);
     const unsubFile = appEvents.on('file-generated', handleFileGenerated);
+    const unsubFileDel = appEvents.on('file-deleted', handleFileDeleted);
     const unsubOpen = appEvents.on('open-file', handleOpenFile);
     const unsubExport = appEvents.on('request-export', handleExport);
     const unsubContext = appEvents.on('request-workspace-context', handleRequestContext);
     const unsubExec = appEvents.on('execute-command', handleExecuteCommand);
+    const unsubRefreshed = appEvents.on('files-refreshed', handleFilesRefreshed);
+    const unsubWorkspaceFiles = appEvents.on('workspace-files-changed', handleWorkspaceFilesChanged);
     
     return () => {
       unsubStatus();
       unsubFile();
+      unsubFileDel();
       unsubOpen();
       unsubExport();
       unsubContext();
       unsubExec();
+      unsubRefreshed();
+      unsubWorkspaceFiles();
     };
   }, [activeProjectId, addBuildLog, addConsoleLog, syncFilesToEdge]);
 
   // Synchronize iframe preview messages (transpile errors, runtime errors, and auto-fix requests)
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
+      // Security: Strictly verify the message originates from our active preview iframe
+      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
       if (!event.data || typeof event.data !== 'object') return;
       if (event.data.type === 'preview-error') {
         const errorMsg = event.data.error || 'Preview runtime error';
@@ -260,6 +454,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
       } else if (event.data.type === 'preview-success') {
         setStatus(prev => (prev === 'Error' ? 'Ready' : prev));
         setStatusDetail(prev => (prev.includes('Transpile') || prev.includes('Preview') ? '' : prev));
+        appEvents.emit('preview-success', null);
       }
     };
 
@@ -285,52 +480,25 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
     setHasProject(true);
     setStatus('Ready');
     syncFilesToEdge(filesRef.current);
-    addBuildLog('Launching live edge preview...', 'info');
-    setTimeout(() => {
-      if (iframeRef.current && iframeUrl) {
-        iframeRef.current.src = `${iframeUrl}?t=${Date.now()}`;
-      }
-    }, 50);
+    setEdgeRefreshCounter(prev => prev + 1);
+    addBuildLog(`Launching ${previewEngine === 'edge' ? 'Cloudflare Edge' : 'Sandpack'} preview...`, 'info');
   };
 
   const handleRefresh = () => {
-    if (iframeRef.current && iframeUrl) {
-      iframeRef.current.src = `${iframeUrl}?t=${Date.now()}`;
-      addBuildLog('Preview reloaded', 'info');
-    } else {
-      handleLaunchPreview();
-    }
+    syncFilesToEdge(filesRef.current);
+    setEdgeRefreshCounter(prev => prev + 1);
+    addBuildLog(`Reloading ${previewEngine === 'edge' ? 'Cloudflare Edge' : 'Sandpack'} preview...`, 'info');
   };
 
   useEffect(() => {
     handleRefreshRef.current = handleRefresh;
   });
 
-  // Calculate stages for the progress checklist
-  const getStageState = (stageName: string) => {
-    if (status === 'Ready') return 'done';
-    if (stageName === 'init') return 'done';
-    if (stageName === 'packages') return 'done';
-    if (stageName === 'code') {
-      if (status === 'Generating' || generatingFile) return 'current';
-      return 'pending';
-    }
-    if (stageName === 'server') {
-      return 'pending';
-    }
-    return 'pending';
-  };
-
   const progressPercent = useMemo(() => {
     if (status === 'Ready') return 100;
     if (status === 'Idle') return 0;
     if (status === 'Generating') return 65;
     return 50;
-  }, [status]);
-
-  const currentStep = useMemo(() => {
-    if (status !== 'Generating') return 3;
-    return 2;
   }, [status]);
 
   const handleCopyCurrentFile = () => {
@@ -563,8 +731,28 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     <span>{copiedCode ? 'Copied' : 'Copy'}</span>
                   </button>
 
+                  <button 
+                    onClick={() => setShowGithubModal(true)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '11px',
+                      fontFamily: 'inherit'
+                    }}
+                    className="hover-bright"
+                    title="Export to GitHub"
+                    aria-label="Export GitHub"
+                  >
+                    <FolderCode size={12} />
+                    <span>Export GitHub</span>
+                  </button>
                   <button
-                    onClick={() => exportProjectAsZip(filesRef.current, 'brainhalf-project')}
+                    onClick={handleExportZip}
                     style={{
                       background: 'transparent',
                       border: 'none',
@@ -587,7 +775,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
               </div>
 
               {/* Monaco Editor Container */}
-              <div style={{ flex: 1, height: 'calc(100% - 66px)' }}>
+              <div style={{ flex: 1, height: 'calc(100% - 66px)', minWidth: 0, overflow: 'hidden' }}>
                 <Editor 
                   height="100%"
                   language={
@@ -772,16 +960,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     title="Refresh live preview" 
                     aria-label="Refresh live preview"
                     onClick={handleRefresh}
-                    disabled={!iframeUrl}
                   >
                     <RefreshCw size={12} />
                   </button>
                   <button 
                     className="browser-action-btn" 
-                    title="Open live preview in new window" 
+                    title="Open live Cloudflare Edge preview in new tab" 
                     aria-label="Open live preview in new window"
-                    onClick={() => iframeUrl && window.open(iframeUrl, '_blank')}
-                    disabled={!iframeUrl}
+                    onClick={() => {
+                      syncFilesToEdge(filesRef.current);
+                      window.open(`/preview/${activeProjectId}/index.html`, '_blank');
+                    }}
                   >
                     <ExternalLink size={12} />
                   </button>
@@ -790,9 +979,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
 
               {/* Center: Centered URL Pill */}
               <div className="browser-chrome-center">
-                <div className="browser-url-pill">
-                  <Lock size={11} style={{ opacity: 0.6 }} />
-                  <span>preview.brainhalf.app/live</span>
+                <div className="browser-url-pill" title={`/preview/${activeProjectId}/index.html`}>
+                  <Lock size={11} style={{ opacity: 0.8, color: '#10b981' }} />
+                  <span>{previewEngine === 'edge' ? `brainhalf.com/preview/${activeProjectId.slice(0, 8)}...` : 'preview.brainhalf.app/live'}</span>
+                  <span className="browser-viewport-badge" style={{ 
+                    color: previewEngine === 'edge' ? '#a78bfa' : '#38bdf8',
+                    background: previewEngine === 'edge' ? 'rgba(167, 139, 250, 0.12)' : 'rgba(56, 189, 248, 0.12)'
+                  }}>
+                    {previewEngine === 'edge' ? 'Edge' : 'Sandpack'}
+                  </span>
                   {viewportMode !== 'desktop' && (
                     <span className="browser-viewport-badge">
                       {viewportMode === 'tablet' ? '768px' : '375px'}
@@ -801,8 +996,37 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                 </div>
               </div>
 
-              {/* Right: Viewport Mode Switcher (Desktop / Tablet / Mobile) */}
-              <div className="browser-chrome-right">
+              {/* Right: Preview Engine Toggle + Viewport Switcher */}
+              <div className="browser-chrome-right" style={{ gap: '8px' }}>
+                <div className="viewport-segmented-control" title="Toggle Preview Engine">
+                  <button
+                    onClick={() => {
+                      setPreviewEngine('edge');
+                      syncFilesToEdge(filesRef.current);
+                      setEdgeRefreshCounter(c => c + 1);
+                      addBuildLog('Switched to Cloudflare Edge Preview (Instant Edge Transpiler)', 'info');
+                    }}
+                    className={`viewport-pill-btn ${previewEngine === 'edge' ? 'active' : ''}`}
+                    title="Cloudflare Edge: Global network preview with instant JSX/TSX compilation and direct URL"
+                    aria-label="Cloudflare Edge Preview"
+                  >
+                    <Zap size={11} style={{ color: previewEngine === 'edge' ? '#c4b5fd' : 'inherit' }} />
+                    <span>Edge</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPreviewEngine('sandpack');
+                      addBuildLog('Switched to Sandpack In-Browser Preview (Virtual Bundler)', 'info');
+                    }}
+                    className={`viewport-pill-btn ${previewEngine === 'sandpack' ? 'active' : ''}`}
+                    title="Sandpack: Virtual in-browser CodeSandbox bundler for npm packages"
+                    aria-label="Sandpack Preview"
+                  >
+                    <Box size={11} style={{ color: previewEngine === 'sandpack' ? '#7dd3fc' : 'inherit' }} />
+                    <span>Sandpack</span>
+                  </button>
+                </div>
+
                 <div className="viewport-segmented-control">
                   <button
                     onClick={() => setViewportMode('desktop')}
@@ -902,322 +1126,57 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
                     <Play size={14} fill="white" /> Launch Preview
                   </button>
                 </div>
-              ) : iframeUrl ? (
-                /* Live Iframe Preview with Viewport Chassis */
+              ) : previewEngine === 'edge' ? (
+                /* Live Cloudflare Edge Preview with Viewport Chassis */
                 <div className={`viewport-frame-container ${viewportMode}`}>
-                  <div className={`viewport-device-chassis ${viewportMode}`}>
+                  <div className={`viewport-device-chassis ${viewportMode}`} style={{ height: '100%', overflow: 'hidden', background: '#090a0f' }}>
                     <iframe
                       ref={iframeRef}
-                      src={iframeUrl}
+                      key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
+                      src={`/preview/${activeProjectId}/index.html`}
                       style={{
                         width: '100%',
                         height: '100%',
                         border: 'none',
                         display: 'block',
-                        background: '#0f111a'
+                        background: '#090a0f'
                       }}
-                      title="Live Application Preview"
+                      title="Cloudflare Edge Preview"
                       allow="fullscreen; clipboard-read; clipboard-write;"
                     />
                   </div>
-
-                  {/* Floating Actionable Error Bar if preview has an error */}
-                  {status === 'Error' && (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '20px',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      maxWidth: '92%',
-                      width: '640px',
-                      background: 'rgba(20, 15, 24, 0.96)',
-                      backdropFilter: 'blur(16px)',
-                      border: '1px solid rgba(239, 68, 68, 0.45)',
-                      borderRadius: '12px',
-                      padding: '12px 16px',
-                      boxShadow: '0 12px 36px rgba(0, 0, 0, 0.7)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '12px',
-                      zIndex: 100
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                        <AlertCircle size={18} color="#ef4444" style={{ flexShrink: 0 }} />
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: '12px', fontWeight: 600, color: '#fca5a5' }}>Preview Error Detected</div>
-                          <div style={{ fontSize: '11px', color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {statusDetail || 'Syntax or runtime error in preview'}
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                        <button
-                          onClick={() => {
-                            appEvents.emit('auto-fix-error', { error: statusDetail || 'Syntax error', file: activeFile });
-                          }}
-                          style={{
-                            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '6px',
-                            padding: '6px 14px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '5px'
-                          }}
-                        >
-                          <Wrench size={12} />
-                          <span>Fix with AI</span>
-                        </button>
-                        <button
-                          onClick={() => setStatus('Ready')}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--text-muted)',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            padding: '4px'
-                          }}
-                          title="Dismiss"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : status === 'Error' ? (
-                /* Actionable Error State */
-                <div style={{
-                  height: '100%',
-                  width: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '32px',
-                  textAlign: 'center'
-                }}>
-                  <div style={{
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: '8px',
-                    background: 'var(--color-error-bg)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '1px solid var(--color-error-border)',
-                    marginBottom: '16px'
-                  }}>
-                    <AlertCircle size={26} color="var(--color-error)" />
-                  </div>
-
-                  <h3 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px', fontFamily: 'var(--font-brand)' }}>
-                    Preview Generation Error
-                  </h3>
-
-                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '440px', lineHeight: 1.5, marginBottom: '8px' }}>
-                    {statusDetail || 'A compilation, build, or syntax error occurred in the Edge Preview runtime.'}
-                  </p>
-
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '380px', marginBottom: '24px' }}>
-                    The AI assistant can analyze the stack trace and fix dependencies or syntax automatically.
-                  </p>
-
-                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-                    <button 
-                      className="button-primary" 
-                      onClick={() => {
-                        appEvents.emit('auto-fix-error', { error: statusDetail || 'Build compilation error', file: activeFile });
-                      }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      <Wrench size={14} />
-                      <span>Fix automatically with AI</span>
-                    </button>
-
-                    <button 
-                      className="button-ghost" 
-                      onClick={() => setActiveTab('console')}
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      <Terminal size={14} />
-                      <span>View logs</span>
-                    </button>
-
-                    <button 
-                      className="button-ghost" 
-                      onClick={handleRefresh}
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      title="Re-run edge preview"
-                    >
-                      <RotateCcw size={14} />
-                      <span>Retry</span>
-                    </button>
-                  </div>
                 </div>
               ) : (
-                /* Intentional, High-Polish Generation Experience */
-                <div style={{
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '32px',
-                  background: 'radial-gradient(circle at 50% 40%, rgba(59, 130, 246, 0.04) 0%, transparent 70%)'
-                }}>
-                  <div style={{
-                    width: '100%',
-                    maxWidth: '420px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    textAlign: 'center'
-                  }}>
-                    {/* Pulsing AI Generator Icon */}
-                    <div style={{
-                      width: '48px',
-                      height: '48px',
-                      borderRadius: '8px',
-                      background: 'rgba(168, 85, 247, 0.12)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: '24px'
-                    }}>
-                      <Sparkles size={24} color="var(--color-ai)" className="pulse-sparkle" />
-                    </div>
-
-                    <h3 style={{
-                      fontSize: '18px',
-                      fontWeight: 600,
-                      color: '#ffffff',
-                      margin: '0 0 8px 0',
-                      fontFamily: 'var(--font-brand)'
-                    }}>
-                      Building your application
-                    </h3>
-
-                    <p style={{
-                      fontSize: '13px',
-                      color: 'var(--text-secondary)',
-                      margin: '0 0 32px 0',
-                      maxWidth: '360px',
-                      lineHeight: 1.5
-                    }}>
-                      {generatingFile ? `Writing ${generatingFile}...` : statusDetail || 'Generating React components and launching live preview...'}
-                    </p>
-
-                    {/* Stepper */}
-                    <div style={{
-                      width: '100%',
-                      marginBottom: '32px',
-                      textAlign: 'left'
-                    }}>
-                      <div style={{
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        color: 'var(--text-muted)',
-                        letterSpacing: '0.08em',
-                        marginBottom: '16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
-                      }}>
-                        <span>BUILD PIPELINE</span>
-                        <span style={{ color: 'var(--color-ai)' }}>Step {currentStep} of 3</span>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {/* Step 1: Install Packages */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px' }}>
-                          {getStageState('packages') === 'done' ? (
-                            <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
-                          ) : (
-                            <Loader2 size={16} className="lucide-spin" style={{ color: 'var(--color-ai)', flexShrink: 0 }} />
-                          )}
-                          <span style={{ color: getStageState('packages') === 'done' ? 'var(--color-success)' : '#ffffff', fontWeight: 500 }}>
-                            Install packages & runtime
-                          </span>
-                        </div>
-
-                        {/* Stepper Arrow */}
-                        <div style={{ paddingLeft: '8px', color: 'var(--text-muted)' }}>
-                          <ArrowDown size={12} style={{ opacity: 0.35 }} />
-                        </div>
-
-                        {/* Step 2: Generate Code */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px' }}>
-                          {getStageState('code') === 'done' ? (
-                            <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
-                          ) : getStageState('code') === 'current' ? (
-                            <Loader2 size={16} className="lucide-spin" style={{ color: 'var(--color-ai)', flexShrink: 0 }} />
-                          ) : (
-                            <span style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1.5px solid #4b5563', display: 'inline-block', flexShrink: 0 }} />
-                          )}
-                          <span style={{ color: getStageState('code') === 'current' ? '#ffffff' : getStageState('code') === 'done' ? 'var(--color-success)' : 'var(--text-muted)', fontWeight: 500 }}>
-                            Generate code {generatingFile ? `(${generatingFile.split('/').pop()})` : ''}
-                          </span>
-                        </div>
-
-                        {/* Stepper Arrow */}
-                        <div style={{ paddingLeft: '8px', color: 'var(--text-muted)' }}>
-                          <ArrowDown size={12} style={{ opacity: 0.35 }} />
-                        </div>
-
-                        {/* Step 3: Launch Preview */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px' }}>
-                          {iframeUrl ? (
-                            <CheckCircle2 size={16} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
-                          ) : getStageState('server') === 'current' ? (
-                            <Loader2 size={16} className="lucide-spin" style={{ color: 'var(--color-ai)', flexShrink: 0 }} />
-                          ) : (
-                            <span style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1.5px solid #4b5563', display: 'inline-block', flexShrink: 0 }} />
-                          )}
-                          <span style={{ color: iframeUrl ? 'var(--color-success)' : getStageState('server') === 'current' ? '#ffffff' : 'var(--text-muted)', fontWeight: 500 }}>
-                            Launch preview (Vite Server)
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div style={{
-                      width: '100%',
-                      height: '3px',
-                      borderRadius: '2px',
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      overflow: 'hidden',
-                      marginBottom: '12px'
-                    }}>
-                      <div style={{
-                        height: '100%',
-                        width: `${progressPercent}%`,
-                        background: 'linear-gradient(90deg, #3b82f6, #a855f7)',
-                        borderRadius: '2px',
-                        transition: 'width 0.4s ease'
-                      }} />
-                    </div>
-
-                    <div style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontSize: '11px',
-                      color: 'var(--text-muted)',
-                      fontFamily: 'var(--font-mono)'
-                    }}>
-                      <span>{progressPercent}% completed</span>
-                      <span>Vite Dev Server</span>
-                    </div>
+                /* Live Sandpack Preview with Viewport Chassis */
+                <div className={`viewport-frame-container ${viewportMode}`}>
+                  <div className={`viewport-device-chassis ${viewportMode}`} style={{ height: '100%', overflow: 'hidden', background: '#000' }}>
+                    <SandpackProvider 
+                      key={`sandpack-${activeProjectId}`}
+                      template="react-ts" 
+                      files={sandpackFiles} 
+                      theme="dark"
+                      customSetup={{
+                        entry: "/index.tsx",
+                        dependencies: {
+                          "lucide-react": "latest",
+                          "framer-motion": "latest",
+                          "clsx": "latest",
+                          "tailwind-merge": "latest"
+                        }
+                      }}
+                      options={{
+                        recompileMode: "immediate",
+                        recompileDelay: 200,
+                        activeFile: "/App.tsx"
+                      }}
+                      style={{ height: '100%', width: '100%' }}
+                    >
+                      <SandpackPreview 
+                        showNavigator={false} 
+                        showOpenInCodeSandbox={false}
+                        style={{ height: '100%', width: '100%' }}
+                      />
+                    </SandpackProvider>
                   </div>
                 </div>
               )}
@@ -1225,6 +1184,136 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId }) => {
           </div>
         )}
       </div>
+
+      {/* GitHub Export Modal */}
+      {showGithubModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100000,
+        }}>
+          <div style={{
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '12px',
+            width: '400px',
+            maxWidth: '90vw',
+            padding: '24px',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}>
+            <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <FolderCode size={20} />
+              Export to GitHub
+            </h3>
+            
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
+              Create a new repository or push to an existing one.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Repository Name</label>
+              <input 
+                type="text" 
+                value={githubRepo}
+                onChange={e => setGithubRepo(e.target.value)}
+                placeholder="e.g. brainhalf-app"
+                style={{
+                  background: 'rgba(0,0,0,0.2)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  color: 'white',
+                  fontSize: '13px',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>Personal Access Token (PAT)</label>
+              <input 
+                type="password" 
+                value={githubToken}
+                onChange={e => setGithubToken(e.target.value)}
+                placeholder="ghp_..."
+                style={{
+                  background: 'rgba(0,0,0,0.2)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  color: 'white',
+                  fontSize: '13px',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+              />
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Needs 'repo' scope. Token is saved locally in your browser.</span>
+            </div>
+
+            {githubStatus.error && (
+              <div style={{ padding: '8px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '12px' }}>
+                {githubStatus.error}
+              </div>
+            )}
+            
+            {githubStatus.success && (
+              <div style={{ padding: '8px', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '6px', fontSize: '12px' }}>
+                {githubStatus.success}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button 
+                onClick={() => {
+                  setShowGithubModal(false);
+                  setGithubStatus({ loading: false });
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: 'transparent',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-primary)',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '13px'
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleExportGitHub}
+                disabled={githubStatus.loading || !githubRepo || !githubToken}
+                style={{
+                  padding: '8px 16px',
+                  background: 'var(--brand-primary)',
+                  border: 'none',
+                  color: 'white',
+                  borderRadius: '6px',
+                  cursor: githubStatus.loading ? 'not-allowed' : 'pointer',
+                  opacity: githubStatus.loading ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '13px',
+                  fontWeight: 500
+                }}
+              >
+                {githubStatus.loading && <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />}
+                {githubStatus.loading ? 'Exporting...' : 'Export Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

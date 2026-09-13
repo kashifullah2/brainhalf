@@ -1,3 +1,5 @@
+import { appEvents } from './events';
+
 export interface Project {
   id: string;
   name: string;
@@ -98,7 +100,7 @@ export function setActiveProjectId(id: string) {
 }
 
 export function createProject(name: string = 'Untitled Project'): Project {
-  const id = 'proj-' + Math.random().toString(36).substring(2, 9);
+  const id = 'proj-' + Math.random().toString(36).substring(2, 8) + '-' + Date.now().toString(36);
   const newProj: Project = {
     id,
     name,
@@ -111,6 +113,61 @@ export function createProject(name: string = 'Untitled Project'): Project {
   saveProjects(projects);
   setActiveProjectId(id);
   return newProj;
+}
+
+export async function createBranch(sourceId: string, branchName: string): Promise<Project> {
+  const newProj = createProject(branchName);
+  
+  // Clone files
+  const sourceFiles = await getProjectFilesAsync(sourceId);
+  if (sourceFiles) {
+    saveProjectFiles(newProj.id, JSON.parse(JSON.stringify(sourceFiles)));
+  }
+
+  // Clone messages
+  const sourceMsgs = await getProjectMessagesAsync(sourceId);
+  if (sourceMsgs) {
+    saveProjectMessages(newProj.id, JSON.parse(JSON.stringify(sourceMsgs)));
+  }
+  
+  return newProj;
+}
+
+export interface MergeResult {
+  success: boolean;
+  hasConflict: boolean;
+  conflicts: string[];
+  mergedFiles: Record<string, string>;
+}
+
+export async function mergeBranches(targetProjectId: string, sourceProjectId: string): Promise<MergeResult> {
+  const targetFiles = (await getProjectFilesAsync(targetProjectId)) || {};
+  const sourceFiles = (await getProjectFilesAsync(sourceProjectId)) || {};
+
+  const merged: Record<string, string> = { ...targetFiles };
+  const conflicts: string[] = [];
+
+  for (const [filePath, sourceContent] of Object.entries(sourceFiles)) {
+    if (!(filePath in targetFiles)) {
+      merged[filePath] = sourceContent;
+    } else if (targetFiles[filePath] === sourceContent) {
+      continue;
+    } else {
+      conflicts.push(filePath);
+      const conflictBlock = `<<<<<<< HEAD (${targetProjectId})\n${targetFiles[filePath]}\n=======\n${sourceContent}\n>>>>>>> INCOMING (${sourceProjectId})`;
+      merged[filePath] = conflictBlock;
+    }
+  }
+
+  saveProjectFiles(targetProjectId, merged);
+  appEvents.emit('workspace-files-changed', { projectId: targetProjectId, files: merged });
+
+  return {
+    success: true,
+    hasConflict: conflicts.length > 0,
+    conflicts,
+    mergedFiles: merged
+  };
 }
 
 export function updateProjectName(id: string, name: string) {
@@ -155,13 +212,115 @@ export function deleteProject(id: string): Project[] {
 const PROJECT_FILES_PREFIX = 'brainhalf_files_';
 const PROJECT_MESSAGES_PREFIX = 'brainhalf_messages_';
 
+// In-memory cache for fast synchronous access
+const memoryCache: Record<string, any> = {};
+
+// Zero-dependency native IndexedDB persistence for large files and history
+const DB_NAME = 'BrainHalfStorage';
+const DB_VERSION = 1;
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+function getDb(): Promise<IDBDatabase> | null {
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return null;
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      try {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('files')) {
+            db.createObjectStore('files');
+          }
+          if (!db.objectStoreNames.contains('messages')) {
+            db.createObjectStore('messages');
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+  return dbPromise;
+}
+
+export async function idbGet<T>(storeName: 'files' | 'messages', key: string): Promise<T | null> {
+  const dbPromiseLocal = getDb();
+  if (!dbPromiseLocal) return null;
+  try {
+    const db = await dbPromiseLocal;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function idbSet(storeName: 'files' | 'messages', key: string, value: any): Promise<void> {
+  const dbPromiseLocal = getDb();
+  if (!dbPromiseLocal) return;
+  try {
+    const db = await dbPromiseLocal;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        store.put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
+  } catch {
+    // Graceful no-op if IDB fails
+  }
+}
+
+export async function idbDelete(storeName: 'files' | 'messages', key: string): Promise<void> {
+  const dbPromiseLocal = getDb();
+  if (!dbPromiseLocal) return;
+  try {
+    const db = await dbPromiseLocal;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        store.delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
+  } catch {
+    // Graceful no-op if IDB fails
+  }
+}
+
 export function getProjectFiles(projectId: string): Record<string, string> | null {
+  const cacheKey = `files_${projectId}`;
+  if (memoryCache[cacheKey]) {
+    return memoryCache[cacheKey];
+  }
+
   try {
     if (typeof localStorage === 'undefined') return null;
     const raw = localStorage.getItem(`${PROJECT_FILES_PREFIX}${projectId}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        memoryCache[cacheKey] = parsed;
         return parsed;
       }
     }
@@ -171,16 +330,41 @@ export function getProjectFiles(projectId: string): Record<string, string> | nul
   return null;
 }
 
+export async function getProjectFilesAsync(projectId: string): Promise<Record<string, string> | null> {
+  const syncResult = getProjectFiles(projectId);
+  if (syncResult) return syncResult;
+
+  // Fallback to IndexedDB for large projects that exceeded localStorage quota
+  const idbResult = await idbGet<Record<string, string>>('files', projectId);
+  if (idbResult) {
+    memoryCache[`files_${projectId}`] = idbResult;
+    return idbResult;
+  }
+  return null;
+}
+
 export function saveProjectFiles(projectId: string, files: Record<string, string>) {
+  if (!projectId || !files || Object.keys(files).length === 0) return;
+  memoryCache[`files_${projectId}`] = files;
+
+  // 1. Asynchronously persist to high-capacity IndexedDB
+  void idbSet('files', projectId, files);
+
+  // 2. Synchronously cache to localStorage if within quota
   try {
-    if (typeof localStorage === 'undefined' || !projectId || !files || Object.keys(files).length === 0) return;
-    localStorage.setItem(`${PROJECT_FILES_PREFIX}${projectId}`, JSON.stringify(files));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(`${PROJECT_FILES_PREFIX}${projectId}`, JSON.stringify(files));
+    }
   } catch (e) {
-    console.warn('Error saving project files:', e);
+    // QuotaExceededError: IndexedDB has already persisted the state safely
+    console.warn('localStorage quota exceeded for files, persisted via IndexedDB:', e);
   }
 }
 
 export function deleteProjectFiles(projectId: string) {
+  delete memoryCache[`files_${projectId}`];
+  void idbDelete('files', projectId);
+
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(`${PROJECT_FILES_PREFIX}${projectId}`);
@@ -189,12 +373,18 @@ export function deleteProjectFiles(projectId: string) {
 }
 
 export function getProjectMessages(projectId: string): any[] | null {
+  const cacheKey = `messages_${projectId}`;
+  if (memoryCache[cacheKey]) {
+    return memoryCache[cacheKey];
+  }
+
   try {
     if (typeof localStorage === 'undefined') return null;
     const raw = localStorage.getItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        memoryCache[cacheKey] = parsed;
         return parsed;
       }
     }
@@ -204,16 +394,40 @@ export function getProjectMessages(projectId: string): any[] | null {
   return null;
 }
 
+export async function getProjectMessagesAsync(projectId: string): Promise<any[] | null> {
+  const syncResult = getProjectMessages(projectId);
+  if (syncResult) return syncResult;
+
+  // Fallback to IndexedDB for large conversation histories
+  const idbResult = await idbGet<any[]>('messages', projectId);
+  if (idbResult) {
+    memoryCache[`messages_${projectId}`] = idbResult;
+    return idbResult;
+  }
+  return null;
+}
+
 export function saveProjectMessages(projectId: string, messages: any[]) {
+  if (!projectId || !messages) return;
+  memoryCache[`messages_${projectId}`] = messages;
+
+  // 1. Asynchronously persist to high-capacity IndexedDB
+  void idbSet('messages', projectId, messages);
+
+  // 2. Synchronously cache to localStorage if within quota
   try {
-    if (typeof localStorage === 'undefined' || !projectId || !messages) return;
-    localStorage.setItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`, JSON.stringify(messages));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`, JSON.stringify(messages));
+    }
   } catch (e) {
-    console.warn('Error saving project messages:', e);
+    console.warn('localStorage quota exceeded for messages, persisted via IndexedDB:', e);
   }
 }
 
 export function deleteProjectMessages(projectId: string) {
+  delete memoryCache[`messages_${projectId}`];
+  void idbDelete('messages', projectId);
+
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`);

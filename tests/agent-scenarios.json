@@ -1,0 +1,199 @@
+{
+  "$schema": "informal — consumed by playwright-agent.spec.ts",
+  "config": {
+    "workerUrl": "https://brainhalf.com",
+    "agentPath": "/agents/chat-agent/test-session-1",
+    "authToken": "",
+    "previewBasePath": "/preview/test",
+    "chatTimeoutMs": 60000,
+    "previewLoadTimeoutMs": 15000
+  },
+  "tests": [
+    {
+      "id": "T04_preview_html_shell",
+      "feature": "Preview HTML shell served",
+      "type": "preview_only",
+      "setupFiles": {
+        "/src/App.jsx": "import React from 'react';\nexport default function App(){ return <div id='shell-check'>Shell OK</div>; }"
+      },
+      "prompt": null,
+      "expect": {
+        "postMessageType": "preview-success",
+        "domSelector": "#shell-check",
+        "domTextContains": "Shell OK"
+      }
+    },
+    {
+      "id": "T05_preview_cookie_fallback",
+      "feature": "Preview sub-resource loads via cookie (no token in URL after first load)",
+      "type": "preview_only",
+      "setupFiles": {
+        "/src/App.jsx": "export default function App(){ return <div id='cookie-check'>Cookie Auth OK</div>; }"
+      },
+      "prompt": null,
+      "navigateWithTokenFirst": true,
+      "thenReloadWithoutToken": true,
+      "expect": {
+        "postMessageType": "preview-success",
+        "domSelector": "#cookie-check",
+        "domTextContains": "Cookie Auth OK"
+      }
+    },
+    {
+      "id": "T06_preview_unauthorized",
+      "feature": "Preview rejected without token or cookie",
+      "type": "preview_only",
+      "setupFiles": {
+        "/src/App.jsx": "export default function App(){ return <div>should not load</div>; }"
+      },
+      "prompt": null,
+      "skipAuth": true,
+      "expect": {
+        "httpStatus": 401
+      }
+    },
+    {
+      "id": "T16_broken_syntax_graceful_fallback",
+      "feature": "Broken syntax renders graceful error view, not a crash",
+      "type": "preview_only",
+      "setupFiles": {
+        "/src/App.jsx": "export default function App( { return <div>unclosed paren and tag"
+      },
+      "prompt": null,
+      "expect": {
+        "postMessageType": "preview-error",
+        "domSelector": "text=Syntax or Runtime Error",
+        "httpStatus": 200
+      }
+    },
+    {
+      "id": "T17_self_healing_vague_report",
+      "feature": "Self-healing: agent fixes a bug from a vague human report",
+      "type": "chat_then_preview",
+      "setupFiles": {
+        "/src/App.jsx": "export default function App() { return <div>Missing closing tag"
+      },
+      "forcePreviewErrorFirst": true,
+      "prompt": "The preview is broken, please fix it.",
+      "expect": {
+        "fileUpdatedPathContains": "App.jsx",
+        "postMessageTypeAfterFix": "preview-success",
+        "domSelectorAfterFix": "body",
+        "domShouldNotContain": "TranspileErrorView"
+      }
+    },
+    {
+      "id": "T17b_self_healing_exact_error_message",
+      "feature": "Self-healing: agent fixes a bug when given the exact console error",
+      "type": "chat_then_preview",
+      "setupFiles": {
+        "/src/App.jsx": "import { useState } from 'react';\nexport default function App() { const [count, setCount] = useState(0)\n  return <div>{count}</div>\n}\nexport const extra = undefinedVariable.someProp;"
+      },
+      "forcePreviewErrorFirst": true,
+      "prompt": "I'm seeing this error in the console: \"undefinedVariable is not defined\". Please fix App.jsx.",
+      "expect": {
+        "fileUpdatedPathContains": "App.jsx",
+        "postMessageTypeAfterFix": "preview-success",
+        "domShouldNotContain": "TranspileErrorView"
+      }
+    },
+    {
+      "id": "T17c_self_healing_runtime_not_syntax_error",
+      "feature": "Self-healing: agent fixes a runtime crash (valid syntax, throws on render) not just a syntax error",
+      "type": "chat_then_preview",
+      "setupFiles": {
+        "/src/App.jsx": "export default function App() { const data = null; return <div>{data.value}</div>; }"
+      },
+      "forcePreviewErrorFirst": false,
+      "prompt": "The app crashes as soon as it loads with a 'Cannot read properties of null' error. Please fix it.",
+      "expect": {
+        "fileUpdatedPathContains": "App.jsx",
+        "postMessageTypeAfterFix": "preview-success",
+        "domShouldNotContain": "Preview Error"
+      }
+    },
+    {
+      "id": "T17d_self_healing_missing_import",
+      "feature": "Self-healing: agent adds a missing import instead of just removing the usage",
+      "type": "chat_then_preview",
+      "setupFiles": {
+        "/src/App.jsx": "export default function App() {\n  const [open, setOpen] = useState(false);\n  return <div onClick={() => setOpen(!open)}>{open ? 'Open' : 'Closed'}</div>;\n}"
+      },
+      "forcePreviewErrorFirst": true,
+      "prompt": "Fix whatever is broken in App.jsx.",
+      "expect": {
+        "fileUpdatedPathContains": "App.jsx",
+        "postMessageTypeAfterFix": "preview-success",
+        "domSelectorAfterFix": "text=Closed"
+      }
+    },
+    {
+      "id": "T17e_self_healing_new_component_still_works",
+      "feature": "Self-healing regression check: fixing App.jsx doesn't clobber an unrelated sibling component",
+      "type": "chat_then_preview",
+      "setupFiles": {
+        "/src/App.jsx": "import Footer from './components/Footer.jsx';\nexport default function App() { return <div>Broken<Footer /></div>",
+        "/src/components/Footer.jsx": "export default function Footer(){ return <footer id='footer-marker'>Footer OK</footer>; }"
+      },
+      "forcePreviewErrorFirst": true,
+      "prompt": "Please fix the app, it's not rendering.",
+      "expect": {
+        "fileUpdatedPathContains": "App.jsx",
+        "postMessageTypeAfterFix": "preview-success",
+        "domSelectorAfterFix": "#footer-marker",
+        "domTextContainsAfterFix": "Footer OK",
+        "note": "Footer.jsx must remain byte-for-byte untouched per the agent's 'surgical modification' system-prompt rule — assert its content via GET .../src/components/Footer.jsx if you want a stricter check than DOM presence."
+      }
+    },
+    {
+      "id": "T18_multi_turn_iterative_fix",
+      "feature": "Self-healing over multiple turns: agent's first fix attempt is incomplete, second turn resolves it",
+      "type": "chat_sequence_then_preview",
+      "setupFiles": {
+        "/src/App.jsx": "export default function App() { retrun <div>typo in keyword</div>; }"
+      },
+      "forcePreviewErrorFirst": true,
+      "promptSequence": [
+        "Fix the app.",
+        "It's still broken, here is the exact error text: \"Unexpected token\". Please look again."
+      ],
+      "expect": {
+        "fileUpdatedPathContains": "App.jsx",
+        "postMessageTypeAfterFix": "preview-success",
+        "domShouldNotContain": "TranspileErrorView"
+      }
+    },
+    {
+      "id": "T19_new_feature_request_not_a_bug",
+      "feature": "Sanity check: normal feature request (not a bug report) still works after self-healing wiring was added",
+      "type": "chat_then_preview",
+      "setupFiles": {
+        "/src/App.jsx": "export default function App(){ return <div id='base'>Base App</div>; }"
+      },
+      "forcePreviewErrorFirst": false,
+      "prompt": "Add a button below the text that says 'Click me' and increments a counter shown on screen.",
+      "expect": {
+        "fileUpdatedPathContains": "App.jsx",
+        "postMessageTypeAfterFix": "preview-success",
+        "domSelectorAfterFix": "button",
+        "domTextContainsAfterFix": "Click me"
+      }
+    },
+    {
+      "id": "T20_css_only_bug",
+      "feature": "Self-healing for a non-JS bug (broken CSS import causing blank/unstyled preview)",
+      "type": "chat_then_preview",
+      "setupFiles": {
+        "/src/App.jsx": "import './nonexistent.css';\nexport default function App(){ return <div id='css-check'>Styling Check</div>; }",
+        "/src/styles.css": "#css-check { color: red; }"
+      },
+      "forcePreviewErrorFirst": true,
+      "prompt": "The preview shows a blank white screen, please fix it.",
+      "expect": {
+        "fileUpdatedPathContains": "App.jsx",
+        "postMessageTypeAfterFix": "preview-success",
+        "domSelectorAfterFix": "#css-check"
+      }
+    }
+  ]
+}

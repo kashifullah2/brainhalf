@@ -135,6 +135,7 @@ export function applyEditsToFile(
     const stripWs = (s: string) => s.replace(/\s+/g, '');
     const strippedSearch = stripWs(normSearch);
     if (strippedSearch.length > 15) {
+      let matched = false;
       for (let i = 0; i < resultLines.length; i++) {
         let accumulated = '';
         let j = i;
@@ -144,10 +145,12 @@ export function applyEditsToFile(
             const before = resultLines.slice(0, i);
             const after = resultLines.slice(j + 1);
             result = [...before, normReplace, ...after].join('\n');
+            matched = true;
             break;
           }
           j++;
         }
+        if (matched) break;
       }
     }
   }
@@ -183,7 +186,7 @@ function extractMarkdownCodeBlocks(
     const isStreaming = !isClosed && !isStreamDone;
 
     // Detect path from code comment, text before, or code language
-    let filePath = 'src/App.jsx';
+    let filePath: string | null = null;
     const firstLine = rawCode.trim().split('\n')[0] || '';
     const commentPathMatch = firstLine.match(/^\/\/\s*([\w/.-]+\.(?:jsx|tsx|js|ts|css|html|json))/i);
     const beforeTextMatch = textBefore.match(/(?:file|path|in)?\s*[:`*]*([a-zA-Z0-9_\-./]+\.(?:jsx|tsx|js|ts|css|html|json))[`*]*/i);
@@ -192,17 +195,28 @@ function extractMarkdownCodeBlocks(
       filePath = normalizePath(commentPathMatch[1], { leadingSlash: false });
     } else if (beforeTextMatch) {
       filePath = normalizePath(beforeTextMatch[1], { leadingSlash: false });
-    } else if (lang === 'css' || rawCode.includes('{') && rawCode.includes(':') && !rawCode.includes('import ') && !rawCode.includes('export ')) {
+    } else if (lang === 'css' || (rawCode.includes('{') && rawCode.includes(':') && !rawCode.includes('import ') && !rawCode.includes('export '))) {
       filePath = 'src/styles.css';
     } else if (lang === 'html') {
       filePath = 'index.html';
     } else if (lang === 'json') {
       filePath = 'package.json';
+    } else {
+      // Check if it's a complete runnable React component (not an isolated partial snippet)
+      const isCompleteApp = /export\s+default\s+(?:function\b|class\b|[a-zA-Z0-9_]+)/.test(rawCode) ||
+        (rawCode.includes('import ') && rawCode.includes('function ') && /return\s*\(|</.test(rawCode));
+      if (isCompleteApp) {
+        filePath = 'src/App.jsx';
+      }
+    }
+
+    if (filePath === 'src/main.jsx' || filePath === '/src/main.jsx' || filePath === 'main.jsx') {
+      filePath = null; // main.jsx is the fixed harness and cannot be overwritten by markdown code blocks
     }
 
     const cleanCode = rawCode.replace(/^\r?\n/, '').replace(/\r?\n$/, '');
 
-    if (cleanCode.trim()) {
+    if (filePath && cleanCode.trim()) {
       resultSegments.push({
         type: 'file',
         path: filePath,
@@ -210,6 +224,12 @@ function extractMarkdownCodeBlocks(
         isStreaming
       });
       fileMap[filePath] = cleanCode;
+    } else {
+      // It's a partial snippet or explanation code block: keep as readable formatted text in chat!
+      resultSegments.push({
+        type: 'text',
+        content: `\`\`\`${lang}\n${rawCode}\n${isClosed ? '```' : ''}`
+      });
     }
 
     lastIdx = blockMatch.index + blockMatch[0].length;
@@ -267,6 +287,9 @@ export function parseMessageSegments(rawText: string, isStreamDone: boolean = fa
     if (!isCommand && !isPlan) {
       const pathMatch = fullTag.match(/path=["']([^"']+)["']/i);
       filePath = pathMatch ? normalizePath(pathMatch[1], { leadingSlash: false }) : 'unknown';
+      if (filePath === 'src/main.jsx' || filePath === '/src/main.jsx' || filePath === 'main.jsx') {
+        filePath = 'src/App.jsx';
+      }
     }
 
     const afterStartTag = remaining.substring((match.index ?? 0) + match[0].length);

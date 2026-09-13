@@ -8,31 +8,41 @@
     "build": "vite build",
     "lint": "oxlint",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^5.0.81",
+    "@ai-sdk/anthropic": "^4.0.53",
+    "@ai-sdk/openai": "^4.0.65",
+    "@anthropic-ai/sdk": "^0.125.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1127.0",
+    "@codesandbox/sandpack-react": "^2.20.0",
     "@monaco-editor/react": "^4.7.0",
     "agents": "^0.22.0",
+    "ai": "^7.0.97",
     "jszip": "^3.10.2",
     "lucide-react": "^1.43.0",
     "prismjs": "^1.30.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "sucrase": "^3.35.1"
+    "sucrase": "^3.35.1",
+    "zod": "^4.6.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260908.1",
+    "@playwright/test": "^1.63.0",
     "@types/jszip": "^3.4.0",
     "@types/node": "^26.5.0",
     "@types/prismjs": "^1.26.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.1.0",
-    "node-pty": "^1.1.0",
     "oxlint": "^1.79.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "ws": "^8.21.3"
   }
 }

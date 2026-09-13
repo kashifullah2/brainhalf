@@ -28,3 +28,15 @@ dist-ssr
 .env
 .env.*
 
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+.playwright-mcp/
+
+# Temporary & Scratch
+scratch/
+scratch_test_sql.ts
+assest/

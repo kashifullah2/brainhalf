@@ -1,12 +1,16 @@
 name = "brainhalf"
 main = "src/worker.ts"
 compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = [ "nodejs_compat" ]
 
-routes = [
-  { pattern = "brainhalf.com", custom_domain = true },
-  { pattern = "www.brainhalf.com", custom_domain = true }
-]
+[[routes]]
+pattern = "brainhalf.com"
+custom_domain = true
+
+[[routes]]
+pattern = "www.brainhalf.com"
+custom_domain = true
+
 [assets]
 directory = "dist"
 binding = "ASSETS"
@@ -18,14 +22,18 @@ binding = "AI"
 enabled = true
 head_sampling_rate = 0.05
 
-
 [[durable_objects.bindings]]
 name = "ChatAgent"
 class_name = "ChatAgent"
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["ChatAgent"]
+new_sqlite_classes = [ "ChatAgent" ]
 
+[[r2_buckets]]
+binding = "PROJECT_BACKUPS"
+bucket_name = "brainhalf-project-backups"
 
-
+[[dispatch_namespaces]]
+binding = "DISPATCHER"
+namespace = "brainhalf-projects"

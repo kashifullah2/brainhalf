@@ -1,14 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Download, Share2, Check, Edit2, X, ExternalLink, ChevronDown, MoreHorizontal, Cloud, Settings, RotateCcw } from 'lucide-react';
+import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus } from 'lucide-react';
 import { appEvents } from '../lib/events';
-import { getProjects, updateProjectName } from '../lib/project-store';
+import { getProjects, updateProjectName, createProject } from '../lib/project-store';
+import ConfirmModal from './ConfirmModal';
 
 interface TopNavProps {
   activeProjectId: string;
   onProjectRenamed?: (id: string, name: string) => void;
+  onSelectProject?: (id: string) => void;
+  onToggleMobileSidebar?: () => void;
+  mobileTab?: 'chat' | 'code' | 'preview';
+  onSelectMobileTab?: (tab: 'chat' | 'code' | 'preview') => void;
+  isMobile?: boolean;
 }
 
-const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) => {
+const TopNav: React.FC<TopNavProps> = ({ 
+  activeProjectId, 
+  onProjectRenamed, 
+  onSelectProject,
+  onToggleMobileSidebar, 
+  mobileTab = 'chat', 
+  onSelectMobileTab, 
+  isMobile = false 
+}) => {
   const [overrideName, setOverrideName] = useState<string | null>(null);
   const [prevId, setPrevId] = useState(activeProjectId);
   if (prevId !== activeProjectId) {
@@ -27,12 +41,11 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
   const [copied, setCopied] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showDeployDropdown, setShowDeployDropdown] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const projectName = overrideName ?? currentProjectName;
 
-  const deployDropdownRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -44,12 +57,9 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
     return () => unsub();
   }, [activeProjectId]);
 
-  // Click outside to close dropdowns
+  // Click outside to close menus
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (deployDropdownRef.current && !deployDropdownRef.current.contains(e.target as Node)) {
-        setShowDeployDropdown(false);
-      }
       if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
         setShowMoreMenu(false);
       }
@@ -57,7 +67,6 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setShowDeployDropdown(false);
         setShowMoreMenu(false);
         setShowDeployModal(false);
         setShowSettingsModal(false);
@@ -98,16 +107,61 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
   };
 
   const handleResetWorkspace = () => {
-    if (confirm('Reset workspace to default React template? Any unsaved edits will be cleared.')) {
-      appEvents.emit('clear-workspace');
-      setShowMoreMenu(false);
+    setShowResetConfirm(true);
+    setShowMoreMenu(false);
+  };
+
+  const confirmResetWorkspace = () => {
+    appEvents.emit('clear-workspace');
+    setShowResetConfirm(false);
+  };
+
+  const handleQuickCreate = () => {
+    const projects = getProjects();
+    const existingNames = new Set(projects.map(p => p.name));
+    let counter = projects.length + 1;
+    while (existingNames.has(`Project ${counter}`)) {
+      counter++;
+    }
+    const newProj = createProject(`Project ${counter}`);
+    appEvents.emit('project-renamed', { id: newProj.id, name: newProj.name });
+    if (onSelectProject) {
+      onSelectProject(newProj.id);
     }
   };
 
   return (
     <div className="top-nav" role="banner">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {isMobile && onToggleMobileSidebar && (
+          <button 
+            className="icon-btn" 
+            onClick={onToggleMobileSidebar}
+            title="Open Projects"
+            aria-label="Open Projects"
+            style={{ padding: '6px', color: 'var(--text-primary)' }}
+          >
+            <Menu size={18} />
+          </button>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{
+            width: '24px',
+            height: '24px',
+            borderRadius: '6px',
+            background: '#18181b',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }} title="BrainHalf Platform">
+            <img 
+              src="/brainhalflogo.png" 
+              alt="BrainHalf" 
+              style={{ width: '16px', height: '16px', objectFit: 'contain' }} 
+            />
+          </div>
           <span 
             style={{ 
               width: '7px', 
@@ -190,9 +244,62 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
               <Edit2 size={11} style={{ opacity: 0.35 }} />
             </div>
           )}
+
+          <button
+            onClick={handleQuickCreate}
+            className="icon-btn"
+            title="Create New Project"
+            aria-label="Create New Project"
+            style={{
+              padding: '3px 6px',
+              color: 'var(--text-muted)',
+              borderRadius: '4px',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11px',
+              fontWeight: 500,
+              marginLeft: '4px',
+              flexShrink: 0
+            }}
+          >
+            <Plus size={12} />
+            {!isMobile && <span>New</span>}
+          </button>
         </div>
       </div>
       
+      {isMobile && onSelectMobileTab && (
+        <div className="segmented-control" style={{ padding: '2px', flexShrink: 0 }}>
+          <button
+            className={`segmented-tab ${mobileTab === 'chat' ? 'active' : ''}`}
+            onClick={() => onSelectMobileTab('chat')}
+            style={{ padding: '4px 10px', fontSize: '11.5px' }}
+          >
+            <Bot size={12} />
+            <span>Chat</span>
+          </button>
+          <button
+            className={`segmented-tab ${mobileTab === 'code' ? 'active' : ''}`}
+            onClick={() => onSelectMobileTab('code')}
+            style={{ padding: '4px 10px', fontSize: '11.5px' }}
+          >
+            <Code2 size={12} />
+            <span>Code</span>
+          </button>
+          <button
+            className={`segmented-tab ${mobileTab === 'preview' ? 'active' : ''}`}
+            onClick={() => onSelectMobileTab('preview')}
+            style={{ padding: '4px 10px', fontSize: '11.5px' }}
+          >
+            <Play size={12} />
+            <span>Preview</span>
+          </button>
+        </div>
+      )}
+
       {/* Clear Action Hierarchy: Share  ⋯  [Export]  [Deploy ↗ ▾] */}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
         <button 
@@ -277,77 +384,17 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
           <span>Export</span>
         </button>
 
-        {/* Primary CTA: Deploy ↗ with Dropdown Menu */}
-        <div className="deploy-menu-container" ref={deployDropdownRef}>
-          <div className="deploy-split-btn">
-            <button 
-              className="deploy-main-action"
-              onClick={() => setShowDeployModal(true)}
-              title="Deploy project to Cloudflare"
-              aria-label="Deploy project to Cloudflare"
-            >
-              <Play size={12} fill="white" /> 
-              <span>Deploy ↗</span>
-            </button>
-            <button 
-              className="deploy-toggle-action"
-              onClick={() => setShowDeployDropdown(prev => !prev)}
-              title="Open deployment targets"
-              aria-label="Open deployment targets"
-              aria-expanded={showDeployDropdown}
-            >
-              <ChevronDown size={12} />
-            </button>
-          </div>
-
-          {showDeployDropdown && (
-            <div className="deploy-dropdown-menu">
-              <button 
-                className="deploy-menu-item"
-                onClick={() => {
-                  setShowDeployModal(true);
-                  setShowDeployDropdown(false);
-                }}
-              >
-                <Cloud size={14} color="var(--accent-light)" />
-                <div>
-                  <div style={{ fontWeight: 600 }}>Cloudflare Pages</div>
-                  <div className="deploy-menu-item-subtext">Instant edge deployment</div>
-                </div>
-              </button>
-
-              <button 
-                className="deploy-menu-item"
-                onClick={() => {
-                  handleExport();
-                  setShowDeployDropdown(false);
-                }}
-              >
-                <Download size={14} color="var(--color-success)" />
-                <div>
-                  <div style={{ fontWeight: 600 }}>Download ZIP</div>
-                  <div className="deploy-menu-item-subtext">Offline production build</div>
-                </div>
-              </button>
-
-              <div className="deploy-menu-divider" />
-
-              <button 
-                className="deploy-menu-item"
-                onClick={() => {
-                  setShowSettingsModal(true);
-                  setShowDeployDropdown(false);
-                }}
-              >
-                <Settings size={14} color="var(--color-neutral)" />
-                <div>
-                  <div style={{ fontWeight: 600 }}>Deployment Settings</div>
-                  <div className="deploy-menu-item-subtext">Configuration & docs</div>
-                </div>
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Primary CTA: Deploy ↗ */}
+        <button 
+          className="deploy-main-action"
+          onClick={() => setShowDeployModal(true)}
+          title="Deploy project to Cloudflare"
+          aria-label="Deploy project to Cloudflare"
+          style={{ borderRadius: '6px' }}
+        >
+          <Play size={12} fill="white" /> 
+          <span>Deploy ↗</span>
+        </button>
       </div>
 
       {/* Cloudflare Deploy Modal */}
@@ -396,18 +443,78 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
               </button>
             </div>
 
-            <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
-              Deploy this project with automatic SSL and fast global distribution:
-            </p>
-
-            <div style={{ background: '#090b10', borderRadius: '6px', padding: '16px', marginBottom: '24px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: '#93c5fd' }}>
-              <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}># 1. Export your project ZIP & extract it</div>
-              <div style={{ color: 'var(--text-primary)', marginBottom: '10px' }}>npm install</div>
-              <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}># 2. Deploy instantly</div>
-              <div style={{ color: 'var(--color-success)' }}>npx wrangler pages deploy dist</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <span style={{ 
+                background: 'rgba(16, 185, 129, 0.15)', 
+                color: '#10b981', 
+                border: '1px solid rgba(16, 185, 129, 0.3)', 
+                padding: '3px 10px', 
+                borderRadius: '9999px', 
+                fontSize: '11px', 
+                fontWeight: 600,
+                letterSpacing: '0.03em'
+              }}>
+                Workers for Platforms Active
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Namespace: brainhalf-projects</span>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '16px' }}>
+              This project is hosted on Cloudflare's ultra-low-latency edge network with 0ms cold-start execution and automatic SSL:
+            </p>
+
+            <div style={{ background: '#090b10', border: '1px solid #1f2430', borderRadius: '6px', padding: '16px', marginBottom: '20px' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 600 }}>
+                Live Edge Dispatch URL
+              </div>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                background: '#12151d', 
+                padding: '8px 12px', 
+                borderRadius: '4px',
+                border: '1px solid #282f3d',
+                fontFamily: 'var(--font-mono)', 
+                fontSize: '12.5px', 
+                color: '#60a5fa' 
+              }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  https://brainhalf.com/p/{activeProjectId}
+                </span>
+                <button
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 6px',
+                    borderRadius: '4px'
+                  }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://brainhalf.com/p/${activeProjectId}`);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                >
+                  {copied ? <Check size={12} color="#10b981" /> : null}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+
+              <div style={{ marginTop: '12px', fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                # Custom CLI deployment to dispatch namespace:
+                <div style={{ color: '#a78bfa', marginTop: '4px' }}>
+                  npx wrangler deploy --dispatch-namespace brainhalf-projects --name {activeProjectId}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button 
                 className="button-ghost"
                 onClick={() => {
@@ -415,16 +522,25 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
                   setShowDeployModal(false);
                 }}
               >
-                <Download size={14} /> Download ZIP First
+                <Download size={14} /> Export ZIP
+              </button>
+              <button 
+                className="button-ghost"
+                onClick={() => {
+                  window.open(`https://brainhalf.com/preview/${activeProjectId}/index.html`, '_blank');
+                  setShowDeployModal(false);
+                }}
+              >
+                Preview Runtime <ExternalLink size={13} />
               </button>
               <button 
                 className="button-primary"
                 onClick={() => {
-                  window.open('https://dash.cloudflare.com', '_blank');
+                  window.open(`https://brainhalf.com/p/${activeProjectId}`, '_blank');
                   setShowDeployModal(false);
                 }}
               >
-                Open Cloudflare Dashboard <ExternalLink size={13} />
+                Open Live Edge App ↗
               </button>
             </div>
           </div>
@@ -511,6 +627,15 @@ const TopNav: React.FC<TopNavProps> = ({ activeProjectId, onProjectRenamed }) =>
           </div>
         </div>
       )}
+      {/* Accessible Non-Blocking Workspace Reset Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={showResetConfirm}
+        title="Reset Workspace"
+        message="Are you sure you want to reset the workspace to the default React template? Any unsaved edits will be permanently cleared."
+        confirmLabel="Reset Workspace"
+        onConfirm={confirmResetWorkspace}
+        onCancel={() => setShowResetConfirm(false)}
+      />
     </div>
   );
 };

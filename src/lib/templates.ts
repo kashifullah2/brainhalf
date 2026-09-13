@@ -15,7 +15,7 @@ export const basicReactTemplate = {
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "lucide-react": "^0.344.0"
+    "lucide-react": "^1.43.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
@@ -154,50 +154,163 @@ export default function App() {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      background: 'linear-gradient(135deg, #0b0c10 0%, #1a1b26 100%)',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+      background: 'radial-gradient(ellipse at 50% 15%, rgba(99, 102, 241, 0.12) 0%, rgba(10, 15, 30, 0.98) 70%, #07090e 100%)',
       color: '#f8fafc',
-      padding: '24px',
-      textAlign: 'center'
+      padding: '32px 20px',
+      boxSizing: 'border-box',
+      textAlign: 'center',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
       <div style={{
-        maxWidth: '520px',
-        padding: '40px 32px',
-        borderRadius: '20px',
-        background: 'rgba(255, 255, 255, 0.03)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        backdropFilter: 'blur(16px)',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+        position: 'absolute',
+        top: '20%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: '480px',
+        height: '240px',
+        background: 'radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 50%, transparent 70%)',
+        filter: 'blur(40px)',
+        pointerEvents: 'none',
+        zIndex: 0
+      }} />
+
+      <div style={{
+        position: 'relative',
+        zIndex: 1,
+        maxWidth: '560px',
+        width: '100%',
+        padding: '48px 36px',
+        borderRadius: '24px',
+        background: 'rgba(15, 23, 42, 0.65)',
+        border: '1px solid rgba(255, 255, 255, 0.09)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        boxShadow: '0 30px 60px -15px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04) inset'
       }}>
         <div style={{
-          width: '56px',
-          height: '56px',
-          borderRadius: '14px',
-          background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+          width: '68px',
+          height: '68px',
+          borderRadius: '18px',
+          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%)',
+          border: '1px solid rgba(168, 85, 247, 0.35)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          margin: '0 auto 24px',
-          boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)'
+          margin: '0 auto 20px',
+          boxShadow: '0 12px 30px -5px rgba(99, 102, 241, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)'
         }}>
-          <span style={{ fontSize: '26px' }}>⚡</span>
+          <img 
+            src="/brainhalflogo.png" 
+            alt="BrainHalf Logo" 
+            style={{ width: '42px', height: '42px', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.4))' }} 
+          />
         </div>
+
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '5px 14px',
+          borderRadius: '999px',
+          background: 'rgba(99, 102, 241, 0.1)',
+          border: '1px solid rgba(129, 140, 248, 0.25)',
+          color: '#a5b4fc',
+          fontSize: '11px',
+          fontWeight: 600,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          marginBottom: '16px'
+        }}>
+          <span style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            background: '#818cf8',
+            boxShadow: '0 0 8px #818cf8'
+          }} />
+          Autonomous AI Studio
+        </div>
+
         <h1 style={{
-          fontSize: '24px',
+          fontSize: '28px',
           fontWeight: '700',
           margin: '0 0 12px',
-          letterSpacing: '-0.02em',
-          background: 'linear-gradient(to right, #ffffff, #c4b5fd)',
+          letterSpacing: '-0.03em',
+          lineHeight: '1.2',
+          background: 'linear-gradient(135deg, #ffffff 30%, #cbd5e1 70%, #94a3b8 100%)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent'
         }}>
-          Cloudflare Edge Preview Live
+          Welcome to BrainHalf
         </h1>
-        <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6', margin: '0 0 24px' }}>
-          Your ultra-fast Edge Preview runtime is connected and ready. Send a prompt in the chat panel to generate custom React components!
+
+        <p style={{
+          color: '#94a3b8',
+          fontSize: '14px',
+          lineHeight: '1.65',
+          margin: '0 0 28px',
+          fontWeight: 400
+        }}>
+          Your real-time edge compiler and AI software engineer are online. Send a prompt in the chat panel to synthesize full-stack React components and interactive web apps instantly.
         </p>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px', borderRadius: '999px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.25)', color: '#4ade80', fontSize: '12px', fontWeight: 500 }}>
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4ade80' }} />
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+          gap: '10px',
+          marginBottom: '28px',
+          textAlign: 'left'
+        }}>
+          <div style={{
+            padding: '12px 14px',
+            borderRadius: '12px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(255, 255, 255, 0.06)'
+          }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: '#c7d2fe', marginBottom: '4px' }}>Edge Preview</div>
+            <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>Zero cold-start hot reload runtime</div>
+          </div>
+          <div style={{
+            padding: '12px 14px',
+            borderRadius: '12px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(255, 255, 255, 0.06)'
+          }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: '#c7d2fe', marginBottom: '4px' }}>Modular React</div>
+            <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>Multi-file components & styles</div>
+          </div>
+          <div style={{
+            padding: '12px 14px',
+            borderRadius: '12px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid rgba(255, 255, 255, 0.06)'
+          }}>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: '#c7d2fe', marginBottom: '4px' }}>Production Ready</div>
+            <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>Instant export or global deploy</div>
+          </div>
+        </div>
+
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '6px 16px',
+          borderRadius: '999px',
+          background: 'rgba(16, 185, 129, 0.08)',
+          border: '1px solid rgba(16, 185, 129, 0.22)',
+          color: '#34d399',
+          fontSize: '12px',
+          fontWeight: 500
+        }}>
+          <span style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            background: '#10b981',
+            boxShadow: '0 0 8px #10b981'
+          }} />
           Zero Cold-Start Runtime Active
         </div>
       </div>

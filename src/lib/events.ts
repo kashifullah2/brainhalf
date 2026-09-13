@@ -1,6 +1,6 @@
 type Listener = (payload: any) => void;
 
-class EventEmitter {
+export class EventEmitter {
   events: Record<string, Listener[]> = {};
 
   on(event: string, listener: Listener) {
@@ -14,6 +14,9 @@ class EventEmitter {
   off(event: string, listener: Listener) {
     if (!this.events[event]) return;
     this.events[event] = this.events[event].filter(l => l !== listener);
+    if (this.events[event].length === 0) {
+      delete this.events[event];
+    }
   }
 
   emit(event: string, payload?: any) {

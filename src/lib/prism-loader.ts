@@ -1,11 +1,26 @@
 import Prism from 'prismjs';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-markup';
-import 'prismjs/components/prism-jsx';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-tsx';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-json';
+
+// Guarantee global Prism is initialized before component extensions evaluate
+if (typeof window !== 'undefined') {
+  (window as any).Prism = Prism;
+}
+if (typeof globalThis !== 'undefined') {
+  (globalThis as any).Prism = Prism;
+}
+
+// Dynamically import extensions so global Prism is guaranteed in browser/worker runtimes
+if (typeof window !== 'undefined') {
+  Promise.all([
+    // @ts-ignore
+    import('prismjs/components/prism-jsx'),
+    // @ts-ignore
+    import('prismjs/components/prism-typescript'),
+    // @ts-ignore
+    import('prismjs/components/prism-tsx'),
+    // @ts-ignore
+    import('prismjs/components/prism-json')
+  ]).catch(() => {});
+}
 
 export function getLanguageFromPath(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() || '';

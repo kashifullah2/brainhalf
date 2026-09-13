@@ -52,4 +52,69 @@ Hope this helps! You can customize the dashboard components.
       transform(fileMap['src/App.jsx'], { transforms: ['typescript', 'jsx'] });
     }).not.toThrow();
   });
+
+  it('preserves native Lucide icons like Facebook, Filter, FileText and heals cebook', () => {
+    const lucideAliases: Record<string, string> = {
+      Chat: 'MessageSquare',
+      Dashboard: 'LayoutDashboard',
+      cebook: 'Facebook',
+      FaFacebook: 'Facebook',
+      FaTwitter: 'Twitter',
+    };
+
+    function rewriteLucideImports(content: string): string {
+      return content.replace(/import\s*\{([^}]+)\}\s*from\s*['"](?:https:\/\/esm\.sh\/)?lucide-react['"]/g, (match, importsStr) => {
+        const parts = importsStr.split(',').map((p: string) => {
+          const trimmed = p.trim();
+          if (!trimmed) return '';
+
+          let importedName = trimmed;
+          let localName = trimmed;
+          if (trimmed.includes(' as ')) {
+            const partsAs = trimmed.split(/\s+as\s+/);
+            importedName = partsAs[0].trim();
+            localName = partsAs[1].trim();
+          }
+
+          if (lucideAliases[importedName]) {
+            importedName = lucideAliases[importedName];
+          } else {
+            const prefixMatch = importedName.match(/^(?:Fi|Fa|Ai|Bs|Md|Hi|Lu|Bi|Tb|Ri|Io|Ti|Go|Vsc|Cg|Rx)(?=[A-Z])/);
+            if (prefixMatch) {
+              const stripped = importedName.slice(prefixMatch[0].length);
+              importedName = lucideAliases[stripped] || stripped;
+            }
+          }
+
+          if (importedName === localName) {
+            return importedName;
+          }
+          return `${importedName} as ${localName}`;
+        }).filter(Boolean);
+        return `import { ${parts.join(', ')} } from 'lucide-react'`;
+      });
+    }
+
+    // 1. Facebook must NOT become cebook!
+    const facebookCode = `import { Facebook, Twitter, Instagram } from 'lucide-react';`;
+    const res1 = rewriteLucideImports(facebookCode);
+    expect(res1).toBe(`import { Facebook, Twitter, Instagram } from 'lucide-react';`);
+    expect(res1).not.toContain('cebook as');
+    expect(res1).not.toMatch(/\bcebook\b/);
+
+    // 2. FaFacebook must become Facebook as FaFacebook
+    const faCode = `import { FaFacebook, FaTwitter } from 'lucide-react';`;
+    const res2 = rewriteLucideImports(faCode);
+    expect(res2).toBe(`import { Facebook as FaFacebook, Twitter as FaTwitter } from 'lucide-react';`);
+
+    // 3. Corrupted cebook must heal to Facebook as cebook
+    const cebookCode = `import { cebook } from 'lucide-react';`;
+    const res3 = rewriteLucideImports(cebookCode);
+    expect(res3).toBe(`import { Facebook as cebook } from 'lucide-react';`);
+
+    // 4. Other native icons with 2-letter prefixes (Filter, FileText, History)
+    const otherIcons = `import { Filter, FileText, Film, History } from 'lucide-react';`;
+    const res4 = rewriteLucideImports(otherIcons);
+    expect(res4).toBe(`import { Filter, FileText, Film, History } from 'lucide-react';`);
+  });
 });

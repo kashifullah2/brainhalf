@@ -1,5 +1,4 @@
-import * as pty from 'node-pty';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 
 console.log('Fetching deployments...');
 const listCmd = execSync('npx wrangler pages deployment list --project-name brainhalf', { encoding: 'utf-8' });
@@ -11,25 +10,16 @@ console.log(`Found ${uniqueIds.length} deployments.`);
 async function deleteDeployment(id) {
   return new Promise((resolve) => {
     console.log(`Deleting ${id}...`);
-    const ptyProcess = pty.spawn('npx', ['wrangler', 'pages', 'deployment', 'delete', id, '--project-name', 'brainhalf'], {
-      name: 'xterm-color',
-      cols: 80,
-      rows: 30,
-      cwd: process.cwd(),
-      env: process.env
+    const proc = spawn('npx', ['wrangler', 'pages', 'deployment', 'delete', id, '--project-name', 'brainhalf', '--force'], {
+      stdio: ['pipe', 'inherit', 'inherit']
     });
 
-    let buffer = '';
-    ptyProcess.onData((data) => {
-      process.stdout.write(data);
-      buffer += data;
-      if (buffer.includes('Y/n')) {
-        ptyProcess.write('y\r');
-        buffer = ''; // reset buffer after sending y
-      }
-    });
+    if (proc.stdin) {
+      proc.stdin.write('y\n');
+      proc.stdin.end();
+    }
 
-    ptyProcess.onExit(({ exitCode }) => {
+    proc.on('exit', (exitCode) => {
       console.log(`\nFinished ${id} with code ${exitCode}`);
       resolve();
     });

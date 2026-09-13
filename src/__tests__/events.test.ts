@@ -83,4 +83,13 @@ describe('Event Emitter (appEvents)', () => {
     expect(selfRemoving).toHaveBeenCalledTimes(1);
     expect(secondListener).toHaveBeenCalledTimes(2);
   });
+
+  it('deletes event keys when all listeners are removed to prevent memory leaks', () => {
+    const cb = vi.fn();
+    const unsub = appEvents.on('ephemeral-request-123', cb);
+    expect(appEvents.events['ephemeral-request-123']).toBeDefined();
+
+    unsub();
+    expect(appEvents.events['ephemeral-request-123']).toBeUndefined();
+  });
 });

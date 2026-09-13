@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, MessageSquare, Settings, Plus, Layers, Trash2, X, Cpu, Server, PanelLeftClose, PanelLeftOpen, Code2 } from 'lucide-react';
-import { Project, getProjects, createProject, deleteProject, formatRelativeTime } from '../lib/project-store';
+import { Sparkles, Settings, Plus, Layers, Trash2, X, Cpu, Server, PanelLeftClose, PanelLeftOpen, Code2, GitBranch, GitMerge } from 'lucide-react';
+import { Project, getProjects, createProject, createBranch, mergeBranches, deleteProject, formatRelativeTime } from '../lib/project-store';
 import { appEvents } from '../lib/events';
+import ConfirmModal from './ConfirmModal';
 
 interface SidebarProps {
   activeProjectId: string;
   onSelectProject: (id: string) => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, collapsed = false, onToggleCollapse }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, collapsed = false, onToggleCollapse, isMobileOpen = false, onCloseMobile }) => {
   const [projects, setProjects] = useState<Project[]>(() => getProjects());
   const [showSettings, setShowSettings] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
 
   const refreshProjects = () => {
     setProjects(getProjects());
@@ -39,19 +43,61 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
     onSelectProject(newProj.id);
   };
 
-  const handleDeleteProject = (e: React.MouseEvent, id: string) => {
+  const handleBranchProject = async (e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation();
-    if (confirm('Delete this project?')) {
-      const remaining = deleteProject(id);
-      setProjects(remaining);
-      if (activeProjectId === id) {
-        onSelectProject(remaining[0]?.id || 'default');
-      }
+    const branchName = `${name} (Branch)`;
+    const newProj = await createBranch(id, branchName);
+    refreshProjects();
+    onSelectProject(newProj.id);
+  };
+
+  const handleMergeProject = async (e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation();
+    const res = await mergeBranches(activeProjectId, id);
+    refreshProjects();
+    if (res.hasConflict) {
+      appEvents.emit('generation-status', { 
+        status: 'Error', 
+        detail: `Merge conflict detected in: ${res.conflicts.join(', ')}` 
+      });
+      appEvents.emit('merge-conflict', {
+        sourceId: id,
+        sourceName: name,
+        targetId: activeProjectId,
+        conflicts: res.conflicts
+      });
+    } else {
+      appEvents.emit('generation-status', { 
+        status: 'Ready', 
+        detail: `Cleanly merged ${name} into current project` 
+      });
     }
   };
 
+  const handleDeleteProject = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setProjectToDelete(id);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!projectToDelete) return;
+    const remaining = deleteProject(projectToDelete);
+    setProjects(remaining);
+    if (activeProjectId === projectToDelete) {
+      onSelectProject(remaining[0]?.id || 'default');
+    }
+    setProjectToDelete(null);
+  };
+
   return (
-    <div className={`sidebar-container ${collapsed ? 'collapsed' : ''}`} role="navigation" aria-label="Projects Sidebar">
+    <>
+      {isMobileOpen && (
+        <div 
+          className="sidebar-mobile-backdrop"
+          onClick={onCloseMobile}
+        />
+      )}
+      <div className={`sidebar-container ${collapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`} role="navigation" aria-label="Projects Sidebar">
       {/* Brand Header & Toggle Button (48px height matching horizontal grid) */}
       <div style={{ 
         padding: collapsed ? '0 12px' : '0 16px', 
@@ -65,7 +111,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
         {!collapsed ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div className="sidebar-brand-badge">
-              <Sparkles size={14} color="#ffffff" />
+              <img 
+                src="/brainhalflogo.png" 
+                alt="BrainHalf Logo" 
+                style={{ width: '20px', height: '20px', objectFit: 'contain', borderRadius: '4px' }} 
+              />
             </div>
             <span style={{ 
               fontFamily: 'var(--font-sans)', 
@@ -79,21 +129,39 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           </div>
         ) : (
           <div className="sidebar-brand-badge" onClick={onToggleCollapse} style={{ cursor: 'pointer' }} title="Expand Sidebar" aria-label="Expand Sidebar">
-            <Sparkles size={14} color="#ffffff" />
+            <img 
+              src="/brainhalflogo.png" 
+              alt="BrainHalf Logo" 
+              style={{ width: '20px', height: '20px', objectFit: 'contain', borderRadius: '4px' }} 
+            />
           </div>
         )}
 
-        {onToggleCollapse && !collapsed && (
-          <button 
-            className="icon-btn" 
-            onClick={onToggleCollapse} 
-            title="Collapse Sidebar"
-            aria-label="Collapse Sidebar"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <PanelLeftClose size={15} />
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {isMobileOpen && onCloseMobile && (
+            <button 
+              className="icon-btn" 
+              onClick={onCloseMobile} 
+              title="Close Sidebar"
+              aria-label="Close Sidebar"
+              style={{ color: 'var(--text-muted)', padding: '6px' }}
+            >
+              <X size={16} />
+            </button>
+          )}
+
+          {onToggleCollapse && !collapsed && (
+            <button 
+              className="icon-btn" 
+              onClick={onToggleCollapse} 
+              title="Collapse Sidebar"
+              aria-label="Collapse Sidebar"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <PanelLeftClose size={15} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Primary New Project Action */}
@@ -152,10 +220,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
         
         {projects.map((proj, idx) => {
           const isActive = proj.id === activeProjectId;
-          const ProjectIcon = idx % 3 === 0 ? Code2 : idx % 3 === 1 ? Layers : MessageSquare;
+          const ProjectIcon = Code2;
           return (
             <div
-              key={proj.id}
+              key={`${proj.id}-${idx}`}
               onClick={() => onSelectProject(proj.id)}
               className="sidebar-nav-item"
               title={collapsed ? `${proj.name} • ${proj.framework || 'React 18'}` : undefined}
@@ -206,27 +274,73 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
                   </div>
                 )}
               </div>
-              {!collapsed && projects.length > 1 && (
-                <button
-                  onClick={(e) => handleDeleteProject(e, proj.id)}
-                  title="Delete project"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    padding: '3px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    opacity: 0.5,
-                    transition: 'all 0.2s',
-                    borderRadius: '4px'
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#f87171'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                >
-                  <Trash2 size={13} />
-                </button>
+              {!collapsed && (
+                <div className="sidebar-actions" style={{ display: 'flex', gap: '2px' }}>
+                  <button
+                    onClick={(e) => handleBranchProject(e, proj.id, proj.name)}
+                    title="Branch project"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      padding: '3px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      opacity: 0.5,
+                      transition: 'all 0.2s',
+                      borderRadius: '4px'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                  >
+                    <GitBranch size={13} />
+                  </button>
+                  {proj.id !== activeProjectId && (
+                    <button
+                      onClick={(e) => handleMergeProject(e, proj.id, proj.name)}
+                      title={`Merge ${proj.name} into current project`}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        padding: '3px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        opacity: 0.5,
+                        transition: 'all 0.2s',
+                        borderRadius: '4px'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#38bdf8'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                    >
+                      <GitMerge size={13} />
+                    </button>
+                  )}
+                  {projects.length > 1 && (
+                    <button
+                      onClick={(e) => handleDeleteProject(e, proj.id)}
+                      title="Delete project"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        padding: '3px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        opacity: 0.5,
+                        transition: 'all 0.2s',
+                        borderRadius: '4px'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#f87171'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           );
@@ -333,7 +447,17 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           </div>
         </div>
       )}
+      {/* Accessible Non-Blocking Delete Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={Boolean(projectToDelete)}
+        title="Delete Project"
+        message="Are you sure you want to delete this project? All files, chat history, and generated code will be permanently deleted."
+        confirmLabel="Delete"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setProjectToDelete(null)}
+      />
     </div>
+    </>
   );
 };
 

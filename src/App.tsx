@@ -14,13 +14,29 @@ function App() {
     }
     return false;
   });
-  const [chatWidth, setChatWidth] = useState<number>(440);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'chat' | 'code' | 'preview'>('chat');
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return Math.min(460, Math.max(380, Math.floor(window.innerWidth * 0.3)));
+    }
+    return 400;
+  });
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const isDraggingRef = React.useRef(false);
 
-  // Auto-collapse sidebar on smaller screens
+  // Auto-collapse sidebar & update mobile view state on window resize
   React.useEffect(() => {
     const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
       if (window.innerWidth < 1024 && !sidebarCollapsed) {
         setSidebarCollapsed(true);
       }
@@ -29,9 +45,21 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, [sidebarCollapsed]);
 
+  // Listen to popstate event for browser back/forward URL navigation
+  React.useEffect(() => {
+    const handlePopState = () => {
+      const currentId = getActiveProjectId();
+      setActiveId(currentId);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const handleSelectProject = (id: string) => {
+    if (!id) return;
     setActiveProjectId(id);
     setActiveId(id);
+    setMobileSidebarOpen(false);
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -76,18 +104,33 @@ function App() {
         onSelectProject={handleSelectProject} 
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        isMobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
       />
       <div className="main-content">
-        <TopNav activeProjectId={activeProjectId} />
-        <div className="workspace-area">
-          <ChatPanel activeProjectId={activeProjectId} width={chatWidth} />
-          <div 
-            className={`panel-resize-handle ${isResizing ? 'active' : ''}`}
-            onMouseDown={handleMouseDown}
-            onDoubleClick={handleDoubleClickDivider}
-            title="Drag to resize panels (Double-click to reset)"
-          />
-          <Workspace activeProjectId={activeProjectId} />
+        <TopNav 
+          activeProjectId={activeProjectId}
+          onSelectProject={handleSelectProject}
+          onToggleMobileSidebar={() => setMobileSidebarOpen(prev => !prev)}
+          mobileTab={mobileTab}
+          onSelectMobileTab={setMobileTab}
+          isMobile={isMobile}
+        />
+        <div key={activeProjectId} className={`workspace-area ${isMobile ? 'is-mobile' : ''}`}>
+          {(!isMobile || mobileTab === 'chat') && (
+            <ChatPanel key={`chat-${activeProjectId}`} activeProjectId={activeProjectId} width={isMobile ? undefined : chatWidth} />
+          )}
+          {!isMobile && (
+            <div 
+              className={`panel-resize-handle ${isResizing ? 'active' : ''}`}
+              onMouseDown={handleMouseDown}
+              onDoubleClick={handleDoubleClickDivider}
+              title="Drag to resize panels (Double-click to reset)"
+            />
+          )}
+          {(!isMobile || mobileTab === 'code' || mobileTab === 'preview') && (
+            <Workspace key={`workspace-${activeProjectId}`} activeProjectId={activeProjectId} mobileTab={isMobile ? mobileTab : undefined} />
+          )}
         </div>
       </div>
     </div>

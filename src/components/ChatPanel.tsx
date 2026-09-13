@@ -1,37 +1,44 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, Loader2, Trash2, ImagePlus, X, User, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Send, Bot, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
-import { getProjectMessages, saveProjectMessages, deleteProjectMessages } from '../lib/project-store';
+import { getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles } from '../lib/project-store';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
 import PlanBlock from './PlanBlock';
+import ConfirmModal from './ConfirmModal';
 
 const STARTER_PROMPTS = [
-  { title: 'Crypto & Stock Dashboard', desc: 'Real-time charts, asset cards & metrics' },
-  { title: 'Interactive Kanban Board', desc: 'Drag-and-drop tasks with column states' },
-  { title: 'Analytics SaaS Platform', desc: 'Key metrics, conversion funnels & tables' },
+  { title: 'Interactive Kanban Board', desc: 'Drag-and-drop tasks with column states & tags' },
+  { title: 'Retro Mario Platformer Game', desc: '2D playable platformer with physics, jump & coins' },
+  { title: 'Crypto & Asset Portfolio', desc: 'Interactive token cards, live charts & profit metrics' },
+  { title: 'Audio Synthesizer & Piano', desc: 'Web Audio API playable keyboard & sound waves' },
 ];
 
-const MODELS = [
-  { id: 'qwen/qwen3.8-max:free', name: 'Qwen 3.8 Max', provider: 'xkiro' },
-  { id: 'qwen/qwen3.5-omni-plus:free', name: 'Qwen 3.5 Omni', provider: 'xkiro' },
-  { id: 'minimax/minimax-m3:free', name: 'MiniMax M3', provider: 'xkiro' },
-  { id: 'minimax/minimax-m2:free', name: 'MiniMax M2', provider: 'xkiro' },
-  { id: 'us.meta.llama3-3-70b-instruct-v1:0', name: 'Llama 3.3 70B', provider: 'aws' },
-  { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet', provider: 'aws' },
-  { id: 'us.anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', provider: 'aws' },
-  { id: 'claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'aws' },
-  { id: 'us.anthropic.claude-3-5-sonnet-20240620-v1:0', name: 'Claude 3.5 Sonnet Legacy', provider: 'aws' },
-  { id: '@cf/zai-org/glm-5.3-flash', name: 'GLM 5.3 Flash', provider: 'cloudflare' },
-  { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code', provider: 'cloudflare' },
-  { id: '@cf/qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', provider: 'cloudflare' },
-  { id: '@cf/meta/llama-3.1-8b-instruct-fp8', name: 'Llama 3.1 8B', provider: 'cloudflare' },
-  { id: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B', provider: 'cloudflare' },
-  { id: '@cf/qwen/qwen2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B', provider: 'cloudflare' },
-  { id: '@cf/mistral/mistral-7b-instruct-v0.2-lora', name: 'Mistral 7B', provider: 'cloudflare' },
+interface ModelDef {
+  id: string;
+  name: string;
+  provider: 'cloudflare' | 'anthropic' | 'aws';
+  category: 'recommended' | 'coding' | 'fast' | 'reasoning';
+  speed?: string;
+  badge?: string;
+}
+
+const MODELS: ModelDef[] = [
+  // Verified High-Performance Production Fleet
+  { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B (Recommended)', provider: 'cloudflare', category: 'recommended', speed: '72 t/s', badge: 'Flagship' },
+  { id: '@cf/openai/gpt-oss-20b', name: 'GPT-OSS 20B (Ultra-Fast 114 t/s)', provider: 'cloudflare', category: 'fast', speed: '114 t/s', badge: 'Ultra-Fast' },
+  { id: '@cf/meta/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (Next-Gen)', provider: 'cloudflare', category: 'coding', speed: '58 t/s', badge: 'Next-Gen' },
+  { id: '@cf/openai/gpt-oss-120b', name: 'GPT-OSS 120B (High-Capacity)', provider: 'cloudflare', category: 'reasoning', speed: '51 t/s', badge: 'Heavyweight' },
+  { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code (200k Context)', provider: 'cloudflare', category: 'coding', speed: '100 t/s', badge: '200k' },
+  { id: '@cf/qwen/qwen2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B', provider: 'cloudflare', category: 'coding', speed: '35 t/s', badge: 'Coder' },
+  { id: '@cf/qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', provider: 'cloudflare', category: 'coding', speed: '32 t/s', badge: 'Qwen 3.8' },
+  // AWS Bedrock Models
+  { id: 'claude-sonnet-4.6', name: 'Claude 4.6 Sonnet', provider: 'aws', category: 'coding', badge: 'Sonnet' },
+  { id: 'claude-opus-4.6', name: 'Claude 4.6 Opus', provider: 'aws', category: 'reasoning', badge: 'Opus' },
+  { id: 'minimax-m2.5', name: 'MiniMax m2.5', provider: 'aws', category: 'fast', badge: 'MiniMax' },
 ];
 
 interface Message {
@@ -55,16 +62,50 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     ];
   });
   const [isGenerating, setIsGenerating] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [confirmModalConfig, setConfirmModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [mergeConflict, setMergeConflict] = useState<{ sourceName: string; conflicts: string[] } | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubConflict = appEvents.on('merge-conflict', (data: { sourceName: string; conflicts: string[] }) => {
+      setMergeConflict(data);
+    });
+    return () => {
+      unsubConflict();
+    };
+  }, []);
   const [imageType, setImageType] = useState<string>('');
+  const [hoveredMessageIndex, setHoveredMessageIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isGeneratingRef = useRef(false);
-  const prevProjectIdRef = useRef<string>(activeProjectId);
   const messagesRef = useRef<Message[]>(messages);
+
+  const startTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isGenerating) {
+      startTimeRef.current = null;
+      return;
+    }
+    startTimeRef.current = Date.now();
+    const interval = setInterval(() => {
+      if (startTimeRef.current) {
+        setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isGenerating]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -75,35 +116,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const aiMessageRef = useRef('');
   const currentFilesRef = useRef<Record<string, string>>({});
 
+  // RAF throttle: pending token queue to avoid calling setMessages on every token
+  const pendingTokensRef = useRef('');
+  const rafHandleRef = useRef<number | null>(null);
+
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimer: any = null;
     let isMounted = true;
-
-    // 1. If switching from a previous project, save its messages
-    if (prevProjectIdRef.current && prevProjectIdRef.current !== activeProjectId) {
-      saveProjectMessages(prevProjectIdRef.current, messagesRef.current);
-    }
-    prevProjectIdRef.current = activeProjectId;
-
-    // 2. Reset transient states on project change
-    bufferRef.current = '';
-    aiMessageRef.current = '';
-    currentFilesRef.current = {};
-    setInput('');
-    setSelectedImage(null);
-    setImageType('');
-    setIsGenerating(false);
-    isGeneratingRef.current = false;
-
-    // 3. Load target project messages or fresh clean welcome
-    const saved = getProjectMessages(activeProjectId);
-    const initialWelcome: Message[] = [
-      { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
-    ];
-    const targetMessages = (saved && saved.length > 0) ? saved : initialWelcome;
-    setMessages(targetMessages);
-    messagesRef.current = targetMessages;
 
     const syncFilesAndEdits = (
       fileMap: Record<string, string>,
@@ -159,7 +179,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         appEvents.emit('request-workspace-context', { requestId: 'ws-connect' });
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         if (!isMounted) return;
         try {
           const data = JSON.parse(event.data);
@@ -191,6 +211,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 setMessages(freshWelcome);
                 messagesRef.current = freshWelcome;
                 saveProjectMessages(activeProjectId, freshWelcome);
+              } else {
+                // If local has history but server has none, this is a newly created branch.
+                // Sync the local history to the new server DO instance.
+                setMessages(localSaved);
+                messagesRef.current = localSaved;
+                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({ type: 'rewrite_history', messages: localSaved }));
+                }
               }
             }
           } else if (data.type === 'stream') {
@@ -198,75 +226,108 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               const text = data.chunk.response;
               bufferRef.current += text;
               aiMessageRef.current += text;
+              pendingTokensRef.current += text;
 
-              // Parse files and edits into file map without leaking raw wrapper tags
-              const { segments } = parseMessageSegments(bufferRef.current, false);
-              
-              // Sync files & targeted patches to workspace
-              for (const seg of segments) {
-                if (seg.type === 'file') {
-                  const cleanPath = normalizePath(seg.path);
-                  currentFilesRef.current[cleanPath] = seg.content;
-                  appEvents.emit('file-generated', { 
-                    path: cleanPath, 
-                    content: seg.content,
-                    isComplete: !seg.isStreaming
-                  });
-                } else if (seg.type === 'edit') {
-                  const cleanPath = normalizePath(seg.path);
-                  const existing = currentFilesRef.current[cleanPath] || '';
-                  if (existing && seg.edits.length > 0) {
-                    const updated = applyEditsToFile(existing, seg.edits);
-                    if (updated !== existing) {
-                      currentFilesRef.current[cleanPath] = updated;
-                      appEvents.emit('file-generated', { 
-                        path: cleanPath, 
-                        content: updated,
+              // Schedule a single RAF flush rather than processing every token immediately.
+              // This batches up to ~16ms of tokens into one React render pass.
+              if (rafHandleRef.current === null) {
+                rafHandleRef.current = requestAnimationFrame(() => {
+                  rafHandleRef.current = null;
+                  if (!pendingTokensRef.current) return;
+                  pendingTokensRef.current = '';
+
+                  // Parse files and edits into file map without leaking raw wrapper tags
+                  const { segments } = parseMessageSegments(bufferRef.current, false);
+
+                  // Sync files & targeted patches to workspace
+                  for (const seg of segments) {
+                    if (seg.type === 'file') {
+                      const cleanPath = normalizePath(seg.path);
+                      currentFilesRef.current[cleanPath] = seg.content;
+                      appEvents.emit('file-generated', {
+                        path: cleanPath,
+                        content: seg.content,
                         isComplete: !seg.isStreaming
                       });
+                    } else if (seg.type === 'edit') {
+                      const cleanPath = normalizePath(seg.path);
+                      const existing = currentFilesRef.current[cleanPath] || '';
+                      if (existing && seg.edits.length > 0) {
+                        const updated = applyEditsToFile(existing, seg.edits);
+                        if (updated !== existing) {
+                          currentFilesRef.current[cleanPath] = updated;
+                          appEvents.emit('file-generated', {
+                            path: cleanPath,
+                            content: updated,
+                            isComplete: !seg.isStreaming
+                          });
+                        }
+                      }
                     }
                   }
-                }
-              }
 
-              // Notify workspace of active file being generated or patched
-              const activeEditSeg = segments.filter(s => s.type === 'edit').pop();
-              const activeFileSeg = segments.filter(s => s.type === 'file').pop();
+                  // Notify workspace of active file being generated or patched
+                  const activeEditSeg = segments.filter(s => s.type === 'edit').pop();
+                  const activeFileSeg = segments.filter(s => s.type === 'file').pop();
 
-              if (activeEditSeg && activeEditSeg.type === 'edit' && activeEditSeg.isStreaming) {
-                appEvents.emit('generation-status', { 
-                  status: 'Generating', 
-                  detail: `Patching ${activeEditSeg.path}...`, 
-                  file: activeEditSeg.path 
+                  if (activeEditSeg && activeEditSeg.type === 'edit' && activeEditSeg.isStreaming) {
+                    appEvents.emit('generation-status', {
+                      status: 'Generating',
+                      detail: `Patching ${activeEditSeg.path}...`,
+                      file: activeEditSeg.path
+                    });
+                  } else if (activeFileSeg && activeFileSeg.type === 'file' && activeFileSeg.isStreaming) {
+                    appEvents.emit('generation-status', {
+                      status: 'Generating',
+                      detail: `Writing ${activeFileSeg.path}...`,
+                      file: activeFileSeg.path
+                    });
+                  }
+
+                  // Single batched state update for all tokens accumulated in this frame
+                  const snapshot = aiMessageRef.current;
+                  setMessages(prev => {
+                    const newMsgs = [...prev];
+                    if (newMsgs[newMsgs.length - 1]?.role === 'user') {
+                      newMsgs.push({ role: 'ai', content: snapshot });
+                    } else {
+                      newMsgs[newMsgs.length - 1] = { ...newMsgs[newMsgs.length - 1], content: snapshot };
+                    }
+                    messagesRef.current = newMsgs;
+                    return newMsgs;
+                  });
                 });
-              } else if (activeFileSeg && activeFileSeg.type === 'file' && activeFileSeg.isStreaming) {
-                appEvents.emit('generation-status', { 
-                  status: 'Generating', 
-                  detail: `Writing ${activeFileSeg.path}...`, 
-                  file: activeFileSeg.path 
-                });
               }
+            }
+            
+            if (data.chunk?.done) {
+              // Cancel any pending RAF flush — we do a final synchronous update below
+              if (rafHandleRef.current !== null) {
+                cancelAnimationFrame(rafHandleRef.current);
+                rafHandleRef.current = null;
+              }
+              pendingTokensRef.current = '';
 
+              setIsGenerating(false);
+              isGeneratingRef.current = false;
+
+              // Final parse and dispatch to ensure all completed files and targeted edits are mounted
+              const { fileMap, editsMap } = parseMessageSegments(bufferRef.current, true);
+              syncFilesAndEdits(fileMap, editsMap, true);
+
+              // Ensure the final complete message content is committed to state
+              const finalContent = aiMessageRef.current;
               setMessages(prev => {
                 const newMsgs = [...prev];
                 if (newMsgs[newMsgs.length - 1]?.role === 'user') {
-                  newMsgs.push({ role: 'ai', content: aiMessageRef.current });
+                  newMsgs.push({ role: 'ai', content: finalContent });
                 } else {
-                  newMsgs[newMsgs.length - 1].content = aiMessageRef.current;
+                  newMsgs[newMsgs.length - 1] = { ...newMsgs[newMsgs.length - 1], content: finalContent };
                 }
                 messagesRef.current = newMsgs;
                 return newMsgs;
               });
-            }
-            
-            if (data.chunk?.done) {
-              setIsGenerating(false);
-              isGeneratingRef.current = false;
-              
-              // Final parse and dispatch to ensure all completed files and targeted edits are mounted
-              const { fileMap, editsMap } = parseMessageSegments(bufferRef.current, true);
-              syncFilesAndEdits(fileMap, editsMap, true);
-              
+
               appEvents.emit('generation-status', { status: 'Ready', detail: 'App code updated' });
 
               setTimeout(() => {
@@ -281,8 +342,48 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             appEvents.emit('generation-status', { status: 'Error', error: data.error || 'Generation failed' });
             setMessages(prev => [
               ...prev,
-              { role: 'ai', content: `⚠️ ${data.error || 'An error occurred during generation. Please try again.'}` }
+              { role: 'ai', content: data.error || 'An error occurred during generation. Please try again.' }
             ]);
+          } else if (data.type === 'tool_call') {
+            appEvents.emit('generation-status', {
+              status: 'Generating',
+              detail: `Running tool ${data.tool}...`
+            });
+          } else if (data.type === 'file_updated') {
+            const cleanPath = normalizePath(data.path);
+            currentFilesRef.current[cleanPath] = data.content;
+            appEvents.emit('file-generated', {
+              path: cleanPath,
+              content: data.content,
+              isComplete: true
+            });
+            appEvents.emit('generation-status', {
+              status: 'Generating',
+              detail: `Updated ${data.path}...`
+            });
+          } else if (data.type === 'file_deleted') {
+            const cleanPath = normalizePath(data.path);
+            delete currentFilesRef.current[cleanPath];
+            appEvents.emit('file-deleted', { path: cleanPath });
+            appEvents.emit('generation-status', {
+              status: 'Generating',
+              detail: `Deleted ${data.path}...`
+            });
+          } else if (data.type === 'request_sync') {
+            const files = await getProjectFilesAsync(activeProjectId);
+            if (files && Object.keys(files).length > 0 && ws) {
+              ws.send(JSON.stringify({
+                type: 'sync_files',
+                replace_all: true,
+                files
+              }));
+            }
+          } else if (data.type === 'files_snapshot') {
+            if (data.files && Object.keys(data.files).length > 0) {
+              currentFilesRef.current = data.files;
+              saveProjectFiles(activeProjectId, data.files);
+              appEvents.emit('files-refreshed', data.files); 
+            }
           }
         } catch (e) {
           console.error('Parse error in WS message:', e);
@@ -301,6 +402,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       };
 
       ws.onerror = (err) => {
+        if (!isMounted) return;
         console.warn('WS error on session:', activeProjectId, err);
       };
     };
@@ -326,7 +428,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       clearTimeout(reconnectTimer);
       unsubSyncFiles();
       if (ws) {
-        ws.close();
+        if (ws.readyState === WebSocket.CONNECTING) {
+          ws.onopen = () => ws?.close();
+        } else {
+          ws.close();
+        }
       }
       if (messagesRef.current && messagesRef.current.length > 0) {
         saveProjectMessages(activeProjectId, messagesRef.current);
@@ -334,24 +440,124 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     };
   }, [activeProjectId]);
 
-  const handleClearChat = () => {
-    if (confirm('Clear chat history for this project?')) {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'clear' }));
+  // Handle abrupt offline drops to prevent stuck generating state
+  useEffect(() => {
+    const handleOffline = () => {
+      if (isGeneratingRef.current) {
+        setIsGenerating(false);
+        isGeneratingRef.current = false;
+        appEvents.emit('generation-status', { status: 'Error', error: 'Network disconnected' });
+        setMessages(prev => [
+          ...prev,
+          { role: 'ai', content: 'Network disconnected. Generation interrupted.' }
+        ]);
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
       }
-      const cleared: Message[] = [
-        { role: 'ai', content: 'Chat history cleared. What would you like to build next?' }
-      ];
-      setMessages(cleared);
-      messagesRef.current = cleared;
-      deleteProjectMessages(activeProjectId);
-      appEvents.emit('clear-workspace', null);
+    };
+    window.addEventListener('offline', handleOffline);
+    return () => window.removeEventListener('offline', handleOffline);
+  }, []);
+
+  const handleClearChat = () => {
+    setConfirmModalConfig({
+      isOpen: true,
+      title: 'Clear Chat History',
+      message: 'Are you sure you want to clear all chat history and workspace logs for this project?',
+      confirmLabel: 'Clear Chat',
+      onConfirm: () => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'clear' }));
+        }
+        const cleared: Message[] = [
+          { role: 'ai', content: 'Chat history cleared. What would you like to build next?' }
+        ];
+        setMessages(cleared);
+        messagesRef.current = cleared;
+        deleteProjectMessages(activeProjectId);
+        appEvents.emit('clear-workspace', null);
+        setConfirmModalConfig(null);
+      }
+    });
+  };
+
+  const handleStopGeneration = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'stop' }));
     }
+    setIsGenerating(false);
+    isGeneratingRef.current = false;
+    appEvents.emit('generation-status', { status: 'Ready', detail: 'Generation stopped by user' });
+  }, []);
+
+  const handleEditMessage = (index: number) => {
+    if (isGeneratingRef.current) return;
+    const msg = messagesRef.current[index];
+    if (!msg || msg.role !== 'user') return;
+    
+    setInput(msg.content);
+    
+    const newMsgs = messagesRef.current.slice(0, index);
+    setMessages(newMsgs);
+    messagesRef.current = newMsgs;
+    saveProjectMessages(activeProjectId, newMsgs);
+    
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'rewrite_history', messages: newMsgs }));
+    }
+  };
+
+  const handleRollbackMessage = (index: number) => {
+    if (isGeneratingRef.current) return;
+    setConfirmModalConfig({
+      isOpen: true,
+      title: 'Rewind Conversation',
+      message: 'Are you sure you want to rewind the conversation to this point? All subsequent messages will be deleted.',
+      confirmLabel: 'Rewind',
+      onConfirm: () => {
+        const newMsgs = messagesRef.current.slice(0, index + 1);
+        setMessages(newMsgs);
+        messagesRef.current = newMsgs;
+        saveProjectMessages(activeProjectId, newMsgs);
+        
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'rewrite_history', messages: newMsgs }));
+        }
+        setConfirmModalConfig(null);
+      }
+    });
+  };
+
+  const handleDeleteMessage = (index: number) => {
+    if (isGeneratingRef.current) return;
+    setConfirmModalConfig({
+      isOpen: true,
+      title: 'Delete Message',
+      message: 'Are you sure you want to delete this message and its corresponding response?',
+      confirmLabel: 'Delete',
+      onConfirm: () => {
+        const newMsgs = [...messagesRef.current];
+        newMsgs.splice(index, 2); // Remove user message and the following AI response
+        setMessages(newMsgs);
+        messagesRef.current = newMsgs;
+        saveProjectMessages(activeProjectId, newMsgs);
+        
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'rewrite_history', messages: newMsgs }));
+        }
+        setConfirmModalConfig(null);
+      }
+    });
   };
 
   const handleSendMessage = useCallback((overrideMessage?: string, overrideImage?: string | null, overrideImageType?: string) => {
     const textToSend = overrideMessage && typeof overrideMessage === 'string' ? overrideMessage : input;
     if (!textToSend.trim() || isGeneratingRef.current) return;
+
+    if (!textToSend.startsWith('[Auto-Fix]')) {
+      autoFixCountRef.current = 0;
+    }
 
     const userMessage = textToSend.trim();
     const imagePayload = overrideImage !== undefined ? overrideImage : selectedImage;
@@ -411,6 +617,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             projectId: activeProjectId,
             model: modelObj?.id,
             provider: modelObj?.provider,
+            workspaceFiles: currentFilesRef.current,
             image: imagePayload,
             imageType: imageTypePayload
           }));
@@ -429,9 +636,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     }, 100);
   }, [activeProjectId, imageType, input, selectedImage, selectedModelId]);
 
+  const autoFixCountRef = useRef(0);
+
   useEffect(() => {
     const handleAutoFix = (payload: { error: string; file?: string }) => {
       if (!isGeneratingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+        if (autoFixCountRef.current >= 5) {
+          appEvents.emit('generation-status', { status: 'Error', error: 'Auto-fix loop limit reached (5). Please fix manually.' });
+          return;
+        }
+        autoFixCountRef.current += 1;
         const fileTarget = payload.file ? ` in ${payload.file}` : '';
         const autoMsg = `[Auto-Fix] The dev server encountered an error${fileTarget}:\n\n${payload.error}\n\nPlease inspect the code and use an <edit> block with exact <search> and <replace> to surgically fix the broken lines. Do NOT rewrite the entire component from scratch.`;
         handleSendMessage(autoMsg);
@@ -442,83 +656,154 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         handleSendMessage(payload.message);
       }
     };
+    const handlePreviewSuccess = () => {
+      autoFixCountRef.current = 0;
+    };
     
     const unsubFix = appEvents.on('auto-fix-error', handleAutoFix);
     const unsubReply = appEvents.on('trigger-auto-reply', handleAutoReply);
+    const unsubSuccess = appEvents.on('preview-success', handlePreviewSuccess);
     return () => {
       unsubFix();
       unsubReply();
+      unsubSuccess();
     };
   }, [handleSendMessage]);
 
+  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newModelId = e.target.value;
+    setSelectedModelId(newModelId);
+    
+    if (isGenerating && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // Trigger mid-task handoff
+      wsRef.current.send(JSON.stringify({ type: 'stop' }));
+      
+      const partialText = aiMessageRef.current;
+      if (partialText) {
+        // Rewrite history on the server to include the partial output as an AI message
+        const updatedMsgs: Message[] = [
+          ...messagesRef.current,
+          { role: 'ai', content: partialText }
+        ];
+        wsRef.current.send(JSON.stringify({ type: 'rewrite_history', messages: updatedMsgs }));
+        setMessages(updatedMsgs);
+        messagesRef.current = updatedMsgs;
+        
+        // Find model definition and send continuation prompt
+        const modelObj = MODELS.find(m => m.id === newModelId);
+        
+        // We reset the buffer so the new tokens just append cleanly to the UI
+        aiMessageRef.current = '';
+        bufferRef.current = '';
+        
+        wsRef.current.send(JSON.stringify({
+          prompt: "Continue the previous code generation exactly from where you left off. Do not output any markdown formatting or introductory text if you are already inside a code block, just output the raw code continuation.",
+          projectId: activeProjectId,
+          model: modelObj?.id,
+          provider: modelObj?.provider,
+          workspaceFiles: currentFilesRef.current
+        }));
+      }
+    }
+  };
+
 
   return (
-    <div className="chat-panel-container" style={{ width: width ? `${width}px` : '440px', minWidth: '360px' }}>
-      {/* Sleek Chat Panel Header (48px height, 24px padding matching horizontal grid) */}
+    <div className="chat-panel-container" style={{ width: width ? `${width}px` : '100%', minWidth: width ? '360px' : '0' }}>
+      {/* Sleek Chat Panel Header */}
       <div style={{
         height: '48px',
-        padding: '0 24px',
+        padding: '0 14px',
         borderBottom: '1px solid var(--border-subtle)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         background: 'rgba(255, 255, 255, 0.015)',
         gap: '8px',
-        flexShrink: 0
+        flexShrink: 0,
+        overflow: 'hidden'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <div style={{
             width: '24px',
             height: '24px',
             borderRadius: '6px',
-            background: 'rgba(168, 85, 247, 0.15)',
+            background: '#18181b',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            overflow: 'hidden'
           }}>
-            <Bot size={14} color="var(--accent-light)" />
+            <img 
+              src="/brainhalflogo.png" 
+              alt="BrainHalf" 
+              style={{ width: '16px', height: '16px', objectFit: 'contain' }} 
+            />
           </div>
-          <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>AI Assistant</span>
+          <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>BrainHalf AI</span>
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, justifyContent: 'flex-end' }}>
-          <select
-            value={selectedModelId}
-            onChange={(e) => setSelectedModelId(e.target.value)}
-            aria-label="Select AI Model"
-            style={{
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '6px',
-              color: '#f3f4f6',
-              fontSize: '11.5px',
-              fontWeight: 500,
-              padding: '4px 8px',
-              outline: 'none',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              colorScheme: 'dark',
-              maxWidth: '220px',
-              minWidth: '140px',
-              textOverflow: 'ellipsis'
-            }}
-          >
-            <optgroup label="Standard" style={{ background: '#141724', color: 'var(--accent-light)', fontWeight: 600 }}>
-              {MODELS.filter(m => m.provider === 'xkiro').map(m => (
-                <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Advanced" style={{ background: '#141724', color: 'var(--accent-light)', fontWeight: 600 }}>
-              {MODELS.filter(m => m.provider === 'aws').map(m => (
-                <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Fast" style={{ background: '#141724', color: 'var(--accent-light)', fontWeight: 600 }}>
-              {MODELS.filter(m => m.provider === 'cloudflare').map(m => (
-                <option key={m.id} value={m.id} style={{ background: '#181b28', color: '#f3f4f6' }}>{m.name}</option>
-              ))}
-            </optgroup>
-          </select>
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', maxWidth: '170px', minWidth: '110px', flexShrink: 1 }}>
+            <select
+              value={selectedModelId}
+              onChange={handleModelChange}
+              aria-label="Select AI Model"
+              style={{
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '6px',
+                color: '#f3f4f6',
+                fontSize: '11.5px',
+                fontWeight: 500,
+                padding: '4px 22px 4px 8px',
+                outline: 'none',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                colorScheme: 'dark',
+                width: '100%',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden'
+              }}
+            >
+              <optgroup label="High-Performance Coding Fleet" style={{ background: '#121316', color: '#9ca3af' }}>
+                {MODELS.filter(m => (m.category === 'recommended' || m.category === 'coding' || m.category === 'fast') && m.provider === 'cloudflare').map(m => (
+                  <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                    {m.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Reasoning & Heavyweight Fleet" style={{ background: '#121316', color: '#9ca3af' }}>
+                {MODELS.filter(m => m.category === 'reasoning' && m.provider === 'cloudflare').map(m => (
+                  <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                    {m.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="AWS Bedrock Fleet" style={{ background: '#121316', color: '#9ca3af' }}>
+                {MODELS.filter(m => m.provider === 'aws').map(m => (
+                  <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                    {m.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <ChevronDown 
+              size={12} 
+              style={{ 
+                position: 'absolute', 
+                right: '7px', 
+                pointerEvents: 'none', 
+                color: 'var(--text-muted)',
+                opacity: 0.7 
+              }} 
+            />
+          </div>
 
           <div style={{ 
             display: 'flex', 
@@ -590,7 +875,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 flexShrink: 0,
                 marginTop: '3px'
               }}>
-                {isAi ? <Bot size={13} color="var(--text-secondary)" /> : <User size={13} color="#ffffff" />}
+                {isAi ? (
+                  <img 
+                    src="/brainhalflogo.png" 
+                    alt="BrainHalf" 
+                    style={{ width: '15px', height: '15px', objectFit: 'contain' }} 
+                  />
+                ) : (
+                  <User size={13} color="#ffffff" />
+                )}
               </div>
               
               <div style={{ 
@@ -617,23 +910,82 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
                 {msg.role === 'user' ? (
                   /* Clean User Message (Subtle contrast, no harsh box) */
-                  <div style={{
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    color: '#f3f4f6',
-                    padding: '12px 16px',
-                    borderRadius: '6px',
-                    fontSize: '13.5px',
-                    lineHeight: 1.55,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    border: 'none',
-                    boxShadow: 'none'
-                  }}>
+                  <div 
+                    onMouseEnter={() => setHoveredMessageIndex(idx)}
+                    onMouseLeave={() => setHoveredMessageIndex(null)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      color: '#f3f4f6',
+                      padding: '12px 16px',
+                      borderRadius: '6px',
+                      fontSize: '13.5px',
+                      lineHeight: 1.55,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      border: 'none',
+                      boxShadow: 'none',
+                      position: 'relative'
+                    }}
+                  >
                     {msg.content}
+                    
+                    {/* Hover Actions */}
+                    {hoveredMessageIndex === idx && !isGenerating && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '-14px',
+                        right: '8px',
+                        display: 'flex',
+                        gap: '4px',
+                        background: '#181b28',
+                        padding: '4px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-subtle)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+                      }}>
+                        <button
+                          onClick={() => handleEditMessage(idx)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: '4px'
+                          }}
+                          title="Edit Message"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMessage(idx)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: '4px'
+                          }}
+                          title="Delete Message"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  /* Structured AI Response (Unboxed natural flow, no nested card) */
-                  <div style={{
+                  <div 
+                    className="message-block ai-message" 
+                    onMouseEnter={() => setHoveredMessageIndex(idx)}
+                    onMouseLeave={() => setHoveredMessageIndex(null)}
+                    style={{
                     background: 'transparent',
                     color: '#e2e8f0',
                     padding: '2px 0',
@@ -643,8 +995,42 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     border: 'none',
                     boxShadow: 'none',
                     width: '100%',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    position: 'relative'
                   }}>
+                    {hoveredMessageIndex === idx && !isGenerating && (
+                      <div className="message-actions" style={{
+                        position: 'absolute',
+                        top: '-20px',
+                        right: '8px',
+                        display: 'flex',
+                        gap: '4px',
+                        background: '#181b28',
+                        padding: '4px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-subtle)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                        zIndex: 10
+                      }}>
+                        <button
+                          onClick={() => handleRollbackMessage(idx)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: '4px'
+                          }}
+                          title="Rewind conversation to this point"
+                        >
+                          <Undo2 size={12} />
+                        </button>
+                      </div>
+                    )}
                     {(() => {
                       const { segments } = parseMessageSegments(msg.content, !isCurrentGenerating);
 
@@ -734,7 +1120,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         })}
 
         {/* Starter suggestions when conversation is fresh */}
-        {messages.length <= 1 && (
+        {!messages.some(m => m.role === 'user') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.06em' }}>
               Quick Templates
@@ -784,6 +1170,54 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         flexDirection: 'column',
         gap: '8px'
       }}>
+        {mergeConflict && (
+          <div style={{
+            padding: '10px 14px',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            borderRadius: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            marginBottom: '4px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#fca5a5' }}>
+                Merge Conflict with "{mergeConflict.sourceName}"
+              </span>
+              <button 
+                onClick={() => setMergeConflict(null)}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px' }}
+                title="Dismiss"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Conflicting files: {mergeConflict.conflicts.join(', ')}
+            </div>
+            <button
+              onClick={() => {
+                handleSendMessage(`[Conflict-Resolution] The files ${mergeConflict.conflicts.join(', ')} contain git-style merge conflict markers: <<<<<<< HEAD and >>>>>>> INCOMING. Please carefully inspect both versions, merge all features and logic without losing functionality, and produce clean, working files.`);
+                setMergeConflict(null);
+              }}
+              style={{
+                background: '#ef4444',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                alignSelf: 'flex-start'
+              }}
+            >
+              Resolve Conflicts with AI Agent
+            </button>
+          </div>
+        )}
+
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -811,38 +1245,54 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               onClick={() => fileInputRef.current?.click()}
               disabled={isGenerating}
               style={{ padding: '6px', opacity: isGenerating ? 0.4 : 0.8, borderRadius: '6px' }}
-              title="Attach Image / Wireframe"
+              title="Attach File (Image / Text)"
             >
-              <ImagePlus size={16} color="var(--text-secondary)" />
+              <Paperclip size={16} color="var(--text-secondary)" />
             </button>
             <input 
               type="file" 
-              accept="image/*" 
               ref={fileInputRef} 
+              aria-label="Attach file or screenshot"
               style={{ display: 'none' }} 
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                  setSelectedImage(event.target?.result as string);
-                  setImageType(file.type);
-                };
-                reader.readAsDataURL(file);
+                
+                if (file.type.startsWith('image/')) {
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    setSelectedImage(event.target?.result as string);
+                    setImageType(file.type);
+                  };
+                  reader.readAsDataURL(file);
+                } else {
+                  // For text, markdown, json, etc
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    const text = event.target?.result as string;
+                    setInput(prev => prev + (prev ? '\n\n' : '') + `--- ${file.name} ---\n${text}`);
+                  };
+                  reader.readAsText(file);
+                }
                 e.target.value = '';
               }}
             />
             <textarea
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleSendMessage();
+                  e.currentTarget.style.height = 'auto'; // Reset on send
                 }
               }}
               placeholder={isGenerating ? "BrainHalf is working..." : "Ask BrainHalf to build, edit, or style..."}
-              rows={2}
+              rows={1}
               disabled={isGenerating}
               style={{
                 width: '100%',
@@ -853,34 +1303,90 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 fontFamily: 'inherit',
                 resize: 'none',
                 outline: 'none',
-                lineHeight: 1.5
+                lineHeight: 1.5,
+                maxHeight: '200px',
+                overflowY: 'auto'
               }}
             />
-            <button 
-              onClick={() => handleSendMessage()}
-              disabled={(!input.trim() && !selectedImage) || isGenerating}
-              style={{ 
-                background: ((!input.trim() && !selectedImage) || isGenerating) 
-                  ? 'rgba(255, 255, 255, 0.04)' 
-                  : '#ffffff',
-                color: ((!input.trim() && !selectedImage) || isGenerating) ? 'var(--text-muted)' : '#09090b',
-                border: 'none',
-                borderRadius: '6px',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: ((!input.trim() && !selectedImage) || isGenerating) ? 'not-allowed' : 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-              title="Send Message (Enter)"
-            >
-              {isGenerating ? <Loader2 size={15} className="lucide-spin" /> : <Send size={15} />}
-            </button>
+            {isGenerating ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ 
+                  fontSize: '11px', 
+                  color: 'var(--text-muted)', 
+                  fontFamily: 'var(--font-mono)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}>
+                  <span style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#3b82f6',
+                    animation: 'pulse 1.5s infinite ease-in-out'
+                  }} />
+                  {elapsedSeconds}s
+                </span>
+                <button 
+                  onClick={handleStopGeneration}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: '6px',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Stop Generation"
+                  aria-label="Stop Generation"
+                >
+                  <Square size={14} fill="currentColor" />
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={() => handleSendMessage()}
+                disabled={(!input.trim() && !selectedImage)}
+                style={{ 
+                  background: (!input.trim() && !selectedImage) 
+                    ? 'rgba(255, 255, 255, 0.04)' 
+                    : '#ffffff',
+                  color: (!input.trim() && !selectedImage) ? 'var(--text-muted)' : '#09090b',
+                  border: 'none',
+                  borderRadius: '6px',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: (!input.trim() && !selectedImage) ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                title="Send Message (Enter)"
+              >
+                <Send size={15} />
+              </button>
+            )}
           </div>
         </div>
       </div>
+      
+      {/* Accessible Non-Blocking Chat Dialog */}
+      {confirmModalConfig && (
+        <ConfirmModal
+          isOpen={confirmModalConfig.isOpen}
+          title={confirmModalConfig.title}
+          message={confirmModalConfig.message}
+          confirmLabel={confirmModalConfig.confirmLabel}
+          onConfirm={confirmModalConfig.onConfirm}
+          onCancel={() => setConfirmModalConfig(null)}
+        />
+      )}
     </div>
   );
 };
