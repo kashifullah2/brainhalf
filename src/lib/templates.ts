@@ -184,7 +184,7 @@ export default function App() {
       height: '100%',
       minHeight: '100%',
       fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-      background: 'radial-gradient(ellipse at 25% 15%, rgba(20, 184, 166, 0.14) 0%, rgba(9, 13, 22, 0.98) 65%, #05070b 100%)',
+      background: 'radial-gradient(ellipse at 50% 15%, rgba(30, 41, 59, 0.25) 0%, rgba(10, 14, 23, 0.98) 70%, #06080d 100%)',
       color: '#f8fafc',
       padding: '24px 20px',
       boxSizing: 'border-box',
@@ -192,117 +192,95 @@ export default function App() {
       position: 'relative',
       overflow: 'hidden'
     }}>
-      <style dangerouslySetInnerHTML={{ __html: '@keyframes heroGradientPulse { 0% { transform: scale(0.96); opacity: 0.75; } 50% { transform: scale(1.06) translateY(6px); opacity: 1; } 100% { transform: scale(0.98) translateY(-4px); opacity: 0.85; } } @keyframes iconGlowPulse { 0%, 100% { box-shadow: 0 0 24px rgba(20, 184, 166, 0.35), 0 0 48px rgba(13, 148, 136, 0.15); } 50% { box-shadow: 0 0 32px rgba(45, 212, 191, 0.55), 0 0 60px rgba(20, 184, 166, 0.25); } }' }} />
-
-      {/* Architectural Blueprint Dot Grid & Vignette Texture */}
+      {/* Subtle Architectural Dot Grid Canvas */}
       <div style={{
         position: 'absolute',
         inset: 0,
-        backgroundImage: 'radial-gradient(rgba(45, 212, 191, 0.12) 1px, transparent 1px)',
-        backgroundSize: '24px 24px',
-        opacity: 0.6,
+        backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px)',
+        backgroundSize: '28px 28px',
+        opacity: 0.5,
         pointerEvents: 'none',
         zIndex: 0,
-        maskImage: 'radial-gradient(ellipse at 50% 50%, black 40%, transparent 85%)',
-        WebkitMaskImage: 'radial-gradient(ellipse at 50% 50%, black 40%, transparent 85%)'
+        maskImage: 'radial-gradient(ellipse at 50% 50%, black 35%, transparent 80%)',
+        WebkitMaskImage: 'radial-gradient(ellipse at 50% 50%, black 35%, transparent 80%)'
       }} />
 
       <div className="hero-section-card" style={{
         position: 'relative',
         zIndex: 1,
-        maxWidth: '560px',
+        maxWidth: '540px',
         width: '100%',
-        padding: '52px 36px',
-        borderRadius: '24px 8px 24px 14px',
-        background: 'radial-gradient(ellipse at 20% 0%, rgba(20, 184, 166, 0.18) 0%, rgba(13, 148, 136, 0.06) 45%, rgba(13, 17, 26, 0.96) 85%)',
-        border: '1px solid rgba(255, 255, 255, 0.09)',
-        borderTop: '1px solid rgba(45, 212, 191, 0.35)',
+        padding: '56px 40px',
+        borderRadius: '24px',
+        background: 'radial-gradient(130% 110% at 50% 0%, rgba(26, 34, 48, 0.65) 0%, rgba(11, 15, 24, 0.95) 100%)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.16)',
         textAlign: 'center',
-        boxShadow: '0 20px 48px -12px rgba(0, 0, 0, 0.65), 0 0 40px rgba(20, 184, 166, 0.08)',
-        backdropFilter: 'blur(16px)',
+        boxShadow: '0 24px 60px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03)',
+        backdropFilter: 'blur(20px)',
         overflow: 'hidden'
       }}>
-        {/* Asymmetric Top Accent Line */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '140px',
-          height: '2px',
-          background: 'linear-gradient(90deg, #2dd4bf 0%, rgba(45, 212, 191, 0) 100%)',
-          pointerEvents: 'none',
-          zIndex: 1
-        }} />
-
-        {/* Asymmetric Brand-Teal Directional Glow */}
-        <div style={{
-          position: 'absolute',
-          top: '-35%',
-          left: '10%',
-          width: '140%',
-          height: '140%',
-          background: 'radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.20) 0%, rgba(13, 148, 136, 0.08) 35%, transparent 65%)',
-          filter: 'blur(32px)',
-          pointerEvents: 'none',
-          zIndex: 0,
-          animation: 'heroGradientPulse 8s ease-in-out infinite alternate'
-        }} />
-
-        {/* Asymmetric Technical Eyebrow Tag */}
+        {/* Refined Studio Status Pill */}
         <div style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '6px',
-          padding: '4px 10px',
-          borderRadius: '6px 2px 6px 2px',
-          background: 'rgba(20, 184, 166, 0.08)',
-          border: '1px solid rgba(20, 184, 166, 0.22)',
-          marginBottom: '18px',
-          fontSize: '11px',
-          fontWeight: 600,
-          letterSpacing: '0.08em',
-          color: '#2dd4bf',
-          textTransform: 'uppercase',
-          fontFamily: "'JetBrains Mono', monospace",
+          gap: '8px',
+          padding: '5px 12px',
+          borderRadius: '9999px',
+          background: 'rgba(255, 255, 255, 0.04)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          marginBottom: '20px',
+          fontSize: '12px',
+          fontWeight: 500,
+          color: '#94a3b8',
+          letterSpacing: '0.01em',
           position: 'relative',
           zIndex: 1
         }}>
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2dd4bf', boxShadow: '0 0 8px #2dd4bf', display: 'inline-block' }} />
-          BRAINHALF CORE // REACTIVE ENGINE
+          <span style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            background: '#10b981',
+            boxShadow: '0 0 8px rgba(16, 185, 129, 0.45)',
+            display: 'inline-block'
+          }} />
+          <span>BrainHalf Studio</span>
+          <span style={{ color: 'rgba(255, 255, 255, 0.2)' }}>•</span>
+          <span style={{ color: '#64748b' }}>Ready</span>
         </div>
 
-        {/* 64px Icon with brand-teal glow */}
+        {/* 64px Tactile Icon Container */}
         <div className="hero-icon-container" style={{
           width: '64px',
           height: '64px',
-          borderRadius: '16px 6px 16px 8px',
-          background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.12) 0%, rgba(20, 184, 166, 0.03) 100%)',
-          border: '1px solid rgba(45, 212, 191, 0.25)',
+          borderRadius: '18px',
+          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          margin: '0 auto 20px',
-          boxShadow: '0 0 24px rgba(20, 184, 166, 0.35), 0 0 48px rgba(13, 148, 136, 0.15)',
-          animation: 'iconGlowPulse 4s ease-in-out infinite alternate',
+          margin: '0 auto 22px',
+          boxShadow: '0 12px 28px -6px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
           position: 'relative',
           zIndex: 1
         }}>
           <BrainCircuit 
-            size={36} 
+            size={32} 
             strokeWidth={1.75} 
             color="#2dd4bf" 
-            style={{ filter: 'drop-shadow(0 0 10px rgba(45, 212, 191, 0.65)) drop-shadow(0 0 20px rgba(20, 184, 166, 0.4))' }} 
+            style={{ filter: 'drop-shadow(0 2px 8px rgba(45, 212, 191, 0.35))' }} 
           />
         </div>
 
         <h1 style={{
           fontSize: '25px',
-          fontWeight: 700,
-          margin: '0 0 10px',
+          fontWeight: 600,
+          margin: '0 0 12px',
           color: '#f8fafc',
-          letterSpacing: '-0.03em',
-          lineHeight: '1.25',
-          fontFamily: "'Space Grotesk', -apple-system, sans-serif",
+          letterSpacing: '-0.025em',
+          lineHeight: '1.3',
+          fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
           position: 'relative',
           zIndex: 1
         }}>
@@ -311,15 +289,15 @@ export default function App() {
 
         <p style={{
           color: '#94a3b8',
-          fontSize: '14px',
+          fontSize: '14.5px',
           lineHeight: '1.6',
-          margin: '0 auto 28px',
-          maxWidth: '460px',
+          margin: '0 auto 32px',
+          maxWidth: '440px',
           fontWeight: 400,
           position: 'relative',
           zIndex: 1
         }}>
-          From interactive workflows to full-stack reactive prototypes—direct the architecture, shape state in real time, and inspect generated code instantly.
+          Describe an interface or workflow to start building. BrainHalf constructs reactive components, shapes state, and previews live code in real time.
         </p>
 
         {/* Suggestion pills with increased spacing and larger touch target */}
@@ -336,12 +314,12 @@ export default function App() {
               key={example}
               className="suggestion-pill"
               style={{
-                background: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid rgba(255, 255, 255, 0.09)',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
                 color: '#cbd5e1',
                 padding: '9px 18px',
                 minHeight: '40px',
-                borderRadius: '10px 4px 10px 4px',
+                borderRadius: '9999px',
                 fontSize: '13px',
                 fontWeight: 500,
                 cursor: 'pointer',
@@ -349,21 +327,21 @@ export default function App() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 transition: 'all 0.18s ease',
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.15)'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(20, 184, 166, 0.12)';
-                e.currentTarget.style.borderColor = 'rgba(45, 212, 191, 0.3)';
-                e.currentTarget.style.color = '#f0fdfa';
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.borderColor = 'rgba(45, 212, 191, 0.35)';
+                e.currentTarget.style.color = '#ffffff';
                 e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 14px rgba(20, 184, 166, 0.2)';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.3), 0 0 10px rgba(45, 212, 191, 0.15)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.09)';
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
                 e.currentTarget.style.color = '#cbd5e1';
                 e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.15)';
               }}
             >
               {example}
