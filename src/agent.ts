@@ -79,43 +79,30 @@ export default function App() {
       height: '100%',
       minHeight: '100%',
       fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-      background: 'radial-gradient(ellipse at 50% 15%, rgba(30, 41, 59, 0.25) 0%, rgba(10, 14, 23, 0.98) 70%, #06080d 100%)',
-      color: '#f8fafc',
+      background: '#090b10',
+      color: '#f4f4f5',
       padding: '24px 20px',
       boxSizing: 'border-box',
       textAlign: 'center',
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Subtle Architectural Dot Grid Canvas */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px)',
-        backgroundSize: '28px 28px',
-        opacity: 0.5,
-        pointerEvents: 'none',
-        zIndex: 0,
-        maskImage: 'radial-gradient(ellipse at 50% 50%, black 35%, transparent 80%)',
-        WebkitMaskImage: 'radial-gradient(ellipse at 50% 50%, black 35%, transparent 80%)'
-      }} />
-
       <div className="hero-section-card" style={{
         position: 'relative',
         zIndex: 1,
-        maxWidth: '540px',
+        maxWidth: '520px',
         width: '100%',
-        padding: '56px 40px',
-        borderRadius: '24px',
-        background: 'radial-gradient(130% 110% at 50% 0%, rgba(26, 34, 48, 0.65) 0%, rgba(11, 15, 24, 0.95) 100%)',
+        padding: '52px 36px',
+        borderRadius: '20px',
+        background: 'radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%)',
         border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderTop: '1px solid rgba(255, 255, 255, 0.16)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.14)',
         textAlign: 'center',
-        boxShadow: '0 24px 60px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03)',
-        backdropFilter: 'blur(20px)',
+        boxShadow: '0 20px 48px -12px rgba(0, 0, 0, 0.6)',
+        backdropFilter: 'blur(16px)',
         overflow: 'hidden'
       }}>
-        {/* Refined Studio Status Pill */}
+        {/* Subtle Status Pill */}
         <div style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -123,11 +110,11 @@ export default function App() {
           padding: '5px 12px',
           borderRadius: '9999px',
           background: 'rgba(255, 255, 255, 0.04)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
+          border: '1px solid rgba(255, 255, 255, 0.07)',
           marginBottom: '20px',
           fontSize: '12px',
           fontWeight: 500,
-          color: '#94a3b8',
+          color: '#a1a1aa',
           letterSpacing: '0.01em',
           position: 'relative',
           zIndex: 1
@@ -137,43 +124,39 @@ export default function App() {
             height: '6px',
             borderRadius: '50%',
             background: '#10b981',
-            boxShadow: '0 0 8px rgba(16, 185, 129, 0.45)',
             display: 'inline-block'
           }} />
-          <span>BrainHalf Studio</span>
-          <span style={{ color: 'rgba(255, 255, 255, 0.2)' }}>•</span>
-          <span style={{ color: '#64748b' }}>Ready</span>
+          <span>Ready to build</span>
         </div>
 
-        {/* 64px Tactile Icon Container */}
+        {/* Minimalist Icon */}
         <div className="hero-icon-container" style={{
           width: '64px',
           height: '64px',
-          borderRadius: '18px',
-          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '16px',
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          margin: '0 auto 22px',
-          boxShadow: '0 12px 28px -6px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.15)',
+          margin: '0 auto 20px',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
           position: 'relative',
           zIndex: 1
         }}>
           <BrainCircuit 
-            size={32} 
-            strokeWidth={1.75} 
-            color="#2dd4bf" 
-            style={{ filter: 'drop-shadow(0 2px 8px rgba(45, 212, 191, 0.35))' }} 
+            size={30} 
+            strokeWidth={1.5} 
+            color="#e2e8f0" 
           />
         </div>
 
         <h1 style={{
-          fontSize: '25px',
+          fontSize: '24px',
           fontWeight: 600,
-          margin: '0 0 12px',
-          color: '#f8fafc',
-          letterSpacing: '-0.025em',
+          margin: '0 0 10px',
+          color: '#ffffff',
+          letterSpacing: '-0.02em',
           lineHeight: '1.3',
           fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
           position: 'relative',
@@ -183,16 +166,16 @@ export default function App() {
         </h1>
 
         <p style={{
-          color: '#94a3b8',
-          fontSize: '14.5px',
+          color: '#a1a1aa',
+          fontSize: '14px',
           lineHeight: '1.6',
-          margin: '0 auto 32px',
-          maxWidth: '440px',
+          margin: '0 auto 28px',
+          maxWidth: '420px',
           fontWeight: 400,
           position: 'relative',
           zIndex: 1
         }}>
-          Describe an interface or workflow to start building. BrainHalf constructs reactive components, shapes state, and previews live code in real time.
+          Describe what you want to build in the chat. BrainHalf generates reactive components, manages state, and previews live code instantly.
         </p>
 
         {/* Suggestion pills with increased spacing and larger touch target */}
@@ -211,9 +194,9 @@ export default function App() {
               style={{
                 background: 'rgba(255, 255, 255, 0.03)',
                 border: '1px solid rgba(255, 255, 255, 0.08)',
-                color: '#cbd5e1',
-                padding: '9px 18px',
-                minHeight: '40px',
+                color: '#a1a1aa',
+                padding: '8px 18px',
+                minHeight: '38px',
                 borderRadius: '9999px',
                 fontSize: '13px',
                 fontWeight: 500,
@@ -221,22 +204,19 @@ export default function App() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                transition: 'all 0.18s ease',
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.15)'
+                transition: 'all 0.15s ease'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(45, 212, 191, 0.35)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)';
                 e.currentTarget.style.color = '#ffffff';
                 e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.3), 0 0 10px rgba(45, 212, 191, 0.15)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
                 e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.color = '#cbd5e1';
+                e.currentTarget.style.color = '#a1a1aa';
                 e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.15)';
               }}
             >
               {example}
@@ -328,6 +308,8 @@ body {
         this.runSql`INSERT OR IGNORE INTO project_files (path, content) VALUES ('/src/App.jsx', ${defaultApp});`;
         this.runSql`INSERT OR IGNORE INTO project_files (path, content) VALUES ('/src/main.jsx', ${defaultMain});`;
         this.runSql`INSERT OR IGNORE INTO project_files (path, content) VALUES ('/src/styles.css', ${defaultCss});`;
+        // Upgrade legacy starter template to minimalist human-crafted design
+        this.runSql`UPDATE project_files SET content = ${defaultApp} WHERE path = '/src/App.jsx' AND (content LIKE '%BRAINHALF CORE // REACTIVE ENGINE%' OR content LIKE '%From interactive workflows to full-stack reactive prototypes%' OR content LIKE '%BrainHalf Studio%');`;
       }
     } catch (e) {
       console.warn('SQLite init note:', e);

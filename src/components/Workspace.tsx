@@ -73,12 +73,23 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
         '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
         '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
       };
-    } else if (current['/src/App.jsx'] && current['/src/App.jsx'].includes("minHeight: '100vh'") && (current['/src/App.jsx'].includes("What do you want to build?") || current['/src/App.jsx'].includes("Architect your idea into living software."))) {
-      current = {
-        ...current,
-        '/src/App.jsx': current['/src/App.jsx'].replace("minHeight: '100vh'", "height: '100%', minHeight: '100%'")
-      };
-      saveProjectFiles(activeProjectId, current);
+    } else if (current['/src/App.jsx']) {
+      const isLegacyStarter = current['/src/App.jsx'].includes('BRAINHALF CORE // REACTIVE ENGINE') ||
+        current['/src/App.jsx'].includes('BrainHalf Studio') ||
+        current['/src/App.jsx'].includes('From interactive workflows to full-stack reactive prototypes');
+      if (isLegacyStarter) {
+        current = {
+          ...current,
+          '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents
+        };
+        saveProjectFiles(activeProjectId, current);
+      } else if (current['/src/App.jsx'].includes("minHeight: '100vh'") && (current['/src/App.jsx'].includes("What do you want to build?") || current['/src/App.jsx'].includes("Architect your idea into living software."))) {
+        current = {
+          ...current,
+          '/src/App.jsx': current['/src/App.jsx'].replace("minHeight: '100vh'", "height: '100%', minHeight: '100%'")
+        };
+        saveProjectFiles(activeProjectId, current);
+      }
     }
     return current;
   });
@@ -331,8 +342,19 @@ export const ${compName} = ${compName};
 
   // Synchronize workspace when project changes or when cleared
   useEffect(() => {
-    const loadedFiles = getProjectFiles(activeProjectId);
+    let loadedFiles = getProjectFiles(activeProjectId);
     if (loadedFiles && Object.keys(loadedFiles).length > 0) {
+      if (loadedFiles['/src/App.jsx'] && (
+        loadedFiles['/src/App.jsx'].includes('BRAINHALF CORE // REACTIVE ENGINE') ||
+        loadedFiles['/src/App.jsx'].includes('BrainHalf Studio') ||
+        loadedFiles['/src/App.jsx'].includes('From interactive workflows to full-stack reactive prototypes')
+      )) {
+        loadedFiles = {
+          ...loadedFiles,
+          '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents
+        };
+        saveProjectFiles(activeProjectId, loadedFiles);
+      }
       setFiles(loadedFiles);
       filesRef.current = loadedFiles;
       setHasProject(true);

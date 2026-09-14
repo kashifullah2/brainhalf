@@ -115,7 +115,14 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
   const [files, setFiles] = useState<Record<string, string>>(() => {
     const saved = getProjectFiles(projectId);
     if (saved && Object.keys(saved).length > 0) {
-      if (saved['/src/App.jsx'] && saved['/src/App.jsx'].includes("minHeight: '100vh'") && (saved['/src/App.jsx'].includes("What do you want to build?") || saved['/src/App.jsx'].includes("Architect your idea into living software."))) {
+      if (saved['/src/App.jsx'] && (
+        saved['/src/App.jsx'].includes('BRAINHALF CORE // REACTIVE ENGINE') ||
+        saved['/src/App.jsx'].includes('BrainHalf Studio') ||
+        saved['/src/App.jsx'].includes('From interactive workflows to full-stack reactive prototypes')
+      )) {
+        saved['/src/App.jsx'] = basicReactTemplate['src'].directory['App.jsx'].file.contents;
+        saveProjectFiles(projectId, saved);
+      } else if (saved['/src/App.jsx'] && saved['/src/App.jsx'].includes("minHeight: '100vh'") && (saved['/src/App.jsx'].includes("What do you want to build?") || saved['/src/App.jsx'].includes("Architect your idea into living software."))) {
         saved['/src/App.jsx'] = saved['/src/App.jsx'].replace("minHeight: '100vh'", "height: '100%', minHeight: '100%'");
       }
       return saved;
