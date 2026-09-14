@@ -44,13 +44,13 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, isStreaming }) => 
       color: 'var(--text-secondary)'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-        <Terminal size={14} color="var(--accent-primary)" />
+        <Terminal size={16} strokeWidth={1.75} color="var(--accent-primary)" />
         <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Terminal</span>
         <div style={{ marginLeft: 'auto' }}>
           {status === 'running' ? (
-            <Loader2 size={14} className="lucide-spin" style={{ color: 'var(--accent-secondary)' }} />
+            <Loader2 size={16} strokeWidth={1.75} className="lucide-spin" style={{ color: 'var(--accent-secondary)' }} />
           ) : status === 'completed' ? (
-            <CheckCircle2 size={14} color="#22c55e" />
+            <CheckCircle2 size={16} strokeWidth={1.75} color="#22c55e" />
           ) : null}
         </div>
       </div>

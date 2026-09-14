@@ -1,0 +1,1792 @@
+{
+  "runId": "benchmark-2026-09-14T08-02-33-561Z",
+  "startedAt": "2026-09-14T08:02:33.562Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2045
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 95
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2075ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2136
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 343
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 364
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6353
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 646
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 78
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2022ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2047
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 6
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 325
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6332
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 578
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 78
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2027ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2054
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 12
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 323
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6329
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 599
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 52
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2028ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2045
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 5
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 323
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6323
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 534
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 95
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2022ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2044
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 26
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 330
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6336
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 596
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 122
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2042ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2085
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 12
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 352
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6343
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 530
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 142
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2020ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2046
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 8
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 329
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6344
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 525
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 171
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2022ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2057
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 8
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 327
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6329
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 538
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-2",
+        "tier": "easy",
+        "title": "Todo List with Filters",
+        "totalChecks": 7,
+        "buildPrompt": "Build a todo list app: add task via input + Enter or button, mark complete via checkbox, delete via trash icon, filter by All/Active/Completed using tabs, and show a live count of remaining active tasks. Persist nothing to backend, just in-memory state."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-2-check-1",
+          "description": "Adding a task via Enter key adds a new list item with the correct text",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2018
+        },
+        {
+          "checkId": "easy-2-check-2",
+          "description": "Adding a task via button click also works",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "easy-2-check-3",
+          "description": "Checking a checkbox visually marks item complete and decrements active count",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "easy-2-check-4",
+          "description": "Clicking delete removes the exact item, not a different one",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "easy-2-check-5",
+          "description": "Filter 'Active' hides completed; 'Completed' hides active; 'All' shows both",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "easy-2-check-6",
+          "description": "Active count text updates correctly after each add/complete/delete action",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2361
+        },
+        {
+          "checkId": "easy-2-check-7",
+          "description": "Adding an empty task (blank input) does not create a blank list item",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2011
+        }
+      ],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-2",
+        "tier": "easy",
+        "title": "Todo List with Filters",
+        "totalChecks": 7,
+        "buildPrompt": "Build a todo list app: add task via input + Enter or button, mark complete via checkbox, delete via trash icon, filter by All/Active/Completed using tabs, and show a live count of remaining active tasks. Persist nothing to backend, just in-memory state."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-2-check-1",
+          "description": "Adding a task via Enter key adds a new list item with the correct text",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "easy-2-check-2",
+          "description": "Adding a task via button click also works",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "easy-2-check-3",
+          "description": "Checking a checkbox visually marks item complete and decrements active count",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "easy-2-check-4",
+          "description": "Clicking delete removes the exact item, not a different one",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "easy-2-check-5",
+          "description": "Filter 'Active' hides completed; 'Completed' hides active; 'All' shows both",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "easy-2-check-6",
+          "description": "Active count text updates correctly after each add/complete/delete action",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2348
+        },
+        {
+          "checkId": "easy-2-check-7",
+          "description": "Adding an empty task (blank input) does not create a blank list item",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2023
+        }
+      ],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-2",
+        "tier": "easy",
+        "title": "Todo List with Filters",
+        "totalChecks": 7,
+        "buildPrompt": "Build a todo list app: add task via input + Enter or button, mark complete via checkbox, delete via trash icon, filter by All/Active/Completed using tabs, and show a live count of remaining active tasks. Persist nothing to backend, just in-memory state."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 32,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-2-check-1",
+          "description": "Adding a task via Enter key adds a new list item with the correct text",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "easy-2-check-2",
+          "description": "Adding a task via button click also works",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "easy-2-check-3",
+          "description": "Checking a checkbox visually marks item complete and decrements active count",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "easy-2-check-4",
+          "description": "Clicking delete removes the exact item, not a different one",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "easy-2-check-5",
+          "description": "Filter 'Active' hides completed; 'Completed' hides active; 'All' shows both",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "easy-2-check-6",
+          "description": "Active count text updates correctly after each add/complete/delete action",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2330
+        },
+        {
+          "checkId": "easy-2-check-7",
+          "description": "Adding an empty task (blank input) does not create a blank list item",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        }
+      ],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-2",
+        "tier": "easy",
+        "title": "Todo List with Filters",
+        "totalChecks": 7,
+        "buildPrompt": "Build a todo list app: add task via input + Enter or button, mark complete via checkbox, delete via trash icon, filter by All/Active/Completed using tabs, and show a live count of remaining active tasks. Persist nothing to backend, just in-memory state."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-2-check-1",
+          "description": "Adding a task via Enter key adds a new list item with the correct text",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "easy-2-check-2",
+          "description": "Adding a task via button click also works",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "easy-2-check-3",
+          "description": "Checking a checkbox visually marks item complete and decrements active count",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "easy-2-check-4",
+          "description": "Clicking delete removes the exact item, not a different one",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "easy-2-check-5",
+          "description": "Filter 'Active' hides completed; 'Completed' hides active; 'All' shows both",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "easy-2-check-6",
+          "description": "Active count text updates correctly after each add/complete/delete action",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2350
+        },
+        {
+          "checkId": "easy-2-check-7",
+          "description": "Adding an empty task (blank input) does not create a blank list item",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2023
+        }
+      ],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-2",
+        "tier": "easy",
+        "title": "Todo List with Filters",
+        "totalChecks": 7,
+        "buildPrompt": "Build a todo list app: add task via input + Enter or button, mark complete via checkbox, delete via trash icon, filter by All/Active/Completed using tabs, and show a live count of remaining active tasks. Persist nothing to backend, just in-memory state."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-2-check-1",
+          "description": "Adding a task via Enter key adds a new list item with the correct text",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2015
+        },
+        {
+          "checkId": "easy-2-check-2",
+          "description": "Adding a task via button click also works",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "easy-2-check-3",
+          "description": "Checking a checkbox visually marks item complete and decrements active count",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "easy-2-check-4",
+          "description": "Clicking delete removes the exact item, not a different one",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "easy-2-check-5",
+          "description": "Filter 'Active' hides completed; 'Completed' hides active; 'All' shows both",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "easy-2-check-6",
+          "description": "Active count text updates correctly after each add/complete/delete action",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2327
+        },
+        {
+          "checkId": "easy-2-check-7",
+          "description": "Adding an empty task (blank input) does not create a blank list item",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2014
+        }
+      ],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-2",
+        "tier": "easy",
+        "title": "Todo List with Filters",
+        "totalChecks": 7,
+        "buildPrompt": "Build a todo list app: add task via input + Enter or button, mark complete via checkbox, delete via trash icon, filter by All/Active/Completed using tabs, and show a live count of remaining active tasks. Persist nothing to backend, just in-memory state."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-2-check-1",
+          "description": "Adding a task via Enter key adds a new list item with the correct text",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2016
+        },
+        {
+          "checkId": "easy-2-check-2",
+          "description": "Adding a task via button click also works",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2019
+        },
+        {
+          "checkId": "easy-2-check-3",
+          "description": "Checking a checkbox visually marks item complete and decrements active count",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "easy-2-check-4",
+          "description": "Clicking delete removes the exact item, not a different one",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "easy-2-check-5",
+          "description": "Filter 'Active' hides completed; 'Completed' hides active; 'All' shows both",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "easy-2-check-6",
+          "description": "Active count text updates correctly after each add/complete/delete action",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2324
+        },
+        {
+          "checkId": "easy-2-check-7",
+          "description": "Adding an empty task (blank input) does not create a blank list item",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2038
+        }
+      ],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-2",
+        "tier": "easy",
+        "title": "Todo List with Filters",
+        "totalChecks": 7,
+        "buildPrompt": "Build a todo list app: add task via input + Enter or button, mark complete via checkbox, delete via trash icon, filter by All/Active/Completed using tabs, and show a live count of remaining active tasks. Persist nothing to backend, just in-memory state."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-2-check-1",
+          "description": "Adding a task via Enter key adds a new list item with the correct text",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "easy-2-check-2",
+          "description": "Adding a task via button click also works",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "easy-2-check-3",
+          "description": "Checking a checkbox visually marks item complete and decrements active count",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "easy-2-check-4",
+          "description": "Clicking delete removes the exact item, not a different one",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "easy-2-check-5",
+          "description": "Filter 'Active' hides completed; 'Completed' hides active; 'All' shows both",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "easy-2-check-6",
+          "description": "Active count text updates correctly after each add/complete/delete action",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2329
+        },
+        {
+          "checkId": "easy-2-check-7",
+          "description": "Adding an empty task (blank input) does not create a blank list item",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2009
+        }
+      ],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-2",
+        "tier": "easy",
+        "title": "Todo List with Filters",
+        "totalChecks": 7,
+        "buildPrompt": "Build a todo list app: add task via input + Enter or button, mark complete via checkbox, delete via trash icon, filter by All/Active/Completed using tabs, and show a live count of remaining active tasks. Persist nothing to backend, just in-memory state."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-2-check-1",
+          "description": "Adding a task via Enter key adds a new list item with the correct text",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "easy-2-check-2",
+          "description": "Adding a task via button click also works",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "easy-2-check-3",
+          "description": "Checking a checkbox visually marks item complete and decrements active count",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "easy-2-check-4",
+          "description": "Clicking delete removes the exact item, not a different one",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "easy-2-check-5",
+          "description": "Filter 'Active' hides completed; 'Completed' hides active; 'All' shows both",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "easy-2-check-6",
+          "description": "Active count text updates correctly after each add/complete/delete action",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2349
+        },
+        {
+          "checkId": "easy-2-check-7",
+          "description": "Adding an empty task (blank input) does not create a blank list item",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"task\"], input[placeholder*=\"todo\"], input[placeholder*=\"add\"], input[type=\"text\"]').first()\u001b[22m\n",
+          "durationMs": 2024
+        }
+      ],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-3",
+        "tier": "easy",
+        "title": "Color Palette Generator",
+        "totalChecks": 5,
+        "buildPrompt": "Build a tool that generates 5 random complementary color swatches on load and on button click. Each swatch shows its hex code, and clicking a swatch copies the hex to clipboard with a toast/confirmation."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-3-check-1",
+          "description": "5 distinct swatches render on initial load",
+          "passed": false,
+          "actual": "hexCodes=0, swatchElements=0",
+          "expected": "at least 5 hex codes or swatch elements",
+          "durationMs": 1160
+        },
+        {
+          "checkId": "easy-3-check-2",
+          "description": "Clicking 'Generate' changes at least 4 of 5 hex values",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Generate button visible",
+          "durationMs": 22
+        },
+        {
+          "checkId": "easy-3-check-3",
+          "description": "Clicking a swatch triggers a visible copy-confirmation UI element",
+          "passed": false,
+          "actual": "no swatch found",
+          "expected": "swatch visible",
+          "durationMs": 24
+        },
+        {
+          "checkId": "easy-3-check-4",
+          "description": "Hex codes displayed match valid format ^#[0-9A-Fa-f]{6}$",
+          "passed": false,
+          "actual": "all 0 valid",
+          "expected": "all 5+ hex codes match #[0-9A-Fa-f]{6}",
+          "durationMs": 13
+        },
+        {
+          "checkId": "easy-3-check-5",
+          "description": "No duplicate swatches in a single generation (soft check)",
+          "passed": true,
+          "actual": "0 codes, 0 unique",
+          "expected": "no exact duplicates in a single generation",
+          "durationMs": 528
+        }
+      ],
+      "playwright_checks_passed": "1/5",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-3",
+        "tier": "easy",
+        "title": "Color Palette Generator",
+        "totalChecks": 5,
+        "buildPrompt": "Build a tool that generates 5 random complementary color swatches on load and on button click. Each swatch shows its hex code, and clicking a swatch copies the hex to clipboard with a toast/confirmation."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 45,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-3-check-1",
+          "description": "5 distinct swatches render on initial load",
+          "passed": false,
+          "actual": "hexCodes=0, swatchElements=0",
+          "expected": "at least 5 hex codes or swatch elements",
+          "durationMs": 1098
+        },
+        {
+          "checkId": "easy-3-check-2",
+          "description": "Clicking 'Generate' changes at least 4 of 5 hex values",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Generate button visible",
+          "durationMs": 38
+        },
+        {
+          "checkId": "easy-3-check-3",
+          "description": "Clicking a swatch triggers a visible copy-confirmation UI element",
+          "passed": false,
+          "actual": "no swatch found",
+          "expected": "swatch visible",
+          "durationMs": 23
+        },
+        {
+          "checkId": "easy-3-check-4",
+          "description": "Hex codes displayed match valid format ^#[0-9A-Fa-f]{6}$",
+          "passed": false,
+          "actual": "all 0 valid",
+          "expected": "all 5+ hex codes match #[0-9A-Fa-f]{6}",
+          "durationMs": 14
+        },
+        {
+          "checkId": "easy-3-check-5",
+          "description": "No duplicate swatches in a single generation (soft check)",
+          "passed": true,
+          "actual": "0 codes, 0 unique",
+          "expected": "no exact duplicates in a single generation",
+          "durationMs": 521
+        }
+      ],
+      "playwright_checks_passed": "1/5",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-3",
+        "tier": "easy",
+        "title": "Color Palette Generator",
+        "totalChecks": 5,
+        "buildPrompt": "Build a tool that generates 5 random complementary color swatches on load and on button click. Each swatch shows its hex code, and clicking a swatch copies the hex to clipboard with a toast/confirmation."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-3-check-1",
+          "description": "5 distinct swatches render on initial load",
+          "passed": false,
+          "actual": "hexCodes=0, swatchElements=0",
+          "expected": "at least 5 hex codes or swatch elements",
+          "durationMs": 1111
+        },
+        {
+          "checkId": "easy-3-check-2",
+          "description": "Clicking 'Generate' changes at least 4 of 5 hex values",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Generate button visible",
+          "durationMs": 21
+        },
+        {
+          "checkId": "easy-3-check-3",
+          "description": "Clicking a swatch triggers a visible copy-confirmation UI element",
+          "passed": false,
+          "actual": "no swatch found",
+          "expected": "swatch visible",
+          "durationMs": 32
+        },
+        {
+          "checkId": "easy-3-check-4",
+          "description": "Hex codes displayed match valid format ^#[0-9A-Fa-f]{6}$",
+          "passed": false,
+          "actual": "all 0 valid",
+          "expected": "all 5+ hex codes match #[0-9A-Fa-f]{6}",
+          "durationMs": 8
+        },
+        {
+          "checkId": "easy-3-check-5",
+          "description": "No duplicate swatches in a single generation (soft check)",
+          "passed": true,
+          "actual": "0 codes, 0 unique",
+          "expected": "no exact duplicates in a single generation",
+          "durationMs": 519
+        }
+      ],
+      "playwright_checks_passed": "1/5",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-3",
+        "tier": "easy",
+        "title": "Color Palette Generator",
+        "totalChecks": 5,
+        "buildPrompt": "Build a tool that generates 5 random complementary color swatches on load and on button click. Each swatch shows its hex code, and clicking a swatch copies the hex to clipboard with a toast/confirmation."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-3-check-1",
+          "description": "5 distinct swatches render on initial load",
+          "passed": false,
+          "actual": "hexCodes=0, swatchElements=0",
+          "expected": "at least 5 hex codes or swatch elements",
+          "durationMs": 1212
+        },
+        {
+          "checkId": "easy-3-check-2",
+          "description": "Clicking 'Generate' changes at least 4 of 5 hex values",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Generate button visible",
+          "durationMs": 47
+        },
+        {
+          "checkId": "easy-3-check-3",
+          "description": "Clicking a swatch triggers a visible copy-confirmation UI element",
+          "passed": false,
+          "actual": "no swatch found",
+          "expected": "swatch visible",
+          "durationMs": 49
+        },
+        {
+          "checkId": "easy-3-check-4",
+          "description": "Hex codes displayed match valid format ^#[0-9A-Fa-f]{6}$",
+          "passed": false,
+          "actual": "all 0 valid",
+          "expected": "all 5+ hex codes match #[0-9A-Fa-f]{6}",
+          "durationMs": 14
+        },
+        {
+          "checkId": "easy-3-check-5",
+          "description": "No duplicate swatches in a single generation (soft check)",
+          "passed": true,
+          "actual": "0 codes, 0 unique",
+          "expected": "no exact duplicates in a single generation",
+          "durationMs": 546
+        }
+      ],
+      "playwright_checks_passed": "1/5",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-3",
+        "tier": "easy",
+        "title": "Color Palette Generator",
+        "totalChecks": 5,
+        "buildPrompt": "Build a tool that generates 5 random complementary color swatches on load and on button click. Each swatch shows its hex code, and clicking a swatch copies the hex to clipboard with a toast/confirmation."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-3-check-1",
+          "description": "5 distinct swatches render on initial load",
+          "passed": false,
+          "actual": "hexCodes=0, swatchElements=0",
+          "expected": "at least 5 hex codes or swatch elements",
+          "durationMs": 1111
+        },
+        {
+          "checkId": "easy-3-check-2",
+          "description": "Clicking 'Generate' changes at least 4 of 5 hex values",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Generate button visible",
+          "durationMs": 18
+        },
+        {
+          "checkId": "easy-3-check-3",
+          "description": "Clicking a swatch triggers a visible copy-confirmation UI element",
+          "passed": false,
+          "actual": "no swatch found",
+          "expected": "swatch visible",
+          "durationMs": 30
+        },
+        {
+          "checkId": "easy-3-check-4",
+          "description": "Hex codes displayed match valid format ^#[0-9A-Fa-f]{6}$",
+          "passed": false,
+          "actual": "all 0 valid",
+          "expected": "all 5+ hex codes match #[0-9A-Fa-f]{6}",
+          "durationMs": 14
+        },
+        {
+          "checkId": "easy-3-check-5",
+          "description": "No duplicate swatches in a single generation (soft check)",
+          "passed": true,
+          "actual": "0 codes, 0 unique",
+          "expected": "no exact duplicates in a single generation",
+          "durationMs": 534
+        }
+      ],
+      "playwright_checks_passed": "1/5",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-3",
+        "tier": "easy",
+        "title": "Color Palette Generator",
+        "totalChecks": 5,
+        "buildPrompt": "Build a tool that generates 5 random complementary color swatches on load and on button click. Each swatch shows its hex code, and clicking a swatch copies the hex to clipboard with a toast/confirmation."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-3-check-1",
+          "description": "5 distinct swatches render on initial load",
+          "passed": false,
+          "actual": "hexCodes=0, swatchElements=0",
+          "expected": "at least 5 hex codes or swatch elements",
+          "durationMs": 1384
+        },
+        {
+          "checkId": "easy-3-check-2",
+          "description": "Clicking 'Generate' changes at least 4 of 5 hex values",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Generate button visible",
+          "durationMs": 43
+        },
+        {
+          "checkId": "easy-3-check-3",
+          "description": "Clicking a swatch triggers a visible copy-confirmation UI element",
+          "passed": false,
+          "actual": "no swatch found",
+          "expected": "swatch visible",
+          "durationMs": 68
+        },
+        {
+          "checkId": "easy-3-check-4",
+          "description": "Hex codes displayed match valid format ^#[0-9A-Fa-f]{6}$",
+          "passed": false,
+          "actual": "all 0 valid",
+          "expected": "all 5+ hex codes match #[0-9A-Fa-f]{6}",
+          "durationMs": 20
+        },
+        {
+          "checkId": "easy-3-check-5",
+          "description": "No duplicate swatches in a single generation (soft check)",
+          "passed": true,
+          "actual": "0 codes, 0 unique",
+          "expected": "no exact duplicates in a single generation",
+          "durationMs": 536
+        }
+      ],
+      "playwright_checks_passed": "1/5",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-3",
+        "tier": "easy",
+        "title": "Color Palette Generator",
+        "totalChecks": 5,
+        "buildPrompt": "Build a tool that generates 5 random complementary color swatches on load and on button click. Each swatch shows its hex code, and clicking a swatch copies the hex to clipboard with a toast/confirmation."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-3-check-1",
+          "description": "5 distinct swatches render on initial load",
+          "passed": false,
+          "actual": "hexCodes=0, swatchElements=0",
+          "expected": "at least 5 hex codes or swatch elements",
+          "durationMs": 1126
+        },
+        {
+          "checkId": "easy-3-check-2",
+          "description": "Clicking 'Generate' changes at least 4 of 5 hex values",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Generate button visible",
+          "durationMs": 42
+        },
+        {
+          "checkId": "easy-3-check-3",
+          "description": "Clicking a swatch triggers a visible copy-confirmation UI element",
+          "passed": false,
+          "actual": "no swatch found",
+          "expected": "swatch visible",
+          "durationMs": 34
+        },
+        {
+          "checkId": "easy-3-check-4",
+          "description": "Hex codes displayed match valid format ^#[0-9A-Fa-f]{6}$",
+          "passed": false,
+          "actual": "all 0 valid",
+          "expected": "all 5+ hex codes match #[0-9A-Fa-f]{6}",
+          "durationMs": 7
+        },
+        {
+          "checkId": "easy-3-check-5",
+          "description": "No duplicate swatches in a single generation (soft check)",
+          "passed": true,
+          "actual": "0 codes, 0 unique",
+          "expected": "no exact duplicates in a single generation",
+          "durationMs": 518
+        }
+      ],
+      "playwright_checks_passed": "1/5",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "easy-3",
+        "tier": "easy",
+        "title": "Color Palette Generator",
+        "totalChecks": 5,
+        "buildPrompt": "Build a tool that generates 5 random complementary color swatches on load and on button click. Each swatch shows its hex code, and clicking a swatch copies the hex to clipboard with a toast/confirmation."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-3-check-1",
+          "description": "5 distinct swatches render on initial load",
+          "passed": false,
+          "actual": "hexCodes=0, swatchElements=0",
+          "expected": "at least 5 hex codes or swatch elements",
+          "durationMs": 1058
+        },
+        {
+          "checkId": "easy-3-check-2",
+          "description": "Clicking 'Generate' changes at least 4 of 5 hex values",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Generate button visible",
+          "durationMs": 13
+        },
+        {
+          "checkId": "easy-3-check-3",
+          "description": "Clicking a swatch triggers a visible copy-confirmation UI element",
+          "passed": false,
+          "actual": "no swatch found",
+          "expected": "swatch visible",
+          "durationMs": 11
+        },
+        {
+          "checkId": "easy-3-check-4",
+          "description": "Hex codes displayed match valid format ^#[0-9A-Fa-f]{6}$",
+          "passed": false,
+          "actual": "all 0 valid",
+          "expected": "all 5+ hex codes match #[0-9A-Fa-f]{6}",
+          "durationMs": 5
+        },
+        {
+          "checkId": "easy-3-check-5",
+          "description": "No duplicate swatches in a single generation (soft check)",
+          "passed": true,
+          "actual": "0 codes, 0 unique",
+          "expected": "no exact duplicates in a single generation",
+          "durationMs": 516
+        }
+      ],
+      "playwright_checks_passed": "1/5",
+      "reviewer_notes": ""
+    }
+  ],
+  "completedAt": "2026-09-14T08:13:17.892Z"
+}

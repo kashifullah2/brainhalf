@@ -1,0 +1,2392 @@
+{
+  "runId": "benchmark-2026-09-14T08-17-02-395Z",
+  "startedAt": "2026-09-14T08:17:02.395Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-1",
+        "tier": "very_hard",
+        "title": "Full Project Management Tool",
+        "totalChecks": 10,
+        "buildPrompt": "Build a multi-page project management app: (1) a login screen (mock auth, any email/password combo succeeds, invalid formats rejected), (2) after login, a dashboard listing projects with create/delete, (3) clicking a project opens a Kanban board (To Do/In Progress/Done) scoped to that project with drag-and-drop, due dates, and priority tags (Low/Med/High, color-coded), (4) a reporting page showing task-completion rate charts per project, (5) a persistent top nav with logout. State must persist across page/route navigation within the session (not reset when navigating between dashboard and board)."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2049
+        },
+        {
+          "checkId": "very-hard-1-check-2",
+          "description": "Login screen rendered with Email & Password fields",
+          "passed": false,
+          "actual": "Email: false, Password: false",
+          "expected": "Email and Password inputs visible",
+          "durationMs": 4012
+        },
+        {
+          "checkId": "very-hard-1-check-3",
+          "description": "Invalid email format validation prevents login",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "very-hard-1-check-4",
+          "description": "Valid email/password login navigates to Projects Dashboard",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "very-hard-1-check-5",
+          "description": "Create new project adds card to dashboard",
+          "passed": false,
+          "actual": "Project not visible",
+          "expected": "Project 'Project Alpha 3411' visible on dashboard",
+          "durationMs": 4526
+        },
+        {
+          "checkId": "very-hard-1-check-6",
+          "description": "Clicking project opens scoped Kanban board",
+          "passed": false,
+          "actual": "Board columns not detected",
+          "expected": "Kanban columns (To Do / In Progress / Done) rendered",
+          "durationMs": 1271
+        },
+        {
+          "checkId": "very-hard-1-check-7",
+          "description": "Task creation supports priority tag (High/Med/Low)",
+          "passed": true,
+          "actual": "Priority tag rendered",
+          "expected": "Task created with priority tag",
+          "durationMs": 4546
+        },
+        {
+          "checkId": "very-hard-1-check-8",
+          "description": "Navigating to Reporting page shows project metrics/charts",
+          "passed": true,
+          "actual": "Reports section visible",
+          "expected": "Reporting section active",
+          "durationMs": 2028
+        },
+        {
+          "checkId": "very-hard-1-check-9",
+          "description": "State persists when navigating back to Dashboard",
+          "passed": false,
+          "actual": "State lost on navigation",
+          "expected": "Created project 'Project Alpha 3411' still present",
+          "durationMs": 1233
+        },
+        {
+          "checkId": "very-hard-1-check-10",
+          "description": "Logout button returns session to login screen",
+          "passed": false,
+          "actual": "Logout did not reset view",
+          "expected": "Returned to login screen",
+          "durationMs": 4015
+        }
+      ],
+      "playwright_checks_passed": "3/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-1",
+        "tier": "very_hard",
+        "title": "Full Project Management Tool",
+        "totalChecks": 10,
+        "buildPrompt": "Build a multi-page project management app: (1) a login screen (mock auth, any email/password combo succeeds, invalid formats rejected), (2) after login, a dashboard listing projects with create/delete, (3) clicking a project opens a Kanban board (To Do/In Progress/Done) scoped to that project with drag-and-drop, due dates, and priority tags (Low/Med/High, color-coded), (4) a reporting page showing task-completion rate charts per project, (5) a persistent top nav with logout. State must persist across page/route navigation within the session (not reset when navigating between dashboard and board)."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-1-check-2",
+          "description": "Login screen rendered with Email & Password fields",
+          "passed": false,
+          "actual": "Email: false, Password: false",
+          "expected": "Email and Password inputs visible",
+          "durationMs": 4006
+        },
+        {
+          "checkId": "very-hard-1-check-3",
+          "description": "Invalid email format validation prevents login",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2013
+        },
+        {
+          "checkId": "very-hard-1-check-4",
+          "description": "Valid email/password login navigates to Projects Dashboard",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-1-check-5",
+          "description": "Create new project adds card to dashboard",
+          "passed": false,
+          "actual": "Project not visible",
+          "expected": "Project 'Project Alpha 7337' visible on dashboard",
+          "durationMs": 4535
+        },
+        {
+          "checkId": "very-hard-1-check-6",
+          "description": "Clicking project opens scoped Kanban board",
+          "passed": false,
+          "actual": "Board columns not detected",
+          "expected": "Kanban columns (To Do / In Progress / Done) rendered",
+          "durationMs": 1256
+        },
+        {
+          "checkId": "very-hard-1-check-7",
+          "description": "Task creation supports priority tag (High/Med/Low)",
+          "passed": true,
+          "actual": "Priority tag rendered",
+          "expected": "Task created with priority tag",
+          "durationMs": 4518
+        },
+        {
+          "checkId": "very-hard-1-check-8",
+          "description": "Navigating to Reporting page shows project metrics/charts",
+          "passed": true,
+          "actual": "Reports section visible",
+          "expected": "Reporting section active",
+          "durationMs": 2014
+        },
+        {
+          "checkId": "very-hard-1-check-9",
+          "description": "State persists when navigating back to Dashboard",
+          "passed": false,
+          "actual": "State lost on navigation",
+          "expected": "Created project 'Project Alpha 7337' still present",
+          "durationMs": 1185
+        },
+        {
+          "checkId": "very-hard-1-check-10",
+          "description": "Logout button returns session to login screen",
+          "passed": false,
+          "actual": "Logout did not reset view",
+          "expected": "Returned to login screen",
+          "durationMs": 4006
+        }
+      ],
+      "playwright_checks_passed": "3/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-1",
+        "tier": "very_hard",
+        "title": "Full Project Management Tool",
+        "totalChecks": 10,
+        "buildPrompt": "Build a multi-page project management app: (1) a login screen (mock auth, any email/password combo succeeds, invalid formats rejected), (2) after login, a dashboard listing projects with create/delete, (3) clicking a project opens a Kanban board (To Do/In Progress/Done) scoped to that project with drag-and-drop, due dates, and priority tags (Low/Med/High, color-coded), (4) a reporting page showing task-completion rate charts per project, (5) a persistent top nav with logout. State must persist across page/route navigation within the session (not reset when navigating between dashboard and board)."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-1-check-2",
+          "description": "Login screen rendered with Email & Password fields",
+          "passed": false,
+          "actual": "Email: false, Password: false",
+          "expected": "Email and Password inputs visible",
+          "durationMs": 4005
+        },
+        {
+          "checkId": "very-hard-1-check-3",
+          "description": "Invalid email format validation prevents login",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-1-check-4",
+          "description": "Valid email/password login navigates to Projects Dashboard",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-1-check-5",
+          "description": "Create new project adds card to dashboard",
+          "passed": false,
+          "actual": "Project not visible",
+          "expected": "Project 'Project Alpha 7369' visible on dashboard",
+          "durationMs": 4534
+        },
+        {
+          "checkId": "very-hard-1-check-6",
+          "description": "Clicking project opens scoped Kanban board",
+          "passed": false,
+          "actual": "Board columns not detected",
+          "expected": "Kanban columns (To Do / In Progress / Done) rendered",
+          "durationMs": 1174
+        },
+        {
+          "checkId": "very-hard-1-check-7",
+          "description": "Task creation supports priority tag (High/Med/Low)",
+          "passed": true,
+          "actual": "Priority tag rendered",
+          "expected": "Task created with priority tag",
+          "durationMs": 4527
+        },
+        {
+          "checkId": "very-hard-1-check-8",
+          "description": "Navigating to Reporting page shows project metrics/charts",
+          "passed": true,
+          "actual": "Reports section visible",
+          "expected": "Reporting section active",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-1-check-9",
+          "description": "State persists when navigating back to Dashboard",
+          "passed": false,
+          "actual": "State lost on navigation",
+          "expected": "Created project 'Project Alpha 7369' still present",
+          "durationMs": 1108
+        },
+        {
+          "checkId": "very-hard-1-check-10",
+          "description": "Logout button returns session to login screen",
+          "passed": false,
+          "actual": "Logout did not reset view",
+          "expected": "Returned to login screen",
+          "durationMs": 4017
+        }
+      ],
+      "playwright_checks_passed": "3/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-1",
+        "tier": "very_hard",
+        "title": "Full Project Management Tool",
+        "totalChecks": 10,
+        "buildPrompt": "Build a multi-page project management app: (1) a login screen (mock auth, any email/password combo succeeds, invalid formats rejected), (2) after login, a dashboard listing projects with create/delete, (3) clicking a project opens a Kanban board (To Do/In Progress/Done) scoped to that project with drag-and-drop, due dates, and priority tags (Low/Med/High, color-coded), (4) a reporting page showing task-completion rate charts per project, (5) a persistent top nav with logout. State must persist across page/route navigation within the session (not reset when navigating between dashboard and board)."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "very-hard-1-check-2",
+          "description": "Login screen rendered with Email & Password fields",
+          "passed": false,
+          "actual": "Email: false, Password: false",
+          "expected": "Email and Password inputs visible",
+          "durationMs": 4008
+        },
+        {
+          "checkId": "very-hard-1-check-3",
+          "description": "Invalid email format validation prevents login",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-1-check-4",
+          "description": "Valid email/password login navigates to Projects Dashboard",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-1-check-5",
+          "description": "Create new project adds card to dashboard",
+          "passed": false,
+          "actual": "Project not visible",
+          "expected": "Project 'Project Alpha 9379' visible on dashboard",
+          "durationMs": 4526
+        },
+        {
+          "checkId": "very-hard-1-check-6",
+          "description": "Clicking project opens scoped Kanban board",
+          "passed": false,
+          "actual": "Board columns not detected",
+          "expected": "Kanban columns (To Do / In Progress / Done) rendered",
+          "durationMs": 1176
+        },
+        {
+          "checkId": "very-hard-1-check-7",
+          "description": "Task creation supports priority tag (High/Med/Low)",
+          "passed": true,
+          "actual": "Priority tag rendered",
+          "expected": "Task created with priority tag",
+          "durationMs": 4542
+        },
+        {
+          "checkId": "very-hard-1-check-8",
+          "description": "Navigating to Reporting page shows project metrics/charts",
+          "passed": true,
+          "actual": "Reports section visible",
+          "expected": "Reporting section active",
+          "durationMs": 2013
+        },
+        {
+          "checkId": "very-hard-1-check-9",
+          "description": "State persists when navigating back to Dashboard",
+          "passed": false,
+          "actual": "State lost on navigation",
+          "expected": "Created project 'Project Alpha 9379' still present",
+          "durationMs": 1232
+        },
+        {
+          "checkId": "very-hard-1-check-10",
+          "description": "Logout button returns session to login screen",
+          "passed": false,
+          "actual": "Logout did not reset view",
+          "expected": "Returned to login screen",
+          "durationMs": 4025
+        }
+      ],
+      "playwright_checks_passed": "3/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-1",
+        "tier": "very_hard",
+        "title": "Full Project Management Tool",
+        "totalChecks": 10,
+        "buildPrompt": "Build a multi-page project management app: (1) a login screen (mock auth, any email/password combo succeeds, invalid formats rejected), (2) after login, a dashboard listing projects with create/delete, (3) clicking a project opens a Kanban board (To Do/In Progress/Done) scoped to that project with drag-and-drop, due dates, and priority tags (Low/Med/High, color-coded), (4) a reporting page showing task-completion rate charts per project, (5) a persistent top nav with logout. State must persist across page/route navigation within the session (not reset when navigating between dashboard and board)."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-1-check-2",
+          "description": "Login screen rendered with Email & Password fields",
+          "passed": false,
+          "actual": "Email: false, Password: false",
+          "expected": "Email and Password inputs visible",
+          "durationMs": 4010
+        },
+        {
+          "checkId": "very-hard-1-check-3",
+          "description": "Invalid email format validation prevents login",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "very-hard-1-check-4",
+          "description": "Valid email/password login navigates to Projects Dashboard",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-1-check-5",
+          "description": "Create new project adds card to dashboard",
+          "passed": false,
+          "actual": "Project not visible",
+          "expected": "Project 'Project Alpha 9706' visible on dashboard",
+          "durationMs": 4520
+        },
+        {
+          "checkId": "very-hard-1-check-6",
+          "description": "Clicking project opens scoped Kanban board",
+          "passed": false,
+          "actual": "Board columns not detected",
+          "expected": "Kanban columns (To Do / In Progress / Done) rendered",
+          "durationMs": 1101
+        },
+        {
+          "checkId": "very-hard-1-check-7",
+          "description": "Task creation supports priority tag (High/Med/Low)",
+          "passed": true,
+          "actual": "Priority tag rendered",
+          "expected": "Task created with priority tag",
+          "durationMs": 4512
+        },
+        {
+          "checkId": "very-hard-1-check-8",
+          "description": "Navigating to Reporting page shows project metrics/charts",
+          "passed": true,
+          "actual": "Reports section visible",
+          "expected": "Reporting section active",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "very-hard-1-check-9",
+          "description": "State persists when navigating back to Dashboard",
+          "passed": false,
+          "actual": "State lost on navigation",
+          "expected": "Created project 'Project Alpha 9706' still present",
+          "durationMs": 1121
+        },
+        {
+          "checkId": "very-hard-1-check-10",
+          "description": "Logout button returns session to login screen",
+          "passed": false,
+          "actual": "Logout did not reset view",
+          "expected": "Returned to login screen",
+          "durationMs": 4004
+        }
+      ],
+      "playwright_checks_passed": "3/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-1",
+        "tier": "very_hard",
+        "title": "Full Project Management Tool",
+        "totalChecks": 10,
+        "buildPrompt": "Build a multi-page project management app: (1) a login screen (mock auth, any email/password combo succeeds, invalid formats rejected), (2) after login, a dashboard listing projects with create/delete, (3) clicking a project opens a Kanban board (To Do/In Progress/Done) scoped to that project with drag-and-drop, due dates, and priority tags (Low/Med/High, color-coded), (4) a reporting page showing task-completion rate charts per project, (5) a persistent top nav with logout. State must persist across page/route navigation within the session (not reset when navigating between dashboard and board)."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "very-hard-1-check-2",
+          "description": "Login screen rendered with Email & Password fields",
+          "passed": false,
+          "actual": "Email: false, Password: false",
+          "expected": "Email and Password inputs visible",
+          "durationMs": 4005
+        },
+        {
+          "checkId": "very-hard-1-check-3",
+          "description": "Invalid email format validation prevents login",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "very-hard-1-check-4",
+          "description": "Valid email/password login navigates to Projects Dashboard",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "very-hard-1-check-5",
+          "description": "Create new project adds card to dashboard",
+          "passed": false,
+          "actual": "Project not visible",
+          "expected": "Project 'Project Alpha 3169' visible on dashboard",
+          "durationMs": 4536
+        },
+        {
+          "checkId": "very-hard-1-check-6",
+          "description": "Clicking project opens scoped Kanban board",
+          "passed": false,
+          "actual": "Board columns not detected",
+          "expected": "Kanban columns (To Do / In Progress / Done) rendered",
+          "durationMs": 1195
+        },
+        {
+          "checkId": "very-hard-1-check-7",
+          "description": "Task creation supports priority tag (High/Med/Low)",
+          "passed": true,
+          "actual": "Priority tag rendered",
+          "expected": "Task created with priority tag",
+          "durationMs": 4516
+        },
+        {
+          "checkId": "very-hard-1-check-8",
+          "description": "Navigating to Reporting page shows project metrics/charts",
+          "passed": true,
+          "actual": "Reports section visible",
+          "expected": "Reporting section active",
+          "durationMs": 2016
+        },
+        {
+          "checkId": "very-hard-1-check-9",
+          "description": "State persists when navigating back to Dashboard",
+          "passed": false,
+          "actual": "State lost on navigation",
+          "expected": "Created project 'Project Alpha 3169' still present",
+          "durationMs": 1144
+        },
+        {
+          "checkId": "very-hard-1-check-10",
+          "description": "Logout button returns session to login screen",
+          "passed": false,
+          "actual": "Logout did not reset view",
+          "expected": "Returned to login screen",
+          "durationMs": 4007
+        }
+      ],
+      "playwright_checks_passed": "3/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-1",
+        "tier": "very_hard",
+        "title": "Full Project Management Tool",
+        "totalChecks": 10,
+        "buildPrompt": "Build a multi-page project management app: (1) a login screen (mock auth, any email/password combo succeeds, invalid formats rejected), (2) after login, a dashboard listing projects with create/delete, (3) clicking a project opens a Kanban board (To Do/In Progress/Done) scoped to that project with drag-and-drop, due dates, and priority tags (Low/Med/High, color-coded), (4) a reporting page showing task-completion rate charts per project, (5) a persistent top nav with logout. State must persist across page/route navigation within the session (not reset when navigating between dashboard and board)."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-1-check-2",
+          "description": "Login screen rendered with Email & Password fields",
+          "passed": false,
+          "actual": "Email: false, Password: false",
+          "expected": "Email and Password inputs visible",
+          "durationMs": 4008
+        },
+        {
+          "checkId": "very-hard-1-check-3",
+          "description": "Invalid email format validation prevents login",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-1-check-4",
+          "description": "Valid email/password login navigates to Projects Dashboard",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-1-check-5",
+          "description": "Create new project adds card to dashboard",
+          "passed": false,
+          "actual": "Project not visible",
+          "expected": "Project 'Project Alpha 2893' visible on dashboard",
+          "durationMs": 4547
+        },
+        {
+          "checkId": "very-hard-1-check-6",
+          "description": "Clicking project opens scoped Kanban board",
+          "passed": false,
+          "actual": "Board columns not detected",
+          "expected": "Kanban columns (To Do / In Progress / Done) rendered",
+          "durationMs": 1197
+        },
+        {
+          "checkId": "very-hard-1-check-7",
+          "description": "Task creation supports priority tag (High/Med/Low)",
+          "passed": true,
+          "actual": "Priority tag rendered",
+          "expected": "Task created with priority tag",
+          "durationMs": 4520
+        },
+        {
+          "checkId": "very-hard-1-check-8",
+          "description": "Navigating to Reporting page shows project metrics/charts",
+          "passed": true,
+          "actual": "Reports section visible",
+          "expected": "Reporting section active",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "very-hard-1-check-9",
+          "description": "State persists when navigating back to Dashboard",
+          "passed": false,
+          "actual": "State lost on navigation",
+          "expected": "Created project 'Project Alpha 2893' still present",
+          "durationMs": 1135
+        },
+        {
+          "checkId": "very-hard-1-check-10",
+          "description": "Logout button returns session to login screen",
+          "passed": false,
+          "actual": "Logout did not reset view",
+          "expected": "Returned to login screen",
+          "durationMs": 4009
+        }
+      ],
+      "playwright_checks_passed": "3/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-1",
+        "tier": "very_hard",
+        "title": "Full Project Management Tool",
+        "totalChecks": 10,
+        "buildPrompt": "Build a multi-page project management app: (1) a login screen (mock auth, any email/password combo succeeds, invalid formats rejected), (2) after login, a dashboard listing projects with create/delete, (3) clicking a project opens a Kanban board (To Do/In Progress/Done) scoped to that project with drag-and-drop, due dates, and priority tags (Low/Med/High, color-coded), (4) a reporting page showing task-completion rate charts per project, (5) a persistent top nav with logout. State must persist across page/route navigation within the session (not reset when navigating between dashboard and board)."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-1-check-2",
+          "description": "Login screen rendered with Email & Password fields",
+          "passed": false,
+          "actual": "Email: false, Password: false",
+          "expected": "Email and Password inputs visible",
+          "durationMs": 4005
+        },
+        {
+          "checkId": "very-hard-1-check-3",
+          "description": "Invalid email format validation prevents login",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2025
+        },
+        {
+          "checkId": "very-hard-1-check-4",
+          "description": "Valid email/password login navigates to Projects Dashboard",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"email\"], input[name=\"email\"], input[placeholder*=\"email\"]').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-1-check-5",
+          "description": "Create new project adds card to dashboard",
+          "passed": false,
+          "actual": "Project not visible",
+          "expected": "Project 'Project Alpha 7136' visible on dashboard",
+          "durationMs": 4520
+        },
+        {
+          "checkId": "very-hard-1-check-6",
+          "description": "Clicking project opens scoped Kanban board",
+          "passed": false,
+          "actual": "Board columns not detected",
+          "expected": "Kanban columns (To Do / In Progress / Done) rendered",
+          "durationMs": 1203
+        },
+        {
+          "checkId": "very-hard-1-check-7",
+          "description": "Task creation supports priority tag (High/Med/Low)",
+          "passed": true,
+          "actual": "Priority tag rendered",
+          "expected": "Task created with priority tag",
+          "durationMs": 4520
+        },
+        {
+          "checkId": "very-hard-1-check-8",
+          "description": "Navigating to Reporting page shows project metrics/charts",
+          "passed": true,
+          "actual": "Reports section visible",
+          "expected": "Reporting section active",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "very-hard-1-check-9",
+          "description": "State persists when navigating back to Dashboard",
+          "passed": false,
+          "actual": "State lost on navigation",
+          "expected": "Created project 'Project Alpha 7136' still present",
+          "durationMs": 1166
+        },
+        {
+          "checkId": "very-hard-1-check-10",
+          "description": "Logout button returns session to login screen",
+          "passed": false,
+          "actual": "Logout did not reset view",
+          "expected": "Returned to login screen",
+          "durationMs": 4004
+        }
+      ],
+      "playwright_checks_passed": "3/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-2",
+        "tier": "very_hard",
+        "title": "E-Commerce Storefront with Checkout Flow",
+        "totalChecks": 10,
+        "buildPrompt": "Build a full storefront: product listing with filters/search/sort (price low-high, high-low), product detail page (route per product with variant selection e.g. size/color), cart persisting across page navigation, a 3-step checkout (shipping info → payment mock form with card-number format validation → order review), and an order confirmation page with a generated order number. Include an order history page listing past mock orders."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-2-check-2",
+          "description": "Product listing grid with search & filter controls visible",
+          "passed": false,
+          "actual": "Products count: 1, search input visible: false",
+          "expected": "Products and search/filter controls visible",
+          "durationMs": 2173
+        },
+        {
+          "checkId": "very-hard-2-check-3",
+          "description": "Price sort dropdown reorders product grid",
+          "passed": true,
+          "actual": "Sort action attempted",
+          "expected": "Price sort functional",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "very-hard-2-check-4",
+          "description": "Clicking product opens Product Detail page with size/color options",
+          "passed": true,
+          "actual": "Product detail view active",
+          "expected": "Product detail view rendered",
+          "durationMs": 1184
+        },
+        {
+          "checkId": "very-hard-2-check-5",
+          "description": "Adding variant to cart updates cart badge count",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4003
+        },
+        {
+          "checkId": "very-hard-2-check-6",
+          "description": "Cart state persists when navigating back to product grid",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4017
+        },
+        {
+          "checkId": "very-hard-2-check-7",
+          "description": "Checkout Step 1 (Shipping Info) accepts address and advances",
+          "passed": false,
+          "actual": "Step 1 filled",
+          "expected": "Advanced to Payment Step",
+          "durationMs": 12035
+        },
+        {
+          "checkId": "very-hard-2-check-8",
+          "description": "Payment step validates credit card format",
+          "passed": true,
+          "actual": "Card input test performed",
+          "expected": "Card format validated",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-2-check-9",
+          "description": "Completing checkout displays Order Confirmation with Order #",
+          "passed": false,
+          "actual": "Confirmation screen not detected",
+          "expected": "Order confirmation with generated order number",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "very-hard-2-check-10",
+          "description": "'Order History' page lists past completed orders",
+          "passed": false,
+          "actual": "Order history not found",
+          "expected": "Order history rendered with completed order",
+          "durationMs": 2007
+        }
+      ],
+      "playwright_checks_passed": "4/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-2",
+        "tier": "very_hard",
+        "title": "E-Commerce Storefront with Checkout Flow",
+        "totalChecks": 10,
+        "buildPrompt": "Build a full storefront: product listing with filters/search/sort (price low-high, high-low), product detail page (route per product with variant selection e.g. size/color), cart persisting across page navigation, a 3-step checkout (shipping info → payment mock form with card-number format validation → order review), and an order confirmation page with a generated order number. Include an order history page listing past mock orders."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "very-hard-2-check-2",
+          "description": "Product listing grid with search & filter controls visible",
+          "passed": false,
+          "actual": "Products count: 1, search input visible: false",
+          "expected": "Products and search/filter controls visible",
+          "durationMs": 2057
+        },
+        {
+          "checkId": "very-hard-2-check-3",
+          "description": "Price sort dropdown reorders product grid",
+          "passed": true,
+          "actual": "Sort action attempted",
+          "expected": "Price sort functional",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "very-hard-2-check-4",
+          "description": "Clicking product opens Product Detail page with size/color options",
+          "passed": true,
+          "actual": "Product detail view active",
+          "expected": "Product detail view rendered",
+          "durationMs": 1184
+        },
+        {
+          "checkId": "very-hard-2-check-5",
+          "description": "Adding variant to cart updates cart badge count",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4004
+        },
+        {
+          "checkId": "very-hard-2-check-6",
+          "description": "Cart state persists when navigating back to product grid",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4008
+        },
+        {
+          "checkId": "very-hard-2-check-7",
+          "description": "Checkout Step 1 (Shipping Info) accepts address and advances",
+          "passed": false,
+          "actual": "Step 1 filled",
+          "expected": "Advanced to Payment Step",
+          "durationMs": 12041
+        },
+        {
+          "checkId": "very-hard-2-check-8",
+          "description": "Payment step validates credit card format",
+          "passed": true,
+          "actual": "Card input test performed",
+          "expected": "Card format validated",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-2-check-9",
+          "description": "Completing checkout displays Order Confirmation with Order #",
+          "passed": false,
+          "actual": "Confirmation screen not detected",
+          "expected": "Order confirmation with generated order number",
+          "durationMs": 2018
+        },
+        {
+          "checkId": "very-hard-2-check-10",
+          "description": "'Order History' page lists past completed orders",
+          "passed": false,
+          "actual": "Order history not found",
+          "expected": "Order history rendered with completed order",
+          "durationMs": 2023
+        }
+      ],
+      "playwright_checks_passed": "4/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-2",
+        "tier": "very_hard",
+        "title": "E-Commerce Storefront with Checkout Flow",
+        "totalChecks": 10,
+        "buildPrompt": "Build a full storefront: product listing with filters/search/sort (price low-high, high-low), product detail page (route per product with variant selection e.g. size/color), cart persisting across page navigation, a 3-step checkout (shipping info → payment mock form with card-number format validation → order review), and an order confirmation page with a generated order number. Include an order history page listing past mock orders."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-2-check-2",
+          "description": "Product listing grid with search & filter controls visible",
+          "passed": false,
+          "actual": "Products count: 1, search input visible: false",
+          "expected": "Products and search/filter controls visible",
+          "durationMs": 2041
+        },
+        {
+          "checkId": "very-hard-2-check-3",
+          "description": "Price sort dropdown reorders product grid",
+          "passed": true,
+          "actual": "Sort action attempted",
+          "expected": "Price sort functional",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-2-check-4",
+          "description": "Clicking product opens Product Detail page with size/color options",
+          "passed": true,
+          "actual": "Product detail view active",
+          "expected": "Product detail view rendered",
+          "durationMs": 1208
+        },
+        {
+          "checkId": "very-hard-2-check-5",
+          "description": "Adding variant to cart updates cart badge count",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4003
+        },
+        {
+          "checkId": "very-hard-2-check-6",
+          "description": "Cart state persists when navigating back to product grid",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4010
+        },
+        {
+          "checkId": "very-hard-2-check-7",
+          "description": "Checkout Step 1 (Shipping Info) accepts address and advances",
+          "passed": false,
+          "actual": "Step 1 filled",
+          "expected": "Advanced to Payment Step",
+          "durationMs": 12036
+        },
+        {
+          "checkId": "very-hard-2-check-8",
+          "description": "Payment step validates credit card format",
+          "passed": true,
+          "actual": "Card input test performed",
+          "expected": "Card format validated",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "very-hard-2-check-9",
+          "description": "Completing checkout displays Order Confirmation with Order #",
+          "passed": false,
+          "actual": "Confirmation screen not detected",
+          "expected": "Order confirmation with generated order number",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "very-hard-2-check-10",
+          "description": "'Order History' page lists past completed orders",
+          "passed": false,
+          "actual": "Order history not found",
+          "expected": "Order history rendered with completed order",
+          "durationMs": 2013
+        }
+      ],
+      "playwright_checks_passed": "4/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-2",
+        "tier": "very_hard",
+        "title": "E-Commerce Storefront with Checkout Flow",
+        "totalChecks": 10,
+        "buildPrompt": "Build a full storefront: product listing with filters/search/sort (price low-high, high-low), product detail page (route per product with variant selection e.g. size/color), cart persisting across page navigation, a 3-step checkout (shipping info → payment mock form with card-number format validation → order review), and an order confirmation page with a generated order number. Include an order history page listing past mock orders."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-2-check-2",
+          "description": "Product listing grid with search & filter controls visible",
+          "passed": false,
+          "actual": "Products count: 1, search input visible: false",
+          "expected": "Products and search/filter controls visible",
+          "durationMs": 2117
+        },
+        {
+          "checkId": "very-hard-2-check-3",
+          "description": "Price sort dropdown reorders product grid",
+          "passed": true,
+          "actual": "Sort action attempted",
+          "expected": "Price sort functional",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "very-hard-2-check-4",
+          "description": "Clicking product opens Product Detail page with size/color options",
+          "passed": true,
+          "actual": "Product detail view active",
+          "expected": "Product detail view rendered",
+          "durationMs": 1168
+        },
+        {
+          "checkId": "very-hard-2-check-5",
+          "description": "Adding variant to cart updates cart badge count",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4016
+        },
+        {
+          "checkId": "very-hard-2-check-6",
+          "description": "Cart state persists when navigating back to product grid",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4013
+        },
+        {
+          "checkId": "very-hard-2-check-7",
+          "description": "Checkout Step 1 (Shipping Info) accepts address and advances",
+          "passed": false,
+          "actual": "Step 1 filled",
+          "expected": "Advanced to Payment Step",
+          "durationMs": 12030
+        },
+        {
+          "checkId": "very-hard-2-check-8",
+          "description": "Payment step validates credit card format",
+          "passed": true,
+          "actual": "Card input test performed",
+          "expected": "Card format validated",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-2-check-9",
+          "description": "Completing checkout displays Order Confirmation with Order #",
+          "passed": false,
+          "actual": "Confirmation screen not detected",
+          "expected": "Order confirmation with generated order number",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "very-hard-2-check-10",
+          "description": "'Order History' page lists past completed orders",
+          "passed": false,
+          "actual": "Order history not found",
+          "expected": "Order history rendered with completed order",
+          "durationMs": 2013
+        }
+      ],
+      "playwright_checks_passed": "4/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-2",
+        "tier": "very_hard",
+        "title": "E-Commerce Storefront with Checkout Flow",
+        "totalChecks": 10,
+        "buildPrompt": "Build a full storefront: product listing with filters/search/sort (price low-high, high-low), product detail page (route per product with variant selection e.g. size/color), cart persisting across page navigation, a 3-step checkout (shipping info → payment mock form with card-number format validation → order review), and an order confirmation page with a generated order number. Include an order history page listing past mock orders."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-2-check-2",
+          "description": "Product listing grid with search & filter controls visible",
+          "passed": false,
+          "actual": "Products count: 1, search input visible: false",
+          "expected": "Products and search/filter controls visible",
+          "durationMs": 2124
+        },
+        {
+          "checkId": "very-hard-2-check-3",
+          "description": "Price sort dropdown reorders product grid",
+          "passed": true,
+          "actual": "Sort action attempted",
+          "expected": "Price sort functional",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "very-hard-2-check-4",
+          "description": "Clicking product opens Product Detail page with size/color options",
+          "passed": true,
+          "actual": "Product detail view active",
+          "expected": "Product detail view rendered",
+          "durationMs": 1268
+        },
+        {
+          "checkId": "very-hard-2-check-5",
+          "description": "Adding variant to cart updates cart badge count",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4003
+        },
+        {
+          "checkId": "very-hard-2-check-6",
+          "description": "Cart state persists when navigating back to product grid",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4014
+        },
+        {
+          "checkId": "very-hard-2-check-7",
+          "description": "Checkout Step 1 (Shipping Info) accepts address and advances",
+          "passed": false,
+          "actual": "Step 1 filled",
+          "expected": "Advanced to Payment Step",
+          "durationMs": 12034
+        },
+        {
+          "checkId": "very-hard-2-check-8",
+          "description": "Payment step validates credit card format",
+          "passed": true,
+          "actual": "Card input test performed",
+          "expected": "Card format validated",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "very-hard-2-check-9",
+          "description": "Completing checkout displays Order Confirmation with Order #",
+          "passed": false,
+          "actual": "Confirmation screen not detected",
+          "expected": "Order confirmation with generated order number",
+          "durationMs": 2018
+        },
+        {
+          "checkId": "very-hard-2-check-10",
+          "description": "'Order History' page lists past completed orders",
+          "passed": false,
+          "actual": "Order history not found",
+          "expected": "Order history rendered with completed order",
+          "durationMs": 2005
+        }
+      ],
+      "playwright_checks_passed": "4/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-2",
+        "tier": "very_hard",
+        "title": "E-Commerce Storefront with Checkout Flow",
+        "totalChecks": 10,
+        "buildPrompt": "Build a full storefront: product listing with filters/search/sort (price low-high, high-low), product detail page (route per product with variant selection e.g. size/color), cart persisting across page navigation, a 3-step checkout (shipping info → payment mock form with card-number format validation → order review), and an order confirmation page with a generated order number. Include an order history page listing past mock orders."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-2-check-2",
+          "description": "Product listing grid with search & filter controls visible",
+          "passed": false,
+          "actual": "Products count: 1, search input visible: false",
+          "expected": "Products and search/filter controls visible",
+          "durationMs": 2060
+        },
+        {
+          "checkId": "very-hard-2-check-3",
+          "description": "Price sort dropdown reorders product grid",
+          "passed": true,
+          "actual": "Sort action attempted",
+          "expected": "Price sort functional",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "very-hard-2-check-4",
+          "description": "Clicking product opens Product Detail page with size/color options",
+          "passed": true,
+          "actual": "Product detail view active",
+          "expected": "Product detail view rendered",
+          "durationMs": 1210
+        },
+        {
+          "checkId": "very-hard-2-check-5",
+          "description": "Adding variant to cart updates cart badge count",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4003
+        },
+        {
+          "checkId": "very-hard-2-check-6",
+          "description": "Cart state persists when navigating back to product grid",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4005
+        },
+        {
+          "checkId": "very-hard-2-check-7",
+          "description": "Checkout Step 1 (Shipping Info) accepts address and advances",
+          "passed": false,
+          "actual": "Step 1 filled",
+          "expected": "Advanced to Payment Step",
+          "durationMs": 12028
+        },
+        {
+          "checkId": "very-hard-2-check-8",
+          "description": "Payment step validates credit card format",
+          "passed": true,
+          "actual": "Card input test performed",
+          "expected": "Card format validated",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-2-check-9",
+          "description": "Completing checkout displays Order Confirmation with Order #",
+          "passed": false,
+          "actual": "Confirmation screen not detected",
+          "expected": "Order confirmation with generated order number",
+          "durationMs": 2015
+        },
+        {
+          "checkId": "very-hard-2-check-10",
+          "description": "'Order History' page lists past completed orders",
+          "passed": false,
+          "actual": "Order history not found",
+          "expected": "Order history rendered with completed order",
+          "durationMs": 2042
+        }
+      ],
+      "playwright_checks_passed": "4/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-2",
+        "tier": "very_hard",
+        "title": "E-Commerce Storefront with Checkout Flow",
+        "totalChecks": 10,
+        "buildPrompt": "Build a full storefront: product listing with filters/search/sort (price low-high, high-low), product detail page (route per product with variant selection e.g. size/color), cart persisting across page navigation, a 3-step checkout (shipping info → payment mock form with card-number format validation → order review), and an order confirmation page with a generated order number. Include an order history page listing past mock orders."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "very-hard-2-check-2",
+          "description": "Product listing grid with search & filter controls visible",
+          "passed": false,
+          "actual": "Products count: 1, search input visible: false",
+          "expected": "Products and search/filter controls visible",
+          "durationMs": 2112
+        },
+        {
+          "checkId": "very-hard-2-check-3",
+          "description": "Price sort dropdown reorders product grid",
+          "passed": true,
+          "actual": "Sort action attempted",
+          "expected": "Price sort functional",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "very-hard-2-check-4",
+          "description": "Clicking product opens Product Detail page with size/color options",
+          "passed": true,
+          "actual": "Product detail view active",
+          "expected": "Product detail view rendered",
+          "durationMs": 1228
+        },
+        {
+          "checkId": "very-hard-2-check-5",
+          "description": "Adding variant to cart updates cart badge count",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4011
+        },
+        {
+          "checkId": "very-hard-2-check-6",
+          "description": "Cart state persists when navigating back to product grid",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4015
+        },
+        {
+          "checkId": "very-hard-2-check-7",
+          "description": "Checkout Step 1 (Shipping Info) accepts address and advances",
+          "passed": false,
+          "actual": "Step 1 filled",
+          "expected": "Advanced to Payment Step",
+          "durationMs": 12025
+        },
+        {
+          "checkId": "very-hard-2-check-8",
+          "description": "Payment step validates credit card format",
+          "passed": true,
+          "actual": "Card input test performed",
+          "expected": "Card format validated",
+          "durationMs": 2013
+        },
+        {
+          "checkId": "very-hard-2-check-9",
+          "description": "Completing checkout displays Order Confirmation with Order #",
+          "passed": false,
+          "actual": "Confirmation screen not detected",
+          "expected": "Order confirmation with generated order number",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-2-check-10",
+          "description": "'Order History' page lists past completed orders",
+          "passed": false,
+          "actual": "Order history not found",
+          "expected": "Order history rendered with completed order",
+          "durationMs": 2013
+        }
+      ],
+      "playwright_checks_passed": "4/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-2",
+        "tier": "very_hard",
+        "title": "E-Commerce Storefront with Checkout Flow",
+        "totalChecks": 10,
+        "buildPrompt": "Build a full storefront: product listing with filters/search/sort (price low-high, high-low), product detail page (route per product with variant selection e.g. size/color), cart persisting across page navigation, a 3-step checkout (shipping info → payment mock form with card-number format validation → order review), and an order confirmation page with a generated order number. Include an order history page listing past mock orders."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 7,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-2-check-2",
+          "description": "Product listing grid with search & filter controls visible",
+          "passed": false,
+          "actual": "Products count: 1, search input visible: false",
+          "expected": "Products and search/filter controls visible",
+          "durationMs": 2144
+        },
+        {
+          "checkId": "very-hard-2-check-3",
+          "description": "Price sort dropdown reorders product grid",
+          "passed": true,
+          "actual": "Sort action attempted",
+          "expected": "Price sort functional",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "very-hard-2-check-4",
+          "description": "Clicking product opens Product Detail page with size/color options",
+          "passed": true,
+          "actual": "Product detail view active",
+          "expected": "Product detail view rendered",
+          "durationMs": 1150
+        },
+        {
+          "checkId": "very-hard-2-check-5",
+          "description": "Adding variant to cart updates cart badge count",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4004
+        },
+        {
+          "checkId": "very-hard-2-check-6",
+          "description": "Cart state persists when navigating back to product grid",
+          "passed": false,
+          "error": "locator.textContent: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[class*=\"badge\"], [class*=\"cart-count\"], button:has-text(\"Cart\")').first()\u001b[22m\n",
+          "durationMs": 4002
+        },
+        {
+          "checkId": "very-hard-2-check-7",
+          "description": "Checkout Step 1 (Shipping Info) accepts address and advances",
+          "passed": false,
+          "actual": "Step 1 filled",
+          "expected": "Advanced to Payment Step",
+          "durationMs": 12013
+        },
+        {
+          "checkId": "very-hard-2-check-8",
+          "description": "Payment step validates credit card format",
+          "passed": true,
+          "actual": "Card input test performed",
+          "expected": "Card format validated",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "very-hard-2-check-9",
+          "description": "Completing checkout displays Order Confirmation with Order #",
+          "passed": false,
+          "actual": "Confirmation screen not detected",
+          "expected": "Order confirmation with generated order number",
+          "durationMs": 2045
+        },
+        {
+          "checkId": "very-hard-2-check-10",
+          "description": "'Order History' page lists past completed orders",
+          "passed": false,
+          "actual": "Order history not found",
+          "expected": "Order history rendered with completed order",
+          "durationMs": 2007
+        }
+      ],
+      "playwright_checks_passed": "4/10",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-3",
+        "tier": "very_hard",
+        "title": "Collaborative Document Editor (Simulated)",
+        "totalChecks": 8,
+        "buildPrompt": "Build a simplified collaborative text editor: a document list sidebar, a rich-text editing area (bold/italic/underline/bullet list toolbar), auto-save indicator ('Saving...' → 'Saved' after 1s of inactivity), a simulated 'second user' cursor/highlight that appears in the doc after 5 seconds to mimic collaboration, version history showing last 3 saved versions with the ability to restore an older version, and a share-link generator that copies a mock URL to clipboard."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-3-check-2",
+          "description": "Document list sidebar visible with selectable docs",
+          "passed": false,
+          "actual": "Doc items found: 0",
+          "expected": "Document list visible in sidebar",
+          "durationMs": 55
+        },
+        {
+          "checkId": "very-hard-3-check-3",
+          "description": "Rich-text toolbar present (Bold, Italic, Underline, Bullet list)",
+          "passed": true,
+          "actual": "Toolbar visible: true",
+          "expected": "Formatting toolbar visible",
+          "durationMs": 2015
+        },
+        {
+          "checkId": "very-hard-3-check-4",
+          "description": "Typing text triggers auto-save ('Saving...' → 'Saved')",
+          "passed": false,
+          "actual": "Indicator not found",
+          "expected": "Auto-save indicator shows 'Saved' after inactivity",
+          "durationMs": 3210
+        },
+        {
+          "checkId": "very-hard-3-check-5",
+          "description": "Simulated 'second user' cursor or presence indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "Collaborator presence or cursor indicator visible",
+          "durationMs": 4896
+        },
+        {
+          "checkId": "very-hard-3-check-6",
+          "description": "'Version History' panel lists saved document versions",
+          "passed": false,
+          "actual": "Version history not found",
+          "expected": "Version history panel lists saved versions",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "very-hard-3-check-7",
+          "description": "Restoring an older version replaces editor content",
+          "passed": true,
+          "actual": "Restore action completed",
+          "expected": "Version restore functional",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-3-check-8",
+          "description": "Share-link button generates mock URL and shows copy confirmation",
+          "passed": false,
+          "actual": "Share button evaluated",
+          "expected": "Share link generated / copied",
+          "durationMs": 4013
+        }
+      ],
+      "playwright_checks_passed": "3/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-3",
+        "tier": "very_hard",
+        "title": "Collaborative Document Editor (Simulated)",
+        "totalChecks": 8,
+        "buildPrompt": "Build a simplified collaborative text editor: a document list sidebar, a rich-text editing area (bold/italic/underline/bullet list toolbar), auto-save indicator ('Saving...' → 'Saved' after 1s of inactivity), a simulated 'second user' cursor/highlight that appears in the doc after 5 seconds to mimic collaboration, version history showing last 3 saved versions with the ability to restore an older version, and a share-link generator that copies a mock URL to clipboard."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-3-check-2",
+          "description": "Document list sidebar visible with selectable docs",
+          "passed": false,
+          "actual": "Doc items found: 0",
+          "expected": "Document list visible in sidebar",
+          "durationMs": 54
+        },
+        {
+          "checkId": "very-hard-3-check-3",
+          "description": "Rich-text toolbar present (Bold, Italic, Underline, Bullet list)",
+          "passed": true,
+          "actual": "Toolbar visible: true",
+          "expected": "Formatting toolbar visible",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "very-hard-3-check-4",
+          "description": "Typing text triggers auto-save ('Saving...' → 'Saved')",
+          "passed": false,
+          "actual": "Indicator not found",
+          "expected": "Auto-save indicator shows 'Saved' after inactivity",
+          "durationMs": 3212
+        },
+        {
+          "checkId": "very-hard-3-check-5",
+          "description": "Simulated 'second user' cursor or presence indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "Collaborator presence or cursor indicator visible",
+          "durationMs": 4862
+        },
+        {
+          "checkId": "very-hard-3-check-6",
+          "description": "'Version History' panel lists saved document versions",
+          "passed": false,
+          "actual": "Version history not found",
+          "expected": "Version history panel lists saved versions",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-3-check-7",
+          "description": "Restoring an older version replaces editor content",
+          "passed": true,
+          "actual": "Restore action completed",
+          "expected": "Version restore functional",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "very-hard-3-check-8",
+          "description": "Share-link button generates mock URL and shows copy confirmation",
+          "passed": false,
+          "actual": "Share button evaluated",
+          "expected": "Share link generated / copied",
+          "durationMs": 4005
+        }
+      ],
+      "playwright_checks_passed": "3/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-3",
+        "tier": "very_hard",
+        "title": "Collaborative Document Editor (Simulated)",
+        "totalChecks": 8,
+        "buildPrompt": "Build a simplified collaborative text editor: a document list sidebar, a rich-text editing area (bold/italic/underline/bullet list toolbar), auto-save indicator ('Saving...' → 'Saved' after 1s of inactivity), a simulated 'second user' cursor/highlight that appears in the doc after 5 seconds to mimic collaboration, version history showing last 3 saved versions with the ability to restore an older version, and a share-link generator that copies a mock URL to clipboard."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-3-check-2",
+          "description": "Document list sidebar visible with selectable docs",
+          "passed": false,
+          "actual": "Doc items found: 0",
+          "expected": "Document list visible in sidebar",
+          "durationMs": 42
+        },
+        {
+          "checkId": "very-hard-3-check-3",
+          "description": "Rich-text toolbar present (Bold, Italic, Underline, Bullet list)",
+          "passed": true,
+          "actual": "Toolbar visible: true",
+          "expected": "Formatting toolbar visible",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-3-check-4",
+          "description": "Typing text triggers auto-save ('Saving...' → 'Saved')",
+          "passed": false,
+          "actual": "Indicator not found",
+          "expected": "Auto-save indicator shows 'Saved' after inactivity",
+          "durationMs": 3204
+        },
+        {
+          "checkId": "very-hard-3-check-5",
+          "description": "Simulated 'second user' cursor or presence indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "Collaborator presence or cursor indicator visible",
+          "durationMs": 4846
+        },
+        {
+          "checkId": "very-hard-3-check-6",
+          "description": "'Version History' panel lists saved document versions",
+          "passed": false,
+          "actual": "Version history not found",
+          "expected": "Version history panel lists saved versions",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "very-hard-3-check-7",
+          "description": "Restoring an older version replaces editor content",
+          "passed": true,
+          "actual": "Restore action completed",
+          "expected": "Version restore functional",
+          "durationMs": 2000
+        },
+        {
+          "checkId": "very-hard-3-check-8",
+          "description": "Share-link button generates mock URL and shows copy confirmation",
+          "passed": false,
+          "actual": "Share button evaluated",
+          "expected": "Share link generated / copied",
+          "durationMs": 4004
+        }
+      ],
+      "playwright_checks_passed": "3/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-3",
+        "tier": "very_hard",
+        "title": "Collaborative Document Editor (Simulated)",
+        "totalChecks": 8,
+        "buildPrompt": "Build a simplified collaborative text editor: a document list sidebar, a rich-text editing area (bold/italic/underline/bullet list toolbar), auto-save indicator ('Saving...' → 'Saved' after 1s of inactivity), a simulated 'second user' cursor/highlight that appears in the doc after 5 seconds to mimic collaboration, version history showing last 3 saved versions with the ability to restore an older version, and a share-link generator that copies a mock URL to clipboard."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-3-check-2",
+          "description": "Document list sidebar visible with selectable docs",
+          "passed": false,
+          "actual": "Doc items found: 0",
+          "expected": "Document list visible in sidebar",
+          "durationMs": 41
+        },
+        {
+          "checkId": "very-hard-3-check-3",
+          "description": "Rich-text toolbar present (Bold, Italic, Underline, Bullet list)",
+          "passed": true,
+          "actual": "Toolbar visible: true",
+          "expected": "Formatting toolbar visible",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "very-hard-3-check-4",
+          "description": "Typing text triggers auto-save ('Saving...' → 'Saved')",
+          "passed": false,
+          "actual": "Indicator not found",
+          "expected": "Auto-save indicator shows 'Saved' after inactivity",
+          "durationMs": 3206
+        },
+        {
+          "checkId": "very-hard-3-check-5",
+          "description": "Simulated 'second user' cursor or presence indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "Collaborator presence or cursor indicator visible",
+          "durationMs": 4865
+        },
+        {
+          "checkId": "very-hard-3-check-6",
+          "description": "'Version History' panel lists saved document versions",
+          "passed": false,
+          "actual": "Version history not found",
+          "expected": "Version history panel lists saved versions",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "very-hard-3-check-7",
+          "description": "Restoring an older version replaces editor content",
+          "passed": true,
+          "actual": "Restore action completed",
+          "expected": "Version restore functional",
+          "durationMs": 2000
+        },
+        {
+          "checkId": "very-hard-3-check-8",
+          "description": "Share-link button generates mock URL and shows copy confirmation",
+          "passed": false,
+          "actual": "Share button evaluated",
+          "expected": "Share link generated / copied",
+          "durationMs": 4004
+        }
+      ],
+      "playwright_checks_passed": "3/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "very-hard-3",
+        "tier": "very_hard",
+        "title": "Collaborative Document Editor (Simulated)",
+        "totalChecks": 8,
+        "buildPrompt": "Build a simplified collaborative text editor: a document list sidebar, a rich-text editing area (bold/italic/underline/bullet list toolbar), auto-save indicator ('Saving...' → 'Saved' after 1s of inactivity), a simulated 'second user' cursor/highlight that appears in the doc after 5 seconds to mimic collaboration, version history showing last 3 saved versions with the ability to restore an older version, and a share-link generator that copies a mock URL to clipboard."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-3-check-2",
+          "description": "Document list sidebar visible with selectable docs",
+          "passed": false,
+          "actual": "Doc items found: 0",
+          "expected": "Document list visible in sidebar",
+          "durationMs": 36
+        },
+        {
+          "checkId": "very-hard-3-check-3",
+          "description": "Rich-text toolbar present (Bold, Italic, Underline, Bullet list)",
+          "passed": true,
+          "actual": "Toolbar visible: true",
+          "expected": "Formatting toolbar visible",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "very-hard-3-check-4",
+          "description": "Typing text triggers auto-save ('Saving...' → 'Saved')",
+          "passed": false,
+          "actual": "Indicator not found",
+          "expected": "Auto-save indicator shows 'Saved' after inactivity",
+          "durationMs": 3208
+        },
+        {
+          "checkId": "very-hard-3-check-5",
+          "description": "Simulated 'second user' cursor or presence indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "Collaborator presence or cursor indicator visible",
+          "durationMs": 4862
+        },
+        {
+          "checkId": "very-hard-3-check-6",
+          "description": "'Version History' panel lists saved document versions",
+          "passed": false,
+          "actual": "Version history not found",
+          "expected": "Version history panel lists saved versions",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "very-hard-3-check-7",
+          "description": "Restoring an older version replaces editor content",
+          "passed": true,
+          "actual": "Restore action completed",
+          "expected": "Version restore functional",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "very-hard-3-check-8",
+          "description": "Share-link button generates mock URL and shows copy confirmation",
+          "passed": false,
+          "actual": "Share button evaluated",
+          "expected": "Share link generated / copied",
+          "durationMs": 4006
+        }
+      ],
+      "playwright_checks_passed": "3/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-3",
+        "tier": "very_hard",
+        "title": "Collaborative Document Editor (Simulated)",
+        "totalChecks": 8,
+        "buildPrompt": "Build a simplified collaborative text editor: a document list sidebar, a rich-text editing area (bold/italic/underline/bullet list toolbar), auto-save indicator ('Saving...' → 'Saved' after 1s of inactivity), a simulated 'second user' cursor/highlight that appears in the doc after 5 seconds to mimic collaboration, version history showing last 3 saved versions with the ability to restore an older version, and a share-link generator that copies a mock URL to clipboard."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-3-check-2",
+          "description": "Document list sidebar visible with selectable docs",
+          "passed": false,
+          "actual": "Doc items found: 0",
+          "expected": "Document list visible in sidebar",
+          "durationMs": 36
+        },
+        {
+          "checkId": "very-hard-3-check-3",
+          "description": "Rich-text toolbar present (Bold, Italic, Underline, Bullet list)",
+          "passed": true,
+          "actual": "Toolbar visible: true",
+          "expected": "Formatting toolbar visible",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "very-hard-3-check-4",
+          "description": "Typing text triggers auto-save ('Saving...' → 'Saved')",
+          "passed": false,
+          "actual": "Indicator not found",
+          "expected": "Auto-save indicator shows 'Saved' after inactivity",
+          "durationMs": 3206
+        },
+        {
+          "checkId": "very-hard-3-check-5",
+          "description": "Simulated 'second user' cursor or presence indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "Collaborator presence or cursor indicator visible",
+          "durationMs": 4851
+        },
+        {
+          "checkId": "very-hard-3-check-6",
+          "description": "'Version History' panel lists saved document versions",
+          "passed": false,
+          "actual": "Version history not found",
+          "expected": "Version history panel lists saved versions",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-3-check-7",
+          "description": "Restoring an older version replaces editor content",
+          "passed": true,
+          "actual": "Restore action completed",
+          "expected": "Version restore functional",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-3-check-8",
+          "description": "Share-link button generates mock URL and shows copy confirmation",
+          "passed": false,
+          "actual": "Share button evaluated",
+          "expected": "Share link generated / copied",
+          "durationMs": 4007
+        }
+      ],
+      "playwright_checks_passed": "3/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-3",
+        "tier": "very_hard",
+        "title": "Collaborative Document Editor (Simulated)",
+        "totalChecks": 8,
+        "buildPrompt": "Build a simplified collaborative text editor: a document list sidebar, a rich-text editing area (bold/italic/underline/bullet list toolbar), auto-save indicator ('Saving...' → 'Saved' after 1s of inactivity), a simulated 'second user' cursor/highlight that appears in the doc after 5 seconds to mimic collaboration, version history showing last 3 saved versions with the ability to restore an older version, and a share-link generator that copies a mock URL to clipboard."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "very-hard-3-check-2",
+          "description": "Document list sidebar visible with selectable docs",
+          "passed": false,
+          "actual": "Doc items found: 0",
+          "expected": "Document list visible in sidebar",
+          "durationMs": 35
+        },
+        {
+          "checkId": "very-hard-3-check-3",
+          "description": "Rich-text toolbar present (Bold, Italic, Underline, Bullet list)",
+          "passed": true,
+          "actual": "Toolbar visible: true",
+          "expected": "Formatting toolbar visible",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "very-hard-3-check-4",
+          "description": "Typing text triggers auto-save ('Saving...' → 'Saved')",
+          "passed": false,
+          "actual": "Indicator not found",
+          "expected": "Auto-save indicator shows 'Saved' after inactivity",
+          "durationMs": 3207
+        },
+        {
+          "checkId": "very-hard-3-check-5",
+          "description": "Simulated 'second user' cursor or presence indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "Collaborator presence or cursor indicator visible",
+          "durationMs": 4844
+        },
+        {
+          "checkId": "very-hard-3-check-6",
+          "description": "'Version History' panel lists saved document versions",
+          "passed": false,
+          "actual": "Version history not found",
+          "expected": "Version history panel lists saved versions",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-3-check-7",
+          "description": "Restoring an older version replaces editor content",
+          "passed": true,
+          "actual": "Restore action completed",
+          "expected": "Version restore functional",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "very-hard-3-check-8",
+          "description": "Share-link button generates mock URL and shows copy confirmation",
+          "passed": false,
+          "actual": "Share button evaluated",
+          "expected": "Share link generated / copied",
+          "durationMs": 4006
+        }
+      ],
+      "playwright_checks_passed": "3/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "very-hard-3",
+        "tier": "very_hard",
+        "title": "Collaborative Document Editor (Simulated)",
+        "totalChecks": 8,
+        "buildPrompt": "Build a simplified collaborative text editor: a document list sidebar, a rich-text editing area (bold/italic/underline/bullet list toolbar), auto-save indicator ('Saving...' → 'Saved' after 1s of inactivity), a simulated 'second user' cursor/highlight that appears in the doc after 5 seconds to mimic collaboration, version history showing last 3 saved versions with the ability to restore an older version, and a share-link generator that copies a mock URL to clipboard."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "very-hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "very-hard-3-check-2",
+          "description": "Document list sidebar visible with selectable docs",
+          "passed": false,
+          "actual": "Doc items found: 0",
+          "expected": "Document list visible in sidebar",
+          "durationMs": 38
+        },
+        {
+          "checkId": "very-hard-3-check-3",
+          "description": "Rich-text toolbar present (Bold, Italic, Underline, Bullet list)",
+          "passed": true,
+          "actual": "Toolbar visible: true",
+          "expected": "Formatting toolbar visible",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "very-hard-3-check-4",
+          "description": "Typing text triggers auto-save ('Saving...' → 'Saved')",
+          "passed": false,
+          "actual": "Indicator not found",
+          "expected": "Auto-save indicator shows 'Saved' after inactivity",
+          "durationMs": 3207
+        },
+        {
+          "checkId": "very-hard-3-check-5",
+          "description": "Simulated 'second user' cursor or presence indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "Collaborator presence or cursor indicator visible",
+          "durationMs": 4856
+        },
+        {
+          "checkId": "very-hard-3-check-6",
+          "description": "'Version History' panel lists saved document versions",
+          "passed": false,
+          "actual": "Version history not found",
+          "expected": "Version history panel lists saved versions",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "very-hard-3-check-7",
+          "description": "Restoring an older version replaces editor content",
+          "passed": true,
+          "actual": "Restore action completed",
+          "expected": "Version restore functional",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "very-hard-3-check-8",
+          "description": "Share-link button generates mock URL and shows copy confirmation",
+          "passed": false,
+          "actual": "Share button evaluated",
+          "expected": "Share link generated / copied",
+          "durationMs": 4006
+        }
+      ],
+      "playwright_checks_passed": "3/8",
+      "reviewer_notes": ""
+    }
+  ],
+  "completedAt": "2026-09-14T08:33:19.094Z"
+}

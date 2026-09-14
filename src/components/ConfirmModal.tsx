@@ -96,7 +96,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
                 flexShrink: 0,
               }}
             >
-              <AlertTriangle size={17} color={isDestructive ? '#ef4444' : '#3b82f6'} />
+              <AlertTriangle size={16} strokeWidth={1.75} color={isDestructive ? '#ef4444' : '#3b82f6'} />
             </div>
             <h3
               id="confirm-modal-title"
@@ -118,7 +118,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
             aria-label="Close dialog"
             style={{ padding: '4px', color: 'var(--text-muted, #9ca3af)' }}
           >
-            <X size={16} />
+            <X size={16} strokeWidth={1.75} />
           </button>
         </div>
 

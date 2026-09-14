@@ -28,8 +28,8 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
 
   return (
     <div className="diff-edit-artifact-card" style={{
-      borderRadius: '8px',
-      border: isStreaming ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid rgba(59, 130, 246, 0.3)',
+      borderRadius: 'var(--radius-asym-sm, 10px 4px 10px 4px)',
+      border: isStreaming ? '1px solid var(--border-accent)' : '1px solid rgba(14, 165, 233, 0.3)',
       background: 'rgba(15, 17, 26, 0.75)',
       backdropFilter: 'blur(8px)',
       overflow: 'hidden',
@@ -43,7 +43,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '8px 12px',
-        background: isStreaming ? 'rgba(168, 85, 247, 0.08)' : 'rgba(59, 130, 246, 0.06)',
+        background: isStreaming ? 'var(--color-ai-bg)' : 'rgba(14, 165, 233, 0.06)',
         borderBottom: isExpanded ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
         fontSize: '12px',
         gap: '8px'
@@ -60,7 +60,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <Wrench size={13} color="#60a5fa" />
+            <Wrench size={16} strokeWidth={1.75} color="#60a5fa" />
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -89,8 +89,8 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
               alignItems: 'center',
               gap: '5px',
               fontSize: '11px',
-              color: '#c084fc',
-              background: 'rgba(168, 85, 247, 0.12)',
+              color: 'var(--accent-light)',
+              background: 'var(--color-ai-bg)',
               padding: '3px 8px',
               borderRadius: '4px',
               fontWeight: 500
@@ -99,7 +99,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
                 width: '6px',
                 height: '6px',
                 borderRadius: '50%',
-                background: '#c084fc',
+                background: 'var(--accent-light)',
                 animation: 'pulse 1.5s infinite'
               }} />
               Patching...
@@ -131,7 +131,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
               alignItems: 'center'
             }}
           >
-            <ExternalLink size={13} />
+            <ExternalLink size={16} strokeWidth={1.75} />
           </button>
 
           <button
@@ -148,7 +148,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
               alignItems: 'center'
             }}
           >
-            {copied ? <Check size={13} color="#4ade80" /> : <Copy size={13} />}
+            {copied ? <Check size={16} strokeWidth={1.75} color="#4ade80" /> : <Copy size={16} strokeWidth={1.75} />}
           </button>
 
           <button
@@ -165,7 +165,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
               alignItems: 'center'
             }}
           >
-            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {isExpanded ? <ChevronUp size={16} strokeWidth={1.75} /> : <ChevronDown size={16} strokeWidth={1.75} />}
           </button>
         </div>
       </div>

@@ -38,8 +38,8 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
 
   return (
     <div className="code-artifact-card" style={{
-      borderRadius: '6px',
-      border: isStreaming ? '1px solid rgba(168, 85, 247, 0.35)' : '1px solid var(--border-subtle)',
+      borderRadius: 'var(--radius-asym-sm, 10px 4px 10px 4px)',
+      border: isStreaming ? '1px solid var(--border-accent)' : '1px solid var(--border-subtle)',
       background: 'rgba(255, 255, 255, 0.025)',
       overflow: 'hidden',
       margin: '6px 0',
@@ -51,7 +51,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '8px 12px',
-        background: isStreaming ? 'rgba(168, 85, 247, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+        background: isStreaming ? 'var(--color-ai-bg)' : 'rgba(255, 255, 255, 0.02)',
         fontSize: '12px',
         gap: '8px'
       }}>
@@ -61,13 +61,13 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
             width: '24px',
             height: '24px',
             borderRadius: '5px',
-            background: 'rgba(168, 85, 247, 0.15)',
+            background: 'var(--color-ai-bg)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <FileCode size={13} color="var(--accent-light)" />
+            <FileCode size={16} strokeWidth={1.75} color="var(--accent-light)" />
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -96,8 +96,8 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
               alignItems: 'center',
               gap: '5px',
               fontSize: '11px',
-              color: '#c084fc',
-              background: 'rgba(168, 85, 247, 0.12)',
+              color: 'var(--accent-light)',
+              background: 'var(--color-ai-bg)',
               padding: '3px 8px',
               borderRadius: '4px',
               fontWeight: 500
@@ -125,7 +125,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 }}
                 className="hover-bright"
               >
-                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                {isExpanded ? <ChevronUp size={16} strokeWidth={1.75} /> : <ChevronDown size={16} strokeWidth={1.75} />}
                 <span>{isExpanded ? 'Hide' : 'Code'}</span>
               </button>
 
@@ -147,7 +147,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 }}
                 className="hover-bright"
               >
-                {copied ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                {copied ? <Check size={16} strokeWidth={1.75} color="#34d399" /> : <Copy size={16} strokeWidth={1.75} />}
                 <span>{copied ? 'Copied' : 'Copy'}</span>
               </button>
 
@@ -170,7 +170,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 }}
                 className="hover-bright"
               >
-                <Code2 size={12} color="var(--accent-light)" />
+                <Code2 size={16} strokeWidth={1.75} color="var(--accent-light)" />
                 <span>Editor ↗</span>
               </button>
             </>

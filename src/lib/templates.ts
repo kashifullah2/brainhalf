@@ -55,15 +55,17 @@ export default defineConfig({
       html, body {
         margin: 0;
         padding: 0;
-        min-height: 100vh;
+        height: 100%;
+        min-height: 100%;
         width: 100%;
         background: #0f111a;
         color: #f3f4f6;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        overflow-x: hidden;
+        overflow: hidden;
       }
       #root {
-        min-height: 100vh;
+        height: 100%;
+        min-height: 100%;
         width: 100%;
         display: flex;
         flex-direction: column;
@@ -135,8 +137,33 @@ body {
   background: #0f111a;
   color: #f8fafc;
   margin: 0;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100%;
   width: 100%;
+}
+
+@keyframes heroGradientPulse {
+  0% {
+    transform: translateX(-50%) scale(0.95);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateX(-50%) scale(1.08) translateY(8px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-50%) scale(0.98) translateY(-6px);
+    opacity: 0.8;
+  }
+}
+
+@keyframes iconGlowPulse {
+  0%, 100% {
+    box-shadow: 0 0 24px rgba(99, 102, 241, 0.35), 0 0 48px rgba(139, 92, 246, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(99, 102, 241, 0.55), 0 0 60px rgba(139, 92, 246, 0.25);
+  }
 }
           `
         }
@@ -145,6 +172,7 @@ body {
         file: {
           contents: `
 import React from 'react';
+import { BrainCircuit } from 'lucide-react';
 
 export default function App() {
   return (
@@ -153,165 +181,194 @@ export default function App() {
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: '100vh',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
-      background: 'radial-gradient(ellipse at 50% 15%, rgba(99, 102, 241, 0.12) 0%, rgba(10, 15, 30, 0.98) 70%, #07090e 100%)',
+      height: '100%',
+      minHeight: '100%',
+      fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+      background: 'radial-gradient(ellipse at 25% 15%, rgba(20, 184, 166, 0.14) 0%, rgba(9, 13, 22, 0.98) 65%, #05070b 100%)',
       color: '#f8fafc',
-      padding: '32px 20px',
+      padding: '24px 20px',
       boxSizing: 'border-box',
       textAlign: 'center',
       position: 'relative',
       overflow: 'hidden'
     }}>
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes heroGradientPulse { 0% { transform: scale(0.96); opacity: 0.75; } 50% { transform: scale(1.06) translateY(6px); opacity: 1; } 100% { transform: scale(0.98) translateY(-4px); opacity: 0.85; } } @keyframes iconGlowPulse { 0%, 100% { box-shadow: 0 0 24px rgba(20, 184, 166, 0.35), 0 0 48px rgba(13, 148, 136, 0.15); } 50% { box-shadow: 0 0 32px rgba(45, 212, 191, 0.55), 0 0 60px rgba(20, 184, 166, 0.25); } }' }} />
+
+      {/* Architectural Blueprint Dot Grid & Vignette Texture */}
       <div style={{
         position: 'absolute',
-        top: '20%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '480px',
-        height: '240px',
-        background: 'radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 50%, transparent 70%)',
-        filter: 'blur(40px)',
+        inset: 0,
+        backgroundImage: 'radial-gradient(rgba(45, 212, 191, 0.12) 1px, transparent 1px)',
+        backgroundSize: '24px 24px',
+        opacity: 0.6,
         pointerEvents: 'none',
-        zIndex: 0
+        zIndex: 0,
+        maskImage: 'radial-gradient(ellipse at 50% 50%, black 40%, transparent 85%)',
+        WebkitMaskImage: 'radial-gradient(ellipse at 50% 50%, black 40%, transparent 85%)'
       }} />
 
-      <div style={{
+      <div className="hero-section-card" style={{
         position: 'relative',
         zIndex: 1,
         maxWidth: '560px',
         width: '100%',
-        padding: '48px 36px',
-        borderRadius: '24px',
-        background: 'rgba(15, 23, 42, 0.65)',
+        padding: '52px 36px',
+        borderRadius: '24px 8px 24px 14px',
+        background: 'radial-gradient(ellipse at 20% 0%, rgba(20, 184, 166, 0.18) 0%, rgba(13, 148, 136, 0.06) 45%, rgba(13, 17, 26, 0.96) 85%)',
         border: '1px solid rgba(255, 255, 255, 0.09)',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
-        boxShadow: '0 30px 60px -15px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04) inset'
+        borderTop: '1px solid rgba(45, 212, 191, 0.35)',
+        textAlign: 'center',
+        boxShadow: '0 20px 48px -12px rgba(0, 0, 0, 0.65), 0 0 40px rgba(20, 184, 166, 0.08)',
+        backdropFilter: 'blur(16px)',
+        overflow: 'hidden'
       }}>
+        {/* Asymmetric Top Accent Line */}
         <div style={{
-          width: '68px',
-          height: '68px',
-          borderRadius: '18px',
-          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%)',
-          border: '1px solid rgba(168, 85, 247, 0.35)',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '140px',
+          height: '2px',
+          background: 'linear-gradient(90deg, #2dd4bf 0%, rgba(45, 212, 191, 0) 100%)',
+          pointerEvents: 'none',
+          zIndex: 1
+        }} />
+
+        {/* Asymmetric Brand-Teal Directional Glow */}
+        <div style={{
+          position: 'absolute',
+          top: '-35%',
+          left: '10%',
+          width: '140%',
+          height: '140%',
+          background: 'radial-gradient(circle at 30% 30%, rgba(20, 184, 166, 0.20) 0%, rgba(13, 148, 136, 0.08) 35%, transparent 65%)',
+          filter: 'blur(32px)',
+          pointerEvents: 'none',
+          zIndex: 0,
+          animation: 'heroGradientPulse 8s ease-in-out infinite alternate'
+        }} />
+
+        {/* Asymmetric Technical Eyebrow Tag */}
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '4px 10px',
+          borderRadius: '6px 2px 6px 2px',
+          background: 'rgba(20, 184, 166, 0.08)',
+          border: '1px solid rgba(20, 184, 166, 0.22)',
+          marginBottom: '18px',
+          fontSize: '11px',
+          fontWeight: 600,
+          letterSpacing: '0.08em',
+          color: '#2dd4bf',
+          textTransform: 'uppercase',
+          fontFamily: "'JetBrains Mono', monospace",
+          position: 'relative',
+          zIndex: 1
+        }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2dd4bf', boxShadow: '0 0 8px #2dd4bf', display: 'inline-block' }} />
+          BRAINHALF CORE // REACTIVE ENGINE
+        </div>
+
+        {/* 64px Icon with brand-teal glow */}
+        <div className="hero-icon-container" style={{
+          width: '64px',
+          height: '64px',
+          borderRadius: '16px 6px 16px 8px',
+          background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.12) 0%, rgba(20, 184, 166, 0.03) 100%)',
+          border: '1px solid rgba(45, 212, 191, 0.25)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           margin: '0 auto 20px',
-          boxShadow: '0 12px 30px -5px rgba(99, 102, 241, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2)'
+          boxShadow: '0 0 24px rgba(20, 184, 166, 0.35), 0 0 48px rgba(13, 148, 136, 0.15)',
+          animation: 'iconGlowPulse 4s ease-in-out infinite alternate',
+          position: 'relative',
+          zIndex: 1
         }}>
-          <img 
-            src="/brainhalflogo.png" 
-            alt="BrainHalf Logo" 
-            style={{ width: '42px', height: '42px', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.4))' }} 
+          <BrainCircuit 
+            size={36} 
+            strokeWidth={1.75} 
+            color="#2dd4bf" 
+            style={{ filter: 'drop-shadow(0 0 10px rgba(45, 212, 191, 0.65)) drop-shadow(0 0 20px rgba(20, 184, 166, 0.4))' }} 
           />
         </div>
 
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '5px 14px',
-          borderRadius: '999px',
-          background: 'rgba(99, 102, 241, 0.1)',
-          border: '1px solid rgba(129, 140, 248, 0.25)',
-          color: '#a5b4fc',
-          fontSize: '11px',
-          fontWeight: 600,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          marginBottom: '16px'
-        }}>
-          <span style={{
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            background: '#818cf8',
-            boxShadow: '0 0 8px #818cf8'
-          }} />
-          Autonomous AI Studio
-        </div>
-
         <h1 style={{
-          fontSize: '28px',
-          fontWeight: '700',
-          margin: '0 0 12px',
+          fontSize: '25px',
+          fontWeight: 700,
+          margin: '0 0 10px',
+          color: '#f8fafc',
           letterSpacing: '-0.03em',
-          lineHeight: '1.2',
-          background: 'linear-gradient(135deg, #ffffff 30%, #cbd5e1 70%, #94a3b8 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent'
+          lineHeight: '1.25',
+          fontFamily: "'Space Grotesk', -apple-system, sans-serif",
+          position: 'relative',
+          zIndex: 1
         }}>
-          Welcome to BrainHalf
+          Architect your idea into living software.
         </h1>
 
         <p style={{
           color: '#94a3b8',
           fontSize: '14px',
-          lineHeight: '1.65',
-          margin: '0 0 28px',
-          fontWeight: 400
+          lineHeight: '1.6',
+          margin: '0 auto 28px',
+          maxWidth: '460px',
+          fontWeight: 400,
+          position: 'relative',
+          zIndex: 1
         }}>
-          Your real-time edge compiler and AI software engineer are online. Send a prompt in the chat panel to synthesize full-stack React components and interactive web apps instantly.
+          From interactive workflows to full-stack reactive prototypes—direct the architecture, shape state in real time, and inspect generated code instantly.
         </p>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          gap: '10px',
-          marginBottom: '28px',
-          textAlign: 'left'
+        {/* Suggestion pills with increased spacing and larger touch target */}
+        <div className="suggestion-pills-container" style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '12px',
+          justifyContent: 'center',
+          position: 'relative',
+          zIndex: 1
         }}>
-          <div style={{
-            padding: '12px 14px',
-            borderRadius: '12px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.06)'
-          }}>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: '#c7d2fe', marginBottom: '4px' }}>Edge Preview</div>
-            <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>Zero cold-start hot reload runtime</div>
-          </div>
-          <div style={{
-            padding: '12px 14px',
-            borderRadius: '12px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.06)'
-          }}>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: '#c7d2fe', marginBottom: '4px' }}>Modular React</div>
-            <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>Multi-file components & styles</div>
-          </div>
-          <div style={{
-            padding: '12px 14px',
-            borderRadius: '12px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid rgba(255, 255, 255, 0.06)'
-          }}>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: '#c7d2fe', marginBottom: '4px' }}>Production Ready</div>
-            <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>Instant export or global deploy</div>
-          </div>
-        </div>
-
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '6px 16px',
-          borderRadius: '999px',
-          background: 'rgba(16, 185, 129, 0.08)',
-          border: '1px solid rgba(16, 185, 129, 0.22)',
-          color: '#34d399',
-          fontSize: '12px',
-          fontWeight: 500
-        }}>
-          <span style={{
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            background: '#10b981',
-            boxShadow: '0 0 8px #10b981'
-          }} />
-          Zero Cold-Start Runtime Active
+          {['Kanban Board', 'Analytics Dashboard', 'Platformer Game', 'Audio Synth'].map((example) => (
+            <button
+              key={example}
+              className="suggestion-pill"
+              style={{
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.09)',
+                color: '#cbd5e1',
+                padding: '9px 18px',
+                minHeight: '40px',
+                borderRadius: '10px 4px 10px 4px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.18s ease',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(20, 184, 166, 0.12)';
+                e.currentTarget.style.borderColor = 'rgba(45, 212, 191, 0.3)';
+                e.currentTarget.style.color = '#f0fdfa';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(20, 184, 166, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.09)';
+                e.currentTarget.style.color = '#cbd5e1';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              {example}
+            </button>
+          ))}
         </div>
       </div>
     </div>

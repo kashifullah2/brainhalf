@@ -407,6 +407,31 @@ export async function getProjectMessagesAsync(projectId: string): Promise<any[] 
   return null;
 }
 
+export function getProjectDisplayTitle(proj: Project): string {
+  if (!proj) return 'Untitled Project';
+
+  // 1. Check stored messages for the first user prompt
+  const msgs = getProjectMessages(proj.id);
+  if (msgs && Array.isArray(msgs)) {
+    const firstUserMsg = msgs.find(
+      m => m && m.role === 'user' && typeof m.content === 'string' && m.content.trim().length > 0
+    );
+    if (firstUserMsg && firstUserMsg.content) {
+      const cleaned = firstUserMsg.content.trim().replace(/\s+/g, ' ');
+      return cleaned.length > 30 ? `${cleaned.slice(0, 30)}…` : cleaned;
+    }
+  }
+
+  // 2. If project name is custom (not generic "Project N" or "Untitled Project"), use it truncated to ~30 chars
+  if (proj.name && !/^Project \d+$/i.test(proj.name) && proj.name !== 'Untitled Project') {
+    const cleaned = proj.name.trim().replace(/\s+/g, ' ');
+    return cleaned.length > 30 ? `${cleaned.slice(0, 30)}…` : cleaned;
+  }
+
+  // 3. Fallback to generic name or default
+  return proj.name || 'New project';
+}
+
 export function saveProjectMessages(projectId: string, messages: any[]) {
   if (!projectId || !messages) return;
   memoryCache[`messages_${projectId}`] = messages;

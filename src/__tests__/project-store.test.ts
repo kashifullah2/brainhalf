@@ -12,7 +12,8 @@ import {
   saveProjectFiles,
   getProjectMessages,
   saveProjectMessages,
-  deleteProjectMessages
+  deleteProjectMessages,
+  getProjectDisplayTitle
 } from '../lib/project-store';
 
 describe('Project Store & LocalStorage State Management', () => {
@@ -170,6 +171,50 @@ describe('Project Store & LocalStorage State Management', () => {
 
       deleteProjectMessages('test-del-msgs');
       expect(getProjectMessages('test-del-msgs')).toBeNull();
+    });
+  });
+
+  describe('getProjectDisplayTitle', () => {
+    it('replaces generic Project N with first user prompt truncated to 30 chars with ellipsis', () => {
+      const proj = createProject('Project 1');
+      saveProjectMessages(proj.id, [
+        { role: 'ai', content: 'Hello! What would you like to build?' },
+        { role: 'user', content: 'Build an interactive financial budget dashboard with charts and tables' }
+      ]);
+
+      const title = getProjectDisplayTitle(proj);
+      expect(title).toBe('Build an interactive financial…');
+      expect(title.length).toBe(31); // 30 chars + ellipsis
+    });
+
+    it('returns exact prompt without truncation if 30 chars or less', () => {
+      const proj = createProject('Project 2');
+      saveProjectMessages(proj.id, [
+        { role: 'user', content: 'Create a chess game' }
+      ]);
+
+      const title = getProjectDisplayTitle(proj);
+      expect(title).toBe('Create a chess game');
+    });
+
+    it('cleans internal newlines and excess whitespace from first prompt', () => {
+      const proj = createProject('Project 3');
+      saveProjectMessages(proj.id, [
+        { role: 'user', content: 'Build a    calculator\nwith history\nfeature' }
+      ]);
+
+      const title = getProjectDisplayTitle(proj);
+      expect(title).toBe('Build a calculator with histor…');
+    });
+
+    it('falls back to custom project name when no user prompt exists', () => {
+      const proj = createProject('Custom Mobile App');
+      expect(getProjectDisplayTitle(proj)).toBe('Custom Mobile App');
+    });
+
+    it('falls back to generic Project N if no user prompt exists yet', () => {
+      const proj = createProject('Project 4');
+      expect(getProjectDisplayTitle(proj)).toBe('Project 4');
     });
   });
 });

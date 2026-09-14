@@ -1,0 +1,1968 @@
+{
+  "runId": "benchmark-2026-09-14T08-17-02-357Z",
+  "startedAt": "2026-09-14T08:17:02.357Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-1",
+        "tier": "hard",
+        "title": "Analytics Dashboard with Charts",
+        "totalChecks": 7,
+        "buildPrompt": "Build an analytics dashboard with: a date-range selector (Last 7 days / 30 days / 90 days), a line chart of revenue over the selected range, a bar chart of top 5 products by sales, and 4 KPI cards (Total Revenue, Orders, Avg Order Value, Conversion Rate) that recompute when the date range changes. Use mock/generated data. Include a CSV export button for the currently visible data."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2037
+        },
+        {
+          "checkId": "hard-1-check-2",
+          "description": "4 KPI cards visible (Revenue, Orders, Avg Order Value, Conversion Rate)",
+          "passed": false,
+          "actual": "rev:false, orders:false, avg:false, conv:false",
+          "expected": "All 4 KPI metrics present in text",
+          "durationMs": 108
+        },
+        {
+          "checkId": "hard-1-check-3",
+          "description": "Date-range selector present (7, 30, 90 days options)",
+          "passed": false,
+          "actual": "false",
+          "expected": "Date range controls visible",
+          "durationMs": 2037
+        },
+        {
+          "checkId": "hard-1-check-4",
+          "description": "Changing date range recomputes KPI values",
+          "passed": false,
+          "actual": "No change detected",
+          "expected": "KPI values change on date range switch",
+          "durationMs": 5034
+        },
+        {
+          "checkId": "hard-1-check-5",
+          "description": "Line chart and Bar chart elements rendered",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "At least 1 chart element (svg/canvas/container) rendered",
+          "durationMs": 6
+        },
+        {
+          "checkId": "hard-1-check-6",
+          "description": "CSV Export button present and clickable",
+          "passed": false,
+          "actual": "false",
+          "expected": "CSV export button visible",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "hard-1-check-7",
+          "description": "Charts and metrics remain populated after range toggle",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "Charts still present after toggle",
+          "durationMs": 5023
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-1",
+        "tier": "hard",
+        "title": "Analytics Dashboard with Charts",
+        "totalChecks": 7,
+        "buildPrompt": "Build an analytics dashboard with: a date-range selector (Last 7 days / 30 days / 90 days), a line chart of revenue over the selected range, a bar chart of top 5 products by sales, and 4 KPI cards (Total Revenue, Orders, Avg Order Value, Conversion Rate) that recompute when the date range changes. Use mock/generated data. Include a CSV export button for the currently visible data."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "hard-1-check-2",
+          "description": "4 KPI cards visible (Revenue, Orders, Avg Order Value, Conversion Rate)",
+          "passed": false,
+          "actual": "rev:false, orders:false, avg:false, conv:false",
+          "expected": "All 4 KPI metrics present in text",
+          "durationMs": 197
+        },
+        {
+          "checkId": "hard-1-check-3",
+          "description": "Date-range selector present (7, 30, 90 days options)",
+          "passed": false,
+          "actual": "false",
+          "expected": "Date range controls visible",
+          "durationMs": 2042
+        },
+        {
+          "checkId": "hard-1-check-4",
+          "description": "Changing date range recomputes KPI values",
+          "passed": false,
+          "actual": "No change detected",
+          "expected": "KPI values change on date range switch",
+          "durationMs": 5041
+        },
+        {
+          "checkId": "hard-1-check-5",
+          "description": "Line chart and Bar chart elements rendered",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "At least 1 chart element (svg/canvas/container) rendered",
+          "durationMs": 7
+        },
+        {
+          "checkId": "hard-1-check-6",
+          "description": "CSV Export button present and clickable",
+          "passed": false,
+          "actual": "false",
+          "expected": "CSV export button visible",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "hard-1-check-7",
+          "description": "Charts and metrics remain populated after range toggle",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "Charts still present after toggle",
+          "durationMs": 5054
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-1",
+        "tier": "hard",
+        "title": "Analytics Dashboard with Charts",
+        "totalChecks": 7,
+        "buildPrompt": "Build an analytics dashboard with: a date-range selector (Last 7 days / 30 days / 90 days), a line chart of revenue over the selected range, a bar chart of top 5 products by sales, and 4 KPI cards (Total Revenue, Orders, Avg Order Value, Conversion Rate) that recompute when the date range changes. Use mock/generated data. Include a CSV export button for the currently visible data."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "hard-1-check-2",
+          "description": "4 KPI cards visible (Revenue, Orders, Avg Order Value, Conversion Rate)",
+          "passed": false,
+          "actual": "rev:false, orders:false, avg:false, conv:false",
+          "expected": "All 4 KPI metrics present in text",
+          "durationMs": 57
+        },
+        {
+          "checkId": "hard-1-check-3",
+          "description": "Date-range selector present (7, 30, 90 days options)",
+          "passed": false,
+          "actual": "false",
+          "expected": "Date range controls visible",
+          "durationMs": 2013
+        },
+        {
+          "checkId": "hard-1-check-4",
+          "description": "Changing date range recomputes KPI values",
+          "passed": false,
+          "actual": "No change detected",
+          "expected": "KPI values change on date range switch",
+          "durationMs": 5031
+        },
+        {
+          "checkId": "hard-1-check-5",
+          "description": "Line chart and Bar chart elements rendered",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "At least 1 chart element (svg/canvas/container) rendered",
+          "durationMs": 12
+        },
+        {
+          "checkId": "hard-1-check-6",
+          "description": "CSV Export button present and clickable",
+          "passed": false,
+          "actual": "false",
+          "expected": "CSV export button visible",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "hard-1-check-7",
+          "description": "Charts and metrics remain populated after range toggle",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "Charts still present after toggle",
+          "durationMs": 5055
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-1",
+        "tier": "hard",
+        "title": "Analytics Dashboard with Charts",
+        "totalChecks": 7,
+        "buildPrompt": "Build an analytics dashboard with: a date-range selector (Last 7 days / 30 days / 90 days), a line chart of revenue over the selected range, a bar chart of top 5 products by sales, and 4 KPI cards (Total Revenue, Orders, Avg Order Value, Conversion Rate) that recompute when the date range changes. Use mock/generated data. Include a CSV export button for the currently visible data."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "hard-1-check-2",
+          "description": "4 KPI cards visible (Revenue, Orders, Avg Order Value, Conversion Rate)",
+          "passed": false,
+          "actual": "rev:false, orders:false, avg:false, conv:false",
+          "expected": "All 4 KPI metrics present in text",
+          "durationMs": 104
+        },
+        {
+          "checkId": "hard-1-check-3",
+          "description": "Date-range selector present (7, 30, 90 days options)",
+          "passed": false,
+          "actual": "false",
+          "expected": "Date range controls visible",
+          "durationMs": 2015
+        },
+        {
+          "checkId": "hard-1-check-4",
+          "description": "Changing date range recomputes KPI values",
+          "passed": false,
+          "actual": "No change detected",
+          "expected": "KPI values change on date range switch",
+          "durationMs": 5039
+        },
+        {
+          "checkId": "hard-1-check-5",
+          "description": "Line chart and Bar chart elements rendered",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "At least 1 chart element (svg/canvas/container) rendered",
+          "durationMs": 6
+        },
+        {
+          "checkId": "hard-1-check-6",
+          "description": "CSV Export button present and clickable",
+          "passed": false,
+          "actual": "false",
+          "expected": "CSV export button visible",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "hard-1-check-7",
+          "description": "Charts and metrics remain populated after range toggle",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "Charts still present after toggle",
+          "durationMs": 5037
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-1",
+        "tier": "hard",
+        "title": "Analytics Dashboard with Charts",
+        "totalChecks": 7,
+        "buildPrompt": "Build an analytics dashboard with: a date-range selector (Last 7 days / 30 days / 90 days), a line chart of revenue over the selected range, a bar chart of top 5 products by sales, and 4 KPI cards (Total Revenue, Orders, Avg Order Value, Conversion Rate) that recompute when the date range changes. Use mock/generated data. Include a CSV export button for the currently visible data."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "hard-1-check-2",
+          "description": "4 KPI cards visible (Revenue, Orders, Avg Order Value, Conversion Rate)",
+          "passed": false,
+          "actual": "rev:false, orders:false, avg:false, conv:false",
+          "expected": "All 4 KPI metrics present in text",
+          "durationMs": 102
+        },
+        {
+          "checkId": "hard-1-check-3",
+          "description": "Date-range selector present (7, 30, 90 days options)",
+          "passed": false,
+          "actual": "false",
+          "expected": "Date range controls visible",
+          "durationMs": 2031
+        },
+        {
+          "checkId": "hard-1-check-4",
+          "description": "Changing date range recomputes KPI values",
+          "passed": false,
+          "actual": "No change detected",
+          "expected": "KPI values change on date range switch",
+          "durationMs": 5019
+        },
+        {
+          "checkId": "hard-1-check-5",
+          "description": "Line chart and Bar chart elements rendered",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "At least 1 chart element (svg/canvas/container) rendered",
+          "durationMs": 8
+        },
+        {
+          "checkId": "hard-1-check-6",
+          "description": "CSV Export button present and clickable",
+          "passed": false,
+          "actual": "false",
+          "expected": "CSV export button visible",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "hard-1-check-7",
+          "description": "Charts and metrics remain populated after range toggle",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "Charts still present after toggle",
+          "durationMs": 5017
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-1",
+        "tier": "hard",
+        "title": "Analytics Dashboard with Charts",
+        "totalChecks": 7,
+        "buildPrompt": "Build an analytics dashboard with: a date-range selector (Last 7 days / 30 days / 90 days), a line chart of revenue over the selected range, a bar chart of top 5 products by sales, and 4 KPI cards (Total Revenue, Orders, Avg Order Value, Conversion Rate) that recompute when the date range changes. Use mock/generated data. Include a CSV export button for the currently visible data."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "hard-1-check-2",
+          "description": "4 KPI cards visible (Revenue, Orders, Avg Order Value, Conversion Rate)",
+          "passed": false,
+          "actual": "rev:false, orders:false, avg:false, conv:false",
+          "expected": "All 4 KPI metrics present in text",
+          "durationMs": 97
+        },
+        {
+          "checkId": "hard-1-check-3",
+          "description": "Date-range selector present (7, 30, 90 days options)",
+          "passed": false,
+          "actual": "false",
+          "expected": "Date range controls visible",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "hard-1-check-4",
+          "description": "Changing date range recomputes KPI values",
+          "passed": false,
+          "actual": "No change detected",
+          "expected": "KPI values change on date range switch",
+          "durationMs": 5031
+        },
+        {
+          "checkId": "hard-1-check-5",
+          "description": "Line chart and Bar chart elements rendered",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "At least 1 chart element (svg/canvas/container) rendered",
+          "durationMs": 7
+        },
+        {
+          "checkId": "hard-1-check-6",
+          "description": "CSV Export button present and clickable",
+          "passed": false,
+          "actual": "false",
+          "expected": "CSV export button visible",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "hard-1-check-7",
+          "description": "Charts and metrics remain populated after range toggle",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "Charts still present after toggle",
+          "durationMs": 5024
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-1",
+        "tier": "hard",
+        "title": "Analytics Dashboard with Charts",
+        "totalChecks": 7,
+        "buildPrompt": "Build an analytics dashboard with: a date-range selector (Last 7 days / 30 days / 90 days), a line chart of revenue over the selected range, a bar chart of top 5 products by sales, and 4 KPI cards (Total Revenue, Orders, Avg Order Value, Conversion Rate) that recompute when the date range changes. Use mock/generated data. Include a CSV export button for the currently visible data."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "hard-1-check-2",
+          "description": "4 KPI cards visible (Revenue, Orders, Avg Order Value, Conversion Rate)",
+          "passed": false,
+          "actual": "rev:false, orders:false, avg:false, conv:false",
+          "expected": "All 4 KPI metrics present in text",
+          "durationMs": 58
+        },
+        {
+          "checkId": "hard-1-check-3",
+          "description": "Date-range selector present (7, 30, 90 days options)",
+          "passed": false,
+          "actual": "false",
+          "expected": "Date range controls visible",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "hard-1-check-4",
+          "description": "Changing date range recomputes KPI values",
+          "passed": false,
+          "actual": "No change detected",
+          "expected": "KPI values change on date range switch",
+          "durationMs": 5020
+        },
+        {
+          "checkId": "hard-1-check-5",
+          "description": "Line chart and Bar chart elements rendered",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "At least 1 chart element (svg/canvas/container) rendered",
+          "durationMs": 6
+        },
+        {
+          "checkId": "hard-1-check-6",
+          "description": "CSV Export button present and clickable",
+          "passed": false,
+          "actual": "false",
+          "expected": "CSV export button visible",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "hard-1-check-7",
+          "description": "Charts and metrics remain populated after range toggle",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "Charts still present after toggle",
+          "durationMs": 5012
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-1",
+        "tier": "hard",
+        "title": "Analytics Dashboard with Charts",
+        "totalChecks": 7,
+        "buildPrompt": "Build an analytics dashboard with: a date-range selector (Last 7 days / 30 days / 90 days), a line chart of revenue over the selected range, a bar chart of top 5 products by sales, and 4 KPI cards (Total Revenue, Orders, Avg Order Value, Conversion Rate) that recompute when the date range changes. Use mock/generated data. Include a CSV export button for the currently visible data."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "hard-1-check-2",
+          "description": "4 KPI cards visible (Revenue, Orders, Avg Order Value, Conversion Rate)",
+          "passed": false,
+          "actual": "rev:false, orders:false, avg:false, conv:false",
+          "expected": "All 4 KPI metrics present in text",
+          "durationMs": 52
+        },
+        {
+          "checkId": "hard-1-check-3",
+          "description": "Date-range selector present (7, 30, 90 days options)",
+          "passed": false,
+          "actual": "false",
+          "expected": "Date range controls visible",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "hard-1-check-4",
+          "description": "Changing date range recomputes KPI values",
+          "passed": false,
+          "actual": "No change detected",
+          "expected": "KPI values change on date range switch",
+          "durationMs": 5027
+        },
+        {
+          "checkId": "hard-1-check-5",
+          "description": "Line chart and Bar chart elements rendered",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "At least 1 chart element (svg/canvas/container) rendered",
+          "durationMs": 18
+        },
+        {
+          "checkId": "hard-1-check-6",
+          "description": "CSV Export button present and clickable",
+          "passed": false,
+          "actual": "false",
+          "expected": "CSV export button visible",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "hard-1-check-7",
+          "description": "Charts and metrics remain populated after range toggle",
+          "passed": true,
+          "actual": "Found 1 chart elements",
+          "expected": "Charts still present after toggle",
+          "durationMs": 5026
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-2",
+        "tier": "hard",
+        "title": "Real-Time Chat UI (Simulated)",
+        "totalChecks": 7,
+        "buildPrompt": "Build a chat interface with a conversation list sidebar (5 mock contacts, showing last message preview and unread badge), a message thread view, a message input with send button, and simulated 'typing...' and auto-reply behavior (bot responds 1-2 seconds after user sends a message). Clicking a different contact switches the thread and clears its unread badge."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "hard-2-check-2",
+          "description": "Contact list sidebar visible with contacts",
+          "passed": false,
+          "actual": "Found contact element candidates: 0",
+          "expected": "Contact list visible in sidebar",
+          "durationMs": 157
+        },
+        {
+          "checkId": "hard-2-check-3",
+          "description": "Sending a message adds it to the active thread",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"text\"], textarea, [placeholder*=\"message\"], [placeholder*=\"Type\"]').first()\u001b[22m\n",
+          "durationMs": 2020
+        },
+        {
+          "checkId": "hard-2-check-4",
+          "description": "Simulated 'typing...' indicator or bot response indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "'typing...' indicator visible",
+          "durationMs": 2053
+        },
+        {
+          "checkId": "hard-2-check-5",
+          "description": "Bot auto-reply message arrives within 3.5 seconds",
+          "passed": true,
+          "actual": "Reply detected",
+          "expected": "Auto-reply message in thread",
+          "durationMs": 2520
+        },
+        {
+          "checkId": "hard-2-check-6",
+          "description": "Clicking another contact switches the thread view",
+          "passed": true,
+          "actual": "Switched to new empty/different thread",
+          "expected": "Thread content changes on contact selection",
+          "durationMs": 2017
+        },
+        {
+          "checkId": "hard-2-check-7",
+          "description": "Unread badges clear or update when contact is selected",
+          "passed": true,
+          "actual": "Badges remaining: 0",
+          "expected": "Unread state handled",
+          "durationMs": 9
+        }
+      ],
+      "playwright_checks_passed": "4/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-2",
+        "tier": "hard",
+        "title": "Real-Time Chat UI (Simulated)",
+        "totalChecks": 7,
+        "buildPrompt": "Build a chat interface with a conversation list sidebar (5 mock contacts, showing last message preview and unread badge), a message thread view, a message input with send button, and simulated 'typing...' and auto-reply behavior (bot responds 1-2 seconds after user sends a message). Clicking a different contact switches the thread and clears its unread badge."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "hard-2-check-2",
+          "description": "Contact list sidebar visible with contacts",
+          "passed": false,
+          "actual": "Found contact element candidates: 0",
+          "expected": "Contact list visible in sidebar",
+          "durationMs": 63
+        },
+        {
+          "checkId": "hard-2-check-3",
+          "description": "Sending a message adds it to the active thread",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"text\"], textarea, [placeholder*=\"message\"], [placeholder*=\"Type\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "hard-2-check-4",
+          "description": "Simulated 'typing...' indicator or bot response indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "'typing...' indicator visible",
+          "durationMs": 2040
+        },
+        {
+          "checkId": "hard-2-check-5",
+          "description": "Bot auto-reply message arrives within 3.5 seconds",
+          "passed": true,
+          "actual": "Reply detected",
+          "expected": "Auto-reply message in thread",
+          "durationMs": 2531
+        },
+        {
+          "checkId": "hard-2-check-6",
+          "description": "Clicking another contact switches the thread view",
+          "passed": true,
+          "actual": "Switched to new empty/different thread",
+          "expected": "Thread content changes on contact selection",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "hard-2-check-7",
+          "description": "Unread badges clear or update when contact is selected",
+          "passed": true,
+          "actual": "Badges remaining: 0",
+          "expected": "Unread state handled",
+          "durationMs": 5
+        }
+      ],
+      "playwright_checks_passed": "4/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-2",
+        "tier": "hard",
+        "title": "Real-Time Chat UI (Simulated)",
+        "totalChecks": 7,
+        "buildPrompt": "Build a chat interface with a conversation list sidebar (5 mock contacts, showing last message preview and unread badge), a message thread view, a message input with send button, and simulated 'typing...' and auto-reply behavior (bot responds 1-2 seconds after user sends a message). Clicking a different contact switches the thread and clears its unread badge."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "hard-2-check-2",
+          "description": "Contact list sidebar visible with contacts",
+          "passed": false,
+          "actual": "Found contact element candidates: 0",
+          "expected": "Contact list visible in sidebar",
+          "durationMs": 96
+        },
+        {
+          "checkId": "hard-2-check-3",
+          "description": "Sending a message adds it to the active thread",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"text\"], textarea, [placeholder*=\"message\"], [placeholder*=\"Type\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "hard-2-check-4",
+          "description": "Simulated 'typing...' indicator or bot response indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "'typing...' indicator visible",
+          "durationMs": 2073
+        },
+        {
+          "checkId": "hard-2-check-5",
+          "description": "Bot auto-reply message arrives within 3.5 seconds",
+          "passed": true,
+          "actual": "Reply detected",
+          "expected": "Auto-reply message in thread",
+          "durationMs": 2521
+        },
+        {
+          "checkId": "hard-2-check-6",
+          "description": "Clicking another contact switches the thread view",
+          "passed": true,
+          "actual": "Switched to new empty/different thread",
+          "expected": "Thread content changes on contact selection",
+          "durationMs": 2016
+        },
+        {
+          "checkId": "hard-2-check-7",
+          "description": "Unread badges clear or update when contact is selected",
+          "passed": true,
+          "actual": "Badges remaining: 0",
+          "expected": "Unread state handled",
+          "durationMs": 6
+        }
+      ],
+      "playwright_checks_passed": "4/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-2",
+        "tier": "hard",
+        "title": "Real-Time Chat UI (Simulated)",
+        "totalChecks": 7,
+        "buildPrompt": "Build a chat interface with a conversation list sidebar (5 mock contacts, showing last message preview and unread badge), a message thread view, a message input with send button, and simulated 'typing...' and auto-reply behavior (bot responds 1-2 seconds after user sends a message). Clicking a different contact switches the thread and clears its unread badge."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "hard-2-check-2",
+          "description": "Contact list sidebar visible with contacts",
+          "passed": false,
+          "actual": "Found contact element candidates: 0",
+          "expected": "Contact list visible in sidebar",
+          "durationMs": 65
+        },
+        {
+          "checkId": "hard-2-check-3",
+          "description": "Sending a message adds it to the active thread",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"text\"], textarea, [placeholder*=\"message\"], [placeholder*=\"Type\"]').first()\u001b[22m\n",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "hard-2-check-4",
+          "description": "Simulated 'typing...' indicator or bot response indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "'typing...' indicator visible",
+          "durationMs": 2042
+        },
+        {
+          "checkId": "hard-2-check-5",
+          "description": "Bot auto-reply message arrives within 3.5 seconds",
+          "passed": true,
+          "actual": "Reply detected",
+          "expected": "Auto-reply message in thread",
+          "durationMs": 2513
+        },
+        {
+          "checkId": "hard-2-check-6",
+          "description": "Clicking another contact switches the thread view",
+          "passed": true,
+          "actual": "Switched to new empty/different thread",
+          "expected": "Thread content changes on contact selection",
+          "durationMs": 2015
+        },
+        {
+          "checkId": "hard-2-check-7",
+          "description": "Unread badges clear or update when contact is selected",
+          "passed": true,
+          "actual": "Badges remaining: 0",
+          "expected": "Unread state handled",
+          "durationMs": 13
+        }
+      ],
+      "playwright_checks_passed": "4/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-2",
+        "tier": "hard",
+        "title": "Real-Time Chat UI (Simulated)",
+        "totalChecks": 7,
+        "buildPrompt": "Build a chat interface with a conversation list sidebar (5 mock contacts, showing last message preview and unread badge), a message thread view, a message input with send button, and simulated 'typing...' and auto-reply behavior (bot responds 1-2 seconds after user sends a message). Clicking a different contact switches the thread and clears its unread badge."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "hard-2-check-2",
+          "description": "Contact list sidebar visible with contacts",
+          "passed": false,
+          "actual": "Found contact element candidates: 0",
+          "expected": "Contact list visible in sidebar",
+          "durationMs": 69
+        },
+        {
+          "checkId": "hard-2-check-3",
+          "description": "Sending a message adds it to the active thread",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"text\"], textarea, [placeholder*=\"message\"], [placeholder*=\"Type\"]').first()\u001b[22m\n",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "hard-2-check-4",
+          "description": "Simulated 'typing...' indicator or bot response indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "'typing...' indicator visible",
+          "durationMs": 2062
+        },
+        {
+          "checkId": "hard-2-check-5",
+          "description": "Bot auto-reply message arrives within 3.5 seconds",
+          "passed": true,
+          "actual": "Reply detected",
+          "expected": "Auto-reply message in thread",
+          "durationMs": 2515
+        },
+        {
+          "checkId": "hard-2-check-6",
+          "description": "Clicking another contact switches the thread view",
+          "passed": true,
+          "actual": "Switched to new empty/different thread",
+          "expected": "Thread content changes on contact selection",
+          "durationMs": 2020
+        },
+        {
+          "checkId": "hard-2-check-7",
+          "description": "Unread badges clear or update when contact is selected",
+          "passed": true,
+          "actual": "Badges remaining: 0",
+          "expected": "Unread state handled",
+          "durationMs": 5
+        }
+      ],
+      "playwright_checks_passed": "4/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-2",
+        "tier": "hard",
+        "title": "Real-Time Chat UI (Simulated)",
+        "totalChecks": 7,
+        "buildPrompt": "Build a chat interface with a conversation list sidebar (5 mock contacts, showing last message preview and unread badge), a message thread view, a message input with send button, and simulated 'typing...' and auto-reply behavior (bot responds 1-2 seconds after user sends a message). Clicking a different contact switches the thread and clears its unread badge."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "hard-2-check-2",
+          "description": "Contact list sidebar visible with contacts",
+          "passed": false,
+          "actual": "Found contact element candidates: 0",
+          "expected": "Contact list visible in sidebar",
+          "durationMs": 57
+        },
+        {
+          "checkId": "hard-2-check-3",
+          "description": "Sending a message adds it to the active thread",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"text\"], textarea, [placeholder*=\"message\"], [placeholder*=\"Type\"]').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "hard-2-check-4",
+          "description": "Simulated 'typing...' indicator or bot response indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "'typing...' indicator visible",
+          "durationMs": 2054
+        },
+        {
+          "checkId": "hard-2-check-5",
+          "description": "Bot auto-reply message arrives within 3.5 seconds",
+          "passed": true,
+          "actual": "Reply detected",
+          "expected": "Auto-reply message in thread",
+          "durationMs": 2514
+        },
+        {
+          "checkId": "hard-2-check-6",
+          "description": "Clicking another contact switches the thread view",
+          "passed": true,
+          "actual": "Switched to new empty/different thread",
+          "expected": "Thread content changes on contact selection",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "hard-2-check-7",
+          "description": "Unread badges clear or update when contact is selected",
+          "passed": true,
+          "actual": "Badges remaining: 0",
+          "expected": "Unread state handled",
+          "durationMs": 4
+        }
+      ],
+      "playwright_checks_passed": "4/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-2",
+        "tier": "hard",
+        "title": "Real-Time Chat UI (Simulated)",
+        "totalChecks": 7,
+        "buildPrompt": "Build a chat interface with a conversation list sidebar (5 mock contacts, showing last message preview and unread badge), a message thread view, a message input with send button, and simulated 'typing...' and auto-reply behavior (bot responds 1-2 seconds after user sends a message). Clicking a different contact switches the thread and clears its unread badge."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "hard-2-check-2",
+          "description": "Contact list sidebar visible with contacts",
+          "passed": false,
+          "actual": "Found contact element candidates: 0",
+          "expected": "Contact list visible in sidebar",
+          "durationMs": 89
+        },
+        {
+          "checkId": "hard-2-check-3",
+          "description": "Sending a message adds it to the active thread",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"text\"], textarea, [placeholder*=\"message\"], [placeholder*=\"Type\"]').first()\u001b[22m\n",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "hard-2-check-4",
+          "description": "Simulated 'typing...' indicator or bot response indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "'typing...' indicator visible",
+          "durationMs": 2035
+        },
+        {
+          "checkId": "hard-2-check-5",
+          "description": "Bot auto-reply message arrives within 3.5 seconds",
+          "passed": true,
+          "actual": "Reply detected",
+          "expected": "Auto-reply message in thread",
+          "durationMs": 2513
+        },
+        {
+          "checkId": "hard-2-check-6",
+          "description": "Clicking another contact switches the thread view",
+          "passed": true,
+          "actual": "Switched to new empty/different thread",
+          "expected": "Thread content changes on contact selection",
+          "durationMs": 2017
+        },
+        {
+          "checkId": "hard-2-check-7",
+          "description": "Unread badges clear or update when contact is selected",
+          "passed": true,
+          "actual": "Badges remaining: 0",
+          "expected": "Unread state handled",
+          "durationMs": 6
+        }
+      ],
+      "playwright_checks_passed": "4/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-2",
+        "tier": "hard",
+        "title": "Real-Time Chat UI (Simulated)",
+        "totalChecks": 7,
+        "buildPrompt": "Build a chat interface with a conversation list sidebar (5 mock contacts, showing last message preview and unread badge), a message thread view, a message input with send button, and simulated 'typing...' and auto-reply behavior (bot responds 1-2 seconds after user sends a message). Clicking a different contact switches the thread and clears its unread badge."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-2-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "hard-2-check-2",
+          "description": "Contact list sidebar visible with contacts",
+          "passed": false,
+          "actual": "Found contact element candidates: 0",
+          "expected": "Contact list visible in sidebar",
+          "durationMs": 82
+        },
+        {
+          "checkId": "hard-2-check-3",
+          "description": "Sending a message adds it to the active thread",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[type=\"text\"], textarea, [placeholder*=\"message\"], [placeholder*=\"Type\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "hard-2-check-4",
+          "description": "Simulated 'typing...' indicator or bot response indicator appears",
+          "passed": false,
+          "actual": "Not detected",
+          "expected": "'typing...' indicator visible",
+          "durationMs": 2059
+        },
+        {
+          "checkId": "hard-2-check-5",
+          "description": "Bot auto-reply message arrives within 3.5 seconds",
+          "passed": true,
+          "actual": "Reply detected",
+          "expected": "Auto-reply message in thread",
+          "durationMs": 2572
+        },
+        {
+          "checkId": "hard-2-check-6",
+          "description": "Clicking another contact switches the thread view",
+          "passed": true,
+          "actual": "Switched to new empty/different thread",
+          "expected": "Thread content changes on contact selection",
+          "durationMs": 2024
+        },
+        {
+          "checkId": "hard-2-check-7",
+          "description": "Unread badges clear or update when contact is selected",
+          "passed": true,
+          "actual": "Badges remaining: 0",
+          "expected": "Unread state handled",
+          "durationMs": 5
+        }
+      ],
+      "playwright_checks_passed": "4/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-3",
+        "tier": "hard",
+        "title": "Booking/Reservation Calendar",
+        "totalChecks": 7,
+        "buildPrompt": "Build a booking calendar app: month-view calendar, clicking a date opens a time-slot picker (9am-5pm, 1-hour slots), already-booked slots are disabled/greyed, booking a slot requires name + email, and booked slots show up visually on the calendar (e.g. a dot or count badge on that date). Include a 'My Bookings' list view showing all bookings with a cancel option that frees the slot back up."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "hard-3-check-2",
+          "description": "Month-view calendar visible with date grid",
+          "passed": false,
+          "actual": "Date visible: false, Month text: false",
+          "expected": "Calendar grid visible on screen",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "hard-3-check-3",
+          "description": "Clicking a date displays available time slots",
+          "passed": true,
+          "actual": "Slot elements found: 1",
+          "expected": "Time slot options visible after clicking date",
+          "durationMs": 2023
+        },
+        {
+          "checkId": "hard-3-check-4",
+          "description": "Booking a time slot with Name + Email succeeds",
+          "passed": false,
+          "actual": "Confirmation not detected",
+          "expected": "Booking confirmed for Jane Doe Benchmark",
+          "durationMs": 6532
+        },
+        {
+          "checkId": "hard-3-check-5",
+          "description": "Booked date shows visual indicator (badge/dot/highlight)",
+          "passed": false,
+          "actual": "Indicators found: 0",
+          "expected": "Visual indicator present on booked date",
+          "durationMs": 20
+        },
+        {
+          "checkId": "hard-3-check-6",
+          "description": "'My Bookings' section displays the newly booked reservation",
+          "passed": false,
+          "actual": "Not found in list",
+          "expected": "Booking for Jane Doe Benchmark listed in My Bookings",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "hard-3-check-7",
+          "description": "Cancelling booking removes it from list and frees up slot",
+          "passed": true,
+          "actual": "Booking successfully removed",
+          "expected": "Booking removed after cancellation",
+          "durationMs": 2015
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-3",
+        "tier": "hard",
+        "title": "Booking/Reservation Calendar",
+        "totalChecks": 7,
+        "buildPrompt": "Build a booking calendar app: month-view calendar, clicking a date opens a time-slot picker (9am-5pm, 1-hour slots), already-booked slots are disabled/greyed, booking a slot requires name + email, and booked slots show up visually on the calendar (e.g. a dot or count badge on that date). Include a 'My Bookings' list view showing all bookings with a cancel option that frees the slot back up."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "hard-3-check-2",
+          "description": "Month-view calendar visible with date grid",
+          "passed": false,
+          "actual": "Date visible: false, Month text: false",
+          "expected": "Calendar grid visible on screen",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "hard-3-check-3",
+          "description": "Clicking a date displays available time slots",
+          "passed": true,
+          "actual": "Slot elements found: 1",
+          "expected": "Time slot options visible after clicking date",
+          "durationMs": 2025
+        },
+        {
+          "checkId": "hard-3-check-4",
+          "description": "Booking a time slot with Name + Email succeeds",
+          "passed": false,
+          "actual": "Confirmation not detected",
+          "expected": "Booking confirmed for Jane Doe Benchmark",
+          "durationMs": 6493
+        },
+        {
+          "checkId": "hard-3-check-5",
+          "description": "Booked date shows visual indicator (badge/dot/highlight)",
+          "passed": false,
+          "actual": "Indicators found: 0",
+          "expected": "Visual indicator present on booked date",
+          "durationMs": 15
+        },
+        {
+          "checkId": "hard-3-check-6",
+          "description": "'My Bookings' section displays the newly booked reservation",
+          "passed": false,
+          "actual": "Not found in list",
+          "expected": "Booking for Jane Doe Benchmark listed in My Bookings",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "hard-3-check-7",
+          "description": "Cancelling booking removes it from list and frees up slot",
+          "passed": true,
+          "actual": "Booking successfully removed",
+          "expected": "Booking removed after cancellation",
+          "durationMs": 2020
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-3",
+        "tier": "hard",
+        "title": "Booking/Reservation Calendar",
+        "totalChecks": 7,
+        "buildPrompt": "Build a booking calendar app: month-view calendar, clicking a date opens a time-slot picker (9am-5pm, 1-hour slots), already-booked slots are disabled/greyed, booking a slot requires name + email, and booked slots show up visually on the calendar (e.g. a dot or count badge on that date). Include a 'My Bookings' list view showing all bookings with a cancel option that frees the slot back up."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "hard-3-check-2",
+          "description": "Month-view calendar visible with date grid",
+          "passed": false,
+          "actual": "Date visible: false, Month text: false",
+          "expected": "Calendar grid visible on screen",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "hard-3-check-3",
+          "description": "Clicking a date displays available time slots",
+          "passed": true,
+          "actual": "Slot elements found: 1",
+          "expected": "Time slot options visible after clicking date",
+          "durationMs": 2017
+        },
+        {
+          "checkId": "hard-3-check-4",
+          "description": "Booking a time slot with Name + Email succeeds",
+          "passed": false,
+          "actual": "Confirmation not detected",
+          "expected": "Booking confirmed for Jane Doe Benchmark",
+          "durationMs": 6484
+        },
+        {
+          "checkId": "hard-3-check-5",
+          "description": "Booked date shows visual indicator (badge/dot/highlight)",
+          "passed": false,
+          "actual": "Indicators found: 0",
+          "expected": "Visual indicator present on booked date",
+          "durationMs": 19
+        },
+        {
+          "checkId": "hard-3-check-6",
+          "description": "'My Bookings' section displays the newly booked reservation",
+          "passed": false,
+          "actual": "Not found in list",
+          "expected": "Booking for Jane Doe Benchmark listed in My Bookings",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "hard-3-check-7",
+          "description": "Cancelling booking removes it from list and frees up slot",
+          "passed": true,
+          "actual": "Booking successfully removed",
+          "expected": "Booking removed after cancellation",
+          "durationMs": 2008
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-3",
+        "tier": "hard",
+        "title": "Booking/Reservation Calendar",
+        "totalChecks": 7,
+        "buildPrompt": "Build a booking calendar app: month-view calendar, clicking a date opens a time-slot picker (9am-5pm, 1-hour slots), already-booked slots are disabled/greyed, booking a slot requires name + email, and booked slots show up visually on the calendar (e.g. a dot or count badge on that date). Include a 'My Bookings' list view showing all bookings with a cancel option that frees the slot back up."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 6,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "hard-3-check-2",
+          "description": "Month-view calendar visible with date grid",
+          "passed": false,
+          "actual": "Date visible: false, Month text: false",
+          "expected": "Calendar grid visible on screen",
+          "durationMs": 2019
+        },
+        {
+          "checkId": "hard-3-check-3",
+          "description": "Clicking a date displays available time slots",
+          "passed": true,
+          "actual": "Slot elements found: 1",
+          "expected": "Time slot options visible after clicking date",
+          "durationMs": 2018
+        },
+        {
+          "checkId": "hard-3-check-4",
+          "description": "Booking a time slot with Name + Email succeeds",
+          "passed": false,
+          "actual": "Confirmation not detected",
+          "expected": "Booking confirmed for Jane Doe Benchmark",
+          "durationMs": 6427
+        },
+        {
+          "checkId": "hard-3-check-5",
+          "description": "Booked date shows visual indicator (badge/dot/highlight)",
+          "passed": false,
+          "actual": "Indicators found: 0",
+          "expected": "Visual indicator present on booked date",
+          "durationMs": 15
+        },
+        {
+          "checkId": "hard-3-check-6",
+          "description": "'My Bookings' section displays the newly booked reservation",
+          "passed": false,
+          "actual": "Not found in list",
+          "expected": "Booking for Jane Doe Benchmark listed in My Bookings",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "hard-3-check-7",
+          "description": "Cancelling booking removes it from list and frees up slot",
+          "passed": true,
+          "actual": "Booking successfully removed",
+          "expected": "Booking removed after cancellation",
+          "durationMs": 2009
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "hard-3",
+        "tier": "hard",
+        "title": "Booking/Reservation Calendar",
+        "totalChecks": 7,
+        "buildPrompt": "Build a booking calendar app: month-view calendar, clicking a date opens a time-slot picker (9am-5pm, 1-hour slots), already-booked slots are disabled/greyed, booking a slot requires name + email, and booked slots show up visually on the calendar (e.g. a dot or count badge on that date). Include a 'My Bookings' list view showing all bookings with a cancel option that frees the slot back up."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "hard-3-check-2",
+          "description": "Month-view calendar visible with date grid",
+          "passed": false,
+          "actual": "Date visible: false, Month text: false",
+          "expected": "Calendar grid visible on screen",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "hard-3-check-3",
+          "description": "Clicking a date displays available time slots",
+          "passed": true,
+          "actual": "Slot elements found: 1",
+          "expected": "Time slot options visible after clicking date",
+          "durationMs": 2062
+        },
+        {
+          "checkId": "hard-3-check-4",
+          "description": "Booking a time slot with Name + Email succeeds",
+          "passed": false,
+          "actual": "Confirmation not detected",
+          "expected": "Booking confirmed for Jane Doe Benchmark",
+          "durationMs": 6572
+        },
+        {
+          "checkId": "hard-3-check-5",
+          "description": "Booked date shows visual indicator (badge/dot/highlight)",
+          "passed": false,
+          "actual": "Indicators found: 0",
+          "expected": "Visual indicator present on booked date",
+          "durationMs": 34
+        },
+        {
+          "checkId": "hard-3-check-6",
+          "description": "'My Bookings' section displays the newly booked reservation",
+          "passed": false,
+          "actual": "Not found in list",
+          "expected": "Booking for Jane Doe Benchmark listed in My Bookings",
+          "durationMs": 2018
+        },
+        {
+          "checkId": "hard-3-check-7",
+          "description": "Cancelling booking removes it from list and frees up slot",
+          "passed": true,
+          "actual": "Booking successfully removed",
+          "expected": "Booking removed after cancellation",
+          "durationMs": 2012
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-3",
+        "tier": "hard",
+        "title": "Booking/Reservation Calendar",
+        "totalChecks": 7,
+        "buildPrompt": "Build a booking calendar app: month-view calendar, clicking a date opens a time-slot picker (9am-5pm, 1-hour slots), already-booked slots are disabled/greyed, booking a slot requires name + email, and booked slots show up visually on the calendar (e.g. a dot or count badge on that date). Include a 'My Bookings' list view showing all bookings with a cancel option that frees the slot back up."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2014
+        },
+        {
+          "checkId": "hard-3-check-2",
+          "description": "Month-view calendar visible with date grid",
+          "passed": false,
+          "actual": "Date visible: false, Month text: false",
+          "expected": "Calendar grid visible on screen",
+          "durationMs": 2014
+        },
+        {
+          "checkId": "hard-3-check-3",
+          "description": "Clicking a date displays available time slots",
+          "passed": true,
+          "actual": "Slot elements found: 1",
+          "expected": "Time slot options visible after clicking date",
+          "durationMs": 2019
+        },
+        {
+          "checkId": "hard-3-check-4",
+          "description": "Booking a time slot with Name + Email succeeds",
+          "passed": false,
+          "actual": "Confirmation not detected",
+          "expected": "Booking confirmed for Jane Doe Benchmark",
+          "durationMs": 6510
+        },
+        {
+          "checkId": "hard-3-check-5",
+          "description": "Booked date shows visual indicator (badge/dot/highlight)",
+          "passed": false,
+          "actual": "Indicators found: 0",
+          "expected": "Visual indicator present on booked date",
+          "durationMs": 11
+        },
+        {
+          "checkId": "hard-3-check-6",
+          "description": "'My Bookings' section displays the newly booked reservation",
+          "passed": false,
+          "actual": "Not found in list",
+          "expected": "Booking for Jane Doe Benchmark listed in My Bookings",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "hard-3-check-7",
+          "description": "Cancelling booking removes it from list and frees up slot",
+          "passed": true,
+          "actual": "Booking successfully removed",
+          "expected": "Booking removed after cancellation",
+          "durationMs": 2010
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-3",
+        "tier": "hard",
+        "title": "Booking/Reservation Calendar",
+        "totalChecks": 7,
+        "buildPrompt": "Build a booking calendar app: month-view calendar, clicking a date opens a time-slot picker (9am-5pm, 1-hour slots), already-booked slots are disabled/greyed, booking a slot requires name + email, and booked slots show up visually on the calendar (e.g. a dot or count badge on that date). Include a 'My Bookings' list view showing all bookings with a cancel option that frees the slot back up."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "hard-3-check-2",
+          "description": "Month-view calendar visible with date grid",
+          "passed": false,
+          "actual": "Date visible: false, Month text: false",
+          "expected": "Calendar grid visible on screen",
+          "durationMs": 2024
+        },
+        {
+          "checkId": "hard-3-check-3",
+          "description": "Clicking a date displays available time slots",
+          "passed": true,
+          "actual": "Slot elements found: 1",
+          "expected": "Time slot options visible after clicking date",
+          "durationMs": 2031
+        },
+        {
+          "checkId": "hard-3-check-4",
+          "description": "Booking a time slot with Name + Email succeeds",
+          "passed": false,
+          "actual": "Confirmation not detected",
+          "expected": "Booking confirmed for Jane Doe Benchmark",
+          "durationMs": 6516
+        },
+        {
+          "checkId": "hard-3-check-5",
+          "description": "Booked date shows visual indicator (badge/dot/highlight)",
+          "passed": false,
+          "actual": "Indicators found: 0",
+          "expected": "Visual indicator present on booked date",
+          "durationMs": 11
+        },
+        {
+          "checkId": "hard-3-check-6",
+          "description": "'My Bookings' section displays the newly booked reservation",
+          "passed": false,
+          "actual": "Not found in list",
+          "expected": "Booking for Jane Doe Benchmark listed in My Bookings",
+          "durationMs": 2024
+        },
+        {
+          "checkId": "hard-3-check-7",
+          "description": "Cancelling booking removes it from list and frees up slot",
+          "passed": true,
+          "actual": "Booking successfully removed",
+          "expected": "Booking removed after cancellation",
+          "durationMs": 2022
+        }
+      ],
+      "playwright_checks_passed": "3/7",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "hard-3",
+        "tier": "hard",
+        "title": "Booking/Reservation Calendar",
+        "totalChecks": 7,
+        "buildPrompt": "Build a booking calendar app: month-view calendar, clicking a date opens a time-slot picker (9am-5pm, 1-hour slots), already-booked slots are disabled/greyed, booking a slot requires name + email, and booked slots show up visually on the calendar (e.g. a dot or count badge on that date). Include a 'My Bookings' list view showing all bookings with a cancel option that frees the slot back up."
+      },
+      "build_success": true,
+      "console_errors_on_load": 2,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "hard-3-check-1",
+          "description": "Page loads without console errors",
+          "passed": false,
+          "actual": "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+          "expected": "no console errors",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "hard-3-check-2",
+          "description": "Month-view calendar visible with date grid",
+          "passed": false,
+          "actual": "Date visible: false, Month text: false",
+          "expected": "Calendar grid visible on screen",
+          "durationMs": 2024
+        },
+        {
+          "checkId": "hard-3-check-3",
+          "description": "Clicking a date displays available time slots",
+          "passed": true,
+          "actual": "Slot elements found: 1",
+          "expected": "Time slot options visible after clicking date",
+          "durationMs": 2028
+        },
+        {
+          "checkId": "hard-3-check-4",
+          "description": "Booking a time slot with Name + Email succeeds",
+          "passed": false,
+          "actual": "Confirmation not detected",
+          "expected": "Booking confirmed for Jane Doe Benchmark",
+          "durationMs": 6543
+        },
+        {
+          "checkId": "hard-3-check-5",
+          "description": "Booked date shows visual indicator (badge/dot/highlight)",
+          "passed": false,
+          "actual": "Indicators found: 0",
+          "expected": "Visual indicator present on booked date",
+          "durationMs": 21
+        },
+        {
+          "checkId": "hard-3-check-6",
+          "description": "'My Bookings' section displays the newly booked reservation",
+          "passed": false,
+          "actual": "Not found in list",
+          "expected": "Booking for Jane Doe Benchmark listed in My Bookings",
+          "durationMs": 2021
+        },
+        {
+          "checkId": "hard-3-check-7",
+          "description": "Cancelling booking removes it from list and frees up slot",
+          "passed": true,
+          "actual": "Booking successfully removed",
+          "expected": "Booking removed after cancellation",
+          "durationMs": 2008
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    }
+  ],
+  "completedAt": "2026-09-14T08:28:30.521Z"
+}

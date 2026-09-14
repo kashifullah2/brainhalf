@@ -1,0 +1,33 @@
+{
+  "runId": "benchmark-2026-09-14T07-23-51-825Z",
+  "startedAt": "2026-09-14T07:23:51.825Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": false,
+      "responsive_pass_tablet": false,
+      "responsive_pass_mobile": false,
+      "checks": [],
+      "playwright_checks_passed": "0/7",
+      "reviewer_notes": ""
+    }
+  ],
+  "completedAt": "2026-09-14T07:24:06.259Z"
+}

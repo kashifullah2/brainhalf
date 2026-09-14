@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Settings, Plus, Layers, Trash2, X, Cpu, Server, PanelLeftClose, PanelLeftOpen, Code2, GitBranch, GitMerge } from 'lucide-react';
-import { Project, getProjects, createProject, createBranch, mergeBranches, deleteProject, formatRelativeTime } from '../lib/project-store';
+import { Sparkles, Settings, Plus, Layers, Trash2, X, Cpu, Server, PanelLeftClose, PanelLeftOpen, Code2, GitBranch, GitMerge, MoreHorizontal, Share2, Check, BrainCircuit } from 'lucide-react';
+import { Project, getProjects, createProject, createBranch, mergeBranches, deleteProject, formatRelativeTime, getProjectDisplayTitle } from '../lib/project-store';
 import { appEvents } from '../lib/events';
 import ConfirmModal from './ConfirmModal';
+import BrainHalfLogo from './BrainHalfLogo';
 
 interface SidebarProps {
   activeProjectId: string;
@@ -17,6 +18,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
   const [projects, setProjects] = useState<Project[]>(() => getProjects());
   const [showSettings, setShowSettings] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [activeMenuProjectId, setActiveMenuProjectId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
 
   const refreshProjects = () => {
     setProjects(getProjects());
@@ -26,11 +30,43 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
     const unsubRenamed = appEvents.on('project-renamed', () => {
       refreshProjects();
     });
+    const unsubMessages = appEvents.on('project-messages-updated', () => {
+      refreshProjects();
+    });
 
     return () => {
       unsubRenamed();
+      unsubMessages();
     };
   }, []);
+
+  // Keyboard navigation and click-outside for project menu & mobile drawer
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActiveMenuProjectId(null);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (activeMenuProjectId) {
+          setActiveMenuProjectId(null);
+        } else if (isMobileOpen && onCloseMobile) {
+          onCloseMobile();
+        } else if (showSettings) {
+          setShowSettings(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeMenuProjectId, isMobileOpen, onCloseMobile, showSettings]);
 
   const handleNewProject = () => {
     const existingNames = new Set(projects.map(p => p.name));
@@ -45,14 +81,32 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
 
   const handleBranchProject = async (e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation();
+    setActiveMenuProjectId(null);
     const branchName = `${name} (Branch)`;
     const newProj = await createBranch(id, branchName);
     refreshProjects();
     onSelectProject(newProj.id);
   };
 
+  const handleShareProject = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const shareUrl = `${window.location.origin}${window.location.pathname}?project=${id}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedId(id);
+      setTimeout(() => {
+        setCopiedId(null);
+        setActiveMenuProjectId(null);
+      }, 1500);
+    } catch {
+      prompt('Copy project URL:', shareUrl);
+      setActiveMenuProjectId(null);
+    }
+  };
+
   const handleMergeProject = async (e: React.MouseEvent, id: string, name: string) => {
     e.stopPropagation();
+    setActiveMenuProjectId(null);
     const res = await mergeBranches(activeProjectId, id);
     refreshProjects();
     if (res.hasConflict) {
@@ -76,6 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
 
   const handleDeleteProject = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    setActiveMenuProjectId(null);
     setProjectToDelete(id);
   };
 
@@ -110,12 +165,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
       }}>
         {!collapsed ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="sidebar-brand-badge">
-              <img 
-                src="/brainhalflogo.png" 
-                alt="BrainHalf Logo" 
-                style={{ width: '20px', height: '20px', objectFit: 'contain', borderRadius: '4px' }} 
-              />
+            <div className="sidebar-brand-badge" style={{ color: '#818cf8' }}>
+              <BrainHalfLogo size={16} strokeWidth={1.75} />
             </div>
             <span style={{ 
               fontFamily: 'var(--font-sans)', 
@@ -128,12 +179,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             </span>
           </div>
         ) : (
-          <div className="sidebar-brand-badge" onClick={onToggleCollapse} style={{ cursor: 'pointer' }} title="Expand Sidebar" aria-label="Expand Sidebar">
-            <img 
-              src="/brainhalflogo.png" 
-              alt="BrainHalf Logo" 
-              style={{ width: '20px', height: '20px', objectFit: 'contain', borderRadius: '4px' }} 
-            />
+          <div className="sidebar-brand-badge" onClick={onToggleCollapse} style={{ cursor: 'pointer', color: '#818cf8' }} title="Expand Sidebar" aria-label="Expand Sidebar">
+            <BrainHalfLogo size={16} strokeWidth={1.75} />
           </div>
         )}
 
@@ -146,7 +193,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               aria-label="Close Sidebar"
               style={{ color: 'var(--text-muted)', padding: '6px' }}
             >
-              <X size={16} />
+              <X size={16} strokeWidth={1.75} />
             </button>
           )}
 
@@ -158,7 +205,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               aria-label="Collapse Sidebar"
               style={{ color: 'var(--text-muted)' }}
             >
-              <PanelLeftClose size={15} />
+              <PanelLeftClose size={16} strokeWidth={1.75} />
             </button>
           )}
         </div>
@@ -178,7 +225,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             gap: '7px',
             background: '#ffffff',
             color: '#09090b',
-            border: '1px solid rgba(255, 255, 255, 0.15)',
+            border: 'none',
             borderRadius: '6px',
             padding: collapsed ? '8px' : '7px 12px',
             fontWeight: 600,
@@ -194,7 +241,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             e.currentTarget.style.background = '#ffffff';
           }}
         >
-          <Plus size={14} strokeWidth={2.5} />
+          <Plus size={16} strokeWidth={1.75} />
           {!collapsed && <span>New project</span>}
         </button>
       </div>
@@ -213,7 +260,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             alignItems: 'center',
             gap: '6px'
           }}>
-            <Layers size={12} color="var(--color-neutral)" />
+            <Layers size={16} strokeWidth={1.75} color="var(--color-neutral)" />
             <span>Projects</span>
           </div>
         )}
@@ -221,125 +268,155 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
         {projects.map((proj, idx) => {
           const isActive = proj.id === activeProjectId;
           const ProjectIcon = Code2;
+          const displayTitle = getProjectDisplayTitle(proj);
           return (
             <div
               key={`${proj.id}-${idx}`}
               onClick={() => onSelectProject(proj.id)}
-              className="sidebar-nav-item"
-              title={collapsed ? `${proj.name} • ${proj.framework || 'React 18'}` : undefined}
+              className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+              title={collapsed ? `${displayTitle} • ${proj.framework || 'React 18'}` : displayTitle}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === 'Enter') onSelectProject(proj.id); }}
-              aria-label={`Select ${proj.name}`}
+              aria-label={`Select ${displayTitle}`}
               style={{
-                background: isActive ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                background: isActive ? 'rgba(255, 255, 255, 0.08)' : undefined,
                 color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                borderLeft: isActive && !collapsed ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'space-between',
-                padding: collapsed ? '9px 0' : '8px 10px',
-                transition: 'all 0.15s ease',
-                marginBottom: '2px'
-              } as any}
+                padding: collapsed ? '7px 0' : '5px 8px',
+                transition: 'background 0.15s ease, color 0.15s ease',
+                marginBottom: '1px'
+              }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, flex: 1, justifyContent: collapsed ? 'center' : 'flex-start' }}>
-                <ProjectIcon size={16} color={isActive ? '#ffffff' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, justifyContent: collapsed ? 'center' : 'flex-start' }}>
+                <ProjectIcon size={16} strokeWidth={1.75} color={isActive ? '#ffffff' : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
                 {!collapsed && (
-                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                    <span style={{ 
-                      fontSize: '13px', 
-                      whiteSpace: 'nowrap', 
-                      overflow: 'hidden', 
-                      textOverflow: 'ellipsis',
-                      fontWeight: isActive ? 600 : 400,
-                      color: isActive ? '#ffffff' : 'var(--text-primary)'
-                    }}>
-                      {proj.name}
-                    </span>
-                    <span style={{
-                      fontSize: '11px',
-                      color: 'var(--text-muted)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      marginTop: '2px'
-                    }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {formatRelativeTime(proj.updatedAt)}
-                      </span>
-                    </span>
-                  </div>
+                  <span style={{ 
+                    fontSize: '13px', 
+                    whiteSpace: 'nowrap', 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis',
+                    fontWeight: isActive ? 500 : 400,
+                    color: isActive ? '#ffffff' : 'var(--text-primary)',
+                    minWidth: 0,
+                    lineHeight: '18px'
+                  }}>
+                    {displayTitle}
+                  </span>
                 )}
               </div>
               {!collapsed && (
-                <div className="sidebar-actions" style={{ display: 'flex', gap: '2px' }}>
-                  <button
-                    onClick={(e) => handleBranchProject(e, proj.id, proj.name)}
-                    title="Branch project"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-muted)',
-                      cursor: 'pointer',
-                      padding: '3px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      opacity: 0.5,
-                      transition: 'all 0.2s',
-                      borderRadius: '4px'
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    color: 'var(--text-muted)',
+                    whiteSpace: 'nowrap',
+                    textAlign: 'right',
+                    fontVariantNumeric: 'tabular-nums',
+                    lineHeight: '18px'
+                  }}>
+                    {formatRelativeTime(proj.updatedAt)}
+                  </span>
+                  <div 
+                    className="sidebar-actions-menu-wrapper"
+                    style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <GitBranch size={13} />
-                  </button>
-                  {proj.id !== activeProjectId && (
                     <button
-                      onClick={(e) => handleMergeProject(e, proj.id, proj.name)}
-                      title={`Merge ${proj.name} into current project`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuProjectId(prev => prev === proj.id ? null : proj.id);
+                      }}
+                      title="Project actions"
+                      aria-label={`Actions for ${displayTitle}`}
+                      aria-expanded={activeMenuProjectId === proj.id}
                       style={{
-                        background: 'transparent',
+                        background: activeMenuProjectId === proj.id ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
                         border: 'none',
-                        color: 'var(--text-muted)',
+                        color: activeMenuProjectId === proj.id ? '#ffffff' : 'var(--text-muted)',
                         cursor: 'pointer',
                         padding: '3px',
                         display: 'flex',
                         alignItems: 'center',
-                        opacity: 0.5,
-                        transition: 'all 0.2s',
-                        borderRadius: '4px'
+                        justifyContent: 'center',
+                        borderRadius: '4px',
+                        minWidth: '22px',
+                        minHeight: '22px',
+                        transition: 'all 0.15s ease'
                       }}
-                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#38bdf8'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-muted)'; }}
                     >
-                      <GitMerge size={13} />
+                      <MoreHorizontal size={16} strokeWidth={1.75} />
                     </button>
-                  )}
-                  {projects.length > 1 && (
-                    <button
-                      onClick={(e) => handleDeleteProject(e, proj.id)}
-                      title="Delete project"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-muted)',
-                        cursor: 'pointer',
-                        padding: '3px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        opacity: 0.5,
-                        transition: 'all 0.2s',
-                        borderRadius: '4px'
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#f87171'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+
+                    {activeMenuProjectId === proj.id && (
+                      <div 
+                        ref={menuRef}
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          width: '180px',
+                          background: '#12141c',
+                          border: '1px solid var(--border-medium)',
+                          borderRadius: '8px',
+                          boxShadow: '0 12px 28px rgba(0, 0, 0, 0.65)',
+                          padding: '4px',
+                          zIndex: 1000,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px'
+                        }}
+                      >
+                        <button
+                          className="deploy-menu-item"
+                          onClick={(e) => handleBranchProject(e, proj.id, displayTitle)}
+                          style={{ padding: '6px 8px', fontSize: '12px' }}
+                        >
+                          <GitBranch size={16} strokeWidth={1.75} color="var(--color-neutral)" />
+                          <span>Branch Project</span>
+                        </button>
+
+                        {proj.id !== activeProjectId && (
+                          <button
+                            className="deploy-menu-item"
+                            onClick={(e) => handleMergeProject(e, proj.id, displayTitle)}
+                            style={{ padding: '6px 8px', fontSize: '12px' }}
+                          >
+                            <GitMerge size={16} strokeWidth={1.75} color="#38bdf8" />
+                            <span>Merge into Current</span>
+                          </button>
+                        )}
+
+                        <button
+                          className="deploy-menu-item"
+                          onClick={(e) => handleShareProject(e, proj.id)}
+                          style={{ padding: '6px 8px', fontSize: '12px' }}
+                        >
+                          {copiedId === proj.id ? <Check size={16} strokeWidth={1.75} color="var(--color-success)" /> : <Share2 size={16} strokeWidth={1.75} color="var(--color-neutral)" />}
+                          <span>{copiedId === proj.id ? 'Copied Link!' : 'Share Link'}</span>
+                        </button>
+
+                        {projects.length > 1 && (
+                          <>
+                            <div className="deploy-menu-divider" style={{ margin: '3px 0' }} />
+                            <button
+                              className="deploy-menu-item"
+                              onClick={(e) => handleDeleteProject(e, proj.id)}
+                              style={{ padding: '6px 8px', fontSize: '12px', color: 'var(--color-error)' }}
+                            >
+                              <Trash2 size={16} strokeWidth={1.75} color="var(--color-error)" />
+                              <span>Delete Project</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -356,7 +433,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             title="Expand Sidebar"
             style={{ width: '100%', justifyContent: 'center', padding: '9px 0' }}
           >
-            <PanelLeftOpen size={16} />
+            <PanelLeftOpen size={16} strokeWidth={1.75} />
           </button>
         )}
         <button 
@@ -365,7 +442,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           title={collapsed ? "Settings" : undefined}
           style={{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start', padding: collapsed ? '9px 0' : '8px 10px' }}
         >
-          <Settings size={15} />
+          <Settings size={16} strokeWidth={1.75} />
           {!collapsed && <span>Settings</span>}
         </button>
       </div>
@@ -399,18 +476,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Settings size={20} color="var(--accent-light)" />
+                <Settings size={16} strokeWidth={1.75} color="var(--accent-light)" />
                 <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>Studio Preferences</h3>
               </div>
               <button className="icon-btn" onClick={() => setShowSettings(false)}>
-                <X size={18} />
+                <X size={16} strokeWidth={1.75} />
               </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ background: 'rgba(255, 255, 255, 0.025)', borderRadius: '6px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <Server size={16} color="#4ade80" />
+                  <Server size={16} strokeWidth={1.75} color="#4ade80" />
                   <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>Storage & Workspace</strong>
                 </div>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
@@ -420,7 +497,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
 
               <div style={{ background: 'rgba(255, 255, 255, 0.025)', borderRadius: '6px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <Sparkles size={16} color="var(--accent-light)" />
+                  <Sparkles size={16} strokeWidth={1.75} color="var(--accent-light)" />
                   <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>AI Generation</strong>
                 </div>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
@@ -430,7 +507,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
 
               <div style={{ background: 'rgba(255, 255, 255, 0.025)', borderRadius: '6px', padding: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <Cpu size={16} color="var(--accent-light)" />
+                  <Cpu size={16} strokeWidth={1.75} color="var(--accent-light)" />
                   <strong style={{ fontSize: '13.5px', color: 'var(--text-primary)' }}>Live Preview Runtime</strong>
                 </div>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>

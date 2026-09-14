@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus } from 'lucide-react';
+import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus, BrainCircuit } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName, createProject } from '../lib/project-store';
+import { usePlatformStatus } from '../lib/status-store';
 import ConfirmModal from './ConfirmModal';
+import BrainHalfLogo from './BrainHalfLogo';
 
 interface TopNavProps {
   activeProjectId: string;
@@ -48,13 +50,18 @@ const TopNav: React.FC<TopNavProps> = ({
 
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
+  // Unified single source of truth for platform and project status
+  const status = usePlatformStatus(activeProjectId);
+
   useEffect(() => {
     const unsub = appEvents.on('project-renamed', (payload: { id: string; name: string }) => {
       if (payload.id === activeProjectId) {
         setOverrideName(payload.name);
       }
     });
-    return () => unsub();
+    return () => {
+      unsub();
+    };
   }, [activeProjectId]);
 
   // Click outside to close menus
@@ -106,6 +113,10 @@ const TopNav: React.FC<TopNavProps> = ({
     appEvents.emit('request-export', { projectName });
   };
 
+  const handleGitHubExport = () => {
+    appEvents.emit('open-github-modal');
+  };
+
   const handleResetWorkspace = () => {
     setShowResetConfirm(true);
     setShowMoreMenu(false);
@@ -116,63 +127,35 @@ const TopNav: React.FC<TopNavProps> = ({
     setShowResetConfirm(false);
   };
 
-  const handleQuickCreate = () => {
-    const projects = getProjects();
-    const existingNames = new Set(projects.map(p => p.name));
-    let counter = projects.length + 1;
-    while (existingNames.has(`Project ${counter}`)) {
-      counter++;
-    }
-    const newProj = createProject(`Project ${counter}`);
-    appEvents.emit('project-renamed', { id: newProj.id, name: newProj.name });
-    if (onSelectProject) {
-      onSelectProject(newProj.id);
-    }
-  };
-
   return (
     <div className="top-nav" role="banner">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="top-nav-left-cluster" style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flexShrink: 1 }}>
         {isMobile && onToggleMobileSidebar && (
           <button 
             className="icon-btn" 
             onClick={onToggleMobileSidebar}
             title="Open Projects"
             aria-label="Open Projects"
-            style={{ padding: '6px', color: 'var(--text-primary)' }}
+            style={{ padding: '8px', color: 'var(--text-primary)', minWidth: '36px', minHeight: '36px' }}
           >
-            <Menu size={18} />
+            <Menu size={16} strokeWidth={1.75} />
           </button>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{
             width: '24px',
             height: '24px',
             borderRadius: '6px',
             background: '#18181b',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
+            border: 'none',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            flexShrink: 0
+            flexShrink: 0,
+            color: '#818cf8'
           }} title="BrainHalf Platform">
-            <img 
-              src="/brainhalflogo.png" 
-              alt="BrainHalf" 
-              style={{ width: '16px', height: '16px', objectFit: 'contain' }} 
-            />
+            <BrainHalfLogo size={16} strokeWidth={1.75} />
           </div>
-          <span 
-            style={{ 
-              width: '7px', 
-              height: '7px', 
-              borderRadius: '50%', 
-              background: 'var(--color-success)', 
-              boxShadow: '0 0 6px var(--color-success)' 
-            }}
-            title="Session active"
-            aria-label="Session active"
-          />
 
           {isEditing ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -205,7 +188,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 title="Save name"
                 aria-label="Save name"
               >
-                <Check size={13} color="var(--color-success)" />
+                <Check size={16} strokeWidth={1.75} color="var(--color-success)" />
               </button>
               <button 
                 onClick={() => setIsEditing(false)}
@@ -214,7 +197,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 title="Cancel"
                 aria-label="Cancel editing name"
               >
-                <X size={13} color="var(--color-error)" />
+                <X size={16} strokeWidth={1.75} color="var(--color-error)" />
               </button>
             </div>
           ) : (
@@ -229,7 +212,7 @@ const TopNav: React.FC<TopNavProps> = ({
                   setEditedName(projectName);
                 }
               }}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', outline: 'none' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', outline: 'none', minWidth: 0 }}
             >
               <h2 style={{ 
                 fontSize: '13.5px', 
@@ -237,37 +220,41 @@ const TopNav: React.FC<TopNavProps> = ({
                 margin: 0, 
                 fontFamily: 'var(--font-brand)',
                 color: 'var(--text-primary)',
-                letterSpacing: '-0.2px'
+                letterSpacing: '-0.2px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: isMobile ? '140px' : '260px'
               }}>
                 {projectName}
               </h2>
-              <Edit2 size={11} style={{ opacity: 0.35 }} />
+              <Edit2 size={16} strokeWidth={1.75} style={{ opacity: 0.35, flexShrink: 0 }} />
             </div>
           )}
+        </div>
 
-          <button
-            onClick={handleQuickCreate}
-            className="icon-btn"
-            title="Create New Project"
-            aria-label="Create New Project"
-            style={{
-              padding: '3px 6px',
-              color: 'var(--text-muted)',
-              borderRadius: '4px',
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--border-subtle)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '11px',
-              fontWeight: 500,
-              marginLeft: '4px',
-              flexShrink: 0
-            }}
-          >
-            <Plus size={12} />
-            {!isMobile && <span>New</span>}
-          </button>
+        {/* Status Pill in Left Cluster */}
+        <div className="status-pill" data-testid="topbar-status-pill" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '3px 8px',
+          borderRadius: '6px',
+          background: 'rgba(255, 255, 255, 0.03)',
+          border: '1px solid var(--border-subtle)',
+          fontSize: '11.5px',
+          fontWeight: 500,
+          color: 'var(--text-secondary)',
+          flexShrink: 0
+        }}>
+          <span style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            background: status.dotColor,
+            boxShadow: status.glow
+          }} />
+          <span>{status.topBarLabel}</span>
         </div>
       </div>
       
@@ -278,7 +265,7 @@ const TopNav: React.FC<TopNavProps> = ({
             onClick={() => onSelectMobileTab('chat')}
             style={{ padding: '4px 10px', fontSize: '11.5px' }}
           >
-            <Bot size={12} />
+            <Bot size={16} strokeWidth={1.75} />
             <span>Chat</span>
           </button>
           <button
@@ -286,7 +273,7 @@ const TopNav: React.FC<TopNavProps> = ({
             onClick={() => onSelectMobileTab('code')}
             style={{ padding: '4px 10px', fontSize: '11.5px' }}
           >
-            <Code2 size={12} />
+            <Code2 size={16} strokeWidth={1.75} />
             <span>Code</span>
           </button>
           <button
@@ -294,96 +281,14 @@ const TopNav: React.FC<TopNavProps> = ({
             onClick={() => onSelectMobileTab('preview')}
             style={{ padding: '4px 10px', fontSize: '11.5px' }}
           >
-            <Play size={12} />
+            <Play size={16} strokeWidth={1.75} />
             <span>Preview</span>
           </button>
         </div>
       )}
 
-      {/* Clear Action Hierarchy: Share  ⋯  [Export]  [Deploy ↗ ▾] */}
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <button 
-          className="button-ghost" 
-          onClick={handleShare} 
-          title="Share project link"
-          aria-label="Share project link"
-          style={{ padding: '6px 12px', fontSize: '12px' }}
-        >
-          {copied ? <Check size={13} color="var(--color-success)" /> : <Share2 size={13} />}
-          <span>{copied ? 'Copied' : 'Share'}</span>
-        </button>
-
-        {/* More Options Dropdown (...) */}
-        <div style={{ position: 'relative' }} ref={moreMenuRef}>
-          <button 
-            className="icon-btn" 
-            onClick={() => setShowMoreMenu(prev => !prev)}
-            title="More project actions"
-            aria-label="More project actions"
-            aria-expanded={showMoreMenu}
-            style={{ width: '30px', height: '30px' }}
-          >
-            <MoreHorizontal size={15} />
-          </button>
-
-          {showMoreMenu && (
-            <div style={{
-              position: 'absolute',
-              top: 'calc(100% + 6px)',
-              right: 0,
-              width: '210px',
-              background: '#111420',
-              border: '1px solid var(--border-medium)',
-              borderRadius: '8px',
-              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.6)',
-              padding: '5px',
-              zIndex: 1000
-            }}>
-              <button 
-                className="deploy-menu-item"
-                onClick={() => {
-                  setShowSettingsModal(true);
-                  setShowMoreMenu(false);
-                }}
-              >
-                <Settings size={13} color="var(--color-neutral)" />
-                <span>Project Settings</span>
-              </button>
-              <button 
-                className="deploy-menu-item"
-                onClick={() => {
-                  handleExport();
-                  setShowMoreMenu(false);
-                }}
-              >
-                <Download size={13} color="var(--color-neutral)" />
-                <span>Export ZIP Bundle</span>
-              </button>
-              <div className="deploy-menu-divider" />
-              <button 
-                className="deploy-menu-item"
-                onClick={handleResetWorkspace}
-                style={{ color: 'var(--color-error)' }}
-              >
-                <RotateCcw size={13} color="var(--color-error)" />
-                <span>Reset to Default Template</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Secondary Action: Export */}
-        <button 
-          className="button-ghost" 
-          onClick={handleExport} 
-          title="Download complete project as a ZIP"
-          aria-label="Download complete project as a ZIP"
-          style={{ padding: '6px 12px', fontSize: '12px' }}
-        >
-          <Download size={13} /> 
-          <span>Export</span>
-        </button>
-
+      {/* Right Cluster: Deploy button + more-options menu */}
+      <div className="top-nav-right-cluster" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
         {/* Primary CTA: Deploy ↗ */}
         <button 
           className="deploy-main-action"
@@ -392,9 +297,88 @@ const TopNav: React.FC<TopNavProps> = ({
           aria-label="Deploy project to Cloudflare"
           style={{ borderRadius: '6px' }}
         >
-          <Play size={12} fill="white" /> 
+          <Play size={16} strokeWidth={1.75} fill="white" /> 
           <span>Deploy ↗</span>
         </button>
+
+        {/* More Options Dropdown (...) for all secondary project actions */}
+        <div style={{ position: 'relative' }} ref={moreMenuRef}>
+          <button 
+            className="icon-btn" 
+            onClick={() => setShowMoreMenu(prev => !prev)}
+            title="More project actions"
+            aria-label="More project actions"
+            aria-expanded={showMoreMenu}
+            style={{ width: '32px', height: '32px' }}
+          >
+            <MoreHorizontal size={16} strokeWidth={1.75} />
+          </button>
+
+          {showMoreMenu && (
+            <div style={{
+              position: 'absolute',
+              top: 'calc(100% + 6px)',
+              right: 0,
+              width: '210px',
+              background: '#12141c',
+              border: '1px solid var(--border-medium)',
+              borderRadius: '8px',
+              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.65)',
+              padding: '5px',
+              zIndex: 1000
+            }}>
+              <button 
+                className="deploy-menu-item"
+                onClick={() => {
+                  handleShare();
+                  setShowMoreMenu(false);
+                }}
+              >
+                {copied ? <Check size={16} strokeWidth={1.75} color="var(--color-success)" /> : <Share2 size={16} strokeWidth={1.75} color="var(--color-neutral)" />}
+                <span>{copied ? 'Link Copied!' : 'Share Project Link'}</span>
+              </button>
+              <button 
+                className="deploy-menu-item"
+                onClick={() => {
+                  handleExport();
+                  setShowMoreMenu(false);
+                }}
+              >
+                <Download size={16} strokeWidth={1.75} color="var(--color-neutral)" />
+                <span>Export ZIP Bundle</span>
+              </button>
+              <button 
+                className="deploy-menu-item"
+                onClick={() => {
+                  handleGitHubExport();
+                  setShowMoreMenu(false);
+                }}
+              >
+                <Cloud size={16} strokeWidth={1.75} color="var(--color-neutral)" />
+                <span>Export to GitHub</span>
+              </button>
+              <div className="deploy-menu-divider" />
+              <button 
+                className="deploy-menu-item"
+                onClick={() => {
+                  setShowSettingsModal(true);
+                  setShowMoreMenu(false);
+                }}
+              >
+                <Settings size={16} strokeWidth={1.75} color="var(--color-neutral)" />
+                <span>Project Settings</span>
+              </button>
+              <button 
+                className="deploy-menu-item"
+                onClick={handleResetWorkspace}
+                style={{ color: 'var(--color-error)' }}
+              >
+                <RotateCcw size={16} strokeWidth={1.75} color="var(--color-error)" />
+                <span>Reset to Default Template</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Cloudflare Deploy Modal */}
@@ -429,7 +413,7 @@ const TopNav: React.FC<TopNavProps> = ({
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Cloud size={20} color="var(--accent-light)" />
+                <Cloud size={16} strokeWidth={1.75} color="var(--accent-light)" />
                 <h3 id="deploy-modal-title" style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>
                   Deploy {projectName}
                 </h3>
@@ -439,7 +423,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 onClick={() => setShowDeployModal(false)}
                 aria-label="Close modal"
               >
-                <X size={18} />
+                <X size={16} strokeWidth={1.75} />
               </button>
             </div>
 
@@ -501,7 +485,7 @@ const TopNav: React.FC<TopNavProps> = ({
                     setTimeout(() => setCopied(false), 2000);
                   }}
                 >
-                  {copied ? <Check size={12} color="#10b981" /> : null}
+                  {copied ? <Check size={16} strokeWidth={1.75} color="#10b981" /> : null}
                   {copied ? 'Copied' : 'Copy'}
                 </button>
               </div>
@@ -522,7 +506,7 @@ const TopNav: React.FC<TopNavProps> = ({
                   setShowDeployModal(false);
                 }}
               >
-                <Download size={14} /> Export ZIP
+                <Download size={16} strokeWidth={1.75} /> Export ZIP
               </button>
               <button 
                 className="button-ghost"
@@ -531,7 +515,7 @@ const TopNav: React.FC<TopNavProps> = ({
                   setShowDeployModal(false);
                 }}
               >
-                Preview Runtime <ExternalLink size={13} />
+                Preview Runtime <ExternalLink size={16} strokeWidth={1.75} />
               </button>
               <button 
                 className="button-primary"
@@ -579,7 +563,7 @@ const TopNav: React.FC<TopNavProps> = ({
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Settings size={18} color="var(--accent-light)" />
+                <Settings size={16} strokeWidth={1.75} color="var(--accent-light)" />
                 <h3 id="settings-modal-title" style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontFamily: 'var(--font-brand)' }}>
                   Deployment Settings
                 </h3>
@@ -589,7 +573,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 onClick={() => setShowSettingsModal(false)}
                 aria-label="Close modal"
               >
-                <X size={18} />
+                <X size={16} strokeWidth={1.75} />
               </button>
             </div>
 

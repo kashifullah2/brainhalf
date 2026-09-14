@@ -18,7 +18,7 @@ function App() {
   const [mobileTab, setMobileTab] = useState<'chat' | 'code' | 'preview'>('chat');
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      return window.innerWidth < 768;
+      return window.innerWidth <= 768;
     }
     return false;
   });
@@ -35,7 +35,7 @@ function App() {
   // Auto-collapse sidebar & update mobile view state on window resize
   React.useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 768;
+      const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
       if (window.innerWidth < 1024 && !sidebarCollapsed) {
         setSidebarCollapsed(true);
@@ -116,7 +116,7 @@ function App() {
           onSelectMobileTab={setMobileTab}
           isMobile={isMobile}
         />
-        <div key={activeProjectId} className={`workspace-area ${isMobile ? 'is-mobile' : ''}`}>
+        <div className={`workspace-area ${isMobile ? 'is-mobile' : ''}`}>
           {(!isMobile || mobileTab === 'chat') && (
             <ChatPanel key={`chat-${activeProjectId}`} activeProjectId={activeProjectId} width={isMobile ? undefined : chatWidth} />
           )}

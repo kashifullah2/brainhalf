@@ -10,18 +10,18 @@ interface FileExplorerProps {
 const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelectFile }) => {
   const getFileIcon = (path: string) => {
     if (path.endsWith('.jsx') || path.endsWith('.tsx')) {
-      return <FileCode size={14} color="#38bdf8" />;
+      return <FileCode size={16} strokeWidth={1.75} color="#38bdf8" />;
     }
     if (path.endsWith('.js') || path.endsWith('.ts')) {
-      return <FileCode size={14} color="#60a5fa" />;
+      return <FileCode size={16} strokeWidth={1.75} color="#60a5fa" />;
     }
     if (path.endsWith('.css')) {
-      return <Palette size={14} color="var(--accent-light)" />;
+      return <Palette size={16} strokeWidth={1.75} color="var(--accent-light)" />;
     }
     if (path.endsWith('.json')) {
-      return <FileJson size={14} color="#facc15" />;
+      return <FileJson size={16} strokeWidth={1.75} color="#facc15" />;
     }
-    return <FileText size={14} color="var(--text-muted)" />;
+    return <FileText size={16} strokeWidth={1.75} color="var(--text-muted)" />;
   };
 
   const filePaths = Object.keys(files).sort();

@@ -1,0 +1,90 @@
+{
+  "runId": "benchmark-2026-09-14T07-39-49-502Z",
+  "startedAt": "2026-09-14T07:39:49.503Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "easy-1",
+        "tier": "easy",
+        "title": "Unit Converter",
+        "totalChecks": 7,
+        "buildPrompt": "Build a unit converter app with three tabs: Length, Weight, Temperature. Each tab has an input field, a 'from' unit dropdown, a 'to' unit dropdown, and a live-updating result. Use a clean card layout with a single accent color. No backend needed, all conversion logic client-side."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 0,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "easy-1-check-1",
+          "description": "Page loads without console errors",
+          "passed": true,
+          "actual": "none",
+          "expected": "no console errors",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "easy-1-check-2",
+          "description": "Default tab (Length) is visible on load",
+          "passed": false,
+          "actual": "false",
+          "expected": "Length tab visible",
+          "durationMs": 69
+        },
+        {
+          "checkId": "easy-1-check-3",
+          "description": "Typing '100' with from=meters, to=feet shows numeric result within 1 second",
+          "passed": false,
+          "actual": "\"\" in 2025ms",
+          "expected": "numeric result containing ~328.08 within 1000ms",
+          "durationMs": 2043
+        },
+        {
+          "checkId": "easy-1-check-4",
+          "description": "Clicking 'Weight' tab switches visible fields",
+          "passed": false,
+          "actual": "tab not found",
+          "expected": "Weight tab visible",
+          "durationMs": 8
+        },
+        {
+          "checkId": "easy-1-check-5",
+          "description": "Switching from/to dropdowns updates result without requiring re-typing",
+          "passed": false,
+          "actual": "0 selects",
+          "expected": "2+ selects",
+          "durationMs": 317
+        },
+        {
+          "checkId": "easy-1-check-6",
+          "description": "Result is correct for at least 3 known conversion pairs",
+          "passed": false,
+          "actual": "0/3 correct",
+          "expected": "at least 2/3 conversion results correct within 5%",
+          "durationMs": 6335
+        },
+        {
+          "checkId": "easy-1-check-7",
+          "description": "No layout shift or overflow when resized to 375px width",
+          "passed": true,
+          "actual": "scrollWidth=375",
+          "expected": "scrollWidth ≤ 380",
+          "durationMs": 528
+        }
+      ],
+      "playwright_checks_passed": "2/7",
+      "reviewer_notes": ""
+    }
+  ],
+  "completedAt": "2026-09-14T07:40:03.388Z"
+}

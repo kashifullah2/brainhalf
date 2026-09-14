@@ -3,7 +3,7 @@ import {
   Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, 
   AlertCircle, Terminal, Copy, Check, FolderCode, Download, 
   Tablet, Smartphone, WrapText, ListFilter,
-  Zap, Box
+  Zap, Box, MoreHorizontal, X
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
@@ -66,12 +66,21 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   const consoleEndRef = useRef<HTMLDivElement>(null);
   
   const [files, setFiles] = useState<{ [path: string]: string }>(() => {
-    if (initialFiles) return initialFiles;
-    return {
-      '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
-      '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
-      '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
-    };
+    let current = initialFiles;
+    if (!current) {
+      current = {
+        '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
+        '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
+        '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
+      };
+    } else if (current['/src/App.jsx'] && current['/src/App.jsx'].includes("minHeight: '100vh'") && (current['/src/App.jsx'].includes("What do you want to build?") || current['/src/App.jsx'].includes("Architect your idea into living software."))) {
+      current = {
+        ...current,
+        '/src/App.jsx': current['/src/App.jsx'].replace("minHeight: '100vh'", "height: '100%', minHeight: '100%'")
+      };
+      saveProjectFiles(activeProjectId, current);
+    }
+    return current;
   });
   const [activeFile, setActiveFile] = useState('/src/App.jsx');
 
@@ -82,6 +91,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     return typeof localStorage !== 'undefined' ? (localStorage.getItem('brainhalf_github_pat') || '') : '';
   });
   const [githubStatus, setGithubStatus] = useState<{loading: boolean, error?: string, success?: string}>({loading: false});
+
+  const [showDiagnosticMenu, setShowDiagnosticMenu] = useState(false);
+  const [showEngineMenu, setShowEngineMenu] = useState(false);
+  const diagnosticMenuRef = useRef<HTMLDivElement>(null);
+  const engineMenuRef = useRef<HTMLDivElement>(null);
 
   const filesRef = useRef(files);
   const activeFileRef = useRef(activeFile);
@@ -98,10 +112,74 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     setConsoleLogs(prev => [...prev.slice(-250), text]);
   }, []);
 
-  // Keep filesRef always updated synchronously
+  // Listen for open-github-modal event from TopNav
+  useEffect(() => {
+    const unsub = appEvents.on('open-github-modal', () => {
+      setShowGithubModal(true);
+    });
+    return () => unsub();
+  }, []);
+
+  // Click outside and escape handlers for dropdown menus
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (diagnosticMenuRef.current && !diagnosticMenuRef.current.contains(e.target as Node)) {
+        setShowDiagnosticMenu(false);
+      }
+      if (engineMenuRef.current && !engineMenuRef.current.contains(e.target as Node)) {
+        setShowEngineMenu(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowDiagnosticMenu(false);
+        setShowEngineMenu(false);
+        setShowGithubModal(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Keep filesRef always updated synchronously and notify preview iframe
   useEffect(() => {
     filesRef.current = files;
+    iframeRef.current?.contentWindow?.postMessage({
+      type: 'sync-files',
+      files
+    }, '*');
   }, [files]);
+
+  const handleExportZip = async () => {
+    try {
+      await exportProjectAsZip(filesRef.current, activeProjectId || 'brainhalf-project');
+      addBuildLog(`Project bundle exported as ZIP: ${activeProjectId || 'brainhalf-project'}`, 'success');
+    } catch (err) {
+      addBuildLog(`Export ZIP error: ${err}`, 'error');
+    }
+  };
+
+  const handleExportGitHub = async () => {
+    if (!githubRepo || !githubToken) return;
+    setGithubStatus({ loading: true, error: undefined, success: undefined });
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('brainhalf_github_pat', githubToken);
+      }
+      await exportToGitHub(filesRef.current, githubRepo, githubToken);
+      setGithubStatus({ loading: false, success: `Successfully pushed to GitHub: ${githubRepo}` });
+      addBuildLog(`Pushed codebase to GitHub repository: ${githubRepo}`, 'success');
+    } catch (err: any) {
+      setGithubStatus({ loading: false, error: err.message || 'Failed to export to GitHub' });
+      addBuildLog(`GitHub Export Failed: ${err.message}`, 'error');
+    }
+  };
 
   useEffect(() => {
     activeFileRef.current = activeFile;
@@ -455,6 +533,11 @@ export const ${compName} = ${compName};
         setStatus(prev => (prev === 'Error' ? 'Ready' : prev));
         setStatusDetail(prev => (prev.includes('Transpile') || prev.includes('Preview') ? '' : prev));
         appEvents.emit('preview-success', null);
+      } else if (event.data.type === 'request-preview-files') {
+        iframeRef.current?.contentWindow?.postMessage({
+          type: 'sync-files',
+          files: filesRef.current
+        }, '*');
       }
     };
 
@@ -521,99 +604,129 @@ export const ${compName} = ${compName};
         background: 'rgba(255, 255, 255, 0.015)',
         flexShrink: 0
       }}>
-        {/* Professional 4-Way Workspace Navigation */}
-        <div className="segmented-control" role="tablist" aria-label="Workspace navigation">
-          <button 
-            role="tab"
-            aria-selected={activeTab === 'code'}
-            onClick={() => setActiveTab('code')}
-            className={`segmented-tab ${activeTab === 'code' ? 'active' : ''}`}
-            title="Inspect & Edit Code (Monaco Editor)"
-          >
-            <Code2 size={13} /> 
-            <span>Code</span>
-          </button>
-          <button 
-            role="tab"
-            aria-selected={activeTab === 'preview'}
-            onClick={() => setActiveTab('preview')}
-            className={`segmented-tab ${activeTab === 'preview' ? 'active' : ''}`}
-            title="Live Application Preview"
-          >
-            <Monitor size={13} /> 
-            <span>Preview</span>
-          </button>
-          <button 
-            role="tab"
-            aria-selected={activeTab === 'console'}
-            onClick={() => setActiveTab('console')}
-            className={`segmented-tab ${activeTab === 'console' ? 'active' : ''}`}
-            title="Terminal & Runtime Server Output"
-          >
-            <Terminal size={13} /> 
-            <span>Console</span>
-            {consoleLogs.length > 0 && (
-              <span style={{
-                fontSize: '9px',
-                padding: '1px 5px',
-                borderRadius: '4px',
-                background: 'rgba(255, 255, 255, 0.08)',
-                color: 'var(--text-muted)'
-              }}>
-                {consoleLogs.length}
-              </span>
-            )}
-          </button>
-          <button 
-            role="tab"
-            aria-selected={activeTab === 'logs'}
-            onClick={() => setActiveTab('logs')}
-            className={`segmented-tab ${activeTab === 'logs' ? 'active' : ''}`}
-            title="Build Pipeline & Event Timeline"
-          >
-            <ListFilter size={13} /> 
-            <span>Logs</span>
-            {buildLogs.length > 1 && (
-              <span style={{
-                fontSize: '9px',
-                padding: '1px 5px',
-                borderRadius: '4px',
-                background: 'rgba(59, 130, 246, 0.15)',
-                color: '#93c5fd'
-              }}>
-                {buildLogs.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Right side controls: Rich detailed status badge & quick actions */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div className={`status-badge ${status.toLowerCase()}`} title={statusDetail || status}>
-            {status === 'Generating' ? (
-              <>
-                <Loader2 size={12} className="lucide-spin" style={{ color: 'var(--text-primary)' }} />
-                <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '12px' }}>
-                  {generatingFile ? `Updating ${generatingFile.split('/').pop()}` : 'Generating...'}
+        {/* Primary Workspace Navigation: Code | Preview with Diagnostics dropdown */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="segmented-control" role="tablist" aria-label="Workspace navigation">
+            <button 
+              role="tab"
+              aria-selected={activeTab === 'code'}
+              onClick={() => setActiveTab('code')}
+              className={`segmented-tab ${activeTab === 'code' ? 'active' : ''}`}
+              title="Inspect & Edit Code (Monaco Editor)"
+            >
+              <Code2 size={16} strokeWidth={1.75} /> 
+              <span>Code</span>
+            </button>
+            <button 
+              role="tab"
+              aria-selected={activeTab === 'preview'}
+              onClick={() => setActiveTab('preview')}
+              className={`segmented-tab ${activeTab === 'preview' ? 'active' : ''}`}
+              title="Live Application Preview"
+            >
+              <Monitor size={16} strokeWidth={1.75} /> 
+              <span>Preview</span>
+            </button>
+            {(activeTab === 'console' || activeTab === 'logs') && (
+              <button 
+                role="tab"
+                aria-selected={true}
+                className="segmented-tab active"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                title={activeTab === 'console' ? "Terminal Console" : "Activity Logs"}
+              >
+                {activeTab === 'console' ? <Terminal size={16} strokeWidth={1.75} /> : <ListFilter size={16} strokeWidth={1.75} />}
+                <span>{activeTab === 'console' ? 'Console' : 'Logs'}</span>
+                <span 
+                  onClick={(e) => { e.stopPropagation(); setActiveTab('preview'); }}
+                  style={{ opacity: 0.6, cursor: 'pointer', display: 'flex' }}
+                  title="Close diagnostic tab"
+                >
+                  <X size={16} strokeWidth={1.75} />
                 </span>
-              </>
-            ) : status === 'Ready' ? (
-              <>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-success)' }} />
-                <span style={{ fontWeight: 500, color: 'var(--text-secondary)', fontSize: '12px' }}>Ready</span>
-              </>
-            ) : status === 'Error' ? (
-              <>
-                <AlertCircle size={12} style={{ color: 'var(--color-error)' }} />
-                <span style={{ fontWeight: 500, color: 'var(--color-error)', fontSize: '12px' }}>Failed</span>
-              </>
-            ) : (
-              <>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--text-muted)' }} />
-                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Idle</span>
-              </>
+              </button>
             )}
           </div>
+
+          {/* Diagnostics overflow dropdown for Console & Logs */}
+          <div style={{ position: 'relative' }} ref={diagnosticMenuRef}>
+            <button
+              onClick={() => setShowDiagnosticMenu(prev => !prev)}
+              className="icon-btn"
+              title="Diagnostics (Console, Logs)"
+              aria-label="Diagnostics (Console, Logs)"
+              aria-expanded={showDiagnosticMenu}
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '6px',
+                color: (activeTab === 'console' || activeTab === 'logs') ? 'var(--text-primary)' : 'var(--text-muted)'
+              }}
+            >
+              <MoreHorizontal size={16} strokeWidth={1.75} />
+            </button>
+
+            {showDiagnosticMenu && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                left: 0,
+                width: '180px',
+                background: '#12141c',
+                border: '1px solid var(--border-medium)',
+                borderRadius: '8px',
+                boxShadow: '0 12px 28px rgba(0,0,0,0.65)',
+                padding: '4px',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px'
+              }}>
+                <button
+                  className="deploy-menu-item"
+                  onClick={() => {
+                    setActiveTab('console');
+                    setShowDiagnosticMenu(false);
+                  }}
+                  style={{ padding: '6px 8px', fontSize: '12px' }}
+                >
+                  <Terminal size={16} strokeWidth={1.75} color="var(--color-neutral)" />
+                  <span>Terminal Console</span>
+                  {consoleLogs.length > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-muted)' }}>
+                      {consoleLogs.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  className="deploy-menu-item"
+                  onClick={() => {
+                    setActiveTab('logs');
+                    setShowDiagnosticMenu(false);
+                  }}
+                  style={{ padding: '6px 8px', fontSize: '12px' }}
+                >
+                  <ListFilter size={16} strokeWidth={1.75} color="var(--color-neutral)" />
+                  <span>Activity Logs</span>
+                  {buildLogs.length > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-muted)' }}>
+                      {buildLogs.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right side: Clean minimal spacing */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {status === 'Generating' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
+              <Loader2 size={12} className="lucide-spin" style={{ color: 'var(--text-primary)' }} />
+              <span>{generatingFile ? `${generatingFile.split('/').pop()}` : 'Generating...'}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -706,7 +819,7 @@ export const ${compName} = ${compName};
                     title={`Toggle Word Wrap (Currently ${wordWrap})`}
                     aria-label="Toggle Word Wrap"
                   >
-                    <WrapText size={12} />
+                    <WrapText size={16} strokeWidth={1.75} />
                     <span>Wrap</span>
                   </button>
 
@@ -727,7 +840,7 @@ export const ${compName} = ${compName};
                     title="Copy full file code"
                     aria-label="Copy full file code"
                   >
-                    {copiedCode ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                    {copiedCode ? <Check size={16} strokeWidth={1.75} color="#34d399" /> : <Copy size={16} strokeWidth={1.75} />}
                     <span>{copiedCode ? 'Copied' : 'Copy'}</span>
                   </button>
 
@@ -748,7 +861,7 @@ export const ${compName} = ${compName};
                     title="Export to GitHub"
                     aria-label="Export GitHub"
                   >
-                    <FolderCode size={12} />
+                    <FolderCode size={16} strokeWidth={1.75} />
                     <span>Export GitHub</span>
                   </button>
                   <button
@@ -768,7 +881,7 @@ export const ${compName} = ${compName};
                     title="Export full project as ZIP"
                     aria-label="Export ZIP"
                   >
-                    <Download size={12} />
+                    <Download size={16} strokeWidth={1.75} />
                     <span>Export ZIP</span>
                   </button>
                 </div>
@@ -830,7 +943,7 @@ export const ${compName} = ${compName};
                 onClick={() => setConsoleLogs([])}
                 style={{
                   background: 'transparent',
-                  border: '1px solid var(--border-subtle)',
+                  border: 'none',
                   color: 'var(--text-muted)',
                   borderRadius: '4px',
                   padding: '3px 8px',
@@ -892,7 +1005,7 @@ export const ${compName} = ${compName};
                 onClick={() => setBuildLogs([])}
                 style={{
                   background: 'transparent',
-                  border: '1px solid var(--border-subtle)',
+                  border: 'none',
                   color: 'var(--text-muted)',
                   borderRadius: '4px',
                   padding: '3px 8px',
@@ -936,58 +1049,53 @@ export const ${compName} = ${compName};
           </div>
         ) : (
           /* PREVIEW TAB */
-          <div style={{ 
-            height: '100%', 
-            width: '100%',
-            display: 'flex', 
-            flexDirection: 'column',
-            background: 'var(--bg-preview-canvas)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            {/* Realistic Compact Browser Chrome Bar */}
-            <div className="browser-chrome">
-              {/* Left: Window Dots & Navigation Controls */}
-              <div className="browser-chrome-left">
-                <div className="browser-dots">
-                  <span className="browser-dot close" title="Close" />
-                  <span className="browser-dot minimize" title="Minimize" />
-                  <span className="browser-dot maximize" title="Maximize" />
-                </div>
-                <div className="browser-nav-actions">
-                  <button 
-                    className="browser-action-btn" 
-                    title="Refresh live preview" 
-                    aria-label="Refresh live preview"
-                    onClick={handleRefresh}
-                  >
-                    <RefreshCw size={12} />
-                  </button>
-                  <button 
-                    className="browser-action-btn" 
-                    title="Open live Cloudflare Edge preview in new tab" 
-                    aria-label="Open live preview in new window"
-                    onClick={() => {
-                      syncFilesToEdge(filesRef.current);
-                      window.open(`/preview/${activeProjectId}/index.html`, '_blank');
-                    }}
-                  >
-                    <ExternalLink size={12} />
-                  </button>
-                </div>
+          <div 
+            className="preview-pane-container"
+            style={{ 
+              height: '100%', 
+              width: '100%',
+              display: 'flex', 
+              flexDirection: 'column',
+              background: 'var(--bg-preview-canvas)',
+              position: 'relative',
+              overflow: 'hidden',
+              containerType: 'inline-size'
+            }}
+          >
+            {/* Minimal Developer Toolbar */}
+            <div className="browser-chrome" style={{ padding: '0 16px', height: '40px', boxSizing: 'border-box' }}>
+              {/* Left: Functional Preview Actions */}
+              <div className="browser-chrome-left" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button 
+                  className="browser-action-btn" 
+                  title="Refresh live preview" 
+                  aria-label="Refresh live preview"
+                  onClick={handleRefresh}
+                >
+                  <RefreshCw size={16} strokeWidth={1.75} />
+                </button>
+                <button 
+                  className="browser-action-btn" 
+                  title="Open live preview in new tab" 
+                  aria-label="Open live preview in new window"
+                  onClick={() => {
+                    syncFilesToEdge(filesRef.current);
+                    window.open(`/preview/${activeProjectId}/index.html`, '_blank');
+                  }}
+                >
+                  <ExternalLink size={16} strokeWidth={1.75} />
+                </button>
               </div>
 
-              {/* Center: Centered URL Pill */}
+              {/* Center: Clean URL Pill */}
               <div className="browser-chrome-center">
-                <div className="browser-url-pill" title={`/preview/${activeProjectId}/index.html`}>
-                  <Lock size={11} style={{ opacity: 0.8, color: '#10b981' }} />
-                  <span>{previewEngine === 'edge' ? `brainhalf.com/preview/${activeProjectId.slice(0, 8)}...` : 'preview.brainhalf.app/live'}</span>
-                  <span className="browser-viewport-badge" style={{ 
-                    color: previewEngine === 'edge' ? '#a78bfa' : '#38bdf8',
-                    background: previewEngine === 'edge' ? 'rgba(167, 139, 250, 0.12)' : 'rgba(56, 189, 248, 0.12)'
-                  }}>
-                    {previewEngine === 'edge' ? 'Edge' : 'Sandpack'}
-                  </span>
+                <div 
+                  className="browser-url-pill" 
+                  title={`/preview/${activeProjectId}/index.html`}
+                  style={{ cursor: 'default' }}
+                >
+                  <Lock size={16} strokeWidth={1.75} style={{ opacity: 0.8, color: 'var(--color-success)' }} />
+                  <span>{previewEngine === 'edge' ? `brainhalf.com/preview/${activeProjectId.slice(0, 8)}` : 'preview.brainhalf.app/live'}</span>
                   {viewportMode !== 'desktop' && (
                     <span className="browser-viewport-badge">
                       {viewportMode === 'tablet' ? '768px' : '375px'}
@@ -996,45 +1104,16 @@ export const ${compName} = ${compName};
                 </div>
               </div>
 
-              {/* Right: Preview Engine Toggle + Viewport Switcher */}
-              <div className="browser-chrome-right" style={{ gap: '8px' }}>
-                <div className="viewport-segmented-control" title="Toggle Preview Engine">
-                  <button
-                    onClick={() => {
-                      setPreviewEngine('edge');
-                      syncFilesToEdge(filesRef.current);
-                      setEdgeRefreshCounter(c => c + 1);
-                      addBuildLog('Switched to Cloudflare Edge Preview (Instant Edge Transpiler)', 'info');
-                    }}
-                    className={`viewport-pill-btn ${previewEngine === 'edge' ? 'active' : ''}`}
-                    title="Cloudflare Edge: Global network preview with instant JSX/TSX compilation and direct URL"
-                    aria-label="Cloudflare Edge Preview"
-                  >
-                    <Zap size={11} style={{ color: previewEngine === 'edge' ? '#c4b5fd' : 'inherit' }} />
-                    <span>Edge</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setPreviewEngine('sandpack');
-                      addBuildLog('Switched to Sandpack In-Browser Preview (Virtual Bundler)', 'info');
-                    }}
-                    className={`viewport-pill-btn ${previewEngine === 'sandpack' ? 'active' : ''}`}
-                    title="Sandpack: Virtual in-browser CodeSandbox bundler for npm packages"
-                    aria-label="Sandpack Preview"
-                  >
-                    <Box size={11} style={{ color: previewEngine === 'sandpack' ? '#7dd3fc' : 'inherit' }} />
-                    <span>Sandpack</span>
-                  </button>
-                </div>
-
-                <div className="viewport-segmented-control">
+              {/* Right: Viewport Mode & Compact Runtime Selector (Desktop / Tablet / Mobile / Edge row) */}
+              <div className="browser-chrome-right" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginRight: 0 }}>
+                <div className="viewport-segmented-control" role="group" aria-label="Viewport and Runtime Engine options">
                   <button
                     onClick={() => setViewportMode('desktop')}
                     className={`viewport-pill-btn ${viewportMode === 'desktop' ? 'active' : ''}`}
-                    title="Desktop View (Full Width)"
+                    title="Desktop View"
                     aria-label="Desktop View"
                   >
-                    <Monitor size={12} />
+                    <Monitor size={16} strokeWidth={1.75} />
                     <span>Desktop</span>
                   </button>
                   <button
@@ -1043,7 +1122,7 @@ export const ${compName} = ${compName};
                     title="Tablet View (768px)"
                     aria-label="Tablet View"
                   >
-                    <Tablet size={12} />
+                    <Tablet size={16} strokeWidth={1.75} />
                     <span>Tablet</span>
                   </button>
                   <button
@@ -1052,9 +1131,78 @@ export const ${compName} = ${compName};
                     title="Mobile View (375px)"
                     aria-label="Mobile View"
                   >
-                    <Smartphone size={12} />
+                    <Smartphone size={16} strokeWidth={1.75} />
                     <span>Mobile</span>
                   </button>
+
+                  {/* 4th Option: Edge / Sandpack Engine Toggle */}
+                  <div style={{ position: 'relative', display: 'inline-flex' }} ref={engineMenuRef}>
+                    <button
+                      onClick={() => setShowEngineMenu(prev => !prev)}
+                      className={`viewport-pill-btn ${showEngineMenu ? 'active' : ''}`}
+                      title={`Runtime Engine: ${previewEngine === 'edge' ? 'Cloudflare Edge' : 'Sandpack'}`}
+                      aria-label="Preview Runtime Engine"
+                      aria-expanded={showEngineMenu}
+                      style={{
+                        width: 'auto',
+                        minWidth: 'max-content',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {previewEngine === 'edge' ? <Zap size={16} strokeWidth={1.75} color="#a78bfa" /> : <Box size={16} strokeWidth={1.75} color="#38bdf8" />}
+                      <span>{previewEngine === 'edge' ? 'Edge' : 'Sandpack'}</span>
+                    </button>
+
+                    {showEngineMenu && (
+                      <div style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        right: 0,
+                        width: '190px',
+                        background: '#12141c',
+                        border: '1px solid var(--border-medium)',
+                        borderRadius: '8px',
+                        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.65)',
+                        padding: '4px',
+                        zIndex: 1000,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px'
+                      }}>
+                        <div style={{ padding: '4px 8px', fontSize: '10.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Preview Runtime
+                        </div>
+                        <button
+                          className={`deploy-menu-item ${previewEngine === 'edge' ? 'active' : ''}`}
+                          onClick={() => {
+                            setPreviewEngine('edge');
+                            syncFilesToEdge(filesRef.current);
+                            setEdgeRefreshCounter(c => c + 1);
+                            addBuildLog('Switched to Cloudflare Edge Preview (Instant Edge Transpiler)', 'info');
+                            setShowEngineMenu(false);
+                          }}
+                          style={{ padding: '6px 8px', fontSize: '12px' }}
+                        >
+                          <Zap size={16} strokeWidth={1.75} color="#a78bfa" />
+                          <span>Cloudflare Edge (Fast)</span>
+                          {previewEngine === 'edge' && <Check size={16} strokeWidth={1.75} color="var(--color-success)" style={{ marginLeft: 'auto' }} />}
+                        </button>
+                        <button
+                          className={`deploy-menu-item ${previewEngine === 'sandpack' ? 'active' : ''}`}
+                          onClick={() => {
+                            setPreviewEngine('sandpack');
+                            addBuildLog('Switched to Sandpack Virtual Bundler', 'info');
+                            setShowEngineMenu(false);
+                          }}
+                          style={{ padding: '6px 8px', fontSize: '12px' }}
+                        >
+                          <Box size={16} strokeWidth={1.75} color="#38bdf8" />
+                          <span>Sandpack Bundler</span>
+                          {previewEngine === 'sandpack' && <Check size={16} strokeWidth={1.75} color="var(--color-success)" style={{ marginLeft: 'auto' }} />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1123,7 +1271,7 @@ export const ${compName} = ${compName};
                   </p>
 
                   <button className="button-primary" onClick={handleLaunchPreview}>
-                    <Play size={14} fill="white" /> Launch Preview
+                    <Play size={16} strokeWidth={1.75} fill="white" /> Launch Preview
                   </button>
                 </div>
               ) : previewEngine === 'edge' ? (
@@ -1134,6 +1282,12 @@ export const ${compName} = ${compName};
                       ref={iframeRef}
                       key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
                       src={`/preview/${activeProjectId}/index.html`}
+                      onLoad={() => {
+                        iframeRef.current?.contentWindow?.postMessage({
+                          type: 'sync-files',
+                          files: filesRef.current
+                        }, '*');
+                      }}
                       style={{
                         width: '100%',
                         height: '100%',

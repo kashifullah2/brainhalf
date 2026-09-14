@@ -1,14 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2 } from 'lucide-react';
+import { Send, Bot, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2, BrainCircuit } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
-import { getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles } from '../lib/project-store';
+import { getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName } from '../lib/project-store';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
 import PlanBlock from './PlanBlock';
 import ConfirmModal from './ConfirmModal';
+import { usePlatformStatus } from '../lib/status-store';
+import BrainHalfLogo from './BrainHalfLogo';
 
 const STARTER_PROMPTS = [
   { title: 'Interactive Kanban Board', desc: 'Drag-and-drop tasks with column states & tags' },
@@ -58,7 +60,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     const saved = getProjectMessages(activeProjectId);
     if (saved && saved.length > 0) return saved;
     return [
-      { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
+      { role: 'ai', content: "Ready to co-author your application. Specify a concept, an interaction pattern, or a complex UI flow to begin building." }
     ];
   });
   const [isGenerating, setIsGenerating] = useState(false);
@@ -71,6 +73,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     onConfirm: () => void;
   } | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const platformStatus = usePlatformStatus(activeProjectId);
   const [mergeConflict, setMergeConflict] = useState<{ sourceName: string; conflicts: string[] } | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
@@ -201,7 +204,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   syncFilesAndEdits(fileMap, editsMap, true);
                 }
               }
-              appEvents.emit('generation-status', { status: 'Ready', detail: 'Loaded saved session' });
+              appEvents.emit('generation-status', { status: 'Ready', detail: 'Loaded saved session', projectId: activeProjectId });
             } else {
               const localSaved = getProjectMessages(activeProjectId);
               if (!localSaved || localSaved.length === 0) {
@@ -211,6 +214,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 setMessages(freshWelcome);
                 messagesRef.current = freshWelcome;
                 saveProjectMessages(activeProjectId, freshWelcome);
+                appEvents.emit('generation-status', { status: 'Ready', detail: 'Fresh project ready', projectId: activeProjectId });
               } else {
                 // If local has history but server has none, this is a newly created branch.
                 // Sync the local history to the new server DO instance.
@@ -328,7 +332,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 return newMsgs;
               });
 
-              appEvents.emit('generation-status', { status: 'Ready', detail: 'App code updated' });
+              appEvents.emit('generation-status', { status: 'Ready', detail: 'App code updated', projectId: activeProjectId });
 
               setTimeout(() => {
                 saveProjectMessages(activeProjectId, messagesRef.current);
@@ -339,7 +343,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           } else if (data.type === 'error') {
             setIsGenerating(false);
             isGeneratingRef.current = false;
-            appEvents.emit('generation-status', { status: 'Error', error: data.error || 'Generation failed' });
+            appEvents.emit('generation-status', { status: 'Error', error: data.error || 'Generation failed', projectId: activeProjectId });
             setMessages(prev => [
               ...prev,
               { role: 'ai', content: data.error || 'An error occurred during generation. Please try again.' }
@@ -488,8 +492,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     }
     setIsGenerating(false);
     isGeneratingRef.current = false;
-    appEvents.emit('generation-status', { status: 'Ready', detail: 'Generation stopped by user' });
-  }, []);
+    appEvents.emit('generation-status', { status: 'Stopped', detail: 'Generation stopped by user', projectId: activeProjectId });
+  }, [activeProjectId]);
 
   const handleEditMessage = (index: number) => {
     if (isGeneratingRef.current) return;
@@ -579,10 +583,25 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     setMessages(newMsgs);
     messagesRef.current = newMsgs;
     saveProjectMessages(activeProjectId, newMsgs);
+    appEvents.emit('project-messages-updated', { projectId: activeProjectId });
+
+    // If the active project still has a generic name, auto-rename with first user prompt (truncated to ~30 chars)
+    try {
+      const allProjects = getProjects();
+      const currentProj = allProjects.find(p => p.id === activeProjectId);
+      if (currentProj && (/^Project \d+$/i.test(currentProj.name) || currentProj.name === 'Untitled Project')) {
+        const cleanedPrompt = userMessage.trim().replace(/\s+/g, ' ');
+        const newTitle = cleanedPrompt.length > 30 ? `${cleanedPrompt.slice(0, 30)}…` : cleanedPrompt;
+        updateProjectName(activeProjectId, newTitle);
+        appEvents.emit('project-renamed', { id: activeProjectId, name: newTitle });
+      }
+    } catch (e) {
+      console.error('Error auto-renaming project from first prompt:', e);
+    }
 
     setIsGenerating(true);
     isGeneratingRef.current = true;
-    appEvents.emit('generation-status', { status: 'Generating', detail: 'Connecting to AI model...' });
+    appEvents.emit('generation-status', { status: 'Generating', detail: 'Connecting to AI model...', projectId: activeProjectId });
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const modelObj = MODELS.find(m => m.id === selectedModelId);
@@ -711,7 +730,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   return (
     <div className="chat-panel-container" style={{ width: width ? `${width}px` : '100%', minWidth: width ? '360px' : '0' }}>
       {/* Sleek Chat Panel Header */}
-      <div style={{
+      <div className="chat-panel-top-bar" style={{
         height: '48px',
         padding: '0 14px',
         borderBottom: '1px solid var(--border-subtle)',
@@ -719,118 +738,123 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         alignItems: 'center',
         justifyContent: 'space-between',
         background: 'rgba(255, 255, 255, 0.015)',
-        gap: '8px',
+        gap: '12px',
         flexShrink: 0,
         overflow: 'hidden'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-          <div style={{
-            width: '24px',
-            height: '24px',
-            borderRadius: '6px',
-            background: '#18181b',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden'
-          }}>
-            <img 
-              src="/brainhalflogo.png" 
-              alt="BrainHalf" 
-              style={{ width: '16px', height: '16px', objectFit: 'contain' }} 
-            />
+        {/* Left group: Brand + Model dropdown + Connection status dot */}
+        <div className="model-selector-left-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flexShrink: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <div style={{
+              width: '24px',
+              height: '24px',
+              borderRadius: '6px',
+              background: '#18181b',
+              border: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              color: '#818cf8'
+            }}>
+              <BrainHalfLogo size={16} strokeWidth={1.75} />
+            </div>
+            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>BrainHalf AI</span>
           </div>
-          <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>BrainHalf AI</span>
+
+          {/* Model dropdown + connection status dot grouped together on the left */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexShrink: 1 }}>
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', maxWidth: '220px', minWidth: '160px', flexShrink: 1 }}>
+              <select
+                value={selectedModelId}
+                onChange={handleModelChange}
+                aria-label="Select AI Model"
+                style={{
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'none',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: '#f3f4f6',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  padding: '5px 24px 5px 8px',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  colorScheme: 'dark',
+                  width: '100%',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden'
+                }}
+              >
+                <optgroup label="Cloudflare Workers AI" style={{ background: '#121316', color: '#9ca3af' }}>
+                  {MODELS.filter(m => m.provider === 'cloudflare').map(m => (
+                    <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                      {m.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="AWS Bedrock" style={{ background: '#121316', color: '#9ca3af' }}>
+                  {MODELS.filter(m => m.provider === 'aws').map(m => (
+                    <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                      {m.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <ChevronDown 
+                size={16} 
+                strokeWidth={1.75}
+                style={{ 
+                  position: 'absolute', 
+                  right: '8px', 
+                  pointerEvents: 'none', 
+                  color: 'var(--text-muted)'
+                }} 
+              />
+            </div>
+
+            <div className="model-status-pill" data-testid="model-status-pill" style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              padding: '2px 4px',
+              flexShrink: 0
+            }}>
+              <span style={{ 
+                width: '6px', 
+                height: '6px', 
+                borderRadius: '50%', 
+                background: platformStatus.dotColor, 
+                boxShadow: platformStatus.glow 
+              }} />
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                {platformStatus.modelPanelLabel}
+              </span>
+            </div>
+          </div>
         </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, justifyContent: 'flex-end' }}>
-          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', maxWidth: '170px', minWidth: '110px', flexShrink: 1 }}>
-            <select
-              value={selectedModelId}
-              onChange={handleModelChange}
-              aria-label="Select AI Model"
-              style={{
-                appearance: 'none',
-                WebkitAppearance: 'none',
-                MozAppearance: 'none',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '6px',
-                color: '#f3f4f6',
-                fontSize: '11.5px',
-                fontWeight: 500,
-                padding: '4px 22px 4px 8px',
-                outline: 'none',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                colorScheme: 'dark',
-                width: '100%',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden'
-              }}
-            >
-              <optgroup label="High-Performance Coding Fleet" style={{ background: '#121316', color: '#9ca3af' }}>
-                {MODELS.filter(m => (m.category === 'recommended' || m.category === 'coding' || m.category === 'fast') && m.provider === 'cloudflare').map(m => (
-                  <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
-                    {m.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Reasoning & Heavyweight Fleet" style={{ background: '#121316', color: '#9ca3af' }}>
-                {MODELS.filter(m => m.category === 'reasoning' && m.provider === 'cloudflare').map(m => (
-                  <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
-                    {m.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="AWS Bedrock Fleet" style={{ background: '#121316', color: '#9ca3af' }}>
-                {MODELS.filter(m => m.provider === 'aws').map(m => (
-                  <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
-                    {m.name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            <ChevronDown 
-              size={12} 
-              style={{ 
-                position: 'absolute', 
-                right: '7px', 
-                pointerEvents: 'none', 
-                color: 'var(--text-muted)',
-                opacity: 0.7 
-              }} 
-            />
-          </div>
 
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '6px',
-            padding: '2px 4px',
-            flexShrink: 0
-          }}>
-            <span style={{ 
-              width: '6px', 
-              height: '6px', 
-              borderRadius: '50%', 
-              background: isConnected ? 'var(--color-success)' : '#f59e0b', 
-              boxShadow: isConnected ? '0 0 6px rgba(16, 185, 129, 0.6)' : 'none' 
-            }} />
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
-              {isConnected ? 'Active' : 'Connecting'}
-            </span>
-          </div>
-
+        {/* Delete icon isolated on the far right with extra margin */}
+        <div className="model-selector-right-isolated" style={{ marginLeft: 'auto', paddingLeft: '16px', flexShrink: 0 }}>
           <button 
             className="icon-btn"
             onClick={handleClearChat}
             title="Clear conversation history"
-            style={{ padding: '4px', flexShrink: 0 }}
+            aria-label="Clear conversation history"
+            style={{ 
+              padding: '6px', 
+              borderRadius: '6px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              color: 'var(--text-muted)'
+            }}
           >
-            <Trash2 size={13} />
+            <Trash2 size={16} strokeWidth={1.75} />
           </button>
         </div>
       </div>
@@ -853,6 +877,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           return (
             <div 
               key={idx} 
+              className={`chat-message ${isAi ? 'chat-message-ai' : 'chat-message-user'}`}
               style={{ 
                 display: 'flex', 
                 gap: '12px', 
@@ -868,7 +893,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 background: isAi 
                   ? '#18181b'
                   : 'rgba(255, 255, 255, 0.08)',
-                border: isAi ? '1px solid var(--border-subtle)' : 'none',
+                border: 'none',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -876,13 +901,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 marginTop: '3px'
               }}>
                 {isAi ? (
-                  <img 
-                    src="/brainhalflogo.png" 
-                    alt="BrainHalf" 
-                    style={{ width: '15px', height: '15px', objectFit: 'contain' }} 
-                  />
+                  <BrainHalfLogo size={16} strokeWidth={1.75} color="#2dd4bf" />
                 ) : (
-                  <User size={13} color="#ffffff" />
+                  <User size={16} strokeWidth={1.75} color="#ffffff" />
                 )}
               </div>
               
@@ -940,7 +961,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                         background: '#181b28',
                         padding: '4px',
                         borderRadius: '6px',
-                        border: '1px solid var(--border-subtle)',
+                        border: 'none',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
                       }}>
                         <button
@@ -958,7 +979,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           }}
                           title="Edit Message"
                         >
-                          <Pencil size={12} />
+                          <Pencil size={16} strokeWidth={1.75} />
                         </button>
                         <button
                           onClick={() => handleDeleteMessage(idx)}
@@ -975,7 +996,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           }}
                           title="Delete Message"
                         >
-                          <Trash2 size={12} />
+                          <Trash2 size={16} strokeWidth={1.75} />
                         </button>
                       </div>
                     )}
@@ -1008,7 +1029,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                         background: '#181b28',
                         padding: '4px',
                         borderRadius: '6px',
-                        border: '1px solid var(--border-subtle)',
+                        border: 'none',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
                         zIndex: 10
                       }}>
@@ -1027,7 +1048,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           }}
                           title="Rewind conversation to this point"
                         >
-                          <Undo2 size={12} />
+                          <Undo2 size={16} strokeWidth={1.75} />
                         </button>
                       </div>
                     )}
@@ -1130,19 +1151,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 <div
                   key={sIdx}
                   onClick={() => handleSendMessage(`Build an app: ${sp.title} - ${sp.desc}`)}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.025)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '6px',
-                    padding: '10px 14px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '10px',
-                    transition: 'all 0.15s ease'
-                  }}
-                  className="hover-bright"
+                  className="quick-template-card"
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSendMessage(`Build an app: ${sp.title} - ${sp.desc}`); }}
@@ -1151,7 +1160,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{sp.title}</span>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{sp.desc}</span>
                   </div>
-                  <ArrowRight size={13} style={{ color: 'var(--color-neutral)', opacity: 0.6 }} />
+                  <ArrowRight size={16} strokeWidth={1.75} style={{ color: 'var(--color-neutral)', opacity: 0.6 }} />
                 </div>
               ))}
             </div>
@@ -1190,7 +1199,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px' }}
                 title="Dismiss"
               >
-                <X size={13} />
+                <X size={16} strokeWidth={1.75} />
               </button>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
@@ -1222,20 +1231,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           display: 'flex',
           flexDirection: 'column',
           background: 'rgba(255, 255, 255, 0.025)',
-          border: '1px solid var(--border-subtle)',
+          border: 'none',
           borderRadius: '8px',
           padding: '12px 14px',
           transition: 'all 0.15s ease',
           position: 'relative'
         }} className="chat-input-wrapper">
           {selectedImage && (
-            <div style={{ position: 'relative', width: '56px', height: '56px', marginBottom: '8px', border: '1px solid var(--border-subtle)', borderRadius: '6px' }}>
+            <div style={{ position: 'relative', width: '56px', height: '56px', marginBottom: '8px', border: 'none', borderRadius: '6px' }}>
               <img src={selectedImage} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '5px' }} />
               <button 
                 onClick={() => { setSelectedImage(null); setImageType(''); }}
                 style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}
               >
-                <X size={12} />
+                <X size={16} strokeWidth={1.75} />
               </button>
             </div>
           )}
@@ -1247,7 +1256,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               style={{ padding: '6px', opacity: isGenerating ? 0.4 : 0.8, borderRadius: '6px' }}
               title="Attach File (Image / Text)"
             >
-              <Paperclip size={16} color="var(--text-secondary)" />
+              <Paperclip size={16} strokeWidth={1.75} color="var(--text-secondary)" />
             </button>
             <input 
               type="file" 
@@ -1330,22 +1339,26 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 <button 
                   onClick={handleStopGeneration}
                   style={{
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    color: '#ef4444',
-                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    background: '#ef4444',
+                    color: '#ffffff',
+                    border: 'none',
                     borderRadius: '6px',
-                    width: '32px',
                     height: '32px',
+                    padding: '0 10px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
+                    gap: '5px',
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease'
+                    fontWeight: 600,
+                    fontSize: '12px',
+                    transition: 'all 0.15s ease',
+                    boxShadow: '0 2px 6px rgba(239, 68, 68, 0.4)'
                   }}
                   title="Stop Generation"
                   aria-label="Stop Generation"
                 >
-                  <Square size={14} fill="currentColor" />
+                  <Square size={16} strokeWidth={1.75} fill="currentColor" />
+                  <span>Stop</span>
                 </button>
               </div>
             ) : (
@@ -1369,7 +1382,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 }}
                 title="Send Message (Enter)"
               >
-                <Send size={15} />
+                <Send size={16} strokeWidth={1.75} />
               </button>
             )}
           </div>
