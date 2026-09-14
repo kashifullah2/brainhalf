@@ -33,12 +33,24 @@ export default {
             targetUrl.pathname = subPath;
             const subRequest = new Request(targetUrl.toString(), request);
             return await subworker.fetch(subRequest);
-          } catch (dispatchErr: any) {
-            return new Response(`Worker "${scriptName}" not found in dispatch namespace: ${dispatchErr.message}`, {
-              status: 404,
-              headers: { 'Content-Type': 'text/plain' }
-            });
+          } catch (_dispatchErr: any) {
+            // Worker not found in dispatch namespace; fallback seamlessly to ChatAgent Durable Object
           }
+        }
+
+        // Graceful edge preview fallback via ChatAgent Durable Object
+        if (env.ChatAgent) {
+          const redirectPath = subPath === '/' || subPath === '' ? '/index.html' : subPath;
+          if (request.method === 'GET' && (subPath === '/' || subPath === '')) {
+            return Response.redirect(`${url.origin}/preview/${scriptName}${redirectPath}`, 302);
+          }
+
+          const targetUrl = new URL(request.url);
+          targetUrl.pathname = `/preview/${scriptName}${redirectPath}`;
+          const forwardRequest = new Request(targetUrl.toString(), request);
+          const id = env.ChatAgent.idFromName(scriptName);
+          const obj = env.ChatAgent.get(id);
+          return obj.fetch(forwardRequest);
         }
       }
     }

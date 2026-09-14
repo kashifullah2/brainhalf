@@ -81,4 +81,50 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     expect(res.status).toBe(404);
     expect(await res.text()).toBe('Not found');
   });
+
+  it('falls back to ChatAgent preview redirect when worker is not in DISPATCHER namespace', async () => {
+    const env = {
+      DISPATCHER: {
+        get: vi.fn().mockImplementation(() => {
+          throw new Error('Worker not found.');
+        }),
+      },
+      ChatAgent: { idFromName: vi.fn(), get: vi.fn() },
+    };
+
+    const req = new Request('https://brainhalf.com/p/proj-xpjpet-mu0tk7tr');
+    const res = await worker.fetch(req, env, {} as any);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe('https://brainhalf.com/preview/proj-xpjpet-mu0tk7tr/index.html');
+  });
+
+  it('forwards subpath requests to ChatAgent when falling back from DISPATCHER', async () => {
+    const mockDoFetch = vi.fn().mockResolvedValue(new Response('/* css */', { status: 200 }));
+    const mockDoObj = { fetch: mockDoFetch };
+    const mockIdFromName = vi.fn().mockReturnValue('mock-id-456');
+    const mockGet = vi.fn().mockReturnValue(mockDoObj);
+
+    const env = {
+      DISPATCHER: {
+        get: vi.fn().mockImplementation(() => {
+          throw new Error('Worker not found.');
+        }),
+      },
+      ChatAgent: {
+        idFromName: mockIdFromName,
+        get: mockGet,
+      },
+    };
+
+    const req = new Request('https://brainhalf.com/p/proj-xpjpet-mu0tk7tr/src/styles.css');
+    const res = await worker.fetch(req, env, {} as any);
+
+    expect(mockIdFromName).toHaveBeenCalledWith('proj-xpjpet-mu0tk7tr');
+    expect(mockGet).toHaveBeenCalledWith('mock-id-456');
+    expect(mockDoFetch).toHaveBeenCalled();
+    const forwardedReq = mockDoFetch.mock.calls[0][0];
+    expect(new URL(forwardedReq.url).pathname).toBe('/preview/proj-xpjpet-mu0tk7tr/src/styles.css');
+    expect(res.status).toBe(200);
+  });
 });

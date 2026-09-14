@@ -1449,7 +1449,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
 
     const url = new URL(request.url);
 
-    if (url.pathname.match(/^\/preview\/[^/]+$/)) {
+    if (url.pathname.match(/^\/(?:preview|p)\/[^/]+$/)) {
       return Response.redirect(`${url.origin}${url.pathname}/`, 301);
     }
 
@@ -1465,8 +1465,8 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       return new Response(null, { headers: corsHeaders });
     }
 
-    if (url.pathname.includes('/preview/')) {
-      const pathMatch = url.pathname.match(/^\/preview\/[^/]+(.*)$/);
+    if (url.pathname.includes('/preview/') || url.pathname.includes('/p/')) {
+      const pathMatch = url.pathname.match(/^\/(?:preview|p)\/[^/]+(.*)$/);
       let path = pathMatch ? pathMatch[1] : url.pathname;
 
       if (path === '' || path === '/') {
