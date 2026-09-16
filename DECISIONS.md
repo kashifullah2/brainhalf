@@ -219,3 +219,171 @@ threaded into every `<script>` tag in a template string that is also a test fixt
 shape check against `dist/index.html` confirmed the shell does not need it, and the
 preview's inline scripts are all server-authored and constant. Recorded here so the
 upgrade path is obvious if the template ever gains a dynamic inline script.
+
+---
+
+## D-17 · The epoch gate sits at the single write entry point, not at each caller
+
+`extractAndSaveFiles(text, connection, epoch?)` now checks `writeEpoch.accepts(epoch)`
+itself, and both callers — the `streamText` `onFinish` handler and the Workers AI
+fallback in `runCloudflareWorkersAI` — thread `epoch` through.
+
+The first version gated only the streaming path, because that was the path the bug
+report was about. But the fallback also calls `extractAndSaveFiles`, and a user who
+stops a hanging Anthropic call and re-prompts can land in the fallback too. A guard
+that covers one of two write paths is not a guard.
+
+An optional parameter rather than a required one: `extractAndSaveFiles` is private and
+the two call sites are the only ones, but an undefined epoch means "no generation
+context, allow" (used by the legacy non-generation paths). Making it required would
+force a synthetic epoch onto callers that have no generation, which is worse than
+an explicit opt-out.
+
+## D-18 · Chained `<edit>` blocks accumulate on the pending write, not on the stored content
+
+Each `<edit>` block in a generation reads the file from SQLite to apply its
+search/replace. When a generation emits two edits to the same path — a common shape,
+"change the import, then change the handler" — both reads return the *stored* content,
+because the batch has not committed yet. Applying each edit to the stored original
+means the second `pendingWrites.set` overwrites the first, silently reverting it: the
+user sees only the second edit land.
+
+The fix reads from `pendingWrites` when it already has an entry for the path, so the
+edits chain. This is why the batch accumulates into a Map before committing rather
+than writing per-block.
+
+## D-19 · Fixed a latent build breaker from Phase 3: literal U+2028/U+2029 in regex literals
+
+The import-map escaper replaced `<`, `>`, `&`, U+2028 and U+2029 with their escape
+sequences. The last two were written as *literal* line-separator characters inside
+regex literals (`/ /g` was written with the raw byte, E2 80 A8).
+
+ECMAScript forbids a LineTerminator inside a regular-expression literal, and U+2028
+and U+2029 are LineTerminators. `tsc` accepted the file (it treats them leniently),
+but the real bundler — `vite`/`oxc` — rejected it with `Unterminated regular
+expression` at agent.ts:1489. The first test file to actually `import` agent.ts
+surfaced this; the prior 198 tests all mocked the agent and never parsed it. The
+production build would have failed.
+
+Fixed by writing the escapes as source-level ` ` / ` `, which is a valid
+regex pattern escape and not a literal line terminator. Lesson: `tsc --noEmit` alone
+is not a build verification — `vite build` is now part of the check loop.
+
+## D-20 · Phase 5: versioned migrations replace the ad-hoc `ensureSchema`, v1 written `IF NOT EXISTS`
+
+`lib/migrations.ts` now owns the agent object's schema. `AGENT_MIGRATIONS` v1 is the
+*same DDL* the old `ensureSchema` ran, wrapped in `IF NOT EXISTS`, and v2 is the two
+indexes the schema never had (`idx_project_files_listing`, `idx_messages_recent`).
+
+The choice that mattered: v1 is byte-compatible with the pre-Phase-5 tables rather
+than a new schema. An existing workspace's tables already satisfy v1, so recording v1
+as applied costs one `schema_version` row and no data copy. A "clean" v1 that
+redefined the tables would have either dropped user workspaces or required a
+table-rename backfill — a destructive operation this run is not allowed to do.
+
+Each migration runs inside `ctx.storage.transactionSync`, and the version row is
+inserted *inside the same transaction*. A migration that fails halfway rolls back and
+leaves its version unrecorded, so the next cold start retries it instead of silently
+skipping the half that failed.
+
+`runSql` had to learn to accept a plain string, not just a tagged template: the
+migration runner's statements come from a table, not from source text. A plain string
+is wrapped in a single-element template array because the SDK's `sql` tag calls
+`strings.reduce(...)`, which a raw string does not have — passing it through as-is
+would have thrown at runtime on the very first migration.
+
+The registry was audited rather than rewritten: it already had `schema_version`,
+`SCHEMA_VERSION = 1`, and indexes on `users(email)`, `sessions(user_id)` and
+`project_owners(user_id, updated_at DESC)` from Phase 1. Its migrations are mirrored
+in `REGISTRY_MIGRATIONS` so the framework covers both objects, but its live DDL was
+only *added to* (one new index, D-22) rather than replaced.
+
+## D-21 · Phase 5: every interpolated LIKE replaced with an indexed read plus exact `IN (...)`
+
+Four queries built a `LIKE '%...'` or `NOT LIKE '%...%'` pattern around an
+interpolated value. A leading-wildcard LIKE cannot use a B-tree index, so each one
+was a full table scan of `project_files` — on the hot path of every preview request
+and every prompt.
+
+The replacements refuse to guess at suffixes. Where the old code fuzzily matched a
+candidate (`/src/App` matching `App.jsx`, `App.ts`, `App.anything`), the new code
+enumerates the extension set it actually supports — `.jsx .tsx .js .ts .json .css`
+across the known directories — and issues one `WHERE path IN (...)` against the
+primary key. The context builders read `SELECT path` (index-only) and filter in JS,
+slicing to the top 40 (streamText) / 10 (Cloudflare) before fetching content for
+just those rows by exact path.
+
+The tradeoff is explicit: a file with an extension outside the enumerated set is no
+longer matched by the fallback. That is acceptable because the same list gates
+import rewriting and preview elsewhere in the codebase; a file the toolchain cannot
+transpile was never going to be served anyway. What is gained is that preview lookup
+stops scanning the whole workspace per request.
+
+The one LIKE left alone is `agent.ts` `seedStarterIfEmpty`: both patterns are fixed
+string literals with no interpolation, it runs once per workspace at first boot, and
+there is no hot path to protect.
+
+## D-22 · Phase 5: the session TTL sweep runs on login, not on a timer
+
+Expired sessions were already inert — a lookup compares `expires_at <= Date.now()`
+and refuses them — so the only cost of leaving them was unbounded storage growth:
+the table gains a row per login and never loses one.
+
+An index on `sessions(expires_at)` makes the sweep a single indexed delete, so it is
+cheap enough to run inline. It now fires on `POST /sessions` — the request that grows
+the table. A Durable Object alarm would have needed a second lifecycle code path for
+a job that one indexed statement handles.
+
+The sweep is non-destructive by construction: the predicate is `expires_at <= now`,
+so it can only ever remove a session that would have been refused anyway. A failure
+is caught and warned, never propagated — a broken sweep must not break the login it
+was called from.
+
+## D-23 · Phase 5: the preview store is per-Durable-Object, not a module singleton
+
+`executeBackendRequest` defaulted its `store` argument to the module-level
+`globalPreviewStore`. A module-level singleton is shared by every Durable Object
+that happens to land in the same isolate. Since one agent object serves one project,
+that meant a `POST /api/users` in project A's preview was readable as
+`GET /api/users` in project B's preview — simulated backend data crossing a project
+boundary the rest of the system enforces.
+
+The agent now holds its own `InMemoryDataStore` and passes it explicitly. No public
+signature changed: the parameter was already declared with a default, so the
+browser-side preview caller (`PreviewRunner`) still takes the default. That path is
+already isolated — the preview iframe is keyed by
+`edge-preview-${activeProjectId}-${counter}`, so switching projects remounts the
+iframe and gets a fresh module state.
+
+## D-24 · Phase 5: `files_snapshot` is bounded in rows and bytes, with additive paging
+
+Both snapshot sites ran `SELECT path, content FROM project_files` unbounded and put
+every row in one WebSocket frame. One object serves one project, so this is not
+unbounded in practice — but nothing capped a single huge file, and a frame large
+enough to stall the client had no server-side guard.
+
+`readProjectFilesPage(limit, offset)` reads one page with an explicit `ORDER BY path`
+(without it SQLite may return rows in any order and a second page can repeat the
+first), and stops adding files once the accumulated content passes a byte ceiling.
+The `get_files` handler now honours optional `limit`/`offset` from the client —
+coerced through `clampInt`, which never trusts a client value to be finite or in
+range — and returns `total` / `hasMore` alongside `files`.
+
+The client contract is unchanged: `files_snapshot` still carries `files`, and
+`ChatPanel` still replaces its file map from it. The paging fields are additive, so
+an existing client ignores them. The post-extraction broadcast deliberately reads the
+first page only for the row cap but is bounded by the byte ceiling in either case.
+
+## D-25 · Phase 5: a duplicate backend id is a 409, not a silent overwrite and not a 500
+
+`InMemoryDataStore.create` had two defects. First, it ran
+`autoIds.set(key, (Number(id) || 0) + 1)` on *every* create, including creates with a
+non-numeric id — `Number('evt_abc')` is `NaN`, so the counter reset to 1 and the next
+auto id collided with an existing row. Second, an explicit id that already existed
+silently overwrote the record while the caller still received a 201.
+
+`create` now throws an error carrying `status: 409`, and the counter only advances —
+and always past any caller-supplied numeric id. The generic CRUD handler that catches
+store errors previously returned 500 unconditionally, which would have masked the new
+409 as an internal error; it now honours `dbErr.status` and falls back to 500 only
+when the store did not specify one.

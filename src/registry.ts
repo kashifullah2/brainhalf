@@ -65,6 +65,10 @@ export class AuthRegistry {
       )`
     );
     sql.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`);
+    // The TTL sweep deletes by expiry. Without this index every sweep is a full
+    // scan of a table that grows one row per login; with it the delete seeks
+    // straight to the expired prefix.
+    sql.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`);
     sql.exec(
       `CREATE TABLE IF NOT EXISTS project_owners (
         project_id TEXT PRIMARY KEY,
@@ -79,6 +83,27 @@ export class AuthRegistry {
       `INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (${SCHEMA_VERSION}, ${Date.now()})`
     );
     this.initialized = true;
+  }
+
+  /**
+   * Deletes sessions whose expiry has passed.
+   *
+   * They are already inert — a lookup compares `expires_at <= Date.now()` and
+   * refuses them — so this reclaims storage rather than changing behaviour. It
+   * runs opportunistically on a minority of logins rather than on a timer:
+   * Durable Object alarms would need a second code path, and the expired-prefix
+   * delete is a single indexed statement, so it is cheap enough to run inline.
+   *
+   * Non-destructive by construction: only rows past their own recorded TTL are
+   * ever removed, never a live session.
+   */
+  private sweepExpiredSessions(): void {
+    try {
+      this.sql.exec('DELETE FROM sessions WHERE expires_at <= ?', Date.now());
+    } catch (e) {
+      // A failed sweep must never break the login it was called from.
+      console.warn('Session TTL sweep failed:', e);
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -152,6 +177,8 @@ export class AuthRegistry {
         if (!body || !body.tokenHash || !body.userId || typeof body.expiresAt !== 'number')
           return this.json(400, { error: 'Invalid session record' });
         const now = Date.now();
+        // Every login grows this table, so this is where the TTL sweep runs.
+        this.sweepExpiredSessions();
         this.sql.exec(
           'INSERT OR REPLACE INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
           body.tokenHash,

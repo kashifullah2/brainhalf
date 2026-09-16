@@ -1,13 +1,15 @@
 import { Agent, type Connection } from 'agents';
 import { tracing } from 'cloudflare:workers';
 import { transform } from 'sucrase';
-import { normalizePath, isValidBareModuleSpecifier } from './lib/utils';
+import { normalizePath, isValidBareModuleSpecifier, isNodeModulesPath } from './lib/utils';
 import { parseEditPairs, applyEditsToFile } from './lib/message-parser';
 import { autoHealAppCode } from './lib/model-tester';
-import { executeBackendRequest, isFullStackProject, checkUnsupportedBackendFeatures } from './lib/backend-runner';
+import { executeBackendRequest, isFullStackProject, checkUnsupportedBackendFeatures, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId } from './lib/auth';
 import { AI_TIMEOUT_MS, capTokenLimit, resolveModel, withTimeout, type AllowedModel } from './lib/models';
 import { safeFetchText } from './lib/ssrf';
+import { BusyLock, IdempotencyStore, WriteEpoch, dedupeAdjacent } from './lib/concurrency';
+import { AGENT_MIGRATIONS, runMigrations } from './lib/migrations';
 import { streamText, tool } from 'ai';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -41,8 +43,46 @@ function isBlockedSecretFile(path: string): boolean {
 const TOKEN_LADDER = [65536, 32768, 16384, 8192];
 const MAX_CF_ATTEMPTS = 16; // Ceiling across candidates x token limits
 
+// A files_snapshot page is bounded in both rows and total bytes so no single
+// project can produce a WS frame large enough to stall the client.
+const MAX_FILES_PAGE = 200;
+const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Coerces a client-supplied paging value into an integer within [min, max],
+ * falling back to `dflt` when it is missing or not a number. Used for get_files
+ * limit/offset, which must never be trusted to be finite or in range.
+ */
+function clampInt(value: unknown, min: number, max: number, dflt: number): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return dflt;
+  return Math.min(Math.max(Math.trunc(n), min), max);
+}
+
 export class ChatAgent extends Agent {
   private currentAbortController: AbortController | null = null;
+
+  /**
+   * Generation concurrency guards. See lib/concurrency.ts:
+   * - `generationLock` refuses a second in-flight generation instead of letting
+   *   two of them interleave file writes.
+   * - `writeEpoch` is bumped when a generation starts; a write that observes an
+   *   older epoch belongs to a generation the user already replaced (stop then
+   *   re-prompt) and is discarded.
+   * - `idempotency` stops a reconnect's redelivered message from generating twice.
+   */
+  private readonly generationLock = new BusyLock();
+  private readonly writeEpoch = new WriteEpoch();
+  private readonly idempotency = new IdempotencyStore();
+
+  /**
+   * The preview runtime's simulated database. One instance *per Durable Object*
+   * (i.e. per project): executeBackendRequest defaults to the module-level
+   * globalPreviewStore singleton, and a module singleton is shared by every
+   * project that happens to land in the same isolate. A POST /api/users in
+   * project A would then be readable as GET /api/users in project B.
+   */
+  private readonly previewStore = new InMemoryDataStore();
 
   /**
    * Per-connection authenticated user ids. The Worker verifies the session token
@@ -52,25 +92,81 @@ export class ChatAgent extends Agent {
    */
   private connectionUserIds: Map<string, string> = new Map();
 
-  private runSql(strings: TemplateStringsArray, ...values: any[]): any[] {
+  /**
+   * Runs a statement. Accepts a tagged template (the usual case) or a plain
+   * string — the migration runner deals in plain strings because its statements
+   * come from a table, not from source text. A plain string is wrapped in a
+   * single-element template array because the SDK's sql tag reduces over it.
+   */
+  private runSql(strings: TemplateStringsArray | string, ...values: any[]): any[] {
+    if (typeof strings === 'string') {
+      return [...this.sql([strings] as unknown as TemplateStringsArray, ...values)];
+    }
     return [...this.sql(strings, ...values)];
   }
 
+  /**
+   * Applies pending schema migrations. Split from seeding so a workspace can be
+   * restored from R2 *between* the two: restoring after the seed would trip the
+   * "already initialized" check and silently discard the backup, while restoring
+   * before the tables exist would throw and be swallowed.
+   *
+   * Phase 5: the ad-hoc CREATE TABLEs are now a versioned migration set. An
+   * object whose tables predate the framework already has the v1 tables, so v1
+   * is written IF NOT EXISTS and simply records itself as applied.
+   */
   private ensureSchema() {
     try {
-      this.runSql`CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );`;
+      const applied = runMigrations(
+        AGENT_MIGRATIONS,
+        statement => this.runSql(statement),
+        <R,>(closure: () => R): R => (this as any).ctx.storage.transactionSync(closure)
+      );
+      if (applied > 0) console.log(`Schema migrations applied: ${applied}`);
+    } catch (e) {
+      console.warn('Schema migration note:', e);
+    }
+  }
 
-      this.runSql`CREATE TABLE IF NOT EXISTS project_files (
-        path TEXT PRIMARY KEY,
-        content TEXT NOT NULL,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );`;
+  /**
+   * Reads one bounded page of the workspace files.
+   *
+   * Before Phase 5 both snapshot sites ran `SELECT path, content FROM
+   * project_files` unbounded and shipped every row in a single WS frame. This
+   * object serves one project, so the row count is not unbounded in practice,
+   * but nothing stopped a single huge file from producing a frame large enough
+   * to stall the client. The page is capped by *both* row count and byte count.
+   */
+  private readProjectFilesPage(limit: number, offset: number): {
+    files: Record<string, string>;
+    total: number;
+  } {
+    const totalRows = [...this.sql`SELECT COUNT(*) as count FROM project_files`];
+    const total = totalRows.length ? Number(totalRows[0].count) : 0;
 
+    const files: Record<string, string> = {};
+    if (total === 0) return { files, total };
+
+    // Stable ordering keeps paging meaningful: without ORDER BY, SQLite is free
+    // to return rows in any order, so a second page could repeat page one.
+    const rows = [...this.sql`
+      SELECT path, content FROM project_files
+      ORDER BY path ASC
+      LIMIT ${limit} OFFSET ${offset}
+    `];
+    let bytes = 0;
+    for (const r of rows) {
+      const content = String(r.content ?? '');
+      bytes += content.length;
+      if (bytes > MAX_SNAPSHOT_BYTES && Object.keys(files).length > 0) break;
+      files[String(r.path)] = content;
+    }
+    return { files, total };
+  }
+
+  /** Seeds the starter template when the workspace is genuinely empty. */
+  private seedStarterIfEmpty() {
+    try {
       const countRows = [...this.sql`SELECT COUNT(*) as count FROM project_files`];
       if (countRows.length === 0 || countRows[0].count === 0) {
         const defaultApp = `import React from 'react';
@@ -326,8 +422,12 @@ body {
   private saveTurn(prompt: string, response: string) {
     if (!prompt || !response) return;
     try {
-      this.runSql`INSERT INTO messages (role, content) VALUES ('user', ${prompt});`;
-      this.runSql`INSERT INTO messages (role, content) VALUES ('assistant', ${response});`;
+      // One transaction: a prompt stored without its response (or vice versa)
+      // corrupts the conversation context on the next read.
+      (this as any).ctx.storage.transactionSync(() => {
+        this.runSql`INSERT INTO messages (role, content) VALUES ('user', ${prompt});`;
+        this.runSql`INSERT INTO messages (role, content) VALUES ('assistant', ${response});`;
+      });
       console.log('Saved conversation turn to SQLite for session:', this.name || 'default');
     } catch (e) {
       console.warn('Failed saving turn to SQLite:', e);
@@ -384,8 +484,13 @@ body {
 
     console.log('Client connected to ChatAgent');
 
+    // Order matters: create the tables, restore a saved workspace from R2, and
+    // only then seed the starter template into whatever is still empty. Seeding
+    // before the restore would satisfy restoreFromR2's "already initialized"
+    // check and make every reconnect silently discard the backup.
     this.ensureSchema();
     await this.restoreFromR2();
+    this.seedStarterIfEmpty();
     try {
       const rows = [...this.sql`SELECT role, content FROM messages ORDER BY id ASC`];
       connection.send(JSON.stringify({ type: 'history', data: rows }));
@@ -416,12 +521,20 @@ body {
 
       if (data.type === 'get_files') {
         try {
-          const allFilesRows = [...this.sql`SELECT path, content FROM project_files`];
-          const allFiles: Record<string, string> = {};
-          for (const r of allFilesRows) {
-            allFiles[String(r.path)] = r.content as string;
-          }
-          connection.send(JSON.stringify({ type: 'files_snapshot', files: allFiles }));
+          // A caller may page through the workspace; the defaults cap a single
+          // message so one enormous project cannot produce a multi-MB WS frame.
+          const limit = clampInt(data.limit, 1, MAX_FILES_PAGE, MAX_FILES_PAGE);
+          const offset = clampInt(data.offset, 0, Number.MAX_SAFE_INTEGER, 0);
+          const { files, total } = this.readProjectFilesPage(limit, offset);
+          connection.send(JSON.stringify({
+            type: 'files_snapshot',
+            files,
+            // Additive fields: existing clients read `files` and ignore these.
+            total,
+            limit,
+            offset,
+            hasMore: offset + Object.keys(files).length < total,
+          }));
         } catch (e) {
           console.error('Error handling get_files:', e);
         }
@@ -429,6 +542,9 @@ body {
       }
 
       if (data.type === 'stop') {
+        // Bump the epoch so any in-flight generation's late file writes are
+        // discarded, then abort the stream itself.
+        this.writeEpoch.begin();
         if (this.currentAbortController) {
           this.currentAbortController.abort();
           this.currentAbortController = null;
@@ -450,10 +566,21 @@ body {
 
       if (data.type === 'rewrite_history' && Array.isArray(data.messages)) {
         try {
-          this.runSql`DELETE FROM messages;`;
-          for (const msg of data.messages) {
-            this.runSql`INSERT INTO messages (role, content) VALUES (${msg.role}, ${msg.content});`;
-          }
+          // Delete-then-reinsert in one transaction. Without it a failure halfway
+          // leaves an empty history — the conversation is gone but not replaced.
+          // Adjacent duplicates are dropped so a re-sent edit does not inflate
+          // the context window with identical turns.
+          const messages = dedupeAdjacent(
+            data.messages
+              .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+              .map((m: any) => ({ role: m.role, content: String(m.content).slice(0, 200_000) }))
+          );
+          (this as any).ctx.storage.transactionSync(() => {
+            this.runSql`DELETE FROM messages;`;
+            for (const msg of messages) {
+              this.runSql`INSERT INTO messages (role, content) VALUES (${msg.role}, ${msg.content});`;
+            }
+          });
         } catch (e) {
           console.error('Error rewriting history:', e);
         }
@@ -500,11 +627,20 @@ body {
 
       let existingFilesContext = '';
       try {
-        const rows = this.runSql`SELECT path, content FROM project_files 
-          WHERE (path IN ('/src/App.jsx', '/src/styles.css', '/src/index.css', '/index.html') OR path NOT LIKE '%node_modules%') 
-            AND path NOT LIKE '%main.%' 
-          LIMIT 40`;
-        if (rows.length > 0) {
+        // Phase 5: the old query used `path NOT LIKE '%node_modules%'`, a
+        // leading-wildcard pattern that cannot use the path index and scans the
+        // whole table on every prompt. Reading the path list from the covering
+        // index and filtering in JS keeps the scan index-only, and the content
+        // fetch is a single indexed IN (...) for the paths we actually chose.
+        const alwaysInclude = new Set(['/src/App.jsx', '/src/styles.css', '/src/index.css', '/index.html']);
+        const pathRows = this.runSql`SELECT path FROM project_files`;
+        const selected = pathRows
+          .map((r: any) => String(r.path))
+          .filter(p => alwaysInclude.has(p) || (!isNodeModulesPath(p) && !/\bmain\.[^.]+$/.test(p)))
+          .sort((a, b) => (alwaysInclude.has(b) ? 1 : 0) - (alwaysInclude.has(a) ? 1 : 0))
+          .slice(0, 40);
+        if (selected.length > 0) {
+          const rows = this.runSql`SELECT path, content FROM project_files WHERE path IN (${selected})`;
           const filesSummary = rows.map((r: any) => `File: ${r.path}\n\`\`\`\n${r.content}\n\`\`\``).join('\n\n');
           existingFilesContext = `\n\nCURRENT PROJECT BASELINE FILES (Inspect these files carefully and build upon them):\n${filesSummary}\n`;
         }
@@ -616,33 +752,86 @@ ${existingFilesContext}
 3. Break the task down into logical files and components.`;
       }
 
-      let previousMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-      try {
-        // Fetch recent messages and condense older code dumps to protect context window
-        const rawHistory = this.runSql`SELECT role, content FROM messages ORDER BY id DESC LIMIT 12`.reverse();
-        previousMessages = rawHistory.map((r: any, idx: number, arr: any[]) => {
-          const isOlder = idx < arr.length - 2; // older than the last assistant turn
-          let content = (r.content as string) || '';
-          if (isOlder && (r.role === 'assistant' || r.role === 'ai')) {
-            content = content
-              .replace(/<file\s+path=["']([^"']+)["']>[\s\S]*?<\/file>/gi, '[Updated file $1]')
-              .replace(/<edit\s+path=["']([^"']+)["']>[\s\S]*?<\/edit>/gi, '[Modified file $1]')
-              .replace(/```[a-zA-Z0-9_-]*\r?\n[\s\S]*?```/gi, '[Code block]');
-          }
-          return {
-            role: (r.role === 'assistant' || r.role === 'ai') ? 'assistant' : 'user',
-            content
-          };
-        });
-      } catch (e) {
-        console.warn('Error reading history for context:', e);
+      // A reconnect redelivers the last message; without an idempotency key the
+      // user gets two generations for one prompt. Claim before taking the lock so
+      // a duplicate is refused without serialising behind an in-flight job.
+      const requestKey = typeof data.idempotencyKey === 'string' ? data.idempotencyKey : null;
+      if (!this.idempotency.claim(requestKey)) {
+        const dup = JSON.stringify({ type: 'error', error: 'Duplicate request ignored (idempotency key already seen)' });
+        try { connection.send(dup); } catch { }
+        return;
       }
 
-      const inputMessages = [
-        ...previousMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-        { role: 'user' as const, content: actualPrompt }
-      ];
+      // Refuse a second concurrent generation rather than letting two of them
+      // interleave their file writes. The client is told why and can retry.
+      const lockResult = await this.generationLock.run(`generate:${actualPrompt.slice(0, 60)}`, async () => {
+        // This generation's writes are valid only while it holds the newest epoch.
+        // A stop-then-reprompt bumps the epoch, so a slow first generation's
+        // late file writes are discarded rather than clobbering the new app.
+        const epoch = this.writeEpoch.begin();
+        return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch);
+      });
+      if ('reason' in lockResult) {
+        const busy = JSON.stringify({ type: 'error', error: `A generation is already in progress (${lockResult.reason}). Send 'stop' first.` });
+        try { connection.send(busy); } catch { }
+        return;
+      }
+      return;
+    } catch (e: any) {
+      console.error('Error handling message:', e);
+      try { connection.send(JSON.stringify({ type: 'error', error: e.message || 'Internal error' })); } catch { }
+    }
+  }
 
+  /**
+   * One generation pass, extracted from onMessage so the busy lock and epoch
+   * guards wrap it cleanly. History is read *inside* the lock so a generation
+   * that waited always sees the freshest conversation, and writes check `epoch`
+   * before landing so a superseded generation cannot clobber a newer app.
+   */
+  private async runGeneration(
+    connection: Connection,
+    data: any,
+    systemPrompt: string,
+    actualPrompt: string,
+    epoch: number
+  ): Promise<void> {
+    let previousMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    try {
+      // Fetch recent messages and condense older code dumps to protect context window
+      const rawHistory = this.runSql`SELECT role, content FROM messages ORDER BY id DESC LIMIT 12`.reverse();
+      previousMessages = rawHistory.map((r: any, idx: number, arr: any[]) => {
+        const isOlder = idx < arr.length - 2; // older than the last assistant turn
+        let content = (r.content as string) || '';
+        if (isOlder && (r.role === 'assistant' || r.role === 'ai')) {
+          content = content
+            .replace(/<file\s+path=["']([^"']+)["']>[\s\S]*?<\/file>/gi, '[Updated file $1]')
+            .replace(/<edit\s+path=["']([^"']+)["']>[\s\S]*?<\/edit>/gi, '[Modified file $1]')
+            .replace(/```[a-zA-Z0-9_-]*\r?\n[\s\S]*?```/gi, '[Code block]');
+        }
+        return {
+          role: (r.role === 'assistant' || r.role === 'ai') ? 'assistant' : 'user',
+          content
+        };
+      });
+    } catch (e) {
+      console.warn('Error reading history for context:', e);
+    }
+
+    const inputMessages = [
+      ...previousMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      { role: 'user' as const, content: actualPrompt }
+    ];
+
+    // Superseded before it wrote anything: a stop or a newer generation won.
+    if (!this.writeEpoch.accepts(epoch)) {
+      console.log('Generation epoch superseded before start; aborting');
+      return;
+    }
+
+    // The whole generation is one try/catch: a tool failure must still deliver an
+    // error message to the client rather than dropping the turn silently.
+    try {
       await tracing.enterSpan('invoke_agent', async (invokeSpan: any) => {
         invokeSpan.setAttribute('gen_ai.operation.name', 'invoke_agent');
 
@@ -680,7 +869,8 @@ ${existingFilesContext}
               inputMessages,
               connection,
               actualPrompt,
-              requestedMaxTokens
+              requestedMaxTokens,
+              epoch
             );
             if (success) return;
           }
@@ -925,7 +1115,9 @@ ${existingFilesContext}
                 try { this.broadcast(doneMsg, [connection.id]); } catch { }
 
                 const text = event?.text || '';
-                this.extractAndSaveFiles(text, connection);
+                // Writes are only committed if this generation still owns the
+                // newest epoch — a stop or a later prompt supersedes it.
+                this.extractAndSaveFiles(text, connection, epoch);
                 this.saveTurn(actualPrompt, text);
               }
             });
@@ -939,7 +1131,8 @@ ${existingFilesContext}
               inputMessages,
               connection,
               actualPrompt,
-              requestedMaxTokens
+              requestedMaxTokens,
+              epoch
             );
             if (!fallbackSuccess) {
               throw streamErr;
@@ -966,7 +1159,8 @@ ${existingFilesContext}
     inputMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
     connection: any,
     actualPrompt: string,
-    requestedMaxTokens?: number
+    requestedMaxTokens?: number,
+    epoch?: number
   ): Promise<boolean> {
     let cfTimeout: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -993,12 +1187,18 @@ ${existingFilesContext}
 
       let existingFilesContext = '';
       try {
-        const rows = this.runSql`SELECT path, content FROM project_files 
-          WHERE (path IN ('/src/App.jsx', '/src/styles.css', '/server/routes/api.js', '/server/index.js') OR path NOT LIKE '%node_modules%') 
-            AND path NOT LIKE '%main.%' 
-          ORDER BY CASE WHEN path = '/src/App.jsx' THEN 1 WHEN path = '/src/styles.css' THEN 2 ELSE 3 END
-          LIMIT 10`;
-        if (rows.length > 0) {
+        // Phase 5: same leading-wildcard-LIKE removal as the streamText path —
+        // index-only path read, filter in JS, one indexed content fetch.
+        const alwaysInclude = new Set(['/src/App.jsx', '/src/styles.css', '/server/routes/api.js', '/server/index.js']);
+        const rank = (p: string) => (p === '/src/App.jsx' ? 1 : p === '/src/styles.css' ? 2 : 3);
+        const pathRows = this.runSql`SELECT path FROM project_files`;
+        const selected = pathRows
+          .map((r: any) => String(r.path))
+          .filter(p => alwaysInclude.has(p) || (!isNodeModulesPath(p) && !/\bmain\.[^.]+$/.test(p)))
+          .sort((a, b) => rank(a) - rank(b))
+          .slice(0, 10);
+        if (selected.length > 0) {
+          const rows = this.runSql`SELECT path, content FROM project_files WHERE path IN (${selected})`;
           let charBudget = 8000;
           const summaries: string[] = [];
           for (const r of rows) {
@@ -1250,7 +1450,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       try { connection.send(doneMsg); } catch { }
       try { this.broadcast(doneMsg, [connection.id]); } catch { }
 
-      this.extractAndSaveFiles(outputContent, connection);
+      this.extractAndSaveFiles(outputContent, connection, epoch);
       this.saveTurn(actualPrompt, outputContent);
       return true;
     } catch (e) {
@@ -1378,12 +1578,20 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       .replace(/</g, '\\u003c')
       .replace(/>/g, '\\u003e')
       .replace(/&/g, '\\u0026')
-      .replace(/ /g, '\\u2028')
-      .replace(/ /g, '\\u2029');
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
   }
 
-  private extractAndSaveFiles(text: string, connection: any) {
+  private extractAndSaveFiles(text: string, connection: any, epoch?: number) {
     if (!text) return;
+
+    // The single write entry point checks the epoch itself so both the streaming
+    // path and the Workers AI fallback are covered. A generation the user has
+    // since stopped or replaced must not land its files on top of the newer app.
+    if (typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) {
+      console.log('Generation superseded; discarding extracted files');
+      return;
+    }
 
     const pendingWrites: Map<string, string> = new Map();
     const pendingDeletes: Set<string> = new Set();
@@ -1409,7 +1617,13 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
             if (rows.length > 0) filePath = altPath;
           }
           if (rows.length > 0 && rows[0].content) {
-            const original = rows[0].content as string;
+            // Chain onto an earlier <edit> block for the same path in this batch
+            // rather than the stored content. Each block reads the database, which
+            // has not been updated yet, so applying them all to the stored original
+            // would leave only the last edit and silently revert the rest.
+            const original = pendingWrites.has(filePath)
+              ? (pendingWrites.get(filePath) as string)
+              : (rows[0].content as string);
             const updated = applyEditsToFile(original, edits);
             pendingWrites.set(filePath, updated);
           }
@@ -1520,23 +1734,22 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       return;
     }
 
-    // Process all deletes
-    for (const path of pendingDeletes) {
-      try {
-        this.runSql`DELETE FROM project_files WHERE path = ${path}`;
-      } catch (e) {
-        console.error('Error deleting file:', path, e);
-      }
-    }
-
-    // Write all validated files
-    for (const [path, content] of pendingWrites.entries()) {
-      try {
-        this.runSql`INSERT INTO project_files (path, content) VALUES (${path}, ${content})
-                   ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
-      } catch (e) {
-        console.error('Error writing file:', path, e);
-      }
+    // Deletes and writes are one transaction: a generation that replaces one file
+    // with another must not leave both, and a mid-batch failure must not leave the
+    // workspace half-migrated between the old and the new app.
+    try {
+      (this as any).ctx.storage.transactionSync(() => {
+        for (const path of pendingDeletes) {
+          this.runSql`DELETE FROM project_files WHERE path = ${path}`;
+        }
+        for (const [path, content] of pendingWrites.entries()) {
+          this.runSql`INSERT INTO project_files (path, content) VALUES (${path}, ${content})
+                     ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
+        }
+      });
+    } catch (e) {
+      console.error('Transaction committing extracted files failed; workspace untouched:', e);
+      return;
     }
 
     this.backupToR2().catch(console.error);
@@ -1562,14 +1775,12 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       try { this.broadcast(updateMsg, [connection.id]); } catch { }
     }
 
-    // Broadcast full files_snapshot
+    // Broadcast the full workspace as a files_snapshot. This post-extraction
+    // broadcast must reflect every file, so it reads to the end rather than the
+    // first page; readProjectFilesPage still enforces the byte ceiling.
     try {
-      const allFilesRows = [...this.sql`SELECT path, content FROM project_files`];
-      const allFiles: Record<string, string> = {};
-      for (const r of allFilesRows) {
-        allFiles[String(r.path)] = r.content as string;
-      }
-      const snapshotMsg = JSON.stringify({ type: 'files_snapshot', files: allFiles });
+      const { files } = this.readProjectFilesPage(MAX_FILES_PAGE, 0);
+      const snapshotMsg = JSON.stringify({ type: 'files_snapshot', files });
       try { connection.send(snapshotMsg); } catch {}
       try { this.broadcast(snapshotMsg, [connection.id]); } catch {}
     } catch (e) {
@@ -1716,7 +1927,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
           url: request.url,
           headers: headersObj,
           body: bodyData
-        });
+        }, this.previewStore);
 
         return new Response(JSON.stringify(backendRes.body), {
           status: backendRes.status,
@@ -2087,23 +2298,32 @@ if (rootEl) {
         }
 
         let rows = [...this.sql`SELECT content FROM project_files
-          WHERE path = ${cleanPath} 
-             OR path = ${srcPrefixed} 
-             OR path = ${srcStripped} 
-             OR path = ${strippedPath} 
+          WHERE path = ${cleanPath}
+             OR path = ${srcPrefixed}
+             OR path = ${srcStripped}
+             OR path = ${strippedPath}
              OR path = ${'src/' + strippedPath}`];
 
         if (rows.length === 0) {
+          // Phase 5: the old fallback was `path LIKE '%' || ? ESCAPE '\'`, a
+          // leading-wildcard LIKE that cannot use the path index and scans every
+          // row on every preview request. The replacement asks for the exact
+          // candidate paths a generated app would actually use, in one indexed
+          // query. It resolves the same files without the full scan.
           const filename = cleanPath.split('/').pop() || '';
           if (filename) {
             const rawBase = filename.replace(/\.[^.]+$/, '');
-            const safeFilename = filename.replace(/[%_\\]/g, '\\$&');
-            const safeRawBase = rawBase.replace(/[%_\\]/g, '\\$&');
-            
-            const candidates = [safeFilename, safeRawBase + '.jsx', safeRawBase + '.tsx', safeRawBase + '.js', safeRawBase + '.ts'];
-            for (const cand of candidates) {
-              rows = [...this.sql`SELECT content FROM project_files WHERE path LIKE '%' || ${cand} ESCAPE '\\' LIMIT 1`];
-              if (rows.length > 0) break;
+            const candidatePaths = new Set<string>();
+            for (const dir of ['', '/src', '/src/components', '/src/pages', '/src/context', '/src/lib', '/src/hooks', '/src/utils']) {
+              for (const ext of ['', '.jsx', '.tsx', '.js', '.ts', '.json', '.css']) {
+                const baseName = ext ? rawBase + ext : filename;
+                candidatePaths.add(`${dir}/${baseName}`);
+              }
+            }
+            if (candidatePaths.size > 0) {
+              const found = this.runSql`SELECT content FROM project_files
+                WHERE path IN (${[...candidatePaths]}) LIMIT 1`;
+              if (found.length > 0) rows = found;
             }
           }
         }
@@ -2333,12 +2553,19 @@ if (rootEl) {
                   // Only rewrite if the target is NOT inside /src/components/ itself
                   const filename = rest.split('/').pop() || rest;
                   const baseName = filename.replace(/\.[^.]+$/, '');
-                  const safeBase = baseName.replace(/[%_\\]/g, '\\$&');
-                  // Check if the file exists at the same directory level
-                  const siblingRows = [...this.sql`SELECT 1 FROM project_files WHERE path LIKE '%/components/' || ${safeBase} || '%' ESCAPE '\\' LIMIT 1`];
+                  // Phase 5: existence checks resolve to exact candidate paths in
+                  // one indexed query each, instead of LIKE with a leading
+                  // wildcard, which scans the whole project_files table.
+                  const extensions = ['.jsx', '.tsx', '.js', '.ts', '.json', '.css'];
+                  const siblingPaths = extensions.map(ext => `/src/components/${baseName}${ext}`);
+                  const siblingRows = this.runSql`SELECT 1 FROM project_files WHERE path IN (${siblingPaths}) LIMIT 1`;
                   if (siblingRows.length === 0) {
                     // File is NOT a sibling in /components/ — check if it exists in /src/
-                    const parentRows = [...this.sql`SELECT 1 FROM project_files WHERE (path LIKE '/src/' || ${safeBase} || '%' ESCAPE '\\' OR path LIKE 'src/' || ${safeBase} || '%' ESCAPE '\\') LIMIT 1`];
+                    const parentPaths = [
+                      ...extensions.map(ext => `/src/${baseName}${ext}`),
+                      ...extensions.map(ext => `src/${baseName}${ext}`),
+                    ];
+                    const parentRows = this.runSql`SELECT 1 FROM project_files WHERE path IN (${parentPaths}) LIMIT 1`;
                     if (parentRows.length > 0) {
                       return `from '../${rest}'`;
                     }

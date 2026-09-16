@@ -131,8 +131,23 @@ export class InMemoryDataStore {
   create(table: string, data: any): any {
     const tbl = this.getTable(table);
     const tableKey = table.toLowerCase();
-    const id = data.id !== undefined ? data.id : (this.autoIds.get(tableKey) || 1);
-    this.autoIds.set(tableKey, (Number(id) || 0) + 1);
+
+    // An explicit id that is already taken used to overwrite the existing row
+    // silently — a POST that looked like a 201 success while clobbering data.
+    // It now fails with a status the caller can surface as 409.
+    const id = data.id !== undefined ? data.id : this.nextAutoId(tableKey);
+    // A caller-supplied numeric id must still push the auto counter past it,
+    // otherwise a later auto id would collide with this row.
+    if (typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id))) {
+      const asNum = Number(id);
+      this.autoIds.set(tableKey, Math.max(this.autoIds.get(tableKey) ?? 1, asNum + 1));
+    }
+    if (tbl.has(id)) {
+      const err: any = new Error(`${table} with id ${String(id)} already exists`);
+      err.status = 409;
+      err.code = 'CONFLICT';
+      throw err;
+    }
 
     const record = {
       ...data,
@@ -142,6 +157,19 @@ export class InMemoryDataStore {
     };
     tbl.set(id, record);
     return record;
+  }
+
+  /**
+   * Next auto-increment id for a table. The old code did
+   * `autoIds.set(key, Number(id) + 1)` on every create, including creates with a
+   * non-numeric id — `Number('evt_abc')` is NaN, so `NaN || 0 + 1` reset the
+   * counter to 1 and the *next* auto id collided with an existing row. Only a
+   * numeric id may advance the counter, and it must never move backwards.
+   */
+  private nextAutoId(tableKey: string): number {
+    const next = this.autoIds.get(tableKey) ?? 1;
+    this.autoIds.set(tableKey, next + 1);
+    return next;
   }
 
   update(table: string, id: string | number, data: any): any | null {
@@ -879,12 +907,15 @@ export async function executeBackendRequest(
         }
       }
     } catch (dbErr: any) {
+      // The store throws errors carrying their own HTTP status (e.g. 409 for a
+      // duplicate id). Fall back to 500 only when it does not.
+      const status = typeof dbErr.status === 'number' ? dbErr.status : 500;
       return {
-        status: 500,
+        status,
         headers: { 'Content-Type': 'application/json' },
-        body: { error: `Database execution error: ${dbErr.message}`, layer: 'backend', details: dbErr.stack },
+        body: { error: dbErr.message, layer: 'backend', details: dbErr.stack },
         layer: 'backend',
-        error: `Database execution error: ${dbErr.message}`,
+        error: dbErr.message,
         details: dbErr.stack
       };
     }

@@ -33,3 +33,41 @@ they ran against.
 
 Per the manifest: no `git push --force`, no production deploy, no destructive SQL, no user-data
 deletion. All DB work is against local miniflare SQLite only.
+
+## I-05 · [FIXED] Production bundle would not have built after Phase 3
+
+`vite build` failed on `src/agent.ts` with "Unterminated regular expression" because
+the U+2028/U+2029 escaping used the literal characters inside regex literals (see
+DECISIONS D-19). Detected in this session by importing agent.ts from a unit test for
+the first time; fixed, and `vite build` is now green. Recorded so the audit trail
+shows the gap between "tsc passes" and "the artifact builds".
+
+## I-06 · Preview store singleton shared across projects (fixed, D-23)
+
+`executeBackendRequest` defaulted to a module-level `globalPreviewStore`. Any two
+agent Durable Objects in the same isolate shared one simulated backend database, so
+project A's preview could read project B's simulated `/api/*` rows. Fixed by giving
+the agent its own store instance; no signature change.
+
+## I-07 · Silent duplicate-id overwrite in the preview data store (fixed, D-25)
+
+`create` with an explicit existing id overwrote the row and still returned 201, and
+the auto-increment counter was reset to 1 by every non-numeric id, so later auto ids
+collided. Both fixed; a duplicate now yields 409.
+
+## I-08 · No TTL on stored sessions (mitigated, D-22)
+
+`sessions` rows were never deleted after expiry. The table grows one row per login.
+A sweep now runs on login over a new index on `expires_at`. This bounds growth only
+as well as logins happen — a registry that stops receiving logins keeps its expired
+rows. A true periodic sweep would want Durable Object alarms; not done, because it
+adds a lifecycle path for a job one indexed statement already handles.
+
+## I-09 · Unbounded `files_snapshot` frames (mitigated, D-24)
+
+Both snapshot sites shipped every project file in one WebSocket frame with no
+row or byte cap. Now bounded per page (200 rows / 8 MiB) with additive paging
+fields. Note the mitigation is a ceiling, not full streaming: a workspace larger
+than the ceiling receives a truncated snapshot on the post-extraction broadcast,
+and the client does not yet page to recover the remainder — it pages only if it
+asks for `limit`/`offset` explicitly, which the current UI does not do.
