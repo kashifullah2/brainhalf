@@ -1,0 +1,1992 @@
+{
+  "runId": "benchmark-2026-09-14T16-47-37-287Z",
+  "startedAt": "2026-09-14T16:47:37.288Z",
+  "base_url": "http://localhost:5173",
+  "results": [
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-1",
+        "tier": "medium",
+        "title": "Kanban Board (Drag & Drop)",
+        "totalChecks": 6,
+        "buildPrompt": "Build a Kanban board with 3 columns: To Do, In Progress, Done. Users can add cards to any column, drag cards between columns, edit card title inline, and delete cards. Show a card count per column header. Persist state in-memory only."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-1-check-1",
+          "description": "Adding a card to 'To Do' via add-card input appears in the correct column only",
+          "passed": false,
+          "actual": "inTodo=false, notInInProgress=true",
+          "expected": "card only in To Do column",
+          "durationMs": 6015
+        },
+        {
+          "checkId": "medium-1-check-2",
+          "description": "Dragging a card from 'To Do' to 'In Progress' moves the DOM node",
+          "passed": false,
+          "actual": "card not found",
+          "expected": "card visible in To Do",
+          "durationMs": 4316
+        },
+        {
+          "checkId": "medium-1-check-3",
+          "description": "Card count in column header updates after add/move/delete",
+          "passed": true,
+          "actual": "before=\"\", after=\"\"",
+          "expected": "count increments after adding card, or count not shown",
+          "durationMs": 6429
+        },
+        {
+          "checkId": "medium-1-check-4",
+          "description": "Double-clicking a card title allows inline edit and persists new value on blur/Enter",
+          "passed": false,
+          "actual": "not found after add",
+          "expected": "card visible",
+          "durationMs": 4314
+        },
+        {
+          "checkId": "medium-1-check-5",
+          "description": "Deleting a card removes only that card, other cards in same column remain",
+          "passed": false,
+          "actual": "deleted gone=true, kept still=false",
+          "expected": "only target card removed, siblings intact",
+          "durationMs": 10523
+        },
+        {
+          "checkId": "medium-1-check-6",
+          "description": "Reload behavior is consistent with prompt (no-persistence = empty; persistence = cards survive)",
+          "passed": false,
+          "actual": "cardSurvived=false (expected false per prompt), boardVisible=false",
+          "expected": "board renders after reload; cards should not survive (in-memory only)",
+          "durationMs": 7673
+        }
+      ],
+      "playwright_checks_passed": "1/6",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-1",
+        "tier": "medium",
+        "title": "Kanban Board (Drag & Drop)",
+        "totalChecks": 6,
+        "buildPrompt": "Build a Kanban board with 3 columns: To Do, In Progress, Done. Users can add cards to any column, drag cards between columns, edit card title inline, and delete cards. Show a card count per column header. Persist state in-memory only."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-1-check-1",
+          "description": "Adding a card to 'To Do' via add-card input appears in the correct column only",
+          "passed": false,
+          "actual": "inTodo=false, notInInProgress=true",
+          "expected": "card only in To Do column",
+          "durationMs": 6025
+        },
+        {
+          "checkId": "medium-1-check-2",
+          "description": "Dragging a card from 'To Do' to 'In Progress' moves the DOM node",
+          "passed": false,
+          "actual": "card not found",
+          "expected": "card visible in To Do",
+          "durationMs": 4321
+        },
+        {
+          "checkId": "medium-1-check-3",
+          "description": "Card count in column header updates after add/move/delete",
+          "passed": true,
+          "actual": "before=\"\", after=\"\"",
+          "expected": "count increments after adding card, or count not shown",
+          "durationMs": 6426
+        },
+        {
+          "checkId": "medium-1-check-4",
+          "description": "Double-clicking a card title allows inline edit and persists new value on blur/Enter",
+          "passed": false,
+          "actual": "not found after add",
+          "expected": "card visible",
+          "durationMs": 15861
+        },
+        {
+          "checkId": "medium-1-check-5",
+          "description": "Deleting a card removes only that card, other cards in same column remain",
+          "passed": false,
+          "actual": "deleted gone=true, kept still=false",
+          "expected": "only target card removed, siblings intact",
+          "durationMs": 10517
+        },
+        {
+          "checkId": "medium-1-check-6",
+          "description": "Reload behavior is consistent with prompt (no-persistence = empty; persistence = cards survive)",
+          "passed": false,
+          "actual": "cardSurvived=false (expected false per prompt), boardVisible=false",
+          "expected": "board renders after reload; cards should not survive (in-memory only)",
+          "durationMs": 7689
+        }
+      ],
+      "playwright_checks_passed": "1/6",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-1",
+        "tier": "medium",
+        "title": "Kanban Board (Drag & Drop)",
+        "totalChecks": 6,
+        "buildPrompt": "Build a Kanban board with 3 columns: To Do, In Progress, Done. Users can add cards to any column, drag cards between columns, edit card title inline, and delete cards. Show a card count per column header. Persist state in-memory only."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-1-check-1",
+          "description": "Adding a card to 'To Do' via add-card input appears in the correct column only",
+          "passed": false,
+          "actual": "inTodo=false, notInInProgress=true",
+          "expected": "card only in To Do column",
+          "durationMs": 6016
+        },
+        {
+          "checkId": "medium-1-check-2",
+          "description": "Dragging a card from 'To Do' to 'In Progress' moves the DOM node",
+          "passed": false,
+          "actual": "card not found",
+          "expected": "card visible in To Do",
+          "durationMs": 4317
+        },
+        {
+          "checkId": "medium-1-check-3",
+          "description": "Card count in column header updates after add/move/delete",
+          "passed": true,
+          "actual": "before=\"\", after=\"\"",
+          "expected": "count increments after adding card, or count not shown",
+          "durationMs": 6416
+        },
+        {
+          "checkId": "medium-1-check-4",
+          "description": "Double-clicking a card title allows inline edit and persists new value on blur/Enter",
+          "passed": false,
+          "actual": "not found after add",
+          "expected": "card visible",
+          "durationMs": 4306
+        },
+        {
+          "checkId": "medium-1-check-5",
+          "description": "Deleting a card removes only that card, other cards in same column remain",
+          "passed": false,
+          "actual": "deleted gone=true, kept still=false",
+          "expected": "only target card removed, siblings intact",
+          "durationMs": 10530
+        },
+        {
+          "checkId": "medium-1-check-6",
+          "description": "Reload behavior is consistent with prompt (no-persistence = empty; persistence = cards survive)",
+          "passed": false,
+          "actual": "cardSurvived=false (expected false per prompt), boardVisible=false",
+          "expected": "board renders after reload; cards should not survive (in-memory only)",
+          "durationMs": 7770
+        }
+      ],
+      "playwright_checks_passed": "1/6",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-1",
+        "tier": "medium",
+        "title": "Kanban Board (Drag & Drop)",
+        "totalChecks": 6,
+        "buildPrompt": "Build a Kanban board with 3 columns: To Do, In Progress, Done. Users can add cards to any column, drag cards between columns, edit card title inline, and delete cards. Show a card count per column header. Persist state in-memory only."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-1-check-1",
+          "description": "Adding a card to 'To Do' via add-card input appears in the correct column only",
+          "passed": false,
+          "actual": "inTodo=false, notInInProgress=true",
+          "expected": "card only in To Do column",
+          "durationMs": 6014
+        },
+        {
+          "checkId": "medium-1-check-2",
+          "description": "Dragging a card from 'To Do' to 'In Progress' moves the DOM node",
+          "passed": false,
+          "actual": "card not found",
+          "expected": "card visible in To Do",
+          "durationMs": 4325
+        },
+        {
+          "checkId": "medium-1-check-3",
+          "description": "Card count in column header updates after add/move/delete",
+          "passed": true,
+          "actual": "before=\"\", after=\"\"",
+          "expected": "count increments after adding card, or count not shown",
+          "durationMs": 6416
+        },
+        {
+          "checkId": "medium-1-check-4",
+          "description": "Double-clicking a card title allows inline edit and persists new value on blur/Enter",
+          "passed": false,
+          "actual": "not found after add",
+          "expected": "card visible",
+          "durationMs": 4315
+        },
+        {
+          "checkId": "medium-1-check-5",
+          "description": "Deleting a card removes only that card, other cards in same column remain",
+          "passed": false,
+          "actual": "deleted gone=true, kept still=false",
+          "expected": "only target card removed, siblings intact",
+          "durationMs": 10526
+        },
+        {
+          "checkId": "medium-1-check-6",
+          "description": "Reload behavior is consistent with prompt (no-persistence = empty; persistence = cards survive)",
+          "passed": false,
+          "actual": "cardSurvived=false (expected false per prompt), boardVisible=false",
+          "expected": "board renders after reload; cards should not survive (in-memory only)",
+          "durationMs": 8006
+        }
+      ],
+      "playwright_checks_passed": "1/6",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-1",
+        "tier": "medium",
+        "title": "Kanban Board (Drag & Drop)",
+        "totalChecks": 6,
+        "buildPrompt": "Build a Kanban board with 3 columns: To Do, In Progress, Done. Users can add cards to any column, drag cards between columns, edit card title inline, and delete cards. Show a card count per column header. Persist state in-memory only."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-1-check-1",
+          "description": "Adding a card to 'To Do' via add-card input appears in the correct column only",
+          "passed": false,
+          "actual": "inTodo=false, notInInProgress=true",
+          "expected": "card only in To Do column",
+          "durationMs": 6019
+        },
+        {
+          "checkId": "medium-1-check-2",
+          "description": "Dragging a card from 'To Do' to 'In Progress' moves the DOM node",
+          "passed": false,
+          "actual": "card not found",
+          "expected": "card visible in To Do",
+          "durationMs": 4332
+        },
+        {
+          "checkId": "medium-1-check-3",
+          "description": "Card count in column header updates after add/move/delete",
+          "passed": true,
+          "actual": "before=\"\", after=\"\"",
+          "expected": "count increments after adding card, or count not shown",
+          "durationMs": 6414
+        },
+        {
+          "checkId": "medium-1-check-4",
+          "description": "Double-clicking a card title allows inline edit and persists new value on blur/Enter",
+          "passed": false,
+          "actual": "not found after add",
+          "expected": "card visible",
+          "durationMs": 4311
+        },
+        {
+          "checkId": "medium-1-check-5",
+          "description": "Deleting a card removes only that card, other cards in same column remain",
+          "passed": false,
+          "actual": "deleted gone=true, kept still=false",
+          "expected": "only target card removed, siblings intact",
+          "durationMs": 10530
+        },
+        {
+          "checkId": "medium-1-check-6",
+          "description": "Reload behavior is consistent with prompt (no-persistence = empty; persistence = cards survive)",
+          "passed": false,
+          "actual": "cardSurvived=false (expected false per prompt), boardVisible=false",
+          "expected": "board renders after reload; cards should not survive (in-memory only)",
+          "durationMs": 7922
+        }
+      ],
+      "playwright_checks_passed": "1/6",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-1",
+        "tier": "medium",
+        "title": "Kanban Board (Drag & Drop)",
+        "totalChecks": 6,
+        "buildPrompt": "Build a Kanban board with 3 columns: To Do, In Progress, Done. Users can add cards to any column, drag cards between columns, edit card title inline, and delete cards. Show a card count per column header. Persist state in-memory only."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-1-check-1",
+          "description": "Adding a card to 'To Do' via add-card input appears in the correct column only",
+          "passed": false,
+          "actual": "inTodo=false, notInInProgress=true",
+          "expected": "card only in To Do column",
+          "durationMs": 6007
+        },
+        {
+          "checkId": "medium-1-check-2",
+          "description": "Dragging a card from 'To Do' to 'In Progress' moves the DOM node",
+          "passed": false,
+          "actual": "card not found",
+          "expected": "card visible in To Do",
+          "durationMs": 4339
+        },
+        {
+          "checkId": "medium-1-check-3",
+          "description": "Card count in column header updates after add/move/delete",
+          "passed": true,
+          "actual": "before=\"\", after=\"\"",
+          "expected": "count increments after adding card, or count not shown",
+          "durationMs": 6413
+        },
+        {
+          "checkId": "medium-1-check-4",
+          "description": "Double-clicking a card title allows inline edit and persists new value on blur/Enter",
+          "passed": false,
+          "actual": "not found after add",
+          "expected": "card visible",
+          "durationMs": 4332
+        },
+        {
+          "checkId": "medium-1-check-5",
+          "description": "Deleting a card removes only that card, other cards in same column remain",
+          "passed": false,
+          "actual": "deleted gone=true, kept still=false",
+          "expected": "only target card removed, siblings intact",
+          "durationMs": 10525
+        },
+        {
+          "checkId": "medium-1-check-6",
+          "description": "Reload behavior is consistent with prompt (no-persistence = empty; persistence = cards survive)",
+          "passed": false,
+          "actual": "cardSurvived=false (expected false per prompt), boardVisible=false",
+          "expected": "board renders after reload; cards should not survive (in-memory only)",
+          "durationMs": 7926
+        }
+      ],
+      "playwright_checks_passed": "1/6",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-1",
+        "tier": "medium",
+        "title": "Kanban Board (Drag & Drop)",
+        "totalChecks": 6,
+        "buildPrompt": "Build a Kanban board with 3 columns: To Do, In Progress, Done. Users can add cards to any column, drag cards between columns, edit card title inline, and delete cards. Show a card count per column header. Persist state in-memory only."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-1-check-1",
+          "description": "Adding a card to 'To Do' via add-card input appears in the correct column only",
+          "passed": false,
+          "actual": "inTodo=false, notInInProgress=true",
+          "expected": "card only in To Do column",
+          "durationMs": 6032
+        },
+        {
+          "checkId": "medium-1-check-2",
+          "description": "Dragging a card from 'To Do' to 'In Progress' moves the DOM node",
+          "passed": false,
+          "actual": "card not found",
+          "expected": "card visible in To Do",
+          "durationMs": 4326
+        },
+        {
+          "checkId": "medium-1-check-3",
+          "description": "Card count in column header updates after add/move/delete",
+          "passed": true,
+          "actual": "before=\"\", after=\"\"",
+          "expected": "count increments after adding card, or count not shown",
+          "durationMs": 6417
+        },
+        {
+          "checkId": "medium-1-check-4",
+          "description": "Double-clicking a card title allows inline edit and persists new value on blur/Enter",
+          "passed": false,
+          "actual": "not found after add",
+          "expected": "card visible",
+          "durationMs": 4313
+        },
+        {
+          "checkId": "medium-1-check-5",
+          "description": "Deleting a card removes only that card, other cards in same column remain",
+          "passed": false,
+          "actual": "deleted gone=true, kept still=false",
+          "expected": "only target card removed, siblings intact",
+          "durationMs": 10526
+        },
+        {
+          "checkId": "medium-1-check-6",
+          "description": "Reload behavior is consistent with prompt (no-persistence = empty; persistence = cards survive)",
+          "passed": false,
+          "actual": "cardSurvived=false (expected false per prompt), boardVisible=false",
+          "expected": "board renders after reload; cards should not survive (in-memory only)",
+          "durationMs": 7735
+        }
+      ],
+      "playwright_checks_passed": "1/6",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-1",
+        "tier": "medium",
+        "title": "Kanban Board (Drag & Drop)",
+        "totalChecks": 6,
+        "buildPrompt": "Build a Kanban board with 3 columns: To Do, In Progress, Done. Users can add cards to any column, drag cards between columns, edit card title inline, and delete cards. Show a card count per column header. Persist state in-memory only."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-1-check-1",
+          "description": "Adding a card to 'To Do' via add-card input appears in the correct column only",
+          "passed": false,
+          "actual": "inTodo=false, notInInProgress=true",
+          "expected": "card only in To Do column",
+          "durationMs": 6009
+        },
+        {
+          "checkId": "medium-1-check-2",
+          "description": "Dragging a card from 'To Do' to 'In Progress' moves the DOM node",
+          "passed": false,
+          "actual": "card not found",
+          "expected": "card visible in To Do",
+          "durationMs": 4327
+        },
+        {
+          "checkId": "medium-1-check-3",
+          "description": "Card count in column header updates after add/move/delete",
+          "passed": true,
+          "actual": "before=\"\", after=\"\"",
+          "expected": "count increments after adding card, or count not shown",
+          "durationMs": 6417
+        },
+        {
+          "checkId": "medium-1-check-4",
+          "description": "Double-clicking a card title allows inline edit and persists new value on blur/Enter",
+          "passed": false,
+          "actual": "not found after add",
+          "expected": "card visible",
+          "durationMs": 4312
+        },
+        {
+          "checkId": "medium-1-check-5",
+          "description": "Deleting a card removes only that card, other cards in same column remain",
+          "passed": false,
+          "actual": "deleted gone=true, kept still=false",
+          "expected": "only target card removed, siblings intact",
+          "durationMs": 10523
+        },
+        {
+          "checkId": "medium-1-check-6",
+          "description": "Reload behavior is consistent with prompt (no-persistence = empty; persistence = cards survive)",
+          "passed": false,
+          "actual": "cardSurvived=false (expected false per prompt), boardVisible=false",
+          "expected": "board renders after reload; cards should not survive (in-memory only)",
+          "durationMs": 7791
+        }
+      ],
+      "playwright_checks_passed": "1/6",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-2",
+        "tier": "medium",
+        "title": "Multi-Step Signup Form",
+        "totalChecks": 8,
+        "buildPrompt": "Build a 3-step signup wizard: Step 1 (name, email with validation), Step 2 (password + confirm password with match validation), Step 3 (review + submit). Include a progress indicator, back/next buttons, and prevent advancing on invalid input. On submit, show a success screen with entered data summary."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-2-check-1",
+          "description": "Clicking 'Next' on Step 1 with empty fields shows validation errors and does not advance",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "medium-2-check-2",
+          "description": "Entering invalid email 'test@' triggers visible email error",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "medium-2-check-3",
+          "description": "Valid Step 1 data allows advancing to Step 2",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2016
+        },
+        {
+          "checkId": "medium-2-check-4",
+          "description": "Step 2: mismatched password/confirm shows error and blocks advancing",
+          "passed": false,
+          "actual": "0 found",
+          "expected": "2 password fields",
+          "durationMs": 16
+        },
+        {
+          "checkId": "medium-2-check-5",
+          "description": "Step 3 review screen displays exact name and email entered in Step 1",
+          "passed": false,
+          "actual": "name found=false, email found=false",
+          "expected": "\"Jane Doe\" and \"jane@example.com\" visible on Step 3",
+          "durationMs": 25
+        },
+        {
+          "checkId": "medium-2-check-6",
+          "description": "Clicking 'Back' from Step 2 returns to Step 1 with data still populated",
+          "passed": false,
+          "actual": "name=\"\", email=\"\"",
+          "expected": "name=\"Jane Doe\", email=\"jane@example.com\"",
+          "durationMs": 8020
+        },
+        {
+          "checkId": "medium-2-check-7",
+          "description": "Submitting on Step 3 shows a success state",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "medium-2-check-8",
+          "description": "Progress indicator visually updates at each step",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 4889
+        }
+      ],
+      "playwright_checks_passed": "0/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-2",
+        "tier": "medium",
+        "title": "Multi-Step Signup Form",
+        "totalChecks": 8,
+        "buildPrompt": "Build a 3-step signup wizard: Step 1 (name, email with validation), Step 2 (password + confirm password with match validation), Step 3 (review + submit). Include a progress indicator, back/next buttons, and prevent advancing on invalid input. On submit, show a success screen with entered data summary."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-2-check-1",
+          "description": "Clicking 'Next' on Step 1 with empty fields shows validation errors and does not advance",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "medium-2-check-2",
+          "description": "Entering invalid email 'test@' triggers visible email error",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "medium-2-check-3",
+          "description": "Valid Step 1 data allows advancing to Step 2",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "medium-2-check-4",
+          "description": "Step 2: mismatched password/confirm shows error and blocks advancing",
+          "passed": false,
+          "actual": "0 found",
+          "expected": "2 password fields",
+          "durationMs": 6
+        },
+        {
+          "checkId": "medium-2-check-5",
+          "description": "Step 3 review screen displays exact name and email entered in Step 1",
+          "passed": false,
+          "actual": "name found=false, email found=false",
+          "expected": "\"Jane Doe\" and \"jane@example.com\" visible on Step 3",
+          "durationMs": 13
+        },
+        {
+          "checkId": "medium-2-check-6",
+          "description": "Clicking 'Back' from Step 2 returns to Step 1 with data still populated",
+          "passed": false,
+          "actual": "name=\"\", email=\"\"",
+          "expected": "name=\"Jane Doe\", email=\"jane@example.com\"",
+          "durationMs": 8015
+        },
+        {
+          "checkId": "medium-2-check-7",
+          "description": "Submitting on Step 3 shows a success state",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "medium-2-check-8",
+          "description": "Progress indicator visually updates at each step",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 4737
+        }
+      ],
+      "playwright_checks_passed": "0/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-2",
+        "tier": "medium",
+        "title": "Multi-Step Signup Form",
+        "totalChecks": 8,
+        "buildPrompt": "Build a 3-step signup wizard: Step 1 (name, email with validation), Step 2 (password + confirm password with match validation), Step 3 (review + submit). Include a progress indicator, back/next buttons, and prevent advancing on invalid input. On submit, show a success screen with entered data summary."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-2-check-1",
+          "description": "Clicking 'Next' on Step 1 with empty fields shows validation errors and does not advance",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-2-check-2",
+          "description": "Entering invalid email 'test@' triggers visible email error",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "medium-2-check-3",
+          "description": "Valid Step 1 data allows advancing to Step 2",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-2-check-4",
+          "description": "Step 2: mismatched password/confirm shows error and blocks advancing",
+          "passed": false,
+          "actual": "0 found",
+          "expected": "2 password fields",
+          "durationMs": 5
+        },
+        {
+          "checkId": "medium-2-check-5",
+          "description": "Step 3 review screen displays exact name and email entered in Step 1",
+          "passed": false,
+          "actual": "name found=false, email found=false",
+          "expected": "\"Jane Doe\" and \"jane@example.com\" visible on Step 3",
+          "durationMs": 12
+        },
+        {
+          "checkId": "medium-2-check-6",
+          "description": "Clicking 'Back' from Step 2 returns to Step 1 with data still populated",
+          "passed": false,
+          "actual": "name=\"\", email=\"\"",
+          "expected": "name=\"Jane Doe\", email=\"jane@example.com\"",
+          "durationMs": 8013
+        },
+        {
+          "checkId": "medium-2-check-7",
+          "description": "Submitting on Step 3 shows a success state",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-2-check-8",
+          "description": "Progress indicator visually updates at each step",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 4910
+        }
+      ],
+      "playwright_checks_passed": "0/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-2",
+        "tier": "medium",
+        "title": "Multi-Step Signup Form",
+        "totalChecks": 8,
+        "buildPrompt": "Build a 3-step signup wizard: Step 1 (name, email with validation), Step 2 (password + confirm password with match validation), Step 3 (review + submit). Include a progress indicator, back/next buttons, and prevent advancing on invalid input. On submit, show a success screen with entered data summary."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-2-check-1",
+          "description": "Clicking 'Next' on Step 1 with empty fields shows validation errors and does not advance",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-2-check-2",
+          "description": "Entering invalid email 'test@' triggers visible email error",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "medium-2-check-3",
+          "description": "Valid Step 1 data allows advancing to Step 2",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-2-check-4",
+          "description": "Step 2: mismatched password/confirm shows error and blocks advancing",
+          "passed": false,
+          "actual": "0 found",
+          "expected": "2 password fields",
+          "durationMs": 11
+        },
+        {
+          "checkId": "medium-2-check-5",
+          "description": "Step 3 review screen displays exact name and email entered in Step 1",
+          "passed": false,
+          "actual": "name found=false, email found=false",
+          "expected": "\"Jane Doe\" and \"jane@example.com\" visible on Step 3",
+          "durationMs": 20
+        },
+        {
+          "checkId": "medium-2-check-6",
+          "description": "Clicking 'Back' from Step 2 returns to Step 1 with data still populated",
+          "passed": false,
+          "actual": "name=\"\", email=\"\"",
+          "expected": "name=\"Jane Doe\", email=\"jane@example.com\"",
+          "durationMs": 8031
+        },
+        {
+          "checkId": "medium-2-check-7",
+          "description": "Submitting on Step 3 shows a success state",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-2-check-8",
+          "description": "Progress indicator visually updates at each step",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 4928
+        }
+      ],
+      "playwright_checks_passed": "0/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-2",
+        "tier": "medium",
+        "title": "Multi-Step Signup Form",
+        "totalChecks": 8,
+        "buildPrompt": "Build a 3-step signup wizard: Step 1 (name, email with validation), Step 2 (password + confirm password with match validation), Step 3 (review + submit). Include a progress indicator, back/next buttons, and prevent advancing on invalid input. On submit, show a success screen with entered data summary."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-2-check-1",
+          "description": "Clicking 'Next' on Step 1 with empty fields shows validation errors and does not advance",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-2-check-2",
+          "description": "Entering invalid email 'test@' triggers visible email error",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-2-check-3",
+          "description": "Valid Step 1 data allows advancing to Step 2",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-2-check-4",
+          "description": "Step 2: mismatched password/confirm shows error and blocks advancing",
+          "passed": false,
+          "actual": "0 found",
+          "expected": "2 password fields",
+          "durationMs": 10
+        },
+        {
+          "checkId": "medium-2-check-5",
+          "description": "Step 3 review screen displays exact name and email entered in Step 1",
+          "passed": false,
+          "actual": "name found=false, email found=false",
+          "expected": "\"Jane Doe\" and \"jane@example.com\" visible on Step 3",
+          "durationMs": 20
+        },
+        {
+          "checkId": "medium-2-check-6",
+          "description": "Clicking 'Back' from Step 2 returns to Step 1 with data still populated",
+          "passed": false,
+          "actual": "name=\"\", email=\"\"",
+          "expected": "name=\"Jane Doe\", email=\"jane@example.com\"",
+          "durationMs": 8017
+        },
+        {
+          "checkId": "medium-2-check-7",
+          "description": "Submitting on Step 3 shows a success state",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "medium-2-check-8",
+          "description": "Progress indicator visually updates at each step",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 5262
+        }
+      ],
+      "playwright_checks_passed": "0/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-2",
+        "tier": "medium",
+        "title": "Multi-Step Signup Form",
+        "totalChecks": 8,
+        "buildPrompt": "Build a 3-step signup wizard: Step 1 (name, email with validation), Step 2 (password + confirm password with match validation), Step 3 (review + submit). Include a progress indicator, back/next buttons, and prevent advancing on invalid input. On submit, show a success screen with entered data summary."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-2-check-1",
+          "description": "Clicking 'Next' on Step 1 with empty fields shows validation errors and does not advance",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "medium-2-check-2",
+          "description": "Entering invalid email 'test@' triggers visible email error",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "medium-2-check-3",
+          "description": "Valid Step 1 data allows advancing to Step 2",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "medium-2-check-4",
+          "description": "Step 2: mismatched password/confirm shows error and blocks advancing",
+          "passed": false,
+          "actual": "0 found",
+          "expected": "2 password fields",
+          "durationMs": 9
+        },
+        {
+          "checkId": "medium-2-check-5",
+          "description": "Step 3 review screen displays exact name and email entered in Step 1",
+          "passed": false,
+          "actual": "name found=false, email found=false",
+          "expected": "\"Jane Doe\" and \"jane@example.com\" visible on Step 3",
+          "durationMs": 21
+        },
+        {
+          "checkId": "medium-2-check-6",
+          "description": "Clicking 'Back' from Step 2 returns to Step 1 with data still populated",
+          "passed": false,
+          "actual": "name=\"\", email=\"\"",
+          "expected": "name=\"Jane Doe\", email=\"jane@example.com\"",
+          "durationMs": 8025
+        },
+        {
+          "checkId": "medium-2-check-7",
+          "description": "Submitting on Step 3 shows a success state",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-2-check-8",
+          "description": "Progress indicator visually updates at each step",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 4820
+        }
+      ],
+      "playwright_checks_passed": "0/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-2",
+        "tier": "medium",
+        "title": "Multi-Step Signup Form",
+        "totalChecks": 8,
+        "buildPrompt": "Build a 3-step signup wizard: Step 1 (name, email with validation), Step 2 (password + confirm password with match validation), Step 3 (review + submit). Include a progress indicator, back/next buttons, and prevent advancing on invalid input. On submit, show a success screen with entered data summary."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-2-check-1",
+          "description": "Clicking 'Next' on Step 1 with empty fields shows validation errors and does not advance",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-2-check-2",
+          "description": "Entering invalid email 'test@' triggers visible email error",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "medium-2-check-3",
+          "description": "Valid Step 1 data allows advancing to Step 2",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "medium-2-check-4",
+          "description": "Step 2: mismatched password/confirm shows error and blocks advancing",
+          "passed": false,
+          "actual": "0 found",
+          "expected": "2 password fields",
+          "durationMs": 9
+        },
+        {
+          "checkId": "medium-2-check-5",
+          "description": "Step 3 review screen displays exact name and email entered in Step 1",
+          "passed": false,
+          "actual": "name found=false, email found=false",
+          "expected": "\"Jane Doe\" and \"jane@example.com\" visible on Step 3",
+          "durationMs": 15
+        },
+        {
+          "checkId": "medium-2-check-6",
+          "description": "Clicking 'Back' from Step 2 returns to Step 1 with data still populated",
+          "passed": false,
+          "actual": "name=\"\", email=\"\"",
+          "expected": "name=\"Jane Doe\", email=\"jane@example.com\"",
+          "durationMs": 8010
+        },
+        {
+          "checkId": "medium-2-check-7",
+          "description": "Submitting on Step 3 shows a success state",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "medium-2-check-8",
+          "description": "Progress indicator visually updates at each step",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 4952
+        }
+      ],
+      "playwright_checks_passed": "0/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-2",
+        "tier": "medium",
+        "title": "Multi-Step Signup Form",
+        "totalChecks": 8,
+        "buildPrompt": "Build a 3-step signup wizard: Step 1 (name, email with validation), Step 2 (password + confirm password with match validation), Step 3 (review + submit). Include a progress indicator, back/next buttons, and prevent advancing on invalid input. On submit, show a success screen with entered data summary."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-2-check-1",
+          "description": "Clicking 'Next' on Step 1 with empty fields shows validation errors and does not advance",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-2-check-2",
+          "description": "Entering invalid email 'test@' triggers visible email error",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-2-check-3",
+          "description": "Valid Step 1 data allows advancing to Step 2",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "medium-2-check-4",
+          "description": "Step 2: mismatched password/confirm shows error and blocks advancing",
+          "passed": false,
+          "actual": "0 found",
+          "expected": "2 password fields",
+          "durationMs": 4
+        },
+        {
+          "checkId": "medium-2-check-5",
+          "description": "Step 3 review screen displays exact name and email entered in Step 1",
+          "passed": false,
+          "actual": "name found=false, email found=false",
+          "expected": "\"Jane Doe\" and \"jane@example.com\" visible on Step 3",
+          "durationMs": 8
+        },
+        {
+          "checkId": "medium-2-check-6",
+          "description": "Clicking 'Back' from Step 2 returns to Step 1 with data still populated",
+          "passed": false,
+          "actual": "name=\"\", email=\"\"",
+          "expected": "name=\"Jane Doe\", email=\"jane@example.com\"",
+          "durationMs": 8009
+        },
+        {
+          "checkId": "medium-2-check-7",
+          "description": "Submitting on Step 3 shows a success state",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "medium-2-check-8",
+          "description": "Progress indicator visually updates at each step",
+          "passed": false,
+          "error": "locator.fill: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('input[name=\"name\"], input[placeholder*=\"name\"], input[id*=\"name\"]').first()\u001b[22m\n",
+          "durationMs": 4831
+        }
+      ],
+      "playwright_checks_passed": "0/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "label": "Llama 3.3 70B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-3",
+        "tier": "medium",
+        "title": "Product Catalog with Cart",
+        "totalChecks": 8,
+        "buildPrompt": "Build a product catalog page (8-10 mock products with name, price, image placeholder) with search-by-name filtering, category filter dropdown, and an 'Add to Cart' button per product. Include a cart drawer/sidebar showing items, quantities, per-item and total price, with quantity +/- controls and remove button."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-3-check-1",
+          "description": "Typing a product name substring in search filters visible products to matching items only",
+          "passed": false,
+          "actual": "not found",
+          "expected": "search input visible",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-3-check-2",
+          "description": "Selecting a category filter shows only products of that category",
+          "passed": false,
+          "actual": "not found",
+          "expected": "category filter (select or buttons)",
+          "durationMs": 6017
+        },
+        {
+          "checkId": "medium-3-check-3",
+          "description": "Search + category filter applies simultaneously (AND logic)",
+          "passed": true,
+          "actual": "filterOnly=0, filter+search=0",
+          "expected": "AND logic: combined is ≤ filter-only count",
+          "durationMs": 4016
+        },
+        {
+          "checkId": "medium-3-check-4",
+          "description": "Clicking 'Add to Cart' increments cart badge count and adds item to drawer",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Add to Cart button visible",
+          "durationMs": 8309
+        },
+        {
+          "checkId": "medium-3-check-5",
+          "description": "Adding the same product twice increases quantity rather than creating duplicate line item",
+          "passed": false,
+          "error": "locator.click: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Add to Cart\"), button:has-text(\"Add\")').first()\u001b[22m\n",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "medium-3-check-6",
+          "description": "Increasing quantity via + button updates line total AND grand total",
+          "passed": false,
+          "actual": "not found",
+          "expected": "+ quantity button in cart",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-3-check-7",
+          "description": "Removing an item from cart updates grand total and removes it from DOM",
+          "passed": false,
+          "actual": "not found",
+          "expected": "remove button in cart",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "medium-3-check-8",
+          "description": "Cart total is mathematically correct: sum(price × quantity)",
+          "passed": true,
+          "actual": "computed=0.00, displayed=-1",
+          "expected": "within 2% rounding tolerance",
+          "durationMs": 9
+        }
+      ],
+      "playwright_checks_passed": "2/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+        "label": "Qwen 2.5 Coder 32B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-3",
+        "tier": "medium",
+        "title": "Product Catalog with Cart",
+        "totalChecks": 8,
+        "buildPrompt": "Build a product catalog page (8-10 mock products with name, price, image placeholder) with search-by-name filtering, category filter dropdown, and an 'Add to Cart' button per product. Include a cart drawer/sidebar showing items, quantities, per-item and total price, with quantity +/- controls and remove button."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-3-check-1",
+          "description": "Typing a product name substring in search filters visible products to matching items only",
+          "passed": false,
+          "actual": "not found",
+          "expected": "search input visible",
+          "durationMs": 2008
+        },
+        {
+          "checkId": "medium-3-check-2",
+          "description": "Selecting a category filter shows only products of that category",
+          "passed": false,
+          "actual": "not found",
+          "expected": "category filter (select or buttons)",
+          "durationMs": 6015
+        },
+        {
+          "checkId": "medium-3-check-3",
+          "description": "Search + category filter applies simultaneously (AND logic)",
+          "passed": true,
+          "actual": "filterOnly=0, filter+search=0",
+          "expected": "AND logic: combined is ≤ filter-only count",
+          "durationMs": 4026
+        },
+        {
+          "checkId": "medium-3-check-4",
+          "description": "Clicking 'Add to Cart' increments cart badge count and adds item to drawer",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Add to Cart button visible",
+          "durationMs": 8322
+        },
+        {
+          "checkId": "medium-3-check-5",
+          "description": "Adding the same product twice increases quantity rather than creating duplicate line item",
+          "passed": false,
+          "error": "locator.click: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Add to Cart\"), button:has-text(\"Add\")').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-3-check-6",
+          "description": "Increasing quantity via + button updates line total AND grand total",
+          "passed": false,
+          "actual": "not found",
+          "expected": "+ quantity button in cart",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "medium-3-check-7",
+          "description": "Removing an item from cart updates grand total and removes it from DOM",
+          "passed": false,
+          "actual": "not found",
+          "expected": "remove button in cart",
+          "durationMs": 2007
+        },
+        {
+          "checkId": "medium-3-check-8",
+          "description": "Cart total is mathematically correct: sum(price × quantity)",
+          "passed": true,
+          "actual": "computed=0.00, displayed=-1",
+          "expected": "within 2% rounding tolerance",
+          "durationMs": 7
+        }
+      ],
+      "playwright_checks_passed": "2/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/qwen/qwen3.8-27b",
+        "label": "Qwen 3.8 27B",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-3",
+        "tier": "medium",
+        "title": "Product Catalog with Cart",
+        "totalChecks": 8,
+        "buildPrompt": "Build a product catalog page (8-10 mock products with name, price, image placeholder) with search-by-name filtering, category filter dropdown, and an 'Add to Cart' button per product. Include a cart drawer/sidebar showing items, quantities, per-item and total price, with quantity +/- controls and remove button."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-3-check-1",
+          "description": "Typing a product name substring in search filters visible products to matching items only",
+          "passed": false,
+          "actual": "not found",
+          "expected": "search input visible",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-3-check-2",
+          "description": "Selecting a category filter shows only products of that category",
+          "passed": false,
+          "actual": "not found",
+          "expected": "category filter (select or buttons)",
+          "durationMs": 6015
+        },
+        {
+          "checkId": "medium-3-check-3",
+          "description": "Search + category filter applies simultaneously (AND logic)",
+          "passed": true,
+          "actual": "filterOnly=0, filter+search=0",
+          "expected": "AND logic: combined is ≤ filter-only count",
+          "durationMs": 4010
+        },
+        {
+          "checkId": "medium-3-check-4",
+          "description": "Clicking 'Add to Cart' increments cart badge count and adds item to drawer",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Add to Cart button visible",
+          "durationMs": 8320
+        },
+        {
+          "checkId": "medium-3-check-5",
+          "description": "Adding the same product twice increases quantity rather than creating duplicate line item",
+          "passed": false,
+          "error": "locator.click: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Add to Cart\"), button:has-text(\"Add\")').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-3-check-6",
+          "description": "Increasing quantity via + button updates line total AND grand total",
+          "passed": false,
+          "actual": "not found",
+          "expected": "+ quantity button in cart",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "medium-3-check-7",
+          "description": "Removing an item from cart updates grand total and removes it from DOM",
+          "passed": false,
+          "actual": "not found",
+          "expected": "remove button in cart",
+          "durationMs": 2019
+        },
+        {
+          "checkId": "medium-3-check-8",
+          "description": "Cart total is mathematically correct: sum(price × quantity)",
+          "passed": true,
+          "actual": "computed=0.00, displayed=-1",
+          "expected": "within 2% rounding tolerance",
+          "durationMs": 18
+        }
+      ],
+      "playwright_checks_passed": "2/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/zai-org/glm-5.3-flash",
+        "label": "GLM 5.3 Flash",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-3",
+        "tier": "medium",
+        "title": "Product Catalog with Cart",
+        "totalChecks": 8,
+        "buildPrompt": "Build a product catalog page (8-10 mock products with name, price, image placeholder) with search-by-name filtering, category filter dropdown, and an 'Add to Cart' button per product. Include a cart drawer/sidebar showing items, quantities, per-item and total price, with quantity +/- controls and remove button."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-3-check-1",
+          "description": "Typing a product name substring in search filters visible products to matching items only",
+          "passed": false,
+          "actual": "not found",
+          "expected": "search input visible",
+          "durationMs": 2002
+        },
+        {
+          "checkId": "medium-3-check-2",
+          "description": "Selecting a category filter shows only products of that category",
+          "passed": false,
+          "actual": "not found",
+          "expected": "category filter (select or buttons)",
+          "durationMs": 6010
+        },
+        {
+          "checkId": "medium-3-check-3",
+          "description": "Search + category filter applies simultaneously (AND logic)",
+          "passed": true,
+          "actual": "filterOnly=0, filter+search=0",
+          "expected": "AND logic: combined is ≤ filter-only count",
+          "durationMs": 4023
+        },
+        {
+          "checkId": "medium-3-check-4",
+          "description": "Clicking 'Add to Cart' increments cart badge count and adds item to drawer",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Add to Cart button visible",
+          "durationMs": 8312
+        },
+        {
+          "checkId": "medium-3-check-5",
+          "description": "Adding the same product twice increases quantity rather than creating duplicate line item",
+          "passed": false,
+          "error": "locator.click: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Add to Cart\"), button:has-text(\"Add\")').first()\u001b[22m\n",
+          "durationMs": 2004
+        },
+        {
+          "checkId": "medium-3-check-6",
+          "description": "Increasing quantity via + button updates line total AND grand total",
+          "passed": false,
+          "actual": "not found",
+          "expected": "+ quantity button in cart",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "medium-3-check-7",
+          "description": "Removing an item from cart updates grand total and removes it from DOM",
+          "passed": false,
+          "actual": "not found",
+          "expected": "remove button in cart",
+          "durationMs": 2023
+        },
+        {
+          "checkId": "medium-3-check-8",
+          "description": "Cart total is mathematically correct: sum(price × quantity)",
+          "passed": true,
+          "actual": "computed=0.00, displayed=-1",
+          "expected": "within 2% rounding tolerance",
+          "durationMs": 18
+        }
+      ],
+      "playwright_checks_passed": "2/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "@cf/moonshotai/kimi-k2.7-code",
+        "label": "Kimi K2.7 Code",
+        "provider": "cloudflare"
+      },
+      "task": {
+        "id": "medium-3",
+        "tier": "medium",
+        "title": "Product Catalog with Cart",
+        "totalChecks": 8,
+        "buildPrompt": "Build a product catalog page (8-10 mock products with name, price, image placeholder) with search-by-name filtering, category filter dropdown, and an 'Add to Cart' button per product. Include a cart drawer/sidebar showing items, quantities, per-item and total price, with quantity +/- controls and remove button."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-3-check-1",
+          "description": "Typing a product name substring in search filters visible products to matching items only",
+          "passed": false,
+          "actual": "not found",
+          "expected": "search input visible",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "medium-3-check-2",
+          "description": "Selecting a category filter shows only products of that category",
+          "passed": false,
+          "actual": "not found",
+          "expected": "category filter (select or buttons)",
+          "durationMs": 6012
+        },
+        {
+          "checkId": "medium-3-check-3",
+          "description": "Search + category filter applies simultaneously (AND logic)",
+          "passed": true,
+          "actual": "filterOnly=0, filter+search=0",
+          "expected": "AND logic: combined is ≤ filter-only count",
+          "durationMs": 4011
+        },
+        {
+          "checkId": "medium-3-check-4",
+          "description": "Clicking 'Add to Cart' increments cart badge count and adds item to drawer",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Add to Cart button visible",
+          "durationMs": 8311
+        },
+        {
+          "checkId": "medium-3-check-5",
+          "description": "Adding the same product twice increases quantity rather than creating duplicate line item",
+          "passed": false,
+          "error": "locator.click: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Add to Cart\"), button:has-text(\"Add\")').first()\u001b[22m\n",
+          "durationMs": 2001
+        },
+        {
+          "checkId": "medium-3-check-6",
+          "description": "Increasing quantity via + button updates line total AND grand total",
+          "passed": false,
+          "actual": "not found",
+          "expected": "+ quantity button in cart",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "medium-3-check-7",
+          "description": "Removing an item from cart updates grand total and removes it from DOM",
+          "passed": false,
+          "actual": "not found",
+          "expected": "remove button in cart",
+          "durationMs": 2012
+        },
+        {
+          "checkId": "medium-3-check-8",
+          "description": "Cart total is mathematically correct: sum(price × quantity)",
+          "passed": true,
+          "actual": "computed=0.00, displayed=-1",
+          "expected": "within 2% rounding tolerance",
+          "durationMs": 6
+        }
+      ],
+      "playwright_checks_passed": "2/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-opus-4.6",
+        "label": "Claude Opus 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-3",
+        "tier": "medium",
+        "title": "Product Catalog with Cart",
+        "totalChecks": 8,
+        "buildPrompt": "Build a product catalog page (8-10 mock products with name, price, image placeholder) with search-by-name filtering, category filter dropdown, and an 'Add to Cart' button per product. Include a cart drawer/sidebar showing items, quantities, per-item and total price, with quantity +/- controls and remove button."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-3-check-1",
+          "description": "Typing a product name substring in search filters visible products to matching items only",
+          "passed": false,
+          "actual": "not found",
+          "expected": "search input visible",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "medium-3-check-2",
+          "description": "Selecting a category filter shows only products of that category",
+          "passed": false,
+          "actual": "not found",
+          "expected": "category filter (select or buttons)",
+          "durationMs": 6007
+        },
+        {
+          "checkId": "medium-3-check-3",
+          "description": "Search + category filter applies simultaneously (AND logic)",
+          "passed": true,
+          "actual": "filterOnly=0, filter+search=0",
+          "expected": "AND logic: combined is ≤ filter-only count",
+          "durationMs": 4041
+        },
+        {
+          "checkId": "medium-3-check-4",
+          "description": "Clicking 'Add to Cart' increments cart badge count and adds item to drawer",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Add to Cart button visible",
+          "durationMs": 8314
+        },
+        {
+          "checkId": "medium-3-check-5",
+          "description": "Adding the same product twice increases quantity rather than creating duplicate line item",
+          "passed": false,
+          "error": "locator.click: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Add to Cart\"), button:has-text(\"Add\")').first()\u001b[22m\n",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-3-check-6",
+          "description": "Increasing quantity via + button updates line total AND grand total",
+          "passed": false,
+          "actual": "not found",
+          "expected": "+ quantity button in cart",
+          "durationMs": 2010
+        },
+        {
+          "checkId": "medium-3-check-7",
+          "description": "Removing an item from cart updates grand total and removes it from DOM",
+          "passed": false,
+          "actual": "not found",
+          "expected": "remove button in cart",
+          "durationMs": 2024
+        },
+        {
+          "checkId": "medium-3-check-8",
+          "description": "Cart total is mathematically correct: sum(price × quantity)",
+          "passed": true,
+          "actual": "computed=0.00, displayed=-1",
+          "expected": "within 2% rounding tolerance",
+          "durationMs": 9
+        }
+      ],
+      "playwright_checks_passed": "2/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "claude-sonnet-4.6",
+        "label": "Claude Sonnet 4.6",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-3",
+        "tier": "medium",
+        "title": "Product Catalog with Cart",
+        "totalChecks": 8,
+        "buildPrompt": "Build a product catalog page (8-10 mock products with name, price, image placeholder) with search-by-name filtering, category filter dropdown, and an 'Add to Cart' button per product. Include a cart drawer/sidebar showing items, quantities, per-item and total price, with quantity +/- controls and remove button."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-3-check-1",
+          "description": "Typing a product name substring in search filters visible products to matching items only",
+          "passed": false,
+          "actual": "not found",
+          "expected": "search input visible",
+          "durationMs": 2006
+        },
+        {
+          "checkId": "medium-3-check-2",
+          "description": "Selecting a category filter shows only products of that category",
+          "passed": false,
+          "actual": "not found",
+          "expected": "category filter (select or buttons)",
+          "durationMs": 6016
+        },
+        {
+          "checkId": "medium-3-check-3",
+          "description": "Search + category filter applies simultaneously (AND logic)",
+          "passed": true,
+          "actual": "filterOnly=0, filter+search=0",
+          "expected": "AND logic: combined is ≤ filter-only count",
+          "durationMs": 4016
+        },
+        {
+          "checkId": "medium-3-check-4",
+          "description": "Clicking 'Add to Cart' increments cart badge count and adds item to drawer",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Add to Cart button visible",
+          "durationMs": 8315
+        },
+        {
+          "checkId": "medium-3-check-5",
+          "description": "Adding the same product twice increases quantity rather than creating duplicate line item",
+          "passed": false,
+          "error": "locator.click: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Add to Cart\"), button:has-text(\"Add\")').first()\u001b[22m\n",
+          "durationMs": 2003
+        },
+        {
+          "checkId": "medium-3-check-6",
+          "description": "Increasing quantity via + button updates line total AND grand total",
+          "passed": false,
+          "actual": "not found",
+          "expected": "+ quantity button in cart",
+          "durationMs": 2011
+        },
+        {
+          "checkId": "medium-3-check-7",
+          "description": "Removing an item from cart updates grand total and removes it from DOM",
+          "passed": false,
+          "actual": "not found",
+          "expected": "remove button in cart",
+          "durationMs": 2022
+        },
+        {
+          "checkId": "medium-3-check-8",
+          "description": "Cart total is mathematically correct: sum(price × quantity)",
+          "passed": true,
+          "actual": "computed=0.00, displayed=-1",
+          "expected": "within 2% rounding tolerance",
+          "durationMs": 19
+        }
+      ],
+      "playwright_checks_passed": "2/8",
+      "reviewer_notes": ""
+    },
+    {
+      "model": {
+        "id": "minimax-m2.5",
+        "label": "MiniMax M2.5",
+        "provider": "bedrock"
+      },
+      "task": {
+        "id": "medium-3",
+        "tier": "medium",
+        "title": "Product Catalog with Cart",
+        "totalChecks": 8,
+        "buildPrompt": "Build a product catalog page (8-10 mock products with name, price, image placeholder) with search-by-name filtering, category filter dropdown, and an 'Add to Cart' button per product. Include a cart drawer/sidebar showing items, quantities, per-item and total price, with quantity +/- controls and remove button."
+      },
+      "build_success": true,
+      "console_errors_on_load": 0,
+      "time_to_ready_seconds": 5,
+      "auto_fix_triggered": false,
+      "auto_fix_resolved": "na",
+      "responsive_pass_desktop": true,
+      "responsive_pass_tablet": true,
+      "responsive_pass_mobile": true,
+      "checks": [
+        {
+          "checkId": "medium-3-check-1",
+          "description": "Typing a product name substring in search filters visible products to matching items only",
+          "passed": false,
+          "actual": "not found",
+          "expected": "search input visible",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-3-check-2",
+          "description": "Selecting a category filter shows only products of that category",
+          "passed": false,
+          "actual": "not found",
+          "expected": "category filter (select or buttons)",
+          "durationMs": 6005
+        },
+        {
+          "checkId": "medium-3-check-3",
+          "description": "Search + category filter applies simultaneously (AND logic)",
+          "passed": true,
+          "actual": "filterOnly=0, filter+search=0",
+          "expected": "AND logic: combined is ≤ filter-only count",
+          "durationMs": 4051
+        },
+        {
+          "checkId": "medium-3-check-4",
+          "description": "Clicking 'Add to Cart' increments cart badge count and adds item to drawer",
+          "passed": false,
+          "actual": "not found",
+          "expected": "Add to Cart button visible",
+          "durationMs": 8312
+        },
+        {
+          "checkId": "medium-3-check-5",
+          "description": "Adding the same product twice increases quantity rather than creating duplicate line item",
+          "passed": false,
+          "error": "locator.click: Timeout 2000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"Add to Cart\"), button:has-text(\"Add\")').first()\u001b[22m\n",
+          "durationMs": 2000
+        },
+        {
+          "checkId": "medium-3-check-6",
+          "description": "Increasing quantity via + button updates line total AND grand total",
+          "passed": false,
+          "actual": "not found",
+          "expected": "+ quantity button in cart",
+          "durationMs": 2005
+        },
+        {
+          "checkId": "medium-3-check-7",
+          "description": "Removing an item from cart updates grand total and removes it from DOM",
+          "passed": false,
+          "actual": "not found",
+          "expected": "remove button in cart",
+          "durationMs": 2009
+        },
+        {
+          "checkId": "medium-3-check-8",
+          "description": "Cart total is mathematically correct: sum(price × quantity)",
+          "passed": true,
+          "actual": "computed=0.00, displayed=-1",
+          "expected": "within 2% rounding tolerance",
+          "durationMs": 14
+        }
+      ],
+      "playwright_checks_passed": "2/8",
+      "reviewer_notes": ""
+    }
+  ],
+  "completedAt": "2026-09-14T17:04:36.911Z"
+}

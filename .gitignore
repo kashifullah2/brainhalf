@@ -40,3 +40,7 @@ dist-ssr
 scratch/
 scratch_test_sql.ts
 assest/
+
+# Local wrangler dev secrets (never commit)
+.dev.vars
+.dev.vars.*

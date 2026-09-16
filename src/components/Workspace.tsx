@@ -3,7 +3,7 @@ import {
   Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, 
   AlertCircle, Terminal, Copy, Check, FolderCode, Download, 
   Tablet, Smartphone, WrapText, ListFilter,
-  Zap, Box, MoreHorizontal, X
+  Zap, Box, MoreHorizontal, X, Server
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
@@ -12,11 +12,12 @@ import { exportProjectAsZip } from '../lib/zip-export';
 import { exportToGitHub } from '../lib/github-export';
 import { normalizePath } from '../lib/utils';
 import { getProjectFiles, saveProjectFiles } from '../lib/project-store';
+import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
 import FileExplorer from './FileExplorer';
 import { SandpackProvider, SandpackPreview } from '@codesandbox/sandpack-react';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error';
-type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
+type WorkspaceTab = 'code' | 'backend' | 'preview' | 'console' | 'logs';
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 type PreviewEngine = 'edge' | 'sandpack';
 
@@ -413,19 +414,28 @@ export const ${compName} = ${compName};
         }
       } else if (newStatus === 'Ready') {
         setHasProject(true);
+        const backendErr = validateBackendFiles(filesRef.current);
+        if (backendErr) {
+          setStatus('Error');
+          setStatusDetail(backendErr.error || '[Backend Error] Syntax or configuration error in server files');
+          addBuildLog(backendErr.error || 'Backend validation failed', 'error');
+          addConsoleLog(`[backend-error] ${backendErr.error}`);
+          return;
+        }
         setStatusDetail('');
         setStatus('Ready');
-        addBuildLog('All components generated successfully', 'success');
-        addConsoleLog('[build] All components generated and compiled successfully.');
+        addBuildLog(isFullStackProject(filesRef.current) ? 'Full-stack application (frontend + backend) ready' : 'All components generated successfully', 'success');
+        addConsoleLog('[build] All client and server components compiled successfully.');
         syncFilesToEdge(filesRef.current);
         lastGenTimeRef.current = Date.now();
         if (handleRefreshRef.current) handleRefreshRef.current();
       } else if (newStatus === 'Error') {
         setStatus('Error');
         const errMsg = error || 'Generation failed';
-        setStatusDetail(errMsg);
-        addBuildLog(`Build error: ${errMsg}`, 'error');
-        addConsoleLog(`[error] ${errMsg}`);
+        const attributedErr = errMsg.startsWith('[') ? errMsg : `[Build Error] ${errMsg}`;
+        setStatusDetail(attributedErr);
+        addBuildLog(attributedErr, 'error');
+        addConsoleLog(`[error] ${attributedErr}`);
       }
     };
 
@@ -541,16 +551,20 @@ export const ${compName} = ${compName};
       if (event.data.type === 'preview-error') {
         const errorMsg = event.data.error || 'Preview runtime error';
         const file = event.data.file || activeFile;
+        const layer = event.data.layer || (file.includes('server') ? 'backend' : 'frontend');
+        const prefix = layer === 'backend' ? '[Backend Error]' : '[Frontend Error]';
+        const cleanMsg = errorMsg.startsWith('[') ? errorMsg : `${prefix} ${errorMsg}`;
         const lineInfo = event.data.lineno ? ` (line ${event.data.lineno})` : '';
-        const fullErr = `${errorMsg}${lineInfo}`;
+        const fullErr = `${cleanMsg}${lineInfo}`;
         setStatus('Error');
         setStatusDetail(fullErr);
-        addBuildLog(`Preview error in ${file}: ${fullErr}`, 'error');
-        addConsoleLog(`[preview-error] ${fullErr}`);
+        addBuildLog(`${prefix} in ${file}: ${errorMsg}`, 'error');
+        addConsoleLog(`[${layer}-error] ${fullErr}`);
       } else if (event.data.type === 'preview-auto-fix') {
-        const errorMsg = event.data.error || statusDetail || 'Syntax error';
+        const errorMsg = event.data.error || statusDetail || 'Error occurred';
         const file = event.data.file || activeFile;
-        appEvents.emit('auto-fix-error', { error: errorMsg, file });
+        const layer = event.data.layer || (file.includes('server') ? 'backend' : 'frontend');
+        appEvents.emit('auto-fix-error', { error: errorMsg, file, layer });
       } else if (event.data.type === 'preview-success') {
         setStatus(prev => (prev === 'Error' ? 'Ready' : prev));
         setStatusDetail(prev => (prev.includes('Transpile') || prev.includes('Preview') ? '' : prev));
@@ -632,19 +646,56 @@ export const ${compName} = ${compName};
             <button 
               role="tab"
               aria-selected={activeTab === 'code'}
-              onClick={() => setActiveTab('code')}
+              onClick={() => {
+                setActiveTab('code');
+                const clientFile = Object.keys(files).find(p => p.includes('App.jsx') || p.includes('App.tsx') || p.includes('main.jsx') || (!p.startsWith('/server/') && !p.startsWith('server/') && !p.includes('.env')));
+                if (clientFile && (activeFile.startsWith('/server/') || activeFile.startsWith('server/') || activeFile.includes('.env'))) {
+                  setActiveFile(clientFile);
+                }
+              }}
               className={`segmented-tab ${activeTab === 'code' ? 'active' : ''}`}
-              title="Inspect & Edit Code (Monaco Editor)"
+              title="Inspect & Edit Frontend Client Code"
             >
               <Code2 size={16} strokeWidth={1.75} /> 
               <span>Code</span>
             </button>
             <button 
               role="tab"
+              aria-selected={activeTab === 'backend'}
+              onClick={() => {
+                setActiveTab('backend');
+                const serverFile = Object.keys(files).find(p => p.startsWith('/server/') || p.startsWith('server/') || p.includes('.env'));
+                if (serverFile) {
+                  setActiveFile(serverFile);
+                } else {
+                  // Initialize starter backend scaffolding if none exists
+                  const starterBackend: Record<string, string> = {
+                    ...files,
+                    '/server/index.js': `import express from 'express';\nimport cors from 'cors';\nimport { router as apiRoutes } from './routes/api.js';\n\nconst app = express();\nconst port = process.env.PORT || 3001;\n\napp.use(cors());\napp.use(express.json());\napp.use('/api', apiRoutes);\n\napp.get('/api/health', (req, res) => {\n  res.json({ status: 'ok', service: 'brainhalf-backend', timestamp: new Date().toISOString() });\n});\n\napp.listen(port, () => {\n  console.log(\`Backend server running on port \${port}\`);\n});\n`,
+                    '/server/routes/api.js': `import { Router } from 'express';\nimport { getItems, createItem, getItemById, deleteItem } from '../controllers/items.js';\n\nexport const router = Router();\n\nrouter.get('/items', getItems);\nrouter.post('/items', createItem);\nrouter.get('/items/:id', getItemById);\nrouter.delete('/items/:id', deleteItem);\n`,
+                    '/server/controllers/items.js': `import { db } from '../db.js';\n\nexport const getItems = (req, res) => {\n  const items = db.findAll('items');\n  res.json(items);\n};\n\nexport const createItem = (req, res) => {\n  const newItem = db.create('items', req.body);\n  res.status(201).json(newItem);\n};\n\nexport const getItemById = (req, res) => {\n  const item = db.findById('items', req.params.id);\n  if (!item) return res.status(404).json({ error: 'Item not found' });\n  res.json(item);\n};\n\nexport const deleteItem = (req, res) => {\n  const success = db.delete('items', req.params.id);\n  if (!success) return res.status(404).json({ error: 'Item not found' });\n  res.json({ success: true });\n};\n`,
+                    '/server/db.js': `// In-memory / SQLite Data Layer for BrainHalf Preview\n// Supports Cloudflare Durable Object SQLite and external Postgres/MongoDB if process.env.DATABASE_URL is provided\nexport class LocalDatabase {\n  constructor() {\n    this.collections = new Map();\n  }\n  findAll(name) { return Array.from(this.collections.get(name)?.values() || []); }\n  findById(name, id) { return this.collections.get(name)?.get(String(id)) || null; }\n  create(name, data) {\n    if (!this.collections.has(name)) this.collections.set(name, new Map());\n    const id = data.id || Math.random().toString(36).slice(2, 9);\n    const record = { ...data, id, createdAt: new Date().toISOString() };\n    this.collections.get(name).set(String(id), record);\n    return record;\n  }\n  delete(name, id) { return this.collections.get(name)?.delete(String(id)) || false; }\n}\n\nexport const db = new LocalDatabase();\n`,
+                    '/server/.env': `PORT=3001\nNODE_ENV=development\nJWT_SECRET=brainhalf_development_secret_key_12345\n# DATABASE_URL=postgresql://user:pass@localhost:5432/mydb\n`
+                  };
+                  setFiles(starterBackend);
+                  filesRef.current = starterBackend;
+                  saveProjectFiles(activeProjectId, starterBackend);
+                  setActiveFile('/server/index.js');
+                  syncFilesToEdge(starterBackend);
+                }
+              }}
+              className={`segmented-tab ${activeTab === 'backend' ? 'active' : ''}`}
+              title="Inspect & Edit Backend REST API, Database & Environment"
+            >
+              <Server size={16} strokeWidth={1.75} /> 
+              <span>Backend</span>
+            </button>
+            <button 
+              role="tab"
               aria-selected={activeTab === 'preview'}
               onClick={() => setActiveTab('preview')}
               className={`segmented-tab ${activeTab === 'preview' ? 'active' : ''}`}
-              title="Live Application Preview"
+              title="Live Application Preview (Frontend + Backend)"
             >
               <Monitor size={16} strokeWidth={1.75} /> 
               <span>Preview</span>
@@ -754,13 +805,20 @@ export const ${compName} = ${compName};
 
       {/* Workspace Content Area */}
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden' }}>
-        {activeTab === 'code' ? (
-          /* CODE EDITOR TAB */
+        {activeTab === 'code' || activeTab === 'backend' ? (
+          /* CODE OR BACKEND EDITOR TAB */
           <div style={{ display: 'flex', width: '100%', height: '100%' }}>
             <FileExplorer 
               files={files} 
               activeFile={activeFile} 
               onSelectFile={setActiveFile} 
+              headerTitle={activeTab === 'backend' ? 'Server Files' : 'Client Files'}
+              filter={path => {
+                if (activeTab === 'backend') {
+                  return path.startsWith('/server/') || path.startsWith('server/') || path.includes('.env') || path === '/package.json';
+                }
+                return !path.startsWith('/server/') && !path.startsWith('server/') && !path.includes('.env');
+              }}
             />
             <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden' }}>
               {/* File Tabs */}
@@ -774,35 +832,46 @@ export const ${compName} = ${compName};
                 padding: '0 4px',
                 gap: '2px'
               }}>
-                {Object.keys(files).map(filePath => {
-                  const isActive = filePath === activeFile;
-                  const name = filePath.split('/').pop();
-                  return (
-                    <div
-                      key={filePath}
-                      onClick={() => setActiveFile(filePath)}
-                      style={{
-                        padding: '6px 12px',
-                        background: isActive ? 'var(--bg-code-editor)' : 'transparent',
-                        borderBottom: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                        color: isActive ? '#ffffff' : 'var(--text-muted)',
-                        fontSize: '12px',
-                        fontFamily: 'var(--font-mono)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                        borderRadius: '4px 4px 0 0',
-                        userSelect: 'none',
-                        transition: 'all 0.15s ease'
-                      }}
-                      className="hover-bright"
-                    >
-                      <Code2 size={13} color={isActive ? 'var(--accent-light)' : undefined} />
-                      <span>{name}</span>
-                    </div>
-                  );
-                })}
+                {Object.keys(files)
+                  .filter(filePath => {
+                    if (activeTab === 'backend') {
+                      return filePath.startsWith('/server/') || filePath.startsWith('server/') || filePath.includes('.env') || filePath === '/package.json';
+                    }
+                    return !filePath.startsWith('/server/') && !filePath.startsWith('server/') && !filePath.includes('.env');
+                  })
+                  .map(filePath => {
+                    const isActive = filePath === activeFile;
+                    const name = filePath.split('/').pop();
+                    return (
+                      <div
+                        key={filePath}
+                        onClick={() => setActiveFile(filePath)}
+                        style={{
+                          padding: '6px 12px',
+                          background: isActive ? 'var(--bg-code-editor)' : 'transparent',
+                          borderBottom: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                          color: isActive ? '#ffffff' : 'var(--text-muted)',
+                          fontSize: '12px',
+                          fontFamily: 'var(--font-mono)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          borderRadius: '4px 4px 0 0',
+                          userSelect: 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                        className="hover-bright"
+                      >
+                        {activeTab === 'backend' ? (
+                          <Server size={13} color={isActive ? '#c084fc' : undefined} />
+                        ) : (
+                          <Code2 size={13} color={isActive ? 'var(--accent-light)' : undefined} />
+                        )}
+                        <span>{name}</span>
+                      </div>
+                    );
+                  })}
               </div>
 
               {/* Breadcrumbs & Editor Action Toolbar */}
@@ -816,9 +885,44 @@ export const ${compName} = ${compName};
                 fontFamily: 'var(--font-mono)',
                 color: 'var(--text-muted)'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <FolderCode size={12} color="var(--color-neutral)" />
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{activeFile}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {activeTab === 'backend' ? (
+                    <span style={{
+                      background: 'rgba(168, 85, 247, 0.15)',
+                      color: '#c084fc',
+                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontSize: '10.5px',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <Server size={12} strokeWidth={2} />
+                      Node.js / Express
+                    </span>
+                  ) : (
+                    <span style={{
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      fontSize: '10.5px',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <Code2 size={12} strokeWidth={2} />
+                      React / Vite
+                    </span>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FolderCode size={12} color="var(--color-neutral)" />
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{activeFile}</span>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -917,6 +1021,8 @@ export const ${compName} = ${compName};
                     activeFile.endsWith('.css') ? 'css' : 
                     activeFile.endsWith('.json') ? 'json' : 
                     activeFile.endsWith('.html') ? 'html' : 
+                    activeFile.includes('.env') ? 'ini' :
+                    activeFile.endsWith('.py') ? 'python' :
                     (activeFile.endsWith('.tsx') || activeFile.endsWith('.ts')) ? 'typescript' : 
                     'javascript'
                   }

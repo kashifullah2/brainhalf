@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus, BrainCircuit } from 'lucide-react';
+import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus, BrainCircuit, LogOut } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName, createProject } from '../lib/project-store';
 import { usePlatformStatus } from '../lib/status-store';
@@ -14,16 +14,20 @@ interface TopNavProps {
   mobileTab?: 'chat' | 'code' | 'preview';
   onSelectMobileTab?: (tab: 'chat' | 'code' | 'preview') => void;
   isMobile?: boolean;
+  currentUser?: { email?: string; name?: string; devMode?: boolean } | null;
+  onLogout?: () => void | Promise<void>;
 }
 
-const TopNav: React.FC<TopNavProps> = ({ 
-  activeProjectId, 
-  onProjectRenamed, 
+const TopNav: React.FC<TopNavProps> = ({
+  activeProjectId,
+  onProjectRenamed,
   onSelectProject,
-  onToggleMobileSidebar, 
-  mobileTab = 'chat', 
-  onSelectMobileTab, 
-  isMobile = false 
+  onToggleMobileSidebar,
+  mobileTab = 'chat',
+  onSelectMobileTab,
+  isMobile = false,
+  currentUser,
+  onLogout,
 }) => {
   const [overrideName, setOverrideName] = useState<string | null>(null);
   const [prevId, setPrevId] = useState(activeProjectId);
@@ -379,6 +383,47 @@ const TopNav: React.FC<TopNavProps> = ({
             </div>
           )}
         </div>
+
+        {/* Authenticated identity + sign out */}
+        {currentUser && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {currentUser.devMode && (
+              <span
+                title="Anonymous development mode is active on this deployment. Project isolation is disabled."
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  color: '#eab308',
+                  background: 'rgba(234,179,8,0.1)',
+                  border: '1px solid rgba(234,179,8,0.3)',
+                  borderRadius: '9999px',
+                  padding: '3px 8px',
+                }}
+              >
+                Dev
+              </span>
+            )}
+            <span
+              title={currentUser.email || 'Signed in'}
+              style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {currentUser.email || currentUser.name || 'Signed in'}
+            </span>
+            {onLogout && (
+              <button
+                className="icon-btn"
+                onClick={() => { void onLogout(); }}
+                title="Sign out"
+                aria-label="Sign out"
+                style={{ width: '32px', height: '32px' }}
+              >
+                <LogOut size={15} strokeWidth={1.75} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Cloudflare Deploy Modal */}
@@ -444,7 +489,7 @@ const TopNav: React.FC<TopNavProps> = ({
             </div>
 
             <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '16px' }}>
-              This project is hosted on Cloudflare's ultra-low-latency edge network with 0ms cold-start execution and automatic SSL:
+              Both frontend UI and live backend REST API routes with SQLite storage are deployed together on Cloudflare's ultra-low-latency edge network:
             </p>
 
             <div style={{ background: '#090b10', border: '1px solid #1f2430', borderRadius: '6px', padding: '16px', marginBottom: '20px' }}>

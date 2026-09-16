@@ -27,6 +27,13 @@ test.describe('Empty-State Hero Section Redesign Verification', () => {
 
     const frame = page.frameLocator('iframe[title="Cloudflare Edge Preview"]');
 
+    page.on('console', msg => console.log('BROWSER CONSOLE:', msg.text()));
+    page.on('pageerror', err => console.log('BROWSER ERROR:', err.message));
+
+    await page.waitForTimeout(2000);
+    const bodyHtml = await frame.locator('body').innerHTML().catch(e => e.message);
+    console.log('IFRAME CONTENT:', bodyHtml);
+
     // 1. Verify hero section card exists inside the preview iframe
     const heroCard = frame.locator('.hero-section-card');
     await expect(heroCard).toBeVisible({ timeout: 15000 });

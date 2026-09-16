@@ -210,7 +210,12 @@ function cleanCode(code: string): string {
   return autoHealAppCode(c.trim());
 }
 
-export async function handleModelTest(request: Request, env: any, level: 'simple' | 'medium' | 'hard'): Promise<Response> {
+export async function handleModelTest(
+  request: Request,
+  env: any,
+  level: 'simple' | 'medium' | 'hard',
+  identity?: { userId: string }
+): Promise<Response> {
   const corsHeaders: Record<string, string> = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -245,7 +250,10 @@ export async function handleModelTest(request: Request, env: any, level: 'simple
   }
 
   const modelSlug = modelId.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').toLowerCase();
-  const testProjectId = `test-${modelSlug}-${level}`;
+  // Scope the ephemeral test preview to the authenticated user so that
+  // test-<model>-<level> previews are not shared across users.
+  const userScope = identity?.userId ? identity.userId.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() : 'anon';
+  const testProjectId = `test-${userScope}-${modelSlug}-${level}`;
   const prompt = PROMPTS[level];
 
   // -------------------------------------------------------------
@@ -262,16 +270,28 @@ export async function handleModelTest(request: Request, env: any, level: 'simple
         throw new Error('Cloudflare Workers AI binding env.AI is not available');
       }
 
-      const aiResponse: any = await env.AI.run(modelId, {
-        messages: [
-          { role: 'system', content: 'You are BrainHalf, an elite autonomous React developer. Always provide complete, modular, working React code inside a <file path="/src/App.jsx">...</file> block. Do not use emoji characters anywhere in the UI or code (use SVG or clean styling instead). Ensure all JSX elements and conditional expressions are strictly balanced with valid syntax.' },
-          { role: 'user', content: prompt }
-        ],
-        stream: true,
-        max_tokens: 4096,
-        max_completion_tokens: 4096,
-        chat_template_kwargs: { enable_thinking: false }
-      });
+      let aiResponse: any = null;
+      const testLadder = [65536, 32768, 16384, 8192];
+      for (const tokenLimit of testLadder) {
+        try {
+          aiResponse = await env.AI.run(modelId, {
+            messages: [
+              { role: 'system', content: 'You are BrainHalf, an elite autonomous React developer. Always provide complete, modular, working React code inside a <file path="/src/App.jsx">...</file> block. Do not use emoji characters anywhere in the UI or code (use SVG or clean styling instead). Ensure all JSX elements and conditional expressions are strictly balanced with valid syntax.' },
+              { role: 'user', content: prompt }
+            ],
+            stream: true,
+            max_tokens: tokenLimit,
+            max_completion_tokens: tokenLimit,
+            chat_template_kwargs: { enable_thinking: false }
+          });
+          if (aiResponse) break;
+        } catch (limitErr: any) {
+          const msg = String(limitErr?.message || limitErr || '');
+          if (!/token|context|length/i.test(msg)) {
+            throw limitErr;
+          }
+        }
+      }
 
       const decoder = new TextDecoder();
       let sseBuffer = '';

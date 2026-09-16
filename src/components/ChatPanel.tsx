@@ -152,14 +152,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
     const connect = () => {
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const backendHost = isLocal 
+      const backendHost = isLocal
         ? (import.meta.env.VITE_BACKEND_HOST || 'brainhalf.com')
         : window.location.host;
       const isHttpsOrRemote = window.location.protocol === 'https:' || isLocal;
       const protocol = isHttpsOrRemote ? 'wss:' : 'ws:';
+
       const wsUrl = `${protocol}//${backendHost}/agents/chat-agent/${activeProjectId}`;
-      
       console.log(`Connecting to Durable Object session: ${activeProjectId} (${wsUrl})`);
+
+      console.log(`Connecting to Durable Object session: ${activeProjectId}`);
       ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -343,10 +345,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           } else if (data.type === 'error') {
             setIsGenerating(false);
             isGeneratingRef.current = false;
-            appEvents.emit('generation-status', { status: 'Error', error: data.error || 'Generation failed', projectId: activeProjectId });
+            const errMsg = data.error || data.message || 'Generation failed';
+            appEvents.emit('generation-status', { status: 'Error', error: errMsg, projectId: activeProjectId });
             setMessages(prev => [
               ...prev,
-              { role: 'ai', content: data.error || 'An error occurred during generation. Please try again.' }
+              { role: 'ai', content: errMsg }
             ]);
           } else if (data.type === 'tool_call') {
             appEvents.emit('generation-status', {
@@ -658,7 +661,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const autoFixCountRef = useRef(0);
 
   useEffect(() => {
-    const handleAutoFix = (payload: { error: string; file?: string }) => {
+    const handleAutoFix = (payload: { error: string; file?: string; layer?: 'backend' | 'frontend' }) => {
       if (!isGeneratingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
         if (autoFixCountRef.current >= 5) {
           appEvents.emit('generation-status', { status: 'Error', error: 'Auto-fix loop limit reached (5). Please fix manually.' });
@@ -666,7 +669,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         }
         autoFixCountRef.current += 1;
         const fileTarget = payload.file ? ` in ${payload.file}` : '';
-        const autoMsg = `[Auto-Fix] The dev server encountered an error${fileTarget}:\n\n${payload.error}\n\nPlease inspect the code and use an <edit> block with exact <search> and <replace> to surgically fix the broken lines. Do NOT rewrite the entire component from scratch.`;
+        const isBackend = payload.layer === 'backend' || (payload.file && (payload.file.startsWith('/server/') || payload.file.startsWith('server/'))) || payload.error.includes('[Backend Error]');
+        const layerLabel = isBackend ? 'backend API server' : 'client dev server';
+        const layerAdvice = isBackend
+          ? 'Please inspect the server code (/server/index.js, /server/routes/, /server/controllers/, or /server/db.js) and use an <edit> block with exact <search> and <replace> to surgically fix the broken endpoint, database query, or server configuration.'
+          : 'Please inspect the code and use an <edit> block with exact <search> and <replace> to surgically fix the broken lines. Do NOT rewrite the entire component from scratch.';
+        const autoMsg = `[Auto-Fix] The ${layerLabel} encountered an error${fileTarget}:\n\n${payload.error}\n\n${layerAdvice}`;
         handleSendMessage(autoMsg);
       }
     };
@@ -730,7 +738,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   return (
     <div className="chat-panel-container" style={{ width: width ? `${width}px` : '100%', minWidth: width ? '360px' : '0' }}>
       {/* Sleek Chat Panel Header */}
-      <div className="chat-panel-top-bar" style={{
+      <div className="chat-panel-top-bar chat-panel-model-row" style={{
         height: '48px',
         padding: '0 14px',
         borderBottom: '1px solid var(--border-subtle)',
@@ -738,7 +746,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         alignItems: 'center',
         justifyContent: 'space-between',
         background: 'rgba(255, 255, 255, 0.015)',
-        gap: '12px',
+        gap: '24px',
         flexShrink: 0,
         overflow: 'hidden'
       }}>
@@ -764,7 +772,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
           {/* Model dropdown + connection status dot grouped together on the left */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexShrink: 1 }}>
-            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', maxWidth: '220px', minWidth: '160px', flexShrink: 1 }}>
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', maxWidth: '170px', minWidth: '120px', flexShrink: 1 }}>
               <select
                 value={selectedModelId}
                 onChange={handleModelChange}
@@ -1381,6 +1389,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   transition: 'all 0.15s ease'
                 }}
                 title="Send Message (Enter)"
+                aria-label="Send message"
+                data-testid="send-prompt-btn"
               >
                 <Send size={16} strokeWidth={1.75} />
               </button>
