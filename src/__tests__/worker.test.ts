@@ -113,7 +113,12 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     const res = await worker.fetch(req, env, {} as any);
 
     expect(mockAssetsFetch).toHaveBeenCalledWith(req);
-    expect(res).toBe(mockAssetResponse);
+    // The asset is re-issued rather than passed through so the shell security
+    // headers can be attached; the body and status must survive the wrap.
+    expect(res.status).toBe(mockAssetResponse.status);
+    await expect(res.text()).resolves.toBe('<html>BrainHalf App</html>');
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(res.headers.get('Content-Security-Policy')).toContain('script-src');
   });
 
   it('returns 404 when no assets binding is provided and routeAgentRequest yields undefined', async () => {

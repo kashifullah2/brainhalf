@@ -231,7 +231,13 @@ export async function handleModelTest(
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'authorization, content-type, x-bh-csrf',
     Vary: 'Origin',
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    // The body is JSON, never HTML: prevent a content-sniffing browser from
+    // treating a model echo as markup.
+    'X-Content-Type-Options': 'nosniff',
+    // This endpoint returns no markup and is not framed.
+    'X-Frame-Options': 'deny',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
   };
 
   if (request.method === 'OPTIONS') {

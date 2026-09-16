@@ -1,12 +1,13 @@
 import { Agent, type Connection } from 'agents';
 import { tracing } from 'cloudflare:workers';
 import { transform } from 'sucrase';
-import { normalizePath } from './lib/utils';
+import { normalizePath, isValidBareModuleSpecifier } from './lib/utils';
 import { parseEditPairs, applyEditsToFile } from './lib/message-parser';
 import { autoHealAppCode } from './lib/model-tester';
 import { executeBackendRequest, isFullStackProject, checkUnsupportedBackendFeatures } from './lib/backend-runner';
 import { getRequestUserId } from './lib/auth';
 import { AI_TIMEOUT_MS, capTokenLimit, resolveModel, withTimeout, type AllowedModel } from './lib/models';
+import { safeFetchText } from './lib/ssrf';
 import { streamText, tool } from 'ai';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -873,16 +874,15 @@ ${existingFilesContext}
                   }
                 }),
                 fetch_api: (tool as any)({
-                  description: 'Fetch data from an external 3rd-party REST API.',
+                  description: 'Fetch data from an external 3rd-party REST API. Only public https/http URLs; private and internal addresses are refused.',
                   parameters: z.object({ url: z.string() }),
                   execute: async ({ url }: { url: string }) => {
-                    try {
-                      const res = await fetch(url);
-                      const text = await res.text();
-                      return { status: res.status, data: text.slice(0, 3000) };
-                    } catch (e: any) {
-                      return { error: e.message };
-                    }
+                    // SSRF guard: the URL is model-chosen from a client-supplied
+                    // prompt, so without this it reaches loopback, private ranges,
+                    // and cloud metadata endpoints. See lib/ssrf.ts.
+                    const result = await safeFetchText(url);
+                    if (result.error) return { error: result.error };
+                    return { status: result.status, data: result.data };
                   }
                 })
               },
@@ -1343,11 +1343,19 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
         while ((match = importRegex.exec(file.content)) !== null) {
           const pkg = match[1];
           if (importMap[pkg] || pkg.startsWith('react/') || pkg.startsWith('react-dom/') || pkg.startsWith('lucide-react/')) continue;
-          
+
+          // The spec is model-authored and ends up both in an esm.sh URL and in an
+          // inline <script> block. Reject anything that is not a bare npm identifier
+          // rather than hoping the escaping below is sufficient on its own.
+          if (!isValidBareModuleSpecifier(pkg)) continue;
+
           let version = '';
           if (packageDeps[pkg]) {
              version = '@' + packageDeps[pkg].replace(/^[\^~]/, '');
           }
+          // A version string comes from generated package.json — constrain it to
+          // digits/dots/pre-release tags so it cannot carry a payload either.
+          if (version && !/^@[0-9A-Za-z.+-]+$/.test(version)) version = '';
 
           if (KNOWN_PACKAGES[pkg] && !version) {
             importMap[pkg] = KNOWN_PACKAGES[pkg];
@@ -1360,7 +1368,18 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       }
     }
 
-    return JSON.stringify({ imports: importMap }, null, 2);
+    // The keys and values below are derived from generated code, which is
+    // model-authored and ultimately prompt-controlled. JSON.stringify escapes
+    // quotes and backslashes but NOT `</script>` — a package name containing it
+    // would terminate this script tag early. Escape U+003C/U+003C sequences and
+    // any other HTML-significant character before interpolation.
+    const raw = JSON.stringify({ imports: importMap }, null, 2);
+    return raw
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+      .replace(/ /g, '\\u2028')
+      .replace(/ /g, '\\u2029');
   }
 
   private extractAndSaveFiles(text: string, connection: any) {
@@ -1598,10 +1617,27 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
         'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Cross-Origin-Resource-Policy': 'same-origin',
-        // Preview content is user-generated; keep framing restricted to the
-        // app origin. Dev localhost origins may also frame it.
-        'Content-Security-Policy': `frame-ancestors 'self'${isDevOrigin ? ' http://localhost:* http://127.0.0.1:*' : ''}`,
+        // Preview content is model-generated, so the CSP is the real boundary
+        // around it: remote scripts may load only from the two CDNs the preview
+        // bootstrap actually uses, and no other origin may frame it. 'unsafe-inline'
+        // is required by the server-rendered bootstrap above; 'unsafe-eval' is
+        // present because generated apps legitimately transpile and evaluate module
+        // sources at runtime (PreviewRunner's module loader). Eval cannot load a
+        // cross-origin resource, so granting it does not reopen the boundary this
+        // policy draws — a third-party script origin still cannot execute here.
+        'Content-Security-Policy': [
+          `default-src 'self'`,
+          `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://esm.sh https://*.esm.sh`,
+          `style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com`,
+          `img-src 'self' data: https:`,
+          `font-src 'self' data: https://fonts.gstatic.com`,
+          `connect-src 'self' https:`,
+          `frame-ancestors 'self'${isDevOrigin ? ' http://localhost:* http://127.0.0.1:*' : ''}`,
+          `base-uri 'self'`,
+          `form-action 'self'`,
+        ].join('; '),
         'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': isDevOrigin ? 'allowall' : 'sameorigin',
         'Referrer-Policy': 'no-referrer',
       };
     })();
@@ -1758,7 +1794,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
                       layer: 'backend',
                       error: data.error || ('Backend ' + res.status + ': ' + res.statusText),
                       file: data.file || 'server/index.js'
-                    }, '*');
+                    }, window.location.origin);
                   }
                 }
               } catch (_) {}
@@ -1772,7 +1808,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
                 layer: 'backend',
                 error: '[Backend Error] Failed to connect to API server: ' + (e.message || String(e)),
                 file: 'server/index.js'
-              }, '*');
+              }, window.location.origin);
             }
             throw e;
           }
@@ -1816,7 +1852,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
               error: event.message || 'Unknown runtime error',
               lineno: event.lineno,
               colno: event.colno
-            }, '*');
+            }, window.location.origin);
           }
         } catch (_) {}
       });
@@ -1828,7 +1864,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
               type: 'preview-error',
               file: 'async',
               error: String(event.reason?.message || event.reason || 'Unhandled Promise Rejection')
-            }, '*');
+            }, window.location.origin);
           }
         } catch (_) {}
       });
@@ -1837,12 +1873,12 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
         try {
           try {
             await import('./src/main.jsx');
-            if (window.parent) window.parent.postMessage({ type: 'preview-success' }, '*');
+            if (window.parent) window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
             return;
           } catch (e) {
             try {
               await import('./src/main.tsx');
-              if (window.parent) window.parent.postMessage({ type: 'preview-success' }, '*');
+              if (window.parent) window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
               return;
             } catch (_) {}
           }
@@ -1870,7 +1906,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
               } catch (_) {}
               const appNode = Router ? React.createElement(Router, null, React.createElement(AppComp)) : React.createElement(AppComp);
               root.render(appNode);
-              if (window.parent) window.parent.postMessage({ type: 'preview-success' }, '*');
+              if (window.parent) window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
             }
           } else {
             throw new Error('No default or named React component found in App.jsx');
@@ -1882,7 +1918,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
               type: 'preview-error',
               file: 'src/App.jsx',
               error: err?.message || String(err)
-            }, '*');
+            }, window.location.origin);
           }
           try {
             const rootEl = document.getElementById('root');
@@ -2316,14 +2352,14 @@ if (rootEl) {
               const errMsg = transpileErr?.message || 'Syntax or transpilation error';
               const errorFallback = `
                 import React from 'react';
-                console.error("Transpile Error in ${path}:\\n" + ${JSON.stringify(errMsg)});
+                console.error("Transpile Error in " + ${JSON.stringify(path)} + ":\\n" + ${JSON.stringify(errMsg)});
                 try {
                   if (typeof window !== 'undefined' && window.parent) {
                     window.parent.postMessage({
                       type: 'preview-error',
                       file: ${JSON.stringify(path)},
                       error: "Transpile Error in " + ${JSON.stringify(path)} + ": " + ${JSON.stringify(errMsg)}
-                    }, '*');
+                    }, window.location.origin);
                   }
                 } catch (_) {}
 
@@ -2352,7 +2388,7 @@ if (rootEl) {
                     }
                   }, [
                     React.createElement('h3', { key: 'title', style: { margin: '0 0 12px', fontSize: '16px', fontWeight: 600, color: '#fca5a5' } }, 'Syntax or Runtime Error'),
-                    React.createElement('div', { key: 'file', style: { fontSize: '12px', color: '#94a3b8', marginBottom: '10px' } }, 'File: ${path}'),
+                    React.createElement('div', { key: 'file', style: { fontSize: '12px', color: '#94a3b8', marginBottom: '10px' } }, 'File: ' + ${JSON.stringify(path)}),
                     React.createElement('pre', {
                       key: 'msg',
                       style: {

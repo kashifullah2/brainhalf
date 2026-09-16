@@ -96,7 +96,7 @@ class PreviewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                   type: 'preview-auto-fix',
                   layer,
                   error: this.state.error?.message || 'Runtime error'
-                }, '*');
+                }, window.location.origin);
               }
             }}
             style={{
@@ -153,7 +153,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
 
     // Request initial files from parent
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'request-preview-files', projectId }, '*');
+      window.parent.postMessage({ type: 'request-preview-files', projectId }, window.location.origin);
     }
 
     return () => window.removeEventListener('message', handleMessage);
@@ -195,7 +195,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
               layer: 'backend',
               error: backendRes.error || `[Backend Error] ${backendRes.status}: ${backendRes.body?.error || 'API call failed'}`,
               file: '/server/index.js'
-            }, '*');
+            }, window.location.origin);
           }
 
           return new Response(JSON.stringify(backendRes.body), {
@@ -212,7 +212,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
               layer: 'backend',
               error: `[Backend Error] Failed to execute API route: ${e.message}`,
               file: '/server/index.js'
-            }, '*');
+            }, window.location.origin);
           }
           throw e;
         }
@@ -338,11 +338,11 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
         window.parent.postMessage({
           type: 'preview-error',
           error: buildError
-        }, '*');
+        }, window.location.origin);
       }
     } else {
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'preview-success' }, '*');
+        window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
       }
     }
   }, [buildError]);
@@ -383,7 +383,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
                   type: 'preview-auto-fix',
                   layer: buildError.includes('[Backend Error]') ? 'backend' : 'frontend',
                   error: buildError
-                }, '*');
+                }, window.location.origin);
               }
             }}
             style={{
@@ -414,7 +414,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
             type: 'preview-error',
             layer: isBackend ? 'backend' : 'frontend',
             error: err.message
-          }, '*');
+          }, window.location.origin);
         }
       }}>
         {RenderedComponent ? <RenderedComponent /> : null}

@@ -165,7 +165,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     iframeRef.current?.contentWindow?.postMessage({
       type: 'sync-files',
       files
-    }, '*');
+    }, window.location.origin);
   }, [files]);
 
   const handleExportZip = async () => {
@@ -573,7 +573,7 @@ export const ${compName} = ${compName};
         iframeRef.current?.contentWindow?.postMessage({
           type: 'sync-files',
           files: filesRef.current
-        }, '*');
+        }, window.location.origin);
       }
     };
 
@@ -1414,7 +1414,7 @@ export const ${compName} = ${compName};
                         iframeRef.current?.contentWindow?.postMessage({
                           type: 'sync-files',
                           files: filesRef.current
-                        }, '*');
+                        }, window.location.origin);
                       }}
                       style={{
                         width: '100%',

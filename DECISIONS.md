@@ -141,3 +141,81 @@ a structured error for non-allowlisted ids, with no passthrough. `generate_image
 flux id; that model is now listed in `MODEL_ALLOWLIST` (marked as not client-selectable) and resolved
 the same way, so there is exactly one place that decides which AI bindings are callable. Every
 `env.AI.run` site in the codebase is now allowlist-gated (verified by grep).
+
+## D-13 · SSRF guard on the agent's outbound fetch
+
+The `fetch_api` tool called `fetch(url)` with no restriction on the URL, and the URL is
+model-chosen from a client-supplied prompt. That is an open SSRF channel into the
+worker's own network: loopback, RFC1918 space, and — the case an attacker actually
+wants — `http://169.254.169.254/latest/meta-data/` for cloud credentials.
+
+**Decision.** `lib/ssrf.ts` validates the URL before any request: https/http only, no
+credentials in the URL, and the hostname must be a public routable address. IPv4 is
+checked range-by-range (0/8, 10/8, 127/8, 169.254/16, 172.16/12, 192.168/16, CGNAT,
+multicast); IPv6 refuses compressed forms conservatively rather than attempting an
+expansion that could be wrong; well-known internal DNS names (`metadata.google.internal`,
+`kubernetes.default.svc`) are listed because they pass a pure shape check.
+
+**Redirects are re-validated per hop.** The fetch uses `redirect: 'manual'` and each
+`Location` is resolved and checked again — a public URL that redirects to the metadata
+endpoint is refused at the hop, not waved through by the first check. The chain is
+capped at 3 hops, the body is capped at 64 KiB (the tool only shows a 3 KiB excerpt),
+and the call is aborted at 30s. The size cap also protects memory: an hostile endpoint
+previously streamed an unbounded `res.text()`.
+
+The guard returns structured errors the model can read and recover from, rather than
+throwing — the tool keeps working for legitimate APIs.
+
+## D-14 · Import map and generated-JS injection surface
+
+`buildDynamicImportMap` interpolates package names parsed out of generated source into a
+`<script type="importmap">` block. `JSON.stringify` escapes quotes and backslashes but
+**not** `</script>` — a specifier containing it would terminate the tag early and inject
+markup into the preview origin, which is same-origin with the IDE.
+
+**Decision.** Two layers. First, `isValidBareModuleSpecifier` rejects anything that is
+not a bare npm identifier (optional `@scope/`, name, optional subpath, optional trailing
+slash), refusing quote/backtick/backslash/whitespace/control characters outright. Second,
+the emitted JSON has `<`, `>`, `&`, U+2028 and U+2029 escaped to their `\u` forms, so even
+a specifier that slipped past the validator cannot break out. Version strings taken from a
+generated `package.json` are constrained to `[0-9A-Za-z.+-]`.
+
+Two raw path interpolations into generated JS (`Transpile Error in ${path}` and the
+`File: ${path}` label) now go through `JSON.stringify` for the same reason — a path is
+attacker-shapeable data and was sitting inside a JS string literal.
+
+## D-15 · postMessage targetOrigin is never a wildcard
+
+Every `postMessage` in the preview runtime used `'*'`. The messages carry file paths,
+build errors and auto-fix payloads; a wildcard means any page that managed to frame the
+preview could read them. All 20 sites now name `window.location.origin`, which is exactly
+the parent's origin — the preview is always embedded same-origin via a relative
+`/preview/...` URL, so nothing legitimate breaks. A test greps the source tree for a
+wildcard targetOrigin so this cannot silently regress.
+
+## D-16 · Real CSPs, scoped per origin
+
+Two policies, because the two origins have different needs.
+
+The **preview** origin serves model-generated content and gets the strict boundary:
+script sources are limited to `'self'`, the server-rendered bootstrap, and the two CDNs
+the preview actually uses (`cdn.tailwindcss.com`, `esm.sh`). `unsafe-eval` is present
+because generated apps transpile and evaluate modules at runtime via the PreviewRunner
+loader — removing it would break legitimate apps, and eval cannot load a cross-origin
+resource, so granting it does not reopen the boundary the policy draws. `frame-ancestors`
+restricts framing to the app origin.
+
+The **IDE shell** emits no inline scripts at all (verified against the built
+`dist/index.html`), so its script-src is `'self'` plus the CDN hosts Sandpack's bundler
+and Monaco's loader fetch from, with `default-src 'none'` and `frame-ancestors 'none'`.
+
+Both carry `X-Content-Type-Options: nosniff`; the shell also sets `X-Frame-Options: deny`,
+`Referrer-Policy`, `CORP: same-origin` and a `Permissions-Policy` closing camera,
+microphone and geolocation.
+
+**Rejected.** A per-request nonce for the preview's inline scripts, which would have let
+script-src drop `'unsafe-inline'` entirely. The nonce has to be generated server-side and
+threaded into every `<script>` tag in a template string that is also a test fixture; the
+shape check against `dist/index.html` confirmed the shell does not need it, and the
+preview's inline scripts are all server-authored and constant. Recorded here so the
+upgrade path is obvious if the template ever gains a dynamic inline script.

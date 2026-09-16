@@ -39,6 +39,49 @@ function withCors(response: Response, origin: string | null): Response {
   return next;
 }
 
+/**
+ * Content-Security-Policy and friends for the IDE shell itself.
+ *
+ * The built shell emits no inline scripts (verified against `dist/index.html`), so
+ * script-src can be strict: 'self' plus the two CDNs Sandpack's in-browser bundler
+ * and Monaco's loader actually fetch from. `unsafe-inline` stays out of script-src
+ * on purpose — it is present in style-src only, where the app relies on injected
+ * styles and the risk profile is different.
+ *
+ * connect-src allows the same-origin API/WebSocket surface and the model CDNs the
+ * shell talks to; everything else is denied by default-src 'none'.
+ */
+function shellSecurityHeaders(): Record<string, string> {
+  const csp = [
+    `default-src 'none'`,
+    `script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh`,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net`,
+    `img-src 'self' data: https: blob:`,
+    `font-src 'self' data: https://fonts.gstatic.com`,
+    `connect-src 'self' https: wss:`,
+    `worker-src 'self' blob:`,
+    `frame-src 'self' blob: https://preview.sandpack-static-server.codesandbox.io https://nodebox-runtime.codesandbox.io`,
+    `frame-ancestors 'none'`,
+    `form-action 'self'`,
+    `base-uri 'self'`,
+  ].join('; ');
+  return {
+    'Content-Security-Policy': csp,
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'deny',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  };
+}
+
+/** Applies the shell security headers to an ASSETS response without losing its own. */
+function withShellSecurity(response: Response): Response {
+  const next = new Response(response.body, response);
+  for (const [k, v] of Object.entries(shellSecurityHeaders())) next.headers.set(k, v);
+  return next;
+}
+
 export default {
   async fetch(request: Request, env: any, _ctx: ExecutionContext) {
     const url = new URL(request.url);
@@ -181,11 +224,12 @@ export default {
       newHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
       newHeaders.set('Pragma', 'no-cache');
       newHeaders.set('Expires', '0');
-      return new Response(response.body, {
+      const hardened = new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
         headers: newHeaders
       });
+      return withShellSecurity(hardened);
     }
 
     /* --------- Agent WS + HTTP routes: auth gate + ACL --------- */
@@ -220,7 +264,7 @@ export default {
 
     // Serve static frontend assets for all other routes
     if (env.ASSETS) {
-      return await env.ASSETS.fetch(request);
+      return withShellSecurity(await env.ASSETS.fetch(request));
     }
 
     return new Response('Not found', { status: 404 });
