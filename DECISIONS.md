@@ -80,3 +80,64 @@ transports and that `verifySession` fails closed correctly. Root cause was the *
 `auth.ts`: the env object carried `REGISTRY` but no `SESSION_SECRET`, so `getSessionSecret` generated
 its per-isolate random key and the HMAC check legitimately rejected the token. Fixed with an `envWith()`
 helper; no production code changed. Logged so the failure is not misread as an auth bug later.
+
+## D-08 · Model allowlist is exact-match only, with a provider hint for transport choice
+
+`lib/models.ts` is now the single source of truth for every model id this deployment may invoke. It
+replaced three separate substring-dispatch maps in `agent.ts` (`ANTHROPIC_MODEL_MAP`,
+`BEDROCK_MODEL_MAP`, the bedrock fallback chain) and the "unknown bedrock id passes through at 64k
+tokens" path.
+
+**Decision.** `resolveModel(name, provider?)` matches `name` exactly and case-sensitively against
+`MODEL_ALLOWLIST`; a provider hint disambiguates ids valid on more than one backend. Anything else
+returns `null` and **callers treat that as a hard refusal** — there is no default-model substitution,
+because silently re-mapping an unknown id to sonnet was exactly the behaviour the audit objected to.
+The old code ran `claude-anything` as `claude-3-5-sonnet`; the new code rejects it and tells the caller.
+
+**Transport choice vs. model substitution.** `claude-sonnet-4.6` is allowlisted under both
+`anthropic` and `aws`. That is not a substitution — it is the same client-visible model id reachable
+over two transports, selected by which credential is configured. `minimax-m2.5` has no native
+Anthropic equivalent, so `resolveModel('minimax-m2.5', 'anthropic')` returns `null` and it stays on
+Bedrock. If neither credential is set the call fails with a clear error rather than falling back to a
+third provider.
+
+The list mirrors the catalog in `ChatPanel.tsx`; the allowlist test asserts the contract both ways
+(every catalog model resolves; the list exposes its names).
+
+## D-09 · Token ceilings: client asks, server caps
+
+`capTokenLimit(requested, model)` takes `min(requested, model.maxTokens, MAX_OUTPUT_TOKENS)`, where
+`MAX_OUTPUT_TOKENS` is an absolute deployment ceiling of 65536. A client that sends nothing usable
+(undefined/null/0/-1/NaN) gets the model's own ceiling — never an unbounded generation. The value is
+applied at both invocation paths (`ChatAgent` generation and `/api/test/*`), so the benchmark
+endpoints cannot be used to bypass the generation cap.
+
+## D-10 · Timeout strategy: `Promise.race` for the binding, `AbortSignal.timeout` for the SDKs
+
+`env.AI.run` has no reliably-documented `abortSignal` option, so it is wrapped in `withTimeout`
+(`Promise.race` against a wall-clock deadline) rather than passing an abort signal it may ignore.
+`streamText` does accept `abortSignal`, so both it and the model-tester use `AbortSignal.timeout`.
+
+The user's stop button and the server deadline share **one** `AbortController`: a `setTimeout` fires
+`controller.abort()` at `AI_TIMEOUT_MS`, and the stop button aborts the same controller — so a
+generation that the user stopped is not then re-classified as a timeout, and vice versa. Every
+`setTimeout` is cleared in a `finally`, and the timeout variable is hoisted above its `try` so the
+`finally` can actually see it (a `const` inside the `try` is out of scope there — caught by tsc).
+
+## D-11 · Model failures return 502, not a masked 200
+
+`/api/test/*` previously returned HTTP 200 with `{ success: false }` in the body. A monitoring
+caller or a `fetch().ok` check would read a broken model run as healthy. It now returns **502** with
+the identical JSON body, so the diagnostic information is preserved for callers that read it while
+curl-level checks stop reporting success. No frontend caller exists (only `worker.ts` routes here),
+so this is not an API-contract break.
+
+## D-12 · Agent-invoked tools go through the same allowlist
+
+`call_cloudflare_model` passed its `model` parameter straight into `env.AI.run`. The parameter is
+agent-chosen but ultimately derived from a client-supplied prompt, so it is untrusted input — this
+was a live allowlist bypass. It now resolves through `resolveModel(model, 'cloudflare')` and returns
+a structured error for non-allowlisted ids, with no passthrough. `generate_image` used a hardcoded
+flux id; that model is now listed in `MODEL_ALLOWLIST` (marked as not client-selectable) and resolved
+the same way, so there is exactly one place that decides which AI bindings are callable. Every
+`env.AI.run` site in the codebase is now allowlist-gated (verified by grep).

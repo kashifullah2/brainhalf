@@ -1,4 +1,11 @@
 import { transform } from 'sucrase';
+import { isAllowedOrigin } from './auth';
+import {
+  MODEL_ALLOWLIST,
+  MODEL_TEST_TIMEOUT_MS,
+  resolveModel,
+  withTimeout,
+} from './models';
 
 export interface ModelTestResult {
   success: boolean;
@@ -216,15 +223,19 @@ export async function handleModelTest(
   level: 'simple' | 'medium' | 'hard',
   identity?: { userId: string }
 ): Promise<Response> {
+  // Reflect an allowlisted origin only — never `*`. The worker already applies
+  // its own CORS, but this handler also answers direct OPTIONS preflights.
+  const origin = request.headers.get('origin');
   const corsHeaders: Record<string, string> = {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': origin && isAllowedOrigin(origin) ? origin : 'https://brainhalf.com',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Allow-Headers': 'authorization, content-type, x-bh-csrf',
+    Vary: 'Origin',
     'Content-Type': 'application/json'
   };
 
   if (request.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   const url = new URL(request.url);
@@ -249,6 +260,16 @@ export async function handleModelTest(
     }), { status: 400, headers: corsHeaders });
   }
 
+  // Strict allowlist: an exact match is required. Previously any @cf/ string
+  // was passed straight to env.AI.run and any claude-* id ran as sonnet.
+  const resolved = resolveModel(modelId, provider);
+  if (!resolved) {
+    return new Response(JSON.stringify({
+      error: `Model "${modelId}" is not in the model allowlist`,
+      allowedModels: MODEL_ALLOWLIST.map((m) => m.name)
+    }), { status: 400, headers: corsHeaders });
+  }
+
   const modelSlug = modelId.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').toLowerCase();
   // Scope the ephemeral test preview to the authenticated user so that
   // test-<model>-<level> previews are not shared across users.
@@ -265,7 +286,7 @@ export async function handleModelTest(
   let errorMsg: string | null = null;
 
   try {
-    if (modelId.startsWith('@cf/') || provider === 'cloudflare') {
+    if (resolved.provider === 'cloudflare') {
       if (!env || !env.AI) {
         throw new Error('Cloudflare Workers AI binding env.AI is not available');
       }
@@ -274,16 +295,20 @@ export async function handleModelTest(
       const testLadder = [65536, 32768, 16384, 8192];
       for (const tokenLimit of testLadder) {
         try {
-          aiResponse = await env.AI.run(modelId, {
-            messages: [
-              { role: 'system', content: 'You are BrainHalf, an elite autonomous React developer. Always provide complete, modular, working React code inside a <file path="/src/App.jsx">...</file> block. Do not use emoji characters anywhere in the UI or code (use SVG or clean styling instead). Ensure all JSX elements and conditional expressions are strictly balanced with valid syntax.' },
-              { role: 'user', content: prompt }
-            ],
-            stream: true,
-            max_tokens: tokenLimit,
-            max_completion_tokens: tokenLimit,
-            chat_template_kwargs: { enable_thinking: false }
-          });
+          aiResponse = await withTimeout(
+            env.AI.run(resolved.id, {
+              messages: [
+                { role: 'system', content: 'You are BrainHalf, an elite autonomous React developer. Always provide complete, modular, working React code inside a <file path="/src/App.jsx">...</file> block. Do not use emoji characters anywhere in the UI or code (use SVG or clean styling instead). Ensure all JSX elements and conditional expressions are strictly balanced with valid syntax.' },
+                { role: 'user', content: prompt }
+              ],
+              stream: true,
+              max_tokens: tokenLimit,
+              max_completion_tokens: tokenLimit,
+              chat_template_kwargs: { enable_thinking: false }
+            }),
+            MODEL_TEST_TIMEOUT_MS,
+            `Model test (${resolved.id})`
+          );
           if (aiResponse) break;
         } catch (limitErr: any) {
           const msg = String(limitErr?.message || limitErr || '');
@@ -384,7 +409,7 @@ export async function handleModelTest(
           } catch { }
         }
       }
-    } else if (modelId.startsWith('claude-') || provider === 'anthropic') {
+    } else if (resolved.provider === 'anthropic') {
       const anthropicApiKey = env.ANTHROPIC_API_KEY;
       if (!anthropicApiKey) {
         throw new Error(`ANTHROPIC_API_KEY is not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
@@ -394,8 +419,9 @@ export async function handleModelTest(
       const { streamText } = await import('ai');
       const anthropic = createAnthropic({ apiKey: anthropicApiKey });
       const stream = streamText({
-        model: anthropic(modelId),
-        messages: [{ role: 'user', content: prompt }]
+        model: anthropic(resolved.id),
+        messages: [{ role: 'user', content: prompt }],
+        abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS)
       });
 
       for await (const chunk of stream.textStream) {
@@ -404,7 +430,7 @@ export async function handleModelTest(
         }
         outputContent += chunk;
       }
-    } else if (provider === 'aws' || modelId.includes('bedrock')) {
+    } else if (resolved.provider === 'aws') {
       const awsKey = env.AWS_ACCESS_KEY_ID;
       const awsSecret = env.AWS_SECRET_ACCESS_KEY;
       const bedrockApiKey = env.BEDROCK_API_KEY;
@@ -421,8 +447,9 @@ export async function handleModelTest(
         secretAccessKey: awsSecret
       });
       const stream = streamText({
-        model: bedrock(modelId),
-        messages: [{ role: 'user', content: prompt }]
+        model: bedrock(resolved.id),
+        messages: [{ role: 'user', content: prompt }],
+        abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS)
       });
 
       for await (const chunk of stream.textStream) {
@@ -432,7 +459,8 @@ export async function handleModelTest(
         outputContent += chunk;
       }
     } else {
-      throw new Error(`Unsupported model or provider: ${modelId}`);
+      // Unreachable: resolveModel already rejected anything else.
+      throw new Error(`Unsupported provider for model: ${resolved.name}`);
     }
   } catch (err: any) {
     errorMsg = err.message || String(err);
@@ -447,8 +475,8 @@ export async function handleModelTest(
     const failedResult: ModelTestResult & { rawOutput?: string } = {
       success: false,
       level,
-      model: modelId,
-      provider: provider || (modelId.startsWith('@cf/') ? 'cloudflare' : 'unknown'),
+      model: resolved.name,
+      provider: resolved.provider,
       ttftMs: firstTokenTime,
       durationMs,
       tokens: estimatedTokens,
@@ -457,7 +485,9 @@ export async function handleModelTest(
       error: errorMsg || 'Model returned empty response with 0 tokens',
       rawOutput: outputContent.substring(0, 300)
     };
-    return new Response(JSON.stringify(failedResult, null, 2), { status: 200, headers: corsHeaders });
+    // A model-side failure is not a 200: report 502 so callers cannot read a
+    // broken run as a successful one. The JSON body is unchanged.
+    return new Response(JSON.stringify(failedResult, null, 2), { status: 502, headers: corsHeaders });
   }
 
   // -------------------------------------------------------------
@@ -501,8 +531,8 @@ export async function handleModelTest(
   const result: ModelTestResult & { rawOutput?: string } = {
     success: true,
     level,
-    model: modelId,
-    provider: provider || (modelId.startsWith('@cf/') ? 'cloudflare' : 'unknown'),
+    model: resolved.name,
+    provider: resolved.provider,
     ttftMs: firstTokenTime,
     durationMs,
     tokens: estimatedTokens,

@@ -6,6 +6,7 @@ import { parseEditPairs, applyEditsToFile } from './lib/message-parser';
 import { autoHealAppCode } from './lib/model-tester';
 import { executeBackendRequest, isFullStackProject, checkUnsupportedBackendFeatures } from './lib/backend-runner';
 import { getRequestUserId } from './lib/auth';
+import { AI_TIMEOUT_MS, capTokenLimit, resolveModel, withTimeout, type AllowedModel } from './lib/models';
 import { streamText, tool } from 'ai';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -28,30 +29,10 @@ function isBlockedSecretFile(path: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// FIX #1: Centralized, explicit model-ID maps.
-// Previously "claude-sonnet-4.6" / "claude-opus-4.6" silently fell through to
-// stale claude-3-x snapshots. Update the RHS values below to whatever model
-// strings your Anthropic / Bedrock account actually has access to.
+// Model resolution lives in lib/models.ts (MODEL_ALLOWLIST). Substring dispatch
+// ("includes sonnet") and default substitution for unknown ids are gone: every
+// invocation resolves to an exact allowlist entry or the request is refused.
 // ---------------------------------------------------------------------------
-const ANTHROPIC_MODEL_MAP: Record<string, { id: string; maxTokens: number }> = {
-  'claude-3-7-sonnet': { id: 'claude-3-7-sonnet-20250219', maxTokens: 64000 },
-  'claude-3-5-sonnet': { id: 'claude-3-5-sonnet-20241022', maxTokens: 64000 },
-  'claude-3-opus': { id: 'claude-3-opus-20240229', maxTokens: 64000 },
-  'claude-3-5-haiku': { id: 'claude-3-5-haiku-20241022', maxTokens: 64000 },
-  'claude-sonnet-4.6': { id: 'claude-sonnet-4-6', maxTokens: 64000 },
-  'claude-opus-4.6': { id: 'claude-opus-4-6', maxTokens: 64000 },
-};
-
-const BEDROCK_MODEL_MAP: Record<string, { id: string; maxTokens: number }> = {
-  'claude-opus-4.6': { id: 'us.anthropic.claude-opus-4-6-v1:0', maxTokens: 64000 },
-  'claude-sonnet-4.6': { id: 'us.anthropic.claude-sonnet-4-6-v1:0', maxTokens: 64000 },
-  'claude-sonnet': { id: 'us.anthropic.claude-sonnet-4-6-v1:0', maxTokens: 64000 },
-  'minimax-m2.5': { id: 'minimax.minimax-m2.5', maxTokens: 64000 },
-  'minimax': { id: 'minimax.minimax-m2.5', maxTokens: 64000 },
-};
-
-const BEDROCK_FALLBACK_ANTHROPIC = { id: 'us.anthropic.claude-sonnet-4-6-v1:0', maxTokens: 64000 };
-const BEDROCK_FALLBACK_OPUS = { id: 'us.anthropic.claude-opus-4-6-v1:0', maxTokens: 64000 };
 
 // Maximum unconstrained token capacity ladder for Cloudflare Workers AI:
 // Starts at 65536 and 32768 to provide unlimited/maximum possible output tokens
@@ -676,89 +657,89 @@ ${existingFilesContext}
 
           const requestedModel = data.model || '@cf/qwen/qwen2.5-coder-32b-instruct';
 
+          // Exact allowlist match only. No substring dispatch ("includes sonnet")
+          // and no default substitution for an unknown id — the strict zero-fallback
+          // policy means an unrecognised model is reported, not silently rerouted.
+          const resolved = resolveModel(requestedModel, data.provider);
+          if (!resolved) {
+            const msg = `Model "${requestedModel}" is not in the model allowlist`;
+            console.warn(msg);
+            try { connection.send(JSON.stringify({ type: 'error', error: msg })); } catch { }
+            return;
+          }
+
+          // The client's token request is capped server-side (lib/models).
+          const requestedMaxTokens = capTokenLimit(data.max_tokens || data.max_completion_tokens, resolved);
+
           // 1. Cloudflare Workers AI edge binding
-          if (data.provider === 'cloudflare' || requestedModel.startsWith('@cf/')) {
+          if (resolved.provider === 'cloudflare') {
             const success = await this.runCloudflareWorkersAI(
-              requestedModel,
+              resolved.id,
               systemPrompt,
               inputMessages,
               connection,
               actualPrompt,
-              data.max_tokens || data.max_completion_tokens
+              requestedMaxTokens
             );
             if (success) return;
           }
 
           let maxTokensForModel: number | undefined = undefined;
+          let model: AllowedModel = resolved;
+
+          // Anthropic-family models may be served by the native API or by Bedrock.
+          // Pick whichever credential this deployment actually has; both ids are
+          // allowlist entries for the same client-visible name, so this is a
+          // transport choice, not a model substitution.
+          if (model.provider === 'anthropic' && !anthropicApiKey) {
+            const alt = resolveModel(model.name, 'aws');
+            if (alt) model = alt;
+          } else if (model.provider === 'aws' && !(bedrockApiKey || (awsKey && awsSecret))) {
+            const alt = resolveModel(model.name, 'anthropic');
+            if (alt) model = alt;
+          }
 
           // 2. Native Anthropic Provider
-          if (
-            data.provider === 'anthropic' ||
-            requestedModel.startsWith('claude-3') ||
-            requestedModel.includes('sonnet') ||
-            requestedModel.includes('opus')
-          ) {
-            if (anthropicApiKey) {
-              const anthropic = createAnthropic({ apiKey: anthropicApiKey });
-              const mapped = ANTHROPIC_MODEL_MAP[requestedModel] ?? ANTHROPIC_MODEL_MAP['claude-3-5-sonnet'];
-              aiModel = anthropic(mapped.id);
-              maxTokensForModel = mapped.maxTokens;
-            } else if (bedrockApiKey || (awsKey && awsSecret)) {
-              const bedrock = createAmazonBedrock({
-                region: awsRegion,
-                accessKeyId: awsKey,
-                secretAccessKey: awsSecret,
-              });
-              const mapped = requestedModel.includes('opus') ? BEDROCK_FALLBACK_OPUS : BEDROCK_FALLBACK_ANTHROPIC;
-              aiModel = bedrock(mapped.id);
-              maxTokensForModel = mapped.maxTokens;
-            }
+          if (model.provider === 'anthropic' && anthropicApiKey) {
+            const anthropic = createAnthropic({ apiKey: anthropicApiKey });
+            aiModel = anthropic(model.id);
+            maxTokensForModel = model.maxTokens;
+          } else if (model.provider === 'aws' && (bedrockApiKey || (awsKey && awsSecret))) {
+            // 3. AWS Bedrock Provider
+            const bedrock = createAmazonBedrock({
+              region: awsRegion,
+              accessKeyId: awsKey,
+              secretAccessKey: awsSecret,
+            });
+            aiModel = bedrock(model.id);
+            maxTokensForModel = model.maxTokens;
           }
 
-          // 3. AWS Bedrock Provider
-          if (!aiModel && (data.provider === 'aws')) {
-            if (bedrockApiKey || (awsKey && awsSecret)) {
-              const bedrock = createAmazonBedrock({
-                region: awsRegion,
-                accessKeyId: awsKey,
-                secretAccessKey: awsSecret,
-              });
-              const mapped = BEDROCK_MODEL_MAP[requestedModel];
-              if (mapped) {
-                aiModel = bedrock(mapped.id);
-                maxTokensForModel = mapped.maxTokens;
-              } else {
-                // Unknown Bedrock model id passed straight through (e.g. a full ARN/model-id the caller knows about)
-                aiModel = bedrock(requestedModel);
-                maxTokensForModel = 64000;
-              }
-            }
-          }
-
-          // 4. Fallback to Cloudflare Workers AI
+          // No cross-provider fallback. If the required credential is missing,
+          // the request fails with a clear message instead of rerouting to llama.
           if (!aiModel) {
-            const cfSuccess = await this.runCloudflareWorkersAI(
-              requestedModel.startsWith('@cf/') ? requestedModel : '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-              systemPrompt,
-              inputMessages,
-              connection,
-              actualPrompt,
-              data.max_tokens || data.max_completion_tokens
-            );
-            if (cfSuccess) return;
+            const msg = `Model "${model.name}" needs ${model.provider} credentials, which are not configured`;
+            console.error(msg);
+            try { connection.send(JSON.stringify({ type: 'error', error: msg })); } catch { }
+            return;
           }
 
           this.currentAbortController = new AbortController();
+          // Wall-clock ceiling on the generation so a hung provider cannot hold
+          // the connection (and the Durable Object) open indefinitely. The user's
+          // stop button aborts the same controller.
+          const genTimeout = setTimeout(
+            () => this.currentAbortController?.abort(new Error(`Generation exceeded ${AI_TIMEOUT_MS / 1000}s`)),
+            AI_TIMEOUT_MS
+          );
 
           try {
             const result = (streamText as any)({
               model: aiModel,
               system: systemPrompt,
               messages: inputMessages,
-              // Unconstrained / maximum completion tokens
-              ...(data.max_tokens || data.max_completion_tokens
-                ? { maxOutputTokens: data.max_tokens || data.max_completion_tokens }
-                : (maxTokensForModel ? { maxOutputTokens: maxTokensForModel } : {})),
+              // Capped server-side; see capTokenLimit in lib/models.ts
+              maxOutputTokens: requestedMaxTokens ?? maxTokensForModel,
               abortSignal: this.currentAbortController.signal,
               tools: {
                 read_file: (tool as any)({
@@ -843,8 +824,22 @@ ${existingFilesContext}
                   }),
                   execute: async ({ model, prompt }: { model: string; prompt: string }) => {
                     try {
+                      // The tool input is derived from a client-supplied prompt, so the
+                      // model id is untrusted: resolve it through the allowlist and refuse
+                      // anything that is not an exact Cloudflare entry. No passthrough.
+                      const cfEntry = resolveModel(model, 'cloudflare');
+                      if (!cfEntry) {
+                        return {
+                          success: false,
+                          error: `Model "${model}" is not in the model allowlist`
+                        };
+                      }
                       if ((this as any).env?.AI) {
-                        const response = await (this as any).env.AI.run(model, { prompt });
+                        const response = await withTimeout<any>(
+                          (this as any).env.AI.run(cfEntry.id, { prompt }),
+                          AI_TIMEOUT_MS,
+                          `Workers AI tool call (${cfEntry.id})`
+                        );
                         return { success: true, response: response?.response || response };
                       }
                       return { success: false, error: 'Cloudflare AI edge binding not available' };
@@ -859,7 +854,16 @@ ${existingFilesContext}
                   execute: async ({ prompt }: { prompt: string }) => {
                     try {
                       if ((this as any).env?.AI) {
-                        await (this as any).env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt });
+                        // Fixed image model from the allowlist — not client-selectable.
+                        const flux = resolveModel('@cf/black-forest-labs/flux-1-schnell', 'cloudflare');
+                        if (!flux) {
+                          return { success: false, error: 'Image model is not in the model allowlist' };
+                        }
+                        await withTimeout(
+                          (this as any).env.AI.run(flux.id, { prompt }),
+                          AI_TIMEOUT_MS,
+                          'Workers AI image generation'
+                        );
                         return { success: true, note: 'Asset generated successfully via Cloudflare Flux' };
                       }
                       return { success: false, error: 'Cloudflare AI edge binding not available' };
@@ -935,11 +939,13 @@ ${existingFilesContext}
               inputMessages,
               connection,
               actualPrompt,
-              data.max_tokens || data.max_completion_tokens
+              requestedMaxTokens
             );
             if (!fallbackSuccess) {
               throw streamErr;
             }
+          } finally {
+            clearTimeout(genTimeout);
           }
         });
       });
@@ -962,16 +968,28 @@ ${existingFilesContext}
     actualPrompt: string,
     requestedMaxTokens?: number
   ): Promise<boolean> {
+    let cfTimeout: ReturnType<typeof setTimeout> | undefined;
     try {
       if (!(this as any).env || !(this as any).env.AI) {
         return false;
       }
 
       this.currentAbortController = new AbortController();
+      // Ceiling on this whole candidate sweep so a hung Workers AI call cannot
+      // hold the connection open forever. A user stop aborts the same signal.
+      cfTimeout = setTimeout(
+        () => this.currentAbortController?.abort(new Error(`Workers AI exceeded ${AI_TIMEOUT_MS / 1000}s`)),
+        AI_TIMEOUT_MS
+      );
 
-      const cfModel = modelName.startsWith('@cf/')
-        ? modelName
-        : '@cf/qwen/qwen2.5-coder-32b-instruct';
+      // Only ever invoke an allowlisted @cf/ id — never an arbitrary client string.
+      const cfEntry = resolveModel(modelName, 'cloudflare');
+      if (!cfEntry) {
+        clearTimeout(cfTimeout);
+        console.error(`Refusing to invoke non-allowlisted Workers AI model: ${modelName}`);
+        return false;
+      }
+      const cfModel = cfEntry.id;
 
       let existingFilesContext = '';
       try {
@@ -1105,20 +1123,28 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
           try {
             console.log(`Running Cloudflare Workers AI model ${cand} (max_tokens=${tokenLimit}, attempt ${attempts}/${MAX_CF_ATTEMPTS})`);
             try {
-              aiResponse = await (this as any).env.AI.run(cand, {
-                messages,
-                stream: true,
-                max_tokens: tokenLimit,
-                max_completion_tokens: tokenLimit,
-                chat_template_kwargs: { enable_thinking: false }
-              });
+              aiResponse = await withTimeout(
+                (this as any).env.AI.run(cand, {
+                  messages,
+                  stream: true,
+                  max_tokens: tokenLimit,
+                  max_completion_tokens: tokenLimit,
+                  chat_template_kwargs: { enable_thinking: false }
+                }),
+                AI_TIMEOUT_MS,
+                `Workers AI ${cand}`
+              );
             } catch {
-              aiResponse = await (this as any).env.AI.run(cand, {
-                messages,
-                stream: true,
-                max_tokens: tokenLimit,
-                max_completion_tokens: tokenLimit
-              });
+              aiResponse = await withTimeout(
+                (this as any).env.AI.run(cand, {
+                  messages,
+                  stream: true,
+                  max_tokens: tokenLimit,
+                  max_completion_tokens: tokenLimit
+                }),
+                AI_TIMEOUT_MS,
+                `Workers AI ${cand}`
+              );
             }
             if (aiResponse) break outer;
           } catch (limitErr: any) {
@@ -1230,6 +1256,8 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
     } catch (e) {
       console.error('Cloudflare Workers AI execution failed:', e);
       return false;
+    } finally {
+      clearTimeout(cfTimeout);
     }
   }
 
@@ -2464,7 +2492,9 @@ export default function ${compName}(props) {
     return new Response('BrainHalf Agent Backend is running. Please connect via WebSocket.', {
       status: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        // Never a wildcard: this object is only reachable through the Worker,
+        // which has already applied the origin allowlist.
+        'Access-Control-Allow-Origin': 'https://brainhalf.com',
         'Content-Type': 'text/plain'
       }
     });
