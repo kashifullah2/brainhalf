@@ -31,6 +31,27 @@ function isBlockedSecretFile(path: string): boolean {
   return BLOCKED_FILE_PATTERNS.some((re) => re.test(path));
 }
 
+/**
+ * The error card the preview runtime renders when the generated app throws
+ * during render. Both preview entry points need it — the starter seeded into an
+ * empty workspace, and the live edge-preview harness — and each inlined its own
+ * copy, so the two had already drifted apart in whitespace if not in markup.
+ *
+ * The `\${` below is deliberate: this constant is interpolated into a larger
+ * template literal that is itself *source text* for the preview runtime. An
+ * unescaped `${this.state...}` would be evaluated here, where `this` is the
+ * ChatAgent, instead of surviving into the generated code where it belongs.
+ */
+const PREVIEW_ERROR_CARD_SRC = `<div style={{ padding: '24px', fontFamily: 'system-ui, sans-serif', color: '#f87171', background: '#0f1015', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '24px', maxWidth: '450px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#f87171', marginBottom: '8px' }}>Preview Error</h3>
+                <p style={{ color: '#9ca3af', fontSize: '13px', lineHeight: 1.5, marginBottom: '16px' }}>\${this.state.error?.message || 'A render error occurred.'}</p>
+                <button onClick={() => window.location.reload()} style={{ padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>
+                  Reload Preview
+                </button>
+              </div>
+            </div>`;
+
 // ---------------------------------------------------------------------------
 // Model resolution lives in lib/models.ts (MODEL_ALLOWLIST). Substring dispatch
 // ("includes sonnet") and default substitution for unknown ids are gone: every
@@ -162,6 +183,84 @@ export class ChatAgent extends Agent {
       files[String(r.path)] = content;
     }
     return { files, total };
+  }
+
+  /**
+   * Reads the whole workspace as a path→content map.
+   *
+   * Four call sites (R2 backup, /api/files, the generic /api/ route and the
+   * preview index) each inlined this same loop. The row limit is set to
+   * effectively-unbounded here — these are HTTP responses and a backup, where
+   * the caller needs every file — so it is the *byte* ceiling that bounds the
+   * result, not the paging row cap.
+   */
+  private readAllProjectFiles(): Record<string, string> {
+    const { files } = this.readProjectFilesPage(Number.MAX_SAFE_INTEGER, 0);
+    return files;
+  }
+
+  /**
+   * Builds the "here is the project so far" context block a model receives.
+   *
+   * Both generation paths (streamText and Cloudflare Workers AI) need the same
+   * thing — a bounded, ranked view of the workspace — and each had its own copy
+   * of it. What genuinely differs is which files are pinned to the front, how
+   * they rank, how many to send, and how much text to spend, so those are the
+   * parameters and the algorithm exists once.
+   *
+   * `charBudget`, when set, trims an over-long file in place and stops once the
+   * budget is spent; when omitted, whole files are emitted.
+   */
+  private buildFilesContext(opts: {
+    pinned: Set<string>;
+    rank: (path: string) => number;
+    maxFiles: number;
+    charBudget?: number;
+    header: string;
+  }): string {
+    try {
+      // Phase 5: this used to be `path NOT LIKE '%node_modules%'`, a
+      // leading-wildcard pattern that cannot use the path index and scans the
+      // whole table on every prompt. Reading the path list from the covering
+      // index and filtering in JS keeps the scan index-only, and the content
+      // fetch is a single indexed IN (...) for the paths we actually chose.
+      const pathRows = this.runSql`SELECT path FROM project_files`;
+      const selected = pathRows
+        .map((r: any) => String(r.path))
+        // `pinned` only keeps a file from being filtered out (a pinned main.js
+        // would otherwise look like a build entry point); ranking is entirely
+        // the caller's business, so the two never interact.
+        .filter(p => opts.pinned.has(p) || (!isNodeModulesPath(p) && !/\bmain\.[^.]+$/.test(p)))
+        .sort((a, b) => opts.rank(a) - opts.rank(b))
+        .slice(0, opts.maxFiles);
+      if (selected.length === 0) return '';
+
+      const rows = this.runSql`SELECT path, content FROM project_files WHERE path IN (${selected})`;
+      if (opts.charBudget === undefined) {
+        const summary = rows
+          .map((r: any) => `File: ${r.path}\n\`\`\`\n${r.content}\n\`\`\``)
+          .join('\n\n');
+        return `\n\n${opts.header}\n${summary}\n`;
+      }
+
+      let charBudget = opts.charBudget;
+      const summaries: string[] = [];
+      for (const r of rows) {
+        const content = String(r.content || '');
+        if (content.length > charBudget) {
+          summaries.push(`File: ${r.path}\n\`\`\`\n${content.slice(0, charBudget)}\n// ... [trimmed for length]\n\`\`\``);
+          break;
+        }
+        charBudget -= content.length;
+        summaries.push(`File: ${r.path}\n\`\`\`\n${content}\n\`\`\``);
+        if (charBudget <= 0) break;
+      }
+      if (summaries.length === 0) return '';
+      return `\n\n${opts.header}\n${summaries.join('\n\n')}\n`;
+    } catch (e) {
+      console.warn('Could not load existing files for context:', e);
+      return '';
+    }
   }
 
   /** Seeds the starter template when the workspace is genuinely empty. */
@@ -351,15 +450,7 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '24px', fontFamily: 'system-ui, sans-serif', color: '#f87171', background: '#0f1015', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '24px', maxWidth: '450px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#f87171', marginBottom: '8px' }}>Preview Error</h3>
-            <p style={{ color: '#9ca3af', fontSize: '13px', lineHeight: 1.5, marginBottom: '16px' }}>{this.state.error?.message || 'A render error occurred.'}</p>
-            <button onClick={() => window.location.reload()} style={{ padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>
-              Reload Preview
-            </button>
-          </div>
-        </div>
+        ${PREVIEW_ERROR_CARD_SRC}
       );
     }
     return this.props.children;
@@ -438,8 +529,11 @@ body {
     try {
       const r2 = (this as any).env.PROJECT_BACKUPS;
       if (!r2) return;
-      const rows = [...this.sql`SELECT path, content FROM project_files`];
-      const state = JSON.stringify({ files: rows, timestamp: Date.now() });
+      const files = this.readAllProjectFiles();
+      const state = JSON.stringify({
+        files: Object.entries(files).map(([path, content]) => ({ path, content })),
+        timestamp: Date.now()
+      });
       await r2.put(`backup-${(this as any).ctx?.id || 'default'}.json`, state);
     } catch (e) {
       console.error('Failed to backup to R2', e);
@@ -625,28 +719,13 @@ body {
         }
       }
 
-      let existingFilesContext = '';
-      try {
-        // Phase 5: the old query used `path NOT LIKE '%node_modules%'`, a
-        // leading-wildcard pattern that cannot use the path index and scans the
-        // whole table on every prompt. Reading the path list from the covering
-        // index and filtering in JS keeps the scan index-only, and the content
-        // fetch is a single indexed IN (...) for the paths we actually chose.
-        const alwaysInclude = new Set(['/src/App.jsx', '/src/styles.css', '/src/index.css', '/index.html']);
-        const pathRows = this.runSql`SELECT path FROM project_files`;
-        const selected = pathRows
-          .map((r: any) => String(r.path))
-          .filter(p => alwaysInclude.has(p) || (!isNodeModulesPath(p) && !/\bmain\.[^.]+$/.test(p)))
-          .sort((a, b) => (alwaysInclude.has(b) ? 1 : 0) - (alwaysInclude.has(a) ? 1 : 0))
-          .slice(0, 40);
-        if (selected.length > 0) {
-          const rows = this.runSql`SELECT path, content FROM project_files WHERE path IN (${selected})`;
-          const filesSummary = rows.map((r: any) => `File: ${r.path}\n\`\`\`\n${r.content}\n\`\`\``).join('\n\n');
-          existingFilesContext = `\n\nCURRENT PROJECT BASELINE FILES (Inspect these files carefully and build upon them):\n${filesSummary}\n`;
-        }
-      } catch (e) {
-        console.warn('Could not load existing files for context:', e);
-      }
+      const existingFilesContext = this.buildFilesContext({
+        pinned: new Set(['/src/App.jsx', '/src/styles.css', '/src/index.css', '/index.html']),
+        // No secondary key: preserve the stored order for everything else.
+        rank: () => 0,
+        maxFiles: 40,
+        header: 'CURRENT PROJECT BASELINE FILES (Inspect these files carefully and build upon them):'
+      });
 
       let systemPrompt = `You are BrainHalf, an autonomous software engineering AGENT.
 Your purpose is to build, edit, and maintain web applications directly in the user's project workspace.
@@ -1185,39 +1264,13 @@ ${existingFilesContext}
       }
       const cfModel = cfEntry.id;
 
-      let existingFilesContext = '';
-      try {
-        // Phase 5: same leading-wildcard-LIKE removal as the streamText path —
-        // index-only path read, filter in JS, one indexed content fetch.
-        const alwaysInclude = new Set(['/src/App.jsx', '/src/styles.css', '/server/routes/api.js', '/server/index.js']);
-        const rank = (p: string) => (p === '/src/App.jsx' ? 1 : p === '/src/styles.css' ? 2 : 3);
-        const pathRows = this.runSql`SELECT path FROM project_files`;
-        const selected = pathRows
-          .map((r: any) => String(r.path))
-          .filter(p => alwaysInclude.has(p) || (!isNodeModulesPath(p) && !/\bmain\.[^.]+$/.test(p)))
-          .sort((a, b) => rank(a) - rank(b))
-          .slice(0, 10);
-        if (selected.length > 0) {
-          const rows = this.runSql`SELECT path, content FROM project_files WHERE path IN (${selected})`;
-          let charBudget = 8000;
-          const summaries: string[] = [];
-          for (const r of rows) {
-            const content = String(r.content || '');
-            if (content.length > charBudget) {
-              summaries.push(`File: ${r.path}\n\`\`\`\n${content.slice(0, charBudget)}\n// ... [trimmed for length]\n\`\`\``);
-              break;
-            }
-            charBudget -= content.length;
-            summaries.push(`File: ${r.path}\n\`\`\`\n${content}\n\`\`\``);
-            if (charBudget <= 0) break;
-          }
-          if (summaries.length > 0) {
-            existingFilesContext = `\n\nCURRENT PROJECT BASELINE FILES (Build upon these files; do not drop any existing features):\n${summaries.join('\n\n')}\n`;
-          }
-        }
-      } catch (e) {
-        console.warn('Could not load existing files for CF context:', e);
-      }
+      const existingFilesContext = this.buildFilesContext({
+        pinned: new Set(['/src/App.jsx', '/src/styles.css', '/server/routes/api.js', '/server/index.js']),
+        rank: (p: string) => (p === '/src/App.jsx' ? 1 : p === '/src/styles.css' ? 2 : 3),
+        maxFiles: 10,
+        charBudget: 8000,
+        header: 'CURRENT PROJECT BASELINE FILES (Build upon these files; do not drop any existing features):'
+      });
 
       const tailoredSystemPrompt = `You are BrainHalf, an autonomous AI software engineer.
 You build stunning, modern, fully functional web applications in a Vite + React environment. 'lucide-react' icons are pre-installed.
@@ -1889,26 +1942,14 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       }
 
       if (path.endsWith('/api/files')) {
-        let allFiles: Record<string, string> = {};
-        try {
-          const rows = [...this.sql`SELECT path, content FROM project_files`];
-          for (const r of rows) {
-            allFiles[r.path as string] = r.content as string;
-          }
-        } catch (e) {}
+        const allFiles = this.readAllProjectFiles();
         return new Response(JSON.stringify(allFiles, null, 2), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
 
       if (path.startsWith('/api/')) {
-        let allFiles: Record<string, string> = {};
-        try {
-          const rows = [...this.sql`SELECT path, content FROM project_files`];
-          for (const r of rows) {
-            allFiles[r.path as string] = r.content as string;
-          }
-        } catch (e) {}
+        const allFiles = this.readAllProjectFiles();
 
         let bodyData: any = null;
         if (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH') {
@@ -1940,12 +1981,10 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       }
 
       if (path === '/index.html') {
-        let allFiles: Array<{path: string, content: string}> = [];
-        try {
-          const rows = [...this.sql`SELECT path, content FROM project_files`];
-          allFiles = rows.map((r: any) => ({ path: r.path, content: r.content }));
-        } catch (e) {}
-        
+        const allFiles: Array<{path: string, content: string}> = Object.entries(
+          this.readAllProjectFiles()
+        ).map(([filePath, content]) => ({ path: filePath, content }));
+
         const dynamicImportMapJson = this.buildDynamicImportMap(allFiles);
 
         const html = `<!DOCTYPE html>
@@ -2252,15 +2291,7 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '24px', fontFamily: 'system-ui, sans-serif', color: '#f87171', background: '#0f1015', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-          <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '24px', maxWidth: '450px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#f87171', marginBottom: '8px' }}>Preview Error</h3>
-            <p style={{ color: '#9ca3af', fontSize: '13px', lineHeight: 1.5, marginBottom: '16px' }}>{this.state.error?.message || 'A render error occurred.'}</p>
-            <button onClick={() => window.location.reload()} style={{ padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>
-              Reload Preview
-            </button>
-          </div>
-        </div>
+        ${PREVIEW_ERROR_CARD_SRC}
       );
     }
     return this.props.children;
