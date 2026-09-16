@@ -1,12 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import TopNav from './components/TopNav';
 import ChatPanel from './components/ChatPanel';
 import Workspace from './components/Workspace';
+import LoginScreen from './components/LoginScreen';
+import { BrainHalfLogo } from './components/BrainHalfLogo';
 import { getActiveProjectId, setActiveProjectId } from './lib/project-store';
+import { getToken, getUser, verifyStoredSession, type SessionUser } from './lib/auth-client';
 import './index.css';
 
 function App() {
+  // No session is rendered until the server confirms the token is valid
+  // (signature + expiry + revocation). Fail closed on the client too.
+  const [user, setUser] = useState<SessionUser | null>(() => (getToken() ? getUser() : null));
+  const [authChecked, setAuthChecked] = useState<boolean>(!getToken());
+
+  useEffect(() => {
+    if (!getToken()) {
+      setUser(null);
+      setAuthChecked(true);
+      return;
+    }
+    let mounted = true;
+    verifyStoredSession().then((verified) => {
+      if (!mounted) return;
+      setUser(verified);
+      setAuthChecked(true);
+    });
+    // Another tab logged out, or the server rejected a stored token.
+    const onExpired = () => {
+      setUser(null);
+      setAuthChecked(true);
+    };
+    window.addEventListener('bh-session-expired', onExpired);
+    return () => {
+      mounted = false;
+      window.removeEventListener('bh-session-expired', onExpired);
+    };
+  }, []);
+
   const [activeProjectId, setActiveId] = useState<string>(getActiveProjectId());
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -97,10 +129,27 @@ function App() {
     setChatWidth(440);
   };
 
+  if (!authChecked) {
+    return (
+      <div
+        className="app-container"
+        style={{ display: 'grid', placeItems: 'center', background: '#0b0c11' }}
+        aria-busy="true"
+        aria-label="Verifying session"
+      >
+        <BrainHalfLogo size={28} strokeWidth={1.5} color="#2dd4bf" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen onAuthenticated={setUser} />;
+  }
+
   return (
     <div className="app-container">
-      <Sidebar 
-        activeProjectId={activeProjectId} 
+      <Sidebar
+        activeProjectId={activeProjectId}
         onSelectProject={handleSelectProject} 
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}

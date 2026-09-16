@@ -26,9 +26,17 @@ head_sampling_rate = 0.05
 name = "ChatAgent"
 class_name = "ChatAgent"
 
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "AuthRegistry"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = [ "ChatAgent" ]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = [ "AuthRegistry" ]
 
 [[r2_buckets]]
 binding = "PROJECT_BACKUPS"

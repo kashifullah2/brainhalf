@@ -1740,4 +1740,20 @@ textarea:focus-visible {
   pointer-events: none !important;
 }
 
+/* Login screen focus/hover states (inline styles cannot express pseudo-classes) */
+.login-screen input:focus {
+  border-color: rgba(45, 212, 191, 0.55);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.14);
+}
+
+.login-screen input::placeholder {
+  color: var(--text-muted);
+}
+
+@media (max-width: 480px) {
+  .login-screen > div {
+    padding: 24px 18px !important;
+  }
+}
+
 

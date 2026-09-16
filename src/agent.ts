@@ -5,6 +5,7 @@ import { normalizePath } from './lib/utils';
 import { parseEditPairs, applyEditsToFile } from './lib/message-parser';
 import { autoHealAppCode } from './lib/model-tester';
 import { executeBackendRequest, isFullStackProject, checkUnsupportedBackendFeatures } from './lib/backend-runner';
+import { getRequestUserId } from './lib/auth';
 import { streamText, tool } from 'ai';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -60,6 +61,14 @@ const MAX_CF_ATTEMPTS = 16; // Ceiling across candidates x token limits
 
 export class ChatAgent extends Agent {
   private currentAbortController: AbortController | null = null;
+
+  /**
+   * Per-connection authenticated user ids. The Worker verifies the session token
+   * and project ownership *before* the request reaches this Durable Object and
+   * injects x-auth-user-id; a missing header means the request bypassed the
+   * gate, so we refuse it. Every entry point fails closed.
+   */
+  private connectionUserIds: Map<string, string> = new Map();
 
   private runSql(strings: TemplateStringsArray, ...values: any[]): any[] {
     return [...this.sql(strings, ...values)];
@@ -380,7 +389,17 @@ body {
     }
   }
 
-  async onConnect(connection: Connection) {
+  async onConnect(connection: Connection, ctx?: { request: Request }) {
+    // Fail closed: no verified user id on the upgrade request means the
+    // connection bypassed the Worker's auth gate.
+    const userId = ctx?.request ? getRequestUserId(ctx.request) : null;
+    if (!userId) {
+      console.warn('Rejected unauthenticated WebSocket connection');
+      try { connection.close(4401, 'Unauthorized'); } catch {}
+      return;
+    }
+    this.connectionUserIds.set(connection.id, userId);
+
     console.log('Client connected to ChatAgent');
 
     this.ensureSchema();
@@ -395,8 +414,19 @@ body {
     try { connection.send(JSON.stringify({ type: 'request_sync' })); } catch {}
   }
 
+  async onClose(connection: Connection) {
+    this.connectionUserIds.delete(connection.id);
+  }
+
   async onMessage(connection: Connection, message: string) {
     try {
+      // Only connections that passed the Worker's auth gate may act here.
+      if (!this.connectionUserIds.has(connection.id)) {
+        console.warn('Rejected message from unauthenticated connection');
+        try { connection.close(4401, 'Unauthorized'); } catch {}
+        return;
+      }
+
       const data = JSON.parse(message);
       console.log('Received message:', data);
 
@@ -1508,6 +1538,15 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
     const upgradeHeader = request.headers.get('Upgrade');
     if (upgradeHeader && upgradeHeader.toLowerCase() === 'websocket') {
       return super.onRequest(request);
+    }
+
+    // Fail closed for every HTTP path into this Durable Object.
+    if (!getRequestUserId(request)) {
+      console.warn('Rejected unauthenticated HTTP request to ChatAgent');
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const url = new URL(request.url);

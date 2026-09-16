@@ -4,6 +4,7 @@ import { appEvents } from '../lib/events';
 import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
 import { getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName } from '../lib/project-store';
+import { getToken, withTokenQuery } from '../lib/auth-client';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
@@ -159,10 +160,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       const protocol = isHttpsOrRemote ? 'wss:' : 'ws:';
 
       const wsUrl = `${protocol}//${backendHost}/agents/chat-agent/${activeProjectId}`;
-      console.log(`Connecting to Durable Object session: ${activeProjectId} (${wsUrl})`);
-
+      // Browsers cannot set headers on WebSocket, so the HMAC session token rides
+      // in the query string; the Worker verifies it before the DO is reached.
+      const authedUrl = withTokenQuery(wsUrl);
       console.log(`Connecting to Durable Object session: ${activeProjectId}`);
-      ws = new WebSocket(wsUrl);
+
+      ws = new WebSocket(authedUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -397,7 +400,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         if (!isMounted) return;
         setIsConnected(false);
         if (isGeneratingRef.current) {
@@ -405,6 +408,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         }
         setIsGenerating(false);
         isGeneratingRef.current = false;
+        // 4401 = rejected by the auth gate; 1006 with no stored token = the
+        // Worker refused the upgrade. Either way, retrying would just hammer
+        // the server — hand the user back to the login screen instead.
+        const unauthorized = event?.code === 4401 || event?.code === 1006;
+        if (unauthorized && !getToken()) {
+          window.dispatchEvent(new CustomEvent('bh-session-expired'));
+          return;
+        }
         reconnectTimer = setTimeout(connect, 3000);
       };
 
