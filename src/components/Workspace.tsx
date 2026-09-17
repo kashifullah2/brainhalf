@@ -18,7 +18,7 @@ import { SandpackProvider, SandpackPreview } from '@codesandbox/sandpack-react';
 import { withTokenQuery } from '../lib/auth-client';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error';
-type WorkspaceTab = 'code' | 'backend' | 'preview' | 'console' | 'logs';
+type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 type PreviewEngine = 'edge' | 'sandpack';
 type FileMap = Record<string, string>;
@@ -658,7 +658,7 @@ export default function ${compName}(props) {
     const handleOpenFile = ({ path }: { path: string }) => {
       const cleanPath = normalizePath(path);
       setActiveFile(cleanPath);
-      setActiveTab(isServerPath(cleanPath) ? 'backend' : 'code');
+      setActiveTab('code');
     };
 
     const handleExport = async ({ projectName }: { projectName?: string }) => {
@@ -820,10 +820,8 @@ export default function ${compName}(props) {
   }, [commitFiles, addBuildLog]);
 
   const visibleFiles = useMemo(
-    () => Object.keys(files).filter(p => (activeTab === 'backend'
-      ? isServerPath(p) || p === '/package.json'
-      : !isServerPath(p))),
-    [files, activeTab]
+    () => Object.keys(files).sort(),
+    [files]
   );
 
   const editorLanguage = useMemo(() => {
@@ -836,7 +834,7 @@ export default function ${compName}(props) {
     return 'javascript';
   }, [activeFile]);
 
-  const isEditorTab = activeTab === 'code' || activeTab === 'backend';
+  const isEditorTab = activeTab === 'code';
 
   return (
     <div className="workspace-panel-container">
@@ -862,29 +860,12 @@ export default function ${compName}(props) {
               <button
                 role="tab"
                 aria-selected={activeTab === 'code'}
-                onClick={() => {
-                  setActiveTab('code');
-                  if (isServerPath(activeFile)) {
-                    const clientFile = Object.keys(filesRef.current).find(p => !isServerPath(p));
-                    if (clientFile) setActiveFile(clientFile);
-                  }
-                }}
+                onClick={() => setActiveTab('code')}
                 className={`segmented-tab ${activeTab === 'code' ? 'active' : ''}`}
-                title="Frontend client code"
+                title="Application source code (frontend & backend)"
               >
                 <Code2 size={16} strokeWidth={1.75} />
                 <span>Code</span>
-              </button>
-
-              <button
-                role="tab"
-                aria-selected={activeTab === 'backend'}
-                onClick={() => { setActiveTab('backend'); handleScaffoldBackend(); }}
-                className={`segmented-tab ${activeTab === 'backend' ? 'active' : ''}`}
-                title="Backend REST API, database and environment"
-              >
-                <Server size={16} strokeWidth={1.75} />
-                <span>Backend</span>
               </button>
 
               <button
@@ -994,8 +975,8 @@ export default function ${compName}(props) {
               files={files}
               activeFile={activeFile}
               onSelectFile={setActiveFile}
-              headerTitle={activeTab === 'backend' ? 'Server files' : 'Client files'}
-              filter={path => (activeTab === 'backend' ? isServerPath(path) || path === '/package.json' : !isServerPath(path))}
+              headerTitle="Project files"
+              onAddBackend={handleScaffoldBackend}
             />
 
             <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden' }}>
@@ -1007,6 +988,7 @@ export default function ${compName}(props) {
               }}>
                 {visibleFiles.map(filePath => {
                   const isActive = filePath === activeFile;
+                  const isServer = isServerPath(filePath);
                   return (
                     <button
                       key={filePath}
@@ -1017,7 +999,7 @@ export default function ${compName}(props) {
                       style={{
                         padding: '8px 12px',
                         background: isActive ? 'var(--bg-code-editor)' : 'transparent',
-                        borderBottom: isActive ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                        borderBottom: isActive ? (isServer ? '2px solid #c084fc' : '2px solid var(--accent-primary)') : '2px solid transparent',
                         borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                         color: isActive ? '#ffffff' : 'var(--text-muted)',
                         fontSize: '12px', fontFamily: 'var(--font-mono)',
@@ -1027,7 +1009,7 @@ export default function ${compName}(props) {
                       }}
                       className="hover-bright"
                     >
-                      {activeTab === 'backend'
+                      {isServer
                         ? <Server size={13} color={isActive ? '#c084fc' : undefined} />
                         : <Code2 size={13} color={isActive ? 'var(--accent-light)' : undefined} />}
                       <span>{filePath.split('/').pop()}</span>
@@ -1047,13 +1029,13 @@ export default function ${compName}(props) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                   <span style={{
-                    background: activeTab === 'backend' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                    color: activeTab === 'backend' ? '#c084fc' : '#38bdf8',
-                    border: `1px solid ${activeTab === 'backend' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
+                    background: isServerPath(activeFile) ? 'rgba(168, 85, 247, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                    color: isServerPath(activeFile) ? '#c084fc' : '#38bdf8',
+                    border: `1px solid ${isServerPath(activeFile) ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
                     padding: '2px 8px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 600,
                     display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
                   }}>
-                    {activeTab === 'backend'
+                    {isServerPath(activeFile)
                       ? <><Server size={12} strokeWidth={2} />Node.js / Express</>
                       : <><Code2 size={12} strokeWidth={2} />React / Vite</>}
                   </span>
