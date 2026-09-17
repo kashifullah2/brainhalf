@@ -75,6 +75,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     confirmLabel?: string;
     onConfirm: () => void;
   } | null>(null);
+  const [_isConnected, setIsConnected] = useState(false);
   const platformStatus = usePlatformStatus(activeProjectId);
   const [mergeConflict, setMergeConflict] = useState<{ sourceName: string; conflicts: string[] } | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);

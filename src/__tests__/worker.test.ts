@@ -34,6 +34,9 @@ function mockRegistry(opts: { userId?: string; ownerId?: string } = {}) {
       return new Response(JSON.stringify({ ownerId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.pathname === '/projects/claim') {
+      if (ownerId !== userId) {
+        return new Response(JSON.stringify({ error: 'Project is owned by another account' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+      }
       return new Response(JSON.stringify({ ownerId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });

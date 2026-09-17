@@ -101,6 +101,14 @@ export class IdempotencyStore {
     return true;
   }
 
+  /**
+   * Releases a claimed key so subsequent retries are not rejected as duplicates.
+   */
+  release(key: string | undefined | null): void {
+    if (!key || typeof key !== 'string') return;
+    this.seen.delete(key);
+  }
+
   /** For tests: was this key recorded? */
   has(key: string): boolean {
     return this.seen.has(key);

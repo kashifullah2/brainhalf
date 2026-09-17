@@ -5,6 +5,7 @@ import { getProjects, updateProjectName } from '../lib/project-store';
 import { usePlatformStatus } from '../lib/status-store';
 import ConfirmModal from './ConfirmModal';
 import BrainHalfLogo from './BrainHalfLogo';
+import { withTokenQuery } from '../lib/auth-client';
 
 interface TopNavProps {
   activeProjectId: string;
@@ -570,7 +571,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 className="button-ghost"
                 onClick={() => {
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://brainhalf.com';
-                  window.open(`${baseUrl}/preview/${activeProjectId}/index.html`, '_blank');
+                  window.open(withTokenQuery(`${baseUrl}/preview/${activeProjectId}/index.html`), '_blank');
                   setShowDeployModal(false);
                 }}
               >
