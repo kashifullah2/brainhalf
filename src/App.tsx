@@ -168,6 +168,8 @@ function App() {
           activeProjectId={activeProjectId}
           onSelectProject={handleSelectProject}
           onToggleMobileSidebar={() => setMobileSidebarOpen(prev => !prev)}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           mobileTab={mobileTab}
           onSelectMobileTab={setMobileTab}
           isMobile={isMobile}

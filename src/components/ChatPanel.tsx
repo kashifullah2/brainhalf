@@ -841,13 +841,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   appearance: 'none',
                   WebkitAppearance: 'none',
                   MozAppearance: 'none',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  border: 'none',
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
                   borderRadius: '6px',
-                  color: '#f3f4f6',
+                  color: '#f4f4f6',
                   fontSize: '12px',
                   fontWeight: 500,
-                  padding: '5px 24px 5px 8px',
+                  padding: '4px 22px 4px 8px',
                   outline: 'none',
                   cursor: 'pointer',
                   fontFamily: 'inherit',
@@ -855,37 +855,38 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   width: '100%',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
-                  overflow: 'hidden'
+                  overflow: 'hidden',
+                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2), inset 0 0.5px 0 rgba(255, 255, 255, 0.1)'
                 }}
               >
-                <optgroup label="Cloudflare Workers AI" style={{ background: '#121316', color: '#9ca3af' }}>
+                <optgroup label="Cloudflare Workers AI" style={{ background: '#14151e', color: '#9ca3af' }}>
                   {MODELS.filter(m => m.provider === 'cloudflare').map(m => (
-                    <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                    <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
                       {m.name}
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="AWS Bedrock" style={{ background: '#121316', color: '#9ca3af' }}>
+                <optgroup label="AWS Bedrock" style={{ background: '#14151e', color: '#9ca3af' }}>
                   {MODELS.filter(m => m.provider === 'aws').map(m => (
-                    <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                    <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
                       {m.name}
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="Atria ASI" style={{ background: '#121316', color: '#9ca3af' }}>
+                <optgroup label="Atria ASI" style={{ background: '#14151e', color: '#9ca3af' }}>
                   {MODELS.filter(m => m.provider === 'atria').map(m => (
-                    <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                    <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
                       {m.name}
                     </option>
                   ))}
                 </optgroup>
               </select>
               <ChevronDown 
-                size={16} 
-                strokeWidth={1.75}
+                size={13} 
+                strokeWidth={2}
                 style={{ 
                   position: 'absolute', 
-                  right: '8px', 
+                  right: '7px', 
                   pointerEvents: 'none', 
                   color: 'var(--text-muted)'
                 }} 

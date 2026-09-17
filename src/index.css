@@ -98,10 +98,166 @@
   --shadow-panel: none;
   --shadow-overlay: 0 16px 36px rgba(0, 0, 0, 0.5);
 
-  /* Distinctive Typography */
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-  --font-brand: 'Space Grotesk', var(--font-sans);
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Distinctive Typography - Prioritizing Apple SF Pro Stack */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-brand: -apple-system, BlinkMacSystemFont, "SF Pro Display", 'Space Grotesk', var(--font-sans);
+  --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* ==========================================================================
+     macOS Vibrancy & Material System (Sonoma / Sequoia)
+     ========================================================================== */
+  --macos-bg-window: #0e0f14;
+  --macos-bg-sidebar: #12131a;
+  --macos-bg-toolbar: #14151e;
+  --macos-bg-panel: #101118;
+  --macos-blur: blur(28px) saturate(190%);
+  --macos-window-border: 1px solid rgba(255, 255, 255, 0.09);
+  --macos-rim-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  --macos-shadow-window: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* ==========================================================================
+   macOS Window Controls (Traffic Lights)
+   ========================================================================== */
+.macos-traffic-lights {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  padding: 2px 0;
+}
+
+.traffic-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), filter 0.12s ease;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.25);
+}
+
+.traffic-dot:hover {
+  filter: brightness(1.08);
+}
+
+.traffic-dot:active {
+  transform: scale(0.92);
+  filter: brightness(0.88);
+}
+
+.traffic-dot.close {
+  background: #ff5f56;
+  border-color: #e0443e;
+}
+
+.traffic-dot.minimize {
+  background: #ffbd2e;
+  border-color: #dea123;
+}
+
+.traffic-dot.zoom {
+  background: #27c93f;
+  border-color: #1aab29;
+}
+
+/* Hover glyphs appear like native macOS */
+.traffic-dot .dot-glyph {
+  opacity: 0;
+  transition: opacity 0.1s ease;
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 800;
+  font-size: 8px;
+  line-height: 1;
+  pointer-events: none;
+  font-family: -apple-system, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.macos-traffic-lights:hover .traffic-dot .dot-glyph {
+  opacity: 1;
+}
+
+/* ==========================================================================
+   macOS Segmented Capsule Controls
+   ========================================================================== */
+.macos-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  padding: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.macos-segment-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 5px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.macos-segment-item:hover:not(.active) {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.macos-segment-item.active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   macOS Toolbar Buttons
+   ========================================================================== */
+.macos-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.macos-toolbar-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.macos-toolbar-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* ==========================================================================
@@ -1108,42 +1264,44 @@ h1, h2, h3, h4, .brand-text {
 .viewport-segmented-control {
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
   padding: 2px;
   gap: 2px;
   flex-shrink: 0;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .viewport-pill-btn {
   background: transparent;
   border: none;
-  color: var(--text-muted);
-  border-radius: 4px;
+  color: var(--text-secondary);
+  border-radius: 5px;
   padding: 3px 8px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
   width: auto;
   min-width: max-content;
+  user-select: none;
 }
 
-.viewport-pill-btn:hover {
+.viewport-pill-btn:hover:not(.active) {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .viewport-pill-btn.active {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.16);
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.38), inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
 }
 
 .browser-actions {
@@ -1414,43 +1572,45 @@ h1, h2, h3, h4, .brand-text {
   display: flex;
   align-items: center;
   gap: 2px;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 3px;
-  border-radius: var(--radius-sm);
-  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
 }
 
 .segmented-tab {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 12px;
+  padding: 4px 11px;
   background: transparent;
   color: var(--text-secondary);
   border: none;
-  border-radius: var(--radius-xs);
+  border-radius: 5px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
 }
 
-.segmented-tab:hover {
+.segmented-tab:hover:not(.active) {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .segmented-tab.active {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.16);
   border: none;
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.38), inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
 }
 
 .segmented-tab.active svg {
-  color: var(--text-primary);
+  color: #ffffff;
 }
 
 @keyframes pulseSparkle {

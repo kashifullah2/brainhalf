@@ -5,6 +5,7 @@ import { getProjects, updateProjectName } from '../lib/project-store';
 import { usePlatformStatus } from '../lib/status-store';
 import ConfirmModal from './ConfirmModal';
 import BrainHalfLogo from './BrainHalfLogo';
+import MacOSTrafficLights from './MacOSTrafficLights';
 import { withTokenQuery } from '../lib/auth-client';
 
 interface TopNavProps {
@@ -12,6 +13,8 @@ interface TopNavProps {
   onProjectRenamed?: (id: string, name: string) => void;
   onSelectProject?: (id: string) => void;
   onToggleMobileSidebar?: () => void;
+  sidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
   mobileTab?: 'chat' | 'code' | 'preview';
   onSelectMobileTab?: (tab: 'chat' | 'code' | 'preview') => void;
   isMobile?: boolean;
@@ -24,6 +27,8 @@ const TopNav: React.FC<TopNavProps> = ({
   onProjectRenamed,
   onSelectProject: _onSelectProject,
   onToggleMobileSidebar,
+  sidebarCollapsed = false,
+  onToggleSidebar,
   mobileTab = 'chat',
   onSelectMobileTab,
   isMobile = false,
@@ -135,6 +140,13 @@ const TopNav: React.FC<TopNavProps> = ({
   return (
     <div className="top-nav" role="banner">
       <div className="top-nav-left-cluster" style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flexShrink: 1 }}>
+        {sidebarCollapsed && (
+          <MacOSTrafficLights 
+            onMinimize={onToggleSidebar}
+            onClose={() => setShowResetConfirm(true)}
+            style={{ marginRight: '4px' }}
+          />
+        )}
         {isMobile && onToggleMobileSidebar && (
           <button 
             className="icon-btn" 
@@ -148,18 +160,19 @@ const TopNav: React.FC<TopNavProps> = ({
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{
-            width: '24px',
-            height: '24px',
-            borderRadius: '6px',
-            background: '#18181b',
-            border: 'none',
+            width: '22px',
+            height: '22px',
+            borderRadius: '5px',
+            background: 'rgba(255, 255, 255, 0.07)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
-            color: '#818cf8'
-          }} title="BrainHalf Platform">
-            <BrainHalfLogo size={16} strokeWidth={1.75} />
+            color: '#818cf8',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.25)'
+          }} title="BrainHalf Document Proxy">
+            <BrainHalfLogo size={14} strokeWidth={1.75} />
           </div>
 
           {isEditing ? (
@@ -308,9 +321,15 @@ const TopNav: React.FC<TopNavProps> = ({
           onClick={() => setShowDeployModal(true)}
           title="Deploy project to Cloudflare"
           aria-label="Deploy project to Cloudflare"
-          style={{ borderRadius: '6px', padding: isMobile ? '6px 8px' : undefined }}
+          style={{ 
+            borderRadius: '6px', 
+            padding: isMobile ? '5px 8px' : '5px 12px',
+            fontSize: '12px',
+            fontWeight: 500,
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)'
+          }}
         >
-          <Play size={16} strokeWidth={1.75} fill="white" />
+          <Play size={13} strokeWidth={2} fill="white" />
           {!isMobile && <span>Deploy ↗</span>}
         </button>
 
@@ -322,9 +341,15 @@ const TopNav: React.FC<TopNavProps> = ({
             title="More project actions"
             aria-label="More project actions"
             aria-expanded={showMoreMenu}
-            style={{ width: '32px', height: '32px' }}
+            style={{ 
+              width: '28px', 
+              height: '28px', 
+              borderRadius: '6px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.08)'
+            }}
           >
-            <MoreHorizontal size={16} strokeWidth={1.75} />
+            <MoreHorizontal size={15} strokeWidth={1.75} />
           </button>
 
           {showMoreMenu && (
@@ -333,10 +358,11 @@ const TopNav: React.FC<TopNavProps> = ({
               top: 'calc(100% + 6px)',
               right: 0,
               width: '210px',
-              background: '#12141c',
-              border: '1px solid var(--border-medium)',
+              background: 'rgba(22, 24, 30, 0.9)',
+              backdropFilter: 'blur(24px) saturate(180%)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '8px',
-              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.65)',
+              boxShadow: '0 16px 36px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05)',
               padding: '5px',
               zIndex: 1000
             }}>

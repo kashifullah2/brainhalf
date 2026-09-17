@@ -4,6 +4,7 @@ import { Project, getProjects, createProject, createBranch, mergeBranches, delet
 import { appEvents } from '../lib/events';
 import ConfirmModal from './ConfirmModal';
 import BrainHalfLogo from './BrainHalfLogo';
+import MacOSTrafficLights from './MacOSTrafficLights';
 
 interface SidebarProps {
   activeProjectId: string;
@@ -155,66 +156,85 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
         />
       )}
       <div className={`sidebar-container ${collapsed ? 'collapsed' : ''} ${isMobileOpen ? 'mobile-open' : ''}`} role="navigation" aria-label="Projects Sidebar">
-      {/* Brand Header & Toggle Button (48px height matching horizontal grid) */}
+      {/* macOS Window Controls & Header Bar */}
       <div style={{ 
-        padding: collapsed ? '0 12px' : '0 16px', 
-        marginBottom: '16px', 
+        padding: collapsed ? '12px 8px 12px 8px' : '14px 16px 12px 16px', 
         display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: collapsed ? 'center' : 'space-between',
-        height: '48px',
+        flexDirection: 'column',
+        gap: '12px',
         flexShrink: 0
       }}>
-        {!collapsed ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="sidebar-brand-badge" style={{ color: '#818cf8' }}>
-              <BrainHalfLogo size={16} strokeWidth={1.75} />
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: collapsed ? 'center' : 'space-between',
+          width: '100%',
+          minHeight: '16px'
+        }}>
+          {!collapsed ? (
+            <MacOSTrafficLights 
+              onMinimize={onToggleCollapse}
+              onClose={() => appEvents.emit('clear-workspace')}
+            />
+          ) : (
+            <div 
+              className="traffic-dot zoom" 
+              onClick={onToggleCollapse} 
+              title="Expand Sidebar"
+              style={{ cursor: 'pointer' }}
+            >
+              <span className="dot-glyph">+</span>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {isMobileOpen && onCloseMobile && (
+              <button 
+                className="icon-btn" 
+                onClick={onCloseMobile} 
+                title="Close Sidebar"
+                aria-label="Close Sidebar"
+                style={{ color: 'var(--text-muted)', padding: '4px' }}
+              >
+                <X size={15} strokeWidth={1.75} />
+              </button>
+            )}
+
+            {onToggleCollapse && !collapsed && (
+              <button 
+                className="icon-btn" 
+                onClick={onToggleCollapse} 
+                title="Collapse Sidebar"
+                aria-label="Collapse Sidebar"
+                style={{ color: 'var(--text-muted)', padding: '4px' }}
+              >
+                <PanelLeftClose size={15} strokeWidth={1.75} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Brand identity */}
+        {!collapsed && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '1px' }}>
+            <div className="sidebar-brand-badge" style={{ color: '#818cf8', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <BrainHalfLogo size={15} strokeWidth={1.75} />
             </div>
             <span style={{ 
               fontFamily: 'var(--font-sans)', 
               fontWeight: 600, 
-              fontSize: '14px', 
+              fontSize: '13px', 
               letterSpacing: '-0.2px',
               color: '#ffffff'
             }}>
               BrainHalf
             </span>
           </div>
-        ) : (
-          <div className="sidebar-brand-badge" onClick={onToggleCollapse} style={{ cursor: 'pointer', color: '#818cf8' }} title="Expand Sidebar" aria-label="Expand Sidebar">
-            <BrainHalfLogo size={16} strokeWidth={1.75} />
-          </div>
         )}
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {isMobileOpen && onCloseMobile && (
-            <button 
-              className="icon-btn" 
-              onClick={onCloseMobile} 
-              title="Close Sidebar"
-              aria-label="Close Sidebar"
-              style={{ color: 'var(--text-muted)', padding: '6px' }}
-            >
-              <X size={16} strokeWidth={1.75} />
-            </button>
-          )}
-
-          {onToggleCollapse && !collapsed && (
-            <button 
-              className="icon-btn" 
-              onClick={onToggleCollapse} 
-              title="Collapse Sidebar"
-              aria-label="Collapse Sidebar"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              <PanelLeftClose size={16} strokeWidth={1.75} />
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* Primary New Project Action */}
-      <div style={{ padding: '0 12px', marginBottom: '14px' }}>
+      {/* Primary New Project Action - macOS Rounded Pill Button */}
+      <div style={{ padding: '0 12px', marginBottom: '12px' }}>
         <button 
           onClick={handleNewProject} 
           title={collapsed ? "New Project" : undefined}
@@ -225,26 +245,29 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
             alignItems: 'center',
             justifyContent: 'center',
             gap: '7px',
-            background: '#ffffff',
-            color: '#09090b',
-            border: 'none',
+            background: 'rgba(255, 255, 255, 0.08)',
+            color: '#f4f4f6',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
             borderRadius: '6px',
-            padding: collapsed ? '8px' : '7px 12px',
-            fontWeight: 600,
-            fontSize: '12px',
+            padding: collapsed ? '8px' : '6px 12px',
+            fontWeight: 500,
+            fontSize: '12.5px',
             cursor: 'pointer',
-            transition: 'all 0.15s ease',
-            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)'
+            transition: 'all 0.15s cubic-bezier(0.4, 0, 0.2, 1)',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)',
+            userSelect: 'none'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#f4f4f5';
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = '#ffffff';
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
           }}
         >
-          <Plus size={16} strokeWidth={1.75} />
-          {!collapsed && <span>New project</span>}
+          <Plus size={15} strokeWidth={1.75} />
+          {!collapsed && <span>New Project</span>}
         </button>
       </div>
 
@@ -282,17 +305,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
               onKeyDown={(e) => { if (e.key === 'Enter') onSelectProject(proj.id); }}
               aria-label={`Select ${displayTitle}`}
               style={{
-                background: isActive ? 'rgba(255, 255, 255, 0.08)' : undefined,
+                background: isActive ? 'rgba(99, 102, 241, 0.22)' : undefined,
                 color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                border: 'none',
+                border: isActive ? '1px solid rgba(99, 102, 241, 0.35)' : '1px solid transparent',
                 borderRadius: '6px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'space-between',
                 padding: collapsed ? '7px 0' : '5px 8px',
-                transition: 'background 0.15s ease, color 0.15s ease',
-                marginBottom: '1px'
+                transition: 'all 0.15s ease',
+                marginBottom: '2px',
+                boxShadow: isActive ? 'inset 0 0.5px 0 rgba(255, 255, 255, 0.15)' : 'none'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1, justifyContent: collapsed ? 'center' : 'flex-start' }}>
