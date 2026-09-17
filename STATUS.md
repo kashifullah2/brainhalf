@@ -23,7 +23,7 @@
 ## Stages Status
 
 - [x] **s0_discover**: Fresh codebase and model discovery. Generated `INVENTORY.md` and `MODELS.md`. Baseline recorded.
-- [ ] **s1_harness**: Playwright harness setup, dev server validation, `tests/e2e/smoke.spec.ts`.
+- [x] **s1_harness**: Playwright harness setup, dev server validation, `tests/e2e/smoke.spec.ts` (2/2 passed, 0 console errors, 0 network errors). Gate passed.
 - [ ] **s2_hygiene**: Duplicate code, dead files, and dead UI removal (`DEAD_UI.md`).
 - [ ] **s3_generation_matrix**: 8-tier multi-model app generation matrix (`TEST_RESULTS.md`).
 - [ ] **s4_ux_responsive**: Responsive breakpoints audit, overlap detection, a11y (`RESPONSIVE_ISSUES.md`).
