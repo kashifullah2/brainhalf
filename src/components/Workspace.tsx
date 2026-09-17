@@ -335,7 +335,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   }, []);
 
   // Dropdown dismissal. Escape closes the innermost layer only, so it does not
-  // tear down the whole UI in one keystroke.
+  // tear down the whole UI in one keystroke. Window blur handles clicks into iframes.
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (diagnosticMenuRef.current && !diagnosticMenuRef.current.contains(e.target as Node)) setShowDiagnosticMenu(false);
@@ -347,11 +347,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
       if (showEngineMenu) { setShowEngineMenu(false); return; }
       if (showDiagnosticMenu) setShowDiagnosticMenu(false);
     };
+    const handleWindowBlur = () => {
+      setShowDiagnosticMenu(false);
+      setShowEngineMenu(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('blur', handleWindowBlur);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('blur', handleWindowBlur);
     };
   }, [showGithubModal, showEngineMenu, showDiagnosticMenu]);
 
@@ -850,71 +856,70 @@ export default function ${compName}(props) {
         position: 'relative',
         zIndex: 50
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflowX: 'auto' }}>
-          <div className="segmented-control" role="tablist" aria-label="Workspace navigation" style={{ flexShrink: 0 }}>
-            <button
-              role="tab"
-              aria-selected={activeTab === 'code'}
-              onClick={() => {
-                setActiveTab('code');
-                if (isServerPath(activeFile)) {
-                  const clientFile = Object.keys(filesRef.current).find(p => !isServerPath(p));
-                  if (clientFile) setActiveFile(clientFile);
-                }
-              }}
-              className={`segmented-tab ${activeTab === 'code' ? 'active' : ''}`}
-              title="Frontend client code"
-            >
-              <Code2 size={16} strokeWidth={1.75} />
-              <span>Code</span>
-            </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
+            <div className="segmented-control" role="tablist" aria-label="Workspace navigation" style={{ flexShrink: 0 }}>
+              <button
+                role="tab"
+                aria-selected={activeTab === 'code'}
+                onClick={() => {
+                  setActiveTab('code');
+                  if (isServerPath(activeFile)) {
+                    const clientFile = Object.keys(filesRef.current).find(p => !isServerPath(p));
+                    if (clientFile) setActiveFile(clientFile);
+                  }
+                }}
+                className={`segmented-tab ${activeTab === 'code' ? 'active' : ''}`}
+                title="Frontend client code"
+              >
+                <Code2 size={16} strokeWidth={1.75} />
+                <span>Code</span>
+              </button>
 
-            <button
-              role="tab"
-              aria-selected={activeTab === 'backend'}
-              onClick={() => { setActiveTab('backend'); handleScaffoldBackend(); }}
-              className={`segmented-tab ${activeTab === 'backend' ? 'active' : ''}`}
-              title="Backend REST API, database and environment"
-            >
-              <Server size={16} strokeWidth={1.75} />
-              <span>Backend</span>
-            </button>
+              <button
+                role="tab"
+                aria-selected={activeTab === 'backend'}
+                onClick={() => { setActiveTab('backend'); handleScaffoldBackend(); }}
+                className={`segmented-tab ${activeTab === 'backend' ? 'active' : ''}`}
+                title="Backend REST API, database and environment"
+              >
+                <Server size={16} strokeWidth={1.75} />
+                <span>Backend</span>
+              </button>
 
-            <button
-              role="tab"
-              aria-selected={activeTab === 'preview'}
-              onClick={() => setActiveTab('preview')}
-              className={`segmented-tab ${activeTab === 'preview' ? 'active' : ''}`}
-              title="Live application preview"
-            >
-              <Monitor size={16} strokeWidth={1.75} />
-              <span>Preview</span>
-            </button>
+              <button
+                role="tab"
+                aria-selected={activeTab === 'preview'}
+                onClick={() => setActiveTab('preview')}
+                className={`segmented-tab ${activeTab === 'preview' ? 'active' : ''}`}
+                title="Live application preview"
+              >
+                <Monitor size={16} strokeWidth={1.75} />
+                <span>Preview</span>
+              </button>
 
-            {(activeTab === 'console' || activeTab === 'logs') && (
-              <div className="segmented-tab active" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {activeTab === 'console' ? <Terminal size={16} strokeWidth={1.75} /> : <ListFilter size={16} strokeWidth={1.75} />}
-                <span>{activeTab === 'console' ? 'Console' : 'Logs'}</span>
-                {/* FIX: this was a <span onClick> nested inside a <button
-                    role="tab">, which is invalid markup and unreachable by
-                    keyboard. It is a real button now, and its parent is not. */}
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('preview')}
-                  aria-label="Close diagnostics and return to preview"
-                  title="Close diagnostics"
-                  style={{
-                    background: 'transparent', border: 'none', padding: 0, margin: 0,
-                    display: 'flex', cursor: 'pointer', color: 'inherit', opacity: 0.7
-                  }}
-                >
-                  <X size={16} strokeWidth={1.75} />
-                </button>
-              </div>
-            )}
+              {(activeTab === 'console' || activeTab === 'logs') && (
+                <div className="segmented-tab active" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {activeTab === 'console' ? <Terminal size={16} strokeWidth={1.75} /> : <ListFilter size={16} strokeWidth={1.75} />}
+                  <span>{activeTab === 'console' ? 'Console' : 'Logs'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('preview')}
+                    aria-label="Close diagnostics and return to preview"
+                    title="Close diagnostics"
+                    style={{
+                      background: 'transparent', border: 'none', padding: 0, margin: 0,
+                      display: 'flex', cursor: 'pointer', color: 'inherit', opacity: 0.7
+                    }}
+                  >
+                    <X size={16} strokeWidth={1.75} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div style={{ position: 'relative', flexShrink: 0 }} ref={diagnosticMenuRef}>
+          <div style={{ position: 'relative', flexShrink: 0, zIndex: 100 }} ref={diagnosticMenuRef}>
             <button
               onClick={() => setShowDiagnosticMenu(prev => !prev)}
               className="icon-btn"
@@ -932,9 +937,9 @@ export default function ${compName}(props) {
 
             {showDiagnosticMenu && (
               <div role="menu" style={{
-                position: 'absolute', top: 'calc(100% + 4px)', left: 0, width: '190px',
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, width: '190px',
                 background: '#12141c', border: '1px solid var(--border-medium)', borderRadius: '8px',
-                boxShadow: '0 12px 28px rgba(0,0,0,0.65)', padding: '4px', zIndex: 1000,
+                boxShadow: '0 12px 28px rgba(0,0,0,0.75)', padding: '4px', zIndex: 1000,
                 display: 'flex', flexDirection: 'column', gap: '2px'
               }}>
                 <button role="menuitem" className="deploy-menu-item" style={{ padding: '8px', fontSize: '12px' }}

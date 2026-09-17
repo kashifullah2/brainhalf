@@ -612,7 +612,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
     const newMsgs: Message[] = [
       ...messagesRef.current,
-      { role: 'user', content: userMessage }
+      { role: 'user', content: userMessage },
+      { role: 'ai', content: '' }
     ];
     setMessages(newMsgs);
     messagesRef.current = newMsgs;
@@ -1386,7 +1387,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   e.currentTarget.style.height = 'auto'; // Reset on send
                 }
               }}
-              placeholder={isGenerating ? "BrainHalf is working..." : "Ask BrainHalf to build, edit, or style..."}
+              placeholder="Ask BrainHalf to build, edit, or style..."
               rows={1}
               disabled={isGenerating}
               style={{
@@ -1400,7 +1401,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 outline: 'none',
                 lineHeight: 1.5,
                 maxHeight: '200px',
-                overflowY: 'auto'
+                overflowY: 'auto',
+                opacity: isGenerating ? 0.5 : 1,
+                cursor: isGenerating ? 'not-allowed' : 'text'
               }}
             />
             {isGenerating ? (
