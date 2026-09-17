@@ -655,3 +655,36 @@ change.
 
 **Also corrected:** the existing `_headers` sent `Referrer-Policy: no-referrer`
 while the Worker sent `strict-origin-when-cross-origin`. Unified on the latter.
+
+---
+
+## D-34 · Dynamic Origin Resolution for Preview & Deploy Links
+
+**Context.** `TopNav.tsx` previously opened `https://brainhalf.com/preview/...` and `https://brainhalf.com/p/...` regardless of the host environment. In local development or staging, newly created projects do not exist on the production Cloudflare deployment, resulting in 404s when developers test deploy previews.
+
+**Decision.** Replaced static domain strings with `window.location.origin` (falling back gracefully to production if `window` is undefined).
+
+---
+
+## D-35 · Dev Middleware Simulated Auth Route Alignment
+
+**Context.** `GET /api/auth/session` is used by the frontend to verify stored credentials. In Cloudflare Workers this is handled by `AUTH_ROUTES`, but in local Vite dev mode, requests were caught by `backend-runner.ts` and rejected as an unknown collection ID.
+
+**Decision.** Added explicit handler for `GET /api/auth/session` in `backend-runner.ts` returning standard HTTP 401 when unauthorized and user profile when authenticated, ensuring local development reflects production authentication semantics.
+
+---
+
+## D-36 · Atomic Inventory and Request Body Validation in Dev Backend
+
+**Context.** In Tier 3 and Tier 6 tests, POST requests with null bodies previously defaulted to empty objects without validation, and order requests lacked atomic inventory decrement.
+
+**Decision.** Added explicit 400 Bad Request validation for empty/malformed POST bodies in `backend-runner.ts`, and implemented atomic inventory decrement on `orders` to enforce flash-sale stock constraints under concurrency.
+
+---
+
+## D-37 · Non-Production Safeguard on 1000-User Benchmark
+
+**Context.** `tests/load-test-thousands.mjs` defaulted to `https://brainhalf.com` if `TARGET_HOST` was not specified, violating the safety rule against running load tests on production.
+
+**Decision.** Changed the default `TARGET_HOST` to `http://localhost:5173` and added a hard assertion aborting execution if `brainhalf.com` is targeted without explicit override.
+

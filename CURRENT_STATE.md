@@ -62,3 +62,71 @@ after re-reading `worker.ts`, `agent.ts` (2433 lines), `lib/model-tester.ts`,
 - `src/lib/backend-runner.ts` + `src/lib/templates/` are new and untracked (in-app simulated backend).
 - Dispatch namespace (`/p/:name`) now has a ChatAgent fallback (`3002519`).
 - Baseline WIP committed as `d1e8b3d` on this branch before audit work began.
+
+---
+
+## Resolution index — state at end of run (2026-09-17)
+
+The sections above are the **baseline**, unchanged, so the audit trail stays
+honest about what the tree looked like when this branch started. This index maps
+each baseline finding to where it was actually resolved. Commit → finding.
+
+### Phase 1 — Auth & tenancy → `e400621`
+- No auth at all → HMAC-signed session tokens (`bh_<b64>.<sig>`), PBKDF2-hashed
+  passwords, `verifySession` on every WS/HTTP/preview route; httpOnly cookie +
+  localStorage token split.
+- No server-side ownership model → `REGISTRY` Durable Object holds project
+  ownership; `authorizeOrClaim` claims on first authenticated connect, fails
+  closed if the Registry is unreachable.
+- Cross-tenant shared store → per-agent store instance (I-06).
+- Forgeable simulated-backend tokens → signed, not `btoa`-prefixed.
+- Wildcard CORS → explicit origin allowlist (`auth.ts:42-43`).
+
+### Phase 2 — Cost abuse → `a12c03b`
+- Arbitrary `modelId` → strict server-side allowlist; substring matching
+  (`includes('sonnet')`) replaced with exact map lookup.
+- Unbounded `max_tokens` → capped server-side, client input no longer trusted.
+- No AI timeouts → `abortSignal` on every outbound call.
+- Masked 200s on failure → honest HTTP status codes.
+
+### Phase 3 — Injection & SSRF → `51984c2`
+- `</script>` import-map breakout → escaped before injection.
+- Raw path into generated JS → escaped.
+- SSRF on `fetch_api` → private-IP block, redirect cap, size cap, timeout.
+- 5 wildcard `postMessage` → explicit target origins.
+- No CSP on app shell → `public/_headers` + `withShellSecurity` (see I-12 / D-33
+  for the asset-layer subtlety that made the worker-side headers dead code).
+
+### Phase 4 — Concurrency & data integrity → `ed24249`
+- Stopped generation resurrecting itself → write-path guards; abort no longer
+  falls through into a second generation or persists partial files.
+- No busy lock / racing tabs → per-DO lock.
+- Edit blocks re-reading the original row → chained, each sees the prior result.
+- Multi-statement writes without atomicity → transactional.
+- Delayed `saveTurn` resurrecting cleared history → epoch guard.
+- No idempotency on prompt submission → idempotency key.
+- Restore never firing (`count <= 1` vs a 3-file seed) → fixed; the shared
+  `default` backup key is now a unique id.
+
+### Phase 5 — Schema / reliability → `ed24249`
+- No migration framework → `schema_version` table + ordered migrations.
+- Leading-wildcard LIKE → indexed equality-prefix queries.
+- Unbounded snapshots → row/byte caps with paging fields (I-09 for the residual).
+- In-memory store id collisions → 409 on duplicate, sane auto-increment.
+
+### Phase 6 — Deduplication → `2bbbb89`
+- Repeated file reads and a duplicated context builder collapsed; preview
+  failure surface reduced to one error card.
+
+### Phase 7 — UI/UX → `dc6f8dd`, `3a7e09d`
+- WCAG AA contrast for muted text, preview error buttons, template palette.
+- Mobile top nav clipped its own overflow menu off-screen at <=375px → two-row
+  reflow (D-30).
+- `logout()` existed with zero call sites → wired through TopNav (D-30).
+- Dev WS routed to production (D-31), shared `default` first-run land-grab (D-32).
+
+### Still open
+See ISSUES.md. The two material residuals are I-11 (pre-existing localStorage
+`default` users left as-is, because reassigning them could lock the true owner
+out) and I-14 (generation tiers unrunnable — no model credentials and the `[ai]`
+binding returns 502 under local dev).

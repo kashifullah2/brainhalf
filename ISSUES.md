@@ -125,6 +125,21 @@ each measurement here rather than restarting wrangler.
 Tier 1-5/7/8 of the test matrix require the agent to actually generate an app.
 `.dev.vars` contains only `SESSION_SECRET` — no model API keys — and the
 `[ai]` binding returns **502 "Binding AI needs to be run remotely"** under
-`wrangler dev --local`, which has no outbound network to the AI gateway. This is
-a sandbox limitation, not a product bug. TEST_RESULTS.md records these tiers as
+`wrangler dev --local`, which has no outbound network to the AI gateway. This is a sandbox limitation, not a product bug. TEST_RESULTS.md records these tiers as
 **NOT RUN** with the 502 as evidence rather than reporting a pass.
+
+## I-15 · [FIXED] Deploy modal preview and dispatch links hardcoded to production
+
+In `src/components/TopNav.tsx`, the Deploy modal had hardcoded `https://brainhalf.com/preview/...` and `https://brainhalf.com/p/...` links. In local development or staging, clicking those opened external production URLs where local projects do not exist. Updated to use `window.location.origin`.
+
+## I-16 · [FIXED] Dev middleware unauthenticated GET /api/auth/session returned 404
+
+In `src/lib/backend-runner.ts`, `/api/auth/session` was not recognized as an authentication endpoint, falling through to generic table lookup and returning 404. Added explicit handler returning HTTP 401 when unauthorized and user session profile when valid.
+
+## I-17 · [FIXED] Unchecked empty request bodies in POST resource creation
+
+In `src/lib/backend-runner.ts`, POST requests with null or empty bodies were accepted and created empty records. Added validation returning HTTP 400 Bad Request.
+
+## I-18 · [FIXED] Form inputs missing explicit programmatic labels for a11y
+
+`src/components/LoginScreen.tsx` inputs had placeholders and parent labels but lacked `id` + `htmlFor` and explicit `aria-label` tags. Added `id="login-email"`, `aria-label="Email Address"`, `id="login-password"`, and `aria-label="Password"`, achieving 0 violations in `a11y-report.json`.
