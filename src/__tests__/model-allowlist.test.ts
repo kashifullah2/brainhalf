@@ -22,6 +22,7 @@ const FRONTEND_CATALOG = [
   'claude-sonnet-4.6',
   'claude-opus-4.6',
   'minimax-m2.5',
+  'Atria-Dawn-Preview',
 ];
 
 describe('P2 Model allowlist — exact match, no substring dispatch', () => {
@@ -37,6 +38,18 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
     expect(m!.provider).toBe('cloudflare');
     expect(m!.id).toBe('@cf/openai/gpt-oss-20b');
     expect(m!.maxTokens).toBeGreaterThan(0);
+  });
+
+  it('resolves an atria model to its id and ceiling', () => {
+    const m = resolveModel('Atria-Dawn-Preview', 'atria');
+    expect(m).not.toBeNull();
+    expect(m!.provider).toBe('atria');
+    expect(m!.id).toBe('Atria-Dawn-Preview');
+    expect(m!.maxTokens).toBe(64000);
+    // Case-insensitive / alternate entry also resolves
+    const mLower = resolveModel('atria-dawn-preview');
+    expect(mLower).not.toBeNull();
+    expect(mLower!.id).toBe('Atria-Dawn-Preview');
   });
 
   it('disambiguates an anthropic-family model by the provider hint', () => {

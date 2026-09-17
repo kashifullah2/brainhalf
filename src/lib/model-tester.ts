@@ -464,6 +464,32 @@ export async function handleModelTest(
         }
         outputContent += chunk;
       }
+    } else if (resolved.provider === 'atria') {
+      const atriaApiKey = env.ATRIA_API_KEY;
+      const atriaBaseUrl = env.ATRIA_BASE_URL || 'https://api.atria-asi.ai/v1';
+
+      if (!atriaApiKey) {
+        throw new Error(`ATRIA_API_KEY is not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
+      }
+
+      const { createOpenAI } = await import('@ai-sdk/openai');
+      const { streamText } = await import('ai');
+      const atria = createOpenAI({
+        apiKey: atriaApiKey,
+        baseURL: atriaBaseUrl,
+      });
+      const stream = streamText({
+        model: atria(resolved.id),
+        messages: [{ role: 'user', content: prompt }],
+        abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+      });
+
+      for await (const chunk of stream.textStream) {
+        if (!firstTokenTime) {
+          firstTokenTime = Date.now() - startTime;
+        }
+        outputContent += chunk;
+      }
     } else {
       // Unreachable: resolveModel already rejected anything else.
       throw new Error(`Unsupported provider for model: ${resolved.name}`);

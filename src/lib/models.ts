@@ -11,12 +11,12 @@
  * model to the UI means adding it here too — the two are a contract.
  */
 
-export type ModelProvider = 'cloudflare' | 'anthropic' | 'aws';
+export type ModelProvider = 'cloudflare' | 'anthropic' | 'aws' | 'atria';
 
 export interface AllowedModel {
   /** Client-visible model name, matched exactly (case-sensitive). */
   name: string;
-  provider: Exclude<ModelProvider, 'aws'> | 'aws';
+  provider: ModelProvider;
   /** Concrete provider id handed to the SDK or the env.AI binding. */
   id: string;
   /** Server-side ceiling on output tokens for this model. */
@@ -40,6 +40,7 @@ export const MODEL_TEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 const ANTHROPIC_DEFAULT_MAX = 64000;
 const BEDROCK_DEFAULT_MAX = 64000;
+const ATRIA_DEFAULT_MAX = 64000;
 const CF_DEFAULT_MAX = 65536;
 
 const CF_MODELS: AllowedModel[] = [
@@ -72,7 +73,17 @@ const BEDROCK_MODELS: AllowedModel[] = [
   { name: 'minimax', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX },
 ];
 
-export const MODEL_ALLOWLIST: readonly AllowedModel[] = [...CF_MODELS, ...ANTHROPIC_MODELS, ...BEDROCK_MODELS];
+const ATRIA_MODELS: AllowedModel[] = [
+  { name: 'Atria-Dawn-Preview', provider: 'atria', id: 'Atria-Dawn-Preview', maxTokens: ATRIA_DEFAULT_MAX },
+  { name: 'atria-dawn-preview', provider: 'atria', id: 'Atria-Dawn-Preview', maxTokens: ATRIA_DEFAULT_MAX },
+];
+
+export const MODEL_ALLOWLIST: readonly AllowedModel[] = [
+  ...CF_MODELS,
+  ...ANTHROPIC_MODELS,
+  ...BEDROCK_MODELS,
+  ...ATRIA_MODELS,
+];
 
 /**
  * Exact-match resolution. The optional `provider` hint disambiguates names that

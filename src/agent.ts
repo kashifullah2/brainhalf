@@ -13,6 +13,7 @@ import { AGENT_MIGRATIONS, runMigrations } from './lib/migrations';
 import { streamText, tool } from 'ai';
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 
 /**
@@ -923,6 +924,8 @@ ${existingFilesContext}
           const awsKey = (this as any).env.AWS_ACCESS_KEY_ID;
           const awsSecret = (this as any).env.AWS_SECRET_ACCESS_KEY;
           const awsRegion = (this as any).env.AWS_REGION || 'us-east-1';
+          const atriaApiKey = (this as any).env.ATRIA_API_KEY;
+          const atriaBaseUrl = (this as any).env.ATRIA_BASE_URL || 'https://api.atria-asi.ai/v1';
 
           const requestedModel = data.model || '@cf/qwen/qwen2.5-coder-32b-instruct';
 
@@ -982,6 +985,14 @@ ${existingFilesContext}
               secretAccessKey: awsSecret,
             });
             aiModel = bedrock(model.id);
+            maxTokensForModel = model.maxTokens;
+          } else if (model.provider === 'atria' && atriaApiKey) {
+            // 4. Atria ASI Provider (OpenAI-compatible)
+            const atria = createOpenAI({
+              apiKey: atriaApiKey,
+              baseURL: atriaBaseUrl,
+            });
+            aiModel = atria(model.id);
             maxTokensForModel = model.maxTokens;
           }
 

@@ -49,3 +49,11 @@ SDK: `@ai-sdk/amazon-bedrock` (`createAmazonBedrock`).
 | `claude-sonnet` | `us.anthropic.claude-sonnet-4-6-v1:0` | Yes (`streamText`) | `env.BEDROCK_API_KEY` or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Strict Zero-Fallback | 64,000 |
 | `minimax-m2.5` | `minimax.minimax-m2.5` | Yes (`streamText`) | `env.BEDROCK_API_KEY` or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Strict Zero-Fallback | 64,000 |
 | `minimax` | `minimax.minimax-m2.5` | Yes (`streamText`) | `env.BEDROCK_API_KEY` or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Strict Zero-Fallback | 64,000 |
+
+### Category D: Atria ASI Provider
+SDK: `@ai-sdk/openai` (`createOpenAI` with OpenAI-compatible endpoint `https://api.atria-asi.ai/v1`).
+
+| Model Name / Selector | Concrete Model ID | Streaming Support | Key Location | Fallback Policy | Max Output Tokens |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `Atria-Dawn-Preview` | `Atria-Dawn-Preview` | Yes (`streamText`) | `env.ATRIA_API_KEY` (override: `env.ATRIA_BASE_URL`) | Strict Zero-Fallback | 64,000 |
+

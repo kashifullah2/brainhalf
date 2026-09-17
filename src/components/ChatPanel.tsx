@@ -23,7 +23,7 @@ const STARTER_PROMPTS = [
 interface ModelDef {
   id: string;
   name: string;
-  provider: 'cloudflare' | 'anthropic' | 'aws';
+  provider: 'cloudflare' | 'anthropic' | 'aws' | 'atria';
   category: 'recommended' | 'coding' | 'fast' | 'reasoning';
   speed?: string;
   badge?: string;
@@ -42,6 +42,8 @@ const MODELS: ModelDef[] = [
   { id: 'claude-sonnet-4.6', name: 'Claude 4.6 Sonnet', provider: 'aws', category: 'coding', badge: 'Sonnet' },
   { id: 'claude-opus-4.6', name: 'Claude 4.6 Opus', provider: 'aws', category: 'reasoning', badge: 'Opus' },
   { id: 'minimax-m2.5', name: 'MiniMax m2.5', provider: 'aws', category: 'fast', badge: 'MiniMax' },
+  // Atria ASI Models
+  { id: 'Atria-Dawn-Preview', name: 'Atria Dawn Preview', provider: 'atria', category: 'reasoning', badge: 'Atria ASI' },
 ];
 
 interface Message {
@@ -821,6 +823,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 </optgroup>
                 <optgroup label="AWS Bedrock" style={{ background: '#121316', color: '#9ca3af' }}>
                   {MODELS.filter(m => m.provider === 'aws').map(m => (
+                    <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
+                      {m.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Atria ASI" style={{ background: '#121316', color: '#9ca3af' }}>
+                  {MODELS.filter(m => m.provider === 'atria').map(m => (
                     <option key={m.id} value={m.id} style={{ background: '#121316', color: '#f3f4f6' }}>
                       {m.name}
                     </option>
