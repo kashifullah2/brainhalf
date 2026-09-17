@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus, BrainCircuit, LogOut } from 'lucide-react';
 import { appEvents } from '../lib/events';
-import { getProjects, updateProjectName, createProject } from '../lib/project-store';
+import { getProjects, updateProjectName } from '../lib/project-store';
 import { usePlatformStatus } from '../lib/status-store';
 import ConfirmModal from './ConfirmModal';
 import BrainHalfLogo from './BrainHalfLogo';
@@ -21,7 +21,7 @@ interface TopNavProps {
 const TopNav: React.FC<TopNavProps> = ({
   activeProjectId,
   onProjectRenamed,
-  onSelectProject,
+  onSelectProject: _onSelectProject,
   onToggleMobileSidebar,
   mobileTab = 'chat',
   onSelectMobileTab,

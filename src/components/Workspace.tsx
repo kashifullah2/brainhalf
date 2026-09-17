@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock, 
-  AlertCircle, Terminal, Copy, Check, FolderCode, Download, 
+  Terminal, Copy, Check, FolderCode, Download, 
   Tablet, Smartphone, WrapText, ListFilter,
   Zap, Box, MoreHorizontal, X, Server
 } from 'lucide-react';

@@ -924,8 +924,15 @@ ${existingFilesContext}
           const awsKey = (this as any).env.AWS_ACCESS_KEY_ID;
           const awsSecret = (this as any).env.AWS_SECRET_ACCESS_KEY;
           const awsRegion = (this as any).env.AWS_REGION || 'us-east-1';
-          const atriaApiKey = (this as any).env.ATRIA_API_KEY;
-          const atriaBaseUrl = (this as any).env.ATRIA_BASE_URL || 'https://api.atria-asi.ai/v1';
+          const rawAtriaKey = (this as any).env.ATRIA_API_KEY;
+          let atriaApiKey = rawAtriaKey;
+          let atriaBaseUrl = (this as any).env.ATRIA_BASE_URL;
+          if (!atriaApiKey && atriaBaseUrl && !atriaBaseUrl.startsWith('http')) {
+            atriaApiKey = atriaBaseUrl;
+            atriaBaseUrl = 'https://api.atria-asi.ai/v1';
+          } else if (!atriaBaseUrl || !atriaBaseUrl.startsWith('http')) {
+            atriaBaseUrl = 'https://api.atria-asi.ai/v1';
+          }
 
           const requestedModel = data.model || '@cf/qwen/qwen2.5-coder-32b-instruct';
 

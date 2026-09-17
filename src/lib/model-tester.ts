@@ -465,8 +465,16 @@ export async function handleModelTest(
         outputContent += chunk;
       }
     } else if (resolved.provider === 'atria') {
-      const atriaApiKey = env.ATRIA_API_KEY;
-      const atriaBaseUrl = env.ATRIA_BASE_URL || 'https://api.atria-asi.ai/v1';
+      const rawAtriaKey = env.ATRIA_API_KEY;
+      let atriaApiKey = rawAtriaKey;
+      let atriaBaseUrl = env.ATRIA_BASE_URL;
+
+      if (!atriaApiKey && atriaBaseUrl && !atriaBaseUrl.startsWith('http')) {
+        atriaApiKey = atriaBaseUrl;
+        atriaBaseUrl = 'https://api.atria-asi.ai/v1';
+      } else if (!atriaBaseUrl || !atriaBaseUrl.startsWith('http')) {
+        atriaBaseUrl = 'https://api.atria-asi.ai/v1';
+      }
 
       if (!atriaApiKey) {
         throw new Error(`ATRIA_API_KEY is not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);

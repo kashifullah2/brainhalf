@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Settings, Plus, Layers, Trash2, X, Cpu, Server, PanelLeftClose, PanelLeftOpen, Code2, GitBranch, GitMerge, MoreHorizontal, Share2, Check, BrainCircuit } from 'lucide-react';
+import { Sparkles, Settings, Plus, Layers, Trash2, X, Cpu, Server, PanelLeftClose, PanelLeftOpen, Code2, GitBranch, GitMerge, MoreHorizontal, Share2, Check } from 'lucide-react';
 import { Project, getProjects, createProject, createBranch, mergeBranches, deleteProject, formatRelativeTime, getProjectDisplayTitle } from '../lib/project-store';
 import { appEvents } from '../lib/events';
 import ConfirmModal from './ConfirmModal';
