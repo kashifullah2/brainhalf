@@ -521,7 +521,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 color: '#60a5fa' 
               }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  https://brainhalf.com/p/{activeProjectId}
+                  {typeof window !== 'undefined' ? window.location.origin : 'https://brainhalf.com'}/p/{activeProjectId}
                 </span>
                 <button
                   style={{
@@ -537,7 +537,8 @@ const TopNav: React.FC<TopNavProps> = ({
                     borderRadius: '4px'
                   }}
                   onClick={() => {
-                    navigator.clipboard.writeText(`https://brainhalf.com/p/${activeProjectId}`);
+                    const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://brainhalf.com';
+                    navigator.clipboard.writeText(`${baseUrl}/p/${activeProjectId}`);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   }}
@@ -568,7 +569,8 @@ const TopNav: React.FC<TopNavProps> = ({
               <button 
                 className="button-ghost"
                 onClick={() => {
-                  window.open(`https://brainhalf.com/preview/${activeProjectId}/index.html`, '_blank');
+                  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://brainhalf.com';
+                  window.open(`${baseUrl}/preview/${activeProjectId}/index.html`, '_blank');
                   setShowDeployModal(false);
                 }}
               >
@@ -577,7 +579,8 @@ const TopNav: React.FC<TopNavProps> = ({
               <button 
                 className="button-primary"
                 onClick={() => {
-                  window.open(`https://brainhalf.com/p/${activeProjectId}`, '_blank');
+                  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://brainhalf.com';
+                  window.open(`${baseUrl}/p/${activeProjectId}`, '_blank');
                   setShowDeployModal(false);
                 }}
               >

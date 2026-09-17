@@ -449,8 +449,8 @@ export async function executeBackendRequest(
     };
   }
 
-  // 4. Current User Profile: GET /api/auth/me
-  if (pathname === '/api/auth/me' && method === 'GET') {
+  // 4. Current User Profile / Session: GET /api/auth/me or GET /api/auth/session
+  if ((pathname === '/api/auth/me' || pathname === '/api/auth/session') && method === 'GET') {
     if (!currentUser) {
       return {
         status: 401,
@@ -470,6 +470,7 @@ export async function executeBackendRequest(
         name: currentUser.name,
         role: currentUser.role,
         orgId: currentUser.orgId,
+        user: { id: currentUser.id, email: currentUser.email, name: currentUser.name, role: currentUser.role, orgId: currentUser.orgId },
         org
       },
       layer: 'backend'
