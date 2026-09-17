@@ -6,7 +6,7 @@ import Workspace from './components/Workspace';
 import LoginScreen from './components/LoginScreen';
 import { BrainHalfLogo } from './components/BrainHalfLogo';
 import { getActiveProjectId, setActiveProjectId } from './lib/project-store';
-import { getToken, getUser, verifyStoredSession, type SessionUser } from './lib/auth-client';
+import { getToken, getUser, logout, verifyStoredSession, type SessionUser } from './lib/auth-client';
 import './index.css';
 
 function App() {
@@ -129,6 +129,13 @@ function App() {
     setChatWidth(440);
   };
 
+  // The server revokes the token; we drop the local copy regardless so the UI
+  // never lingers on a session the server has already invalidated.
+  const handleLogout = async () => {
+    await logout();
+    setUser(null);
+  };
+
   if (!authChecked) {
     return (
       <div
@@ -157,13 +164,15 @@ function App() {
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
       <div className="main-content">
-        <TopNav 
+        <TopNav
           activeProjectId={activeProjectId}
           onSelectProject={handleSelectProject}
           onToggleMobileSidebar={() => setMobileSidebarOpen(prev => !prev)}
           mobileTab={mobileTab}
           onSelectMobileTab={setMobileTab}
           isMobile={isMobile}
+          currentUser={user}
+          onLogout={handleLogout}
         />
         <div className={`workspace-area ${isMobile ? 'is-mobile' : ''}`}>
           {(!isMobile || mobileTab === 'chat') && (

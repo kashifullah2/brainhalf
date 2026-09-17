@@ -138,8 +138,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
     if (!projectToDelete) return;
     const remaining = deleteProject(projectToDelete);
     setProjects(remaining);
-    if (activeProjectId === projectToDelete) {
-      onSelectProject(remaining[0]?.id || 'default');
+    if (activeProjectId === projectToDelete && remaining[0]) {
+      // deleteProject re-seeds a uniquely-owned project when the list empties,
+      // so this is always a real id — never a shared hard-coded one.
+      onSelectProject(remaining[0].id);
     }
     setProjectToDelete(null);
   };

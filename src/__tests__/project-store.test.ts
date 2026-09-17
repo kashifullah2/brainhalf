@@ -30,18 +30,35 @@ describe('Project Store & LocalStorage State Management', () => {
   });
 
   describe('getProjects', () => {
-    it('initializes default project when localStorage is empty', () => {
+    it('seeds a uniquely-owned project when localStorage is empty', () => {
       const projects = getProjects();
       expect(projects).toHaveLength(1);
-      expect(projects[0].id).toBe('default');
+      // A hard-coded 'default' id would be shared by every brand-new visitor;
+      // the first to connect would claim it server-side for everyone.
+      expect(projects[0].id).toMatch(/^proj-/);
       expect(projects[0].name).toBe('Untitled Project');
+    });
+
+    it('seeds different ids for two fresh visitors (no shared land-grab)', () => {
+      const first = getProjects()[0].id;
+      mockStorage = {};
+      const second = getProjects()[0].id;
+      expect(first).not.toBe(second);
+      expect(second).toMatch(/^proj-/);
     });
 
     it('recovers gracefully from corrupted JSON in localStorage', () => {
       mockStorage['brainhalf_projects'] = '{ invalid_json :::: ';
       const projects = getProjects();
       expect(projects).toHaveLength(1);
-      expect(projects[0].id).toBe('default');
+      expect(projects[0].id).toMatch(/^proj-/);
+    });
+
+    it('preserves an existing "default" project from older versions', () => {
+      // Users who already have a claimed default project keep it; we migrate
+      // nothing and never touch stored state.
+      saveProjects([{ id: 'default', name: 'Legacy', createdAt: 1, updatedAt: 1 } as any]);
+      expect(getProjects()[0].id).toBe('default');
     });
   });
 
@@ -76,13 +93,13 @@ describe('Project Store & LocalStorage State Management', () => {
       expect(remaining.some(p => p.id === p2.id)).toBe(true);
     });
 
-    it('resets to default project if the last project is deleted', () => {
+    it('re-seeds a uniquely-owned project if the last project is deleted', () => {
       const p1 = createProject('Sole Project');
       const remaining = deleteProject(p1.id);
-      deleteProject('default');
 
-      expect(remaining.length).toBeGreaterThanOrEqual(1);
-      expect(remaining[0].name).toBeDefined();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].id).toMatch(/^proj-/);
+      expect(remaining[0].id).not.toBe(p1.id);
     });
   });
 
@@ -99,8 +116,9 @@ describe('Project Store & LocalStorage State Management', () => {
   });
 
   describe('Active Project ID & Direct Save', () => {
-    it('gets and sets active project ID with default fallback', () => {
-      expect(getActiveProjectId()).toBe('default');
+    it('falls back to the seeded unique project, never a hard-coded id', () => {
+      const seeded = getActiveProjectId();
+      expect(seeded).toMatch(/^proj-/);
       setActiveProjectId('custom-proj-123');
       expect(getActiveProjectId()).toBe('custom-proj-123');
     });

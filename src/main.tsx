@@ -16,7 +16,12 @@ const isPreviewFrame = typeof window !== 'undefined' && (
 
 if (isPreviewFrame) {
   const pathMatch = window.location.pathname.match(/\/preview\/([^/]+)/);
-  const projectId = pathMatch ? pathMatch[1] : (new URLSearchParams(window.location.search).get('project') || 'default');
+  // A bare /preview with no id is a malformed URL. Do NOT fall back to a
+  // hard-coded 'default' id here: that id is shared by every visitor, so this
+  // frame would render a stranger's project (or claim it). An empty id makes
+  // PreviewRunner ask the parent for files it will not get, which is the
+  // honest outcome for a URL that was never valid.
+  const projectId = pathMatch ? pathMatch[1] : (new URLSearchParams(window.location.search).get('project') || '');
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

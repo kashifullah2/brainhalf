@@ -477,3 +477,181 @@ WCAG exempts disabled controls from contrast requirements.
 
 The ratios in the `index.css` comment are stated because they are checkable —
 they were computed, not estimated, and they match.
+
+## D-30 · The top nav had no working sign-out, and it clipped its own overflow menu off-screen at <=375px
+
+Two independent defects surfaced in the same Phase 7 responsive pass, both in
+the top nav.
+
+**1. `logout()` was implemented and unreachable.** `auth-client.ts` has a
+complete `logout()` — POST `/api/auth/logout`, then clear the localStorage
+token and user — and the worker has a working revocation endpoint behind it.
+Nothing in the component tree ever called it. `TopNav` already declared
+`currentUser` and `onLogout` props and already rendered an identity block with
+a "Sign out" button, but `App.tsx` passed neither prop, so the block never
+mounted. There was no sign-out path anywhere in the UI: a user had to clear
+cookies and localStorage by hand. Fixed by passing `user` and a `handleLogout`
+that awaits `logout()` and then sets `user` to null — the login screen appears
+because `App` renders on `!user`. Verified end to end: the button clears
+`bh_session_token`/`bh_session_user`, the login screen replaces the workspace,
+and the same token then returns **401** on both `/api/auth/session` and
+`/api/projects`, so the revocation is server-side, not just client-side
+theatre.
+
+**2. At 375px the right cluster was pushed entirely off the viewport.** Measured
+before the fix: the "Deploy" button ran 270–369 and "More project actions"
+377–409 on a 375px screen — the overflow menu button started two pixels past
+the right edge and was completely unreachable, clipped by `.main-content`'s
+`overflow: hidden`. The same measurement showed `.top-nav-left-cluster` had
+collapsed to **zero width**, so the project name (and with it the only rename
+affordance) was invisible, its children overlapping the segmented control.
+
+A single row cannot hold it: hamburger 36 + logo 24 + name + status pill 65 +
+segmented control 228 + deploy 99 + overflow 32 is ~690px of intent against
+355px of viewport. Compacting alone does not close that gap, so the nav is now
+two rows at <=768px.
+
+- `--header-height` is overridden to 86px inside the 768px media query. It is
+  the same variable `.workspace-area` subtracts (`calc(100vh - var(--header-height))`),
+  so the workspace tracks the header automatically instead of the two drifting
+  apart.
+- The segmented control gets `order: 3; flex-basis: 100%` and the nav
+  `flex-wrap: wrap`, putting Chat/Code/Preview on a full-width second row —
+  DOM order is untouched, so keyboard focus order is unchanged.
+- The left cluster gets a `min-width: 0` floor so it can no longer collapse to
+  zero and swallow the name.
+- Row one is compacted: Deploy drops its "Deploy ↖" label (icon-only, `aria-label`
+  intact), the status pill shows its dot and hoists its text into a `title`.
+
+Measured after the fix, still at 375px: name 90–190, status dot 224–244, deploy
+253–285, more-menu 293–325, sign out 333–365, tabs on row two 10–365.
+`documentElement.scrollWidth` is 375 and zero elements overflow. The more menu
+opens with all five items inside both axes (115–325 x, 69–240 y on a 375x812
+viewport).
+
+Chose a CSS-only reflow over a TSX reorder specifically because it keeps the
+accessibility tree in DOM order. Chose two rows over hiding controls because
+every alternative removed a function — dropping the segmented control breaks
+navigation between Chat/Code/Preview, dropping the overflow menu removes Share,
+ZIP export, GitHub export, Project Settings and Workspace Reset, and dropping
+Deploy removes the primary CTA.
+
+**Left alone deliberately:** the mobile identity block shows only the sign-out
+icon. The email address is 30px of useful information against a row that has
+none to spare, and it stays reachable via the button's tooltip
+(`Sign out (e2e@audit.test)`). The `Dev` badge is desktop-only for the same
+reason; it is a warning about disabled project isolation, and on mobile the
+sidebar is the place a user would read it.
+
+**Not fabricated:** the 768px and 1024px breakpoints were exercised live in the
+browser at every step, and the overflow numbers above are measured geometry
+from a real 375px viewport, not estimates.
+
+---
+
+## D-31 · The dev shell silently talked to production over the WebSocket
+
+`ChatPanel.connect()` computed its backend host as:
+
+```js
+const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+const backendHost = isLocal
+  ? (import.meta.env.VITE_BACKEND_HOST || 'brainhalf.com')
+  : window.location.host;
+```
+
+With `VITE_BACKEND_HOST` unset — the normal local case, since `.dev.vars` holds
+only `SESSION_SECRET` — a shell served from `127.0.0.1:8788` opened its chat
+socket to **`wss://brainhalf.com`**, production. Two consequences, both bad:
+
+1. Every local prompt was processed by the production agent, against production
+   Durable Objects. Local dev has no outbound model access, so nothing was
+   returned and the session appeared dead — but the request had already left.
+2. The local HMAC session token rode in the query string to a different origin,
+   leaking a live credential to production logs.
+
+**Evidence, not a guess:** the client console logged `Connected to session:
+default` while a 146-line sweep of the wrangler dev log contained zero
+`/agents/chat-agent/default` entries. The socket was succeeding somewhere —
+just not here.
+
+**The fix:** same-origin is correct in both cases. The Worker terminates the
+WebSocket in production, and in local dev the assets are served from the same
+host:port as wrangler. `VITE_BACKEND_HOST` survives as an explicit override for
+the one case where it is genuinely needed (vite dev server on :5173 reaching
+wrangler on :8788). It no longer falls back to a hardcoded production host, so
+an unset variable can never silently reroute a developer to prod.
+
+Verified live after the change: `GET /agents/chat-agent/proj-h0lbqp-mu52qz3h
+101 Switching Protocols` in the local dev log, where previously there was
+nothing.
+
+---
+
+## D-32 · Every brand-new visitor was shown someone else's locked project
+
+`project-store.ts` seeded a literal `id: 'default'` project for any empty
+localStorage, and `getActiveProjectId()` fell back to the same string. The
+server claims a project on the first authenticated agent connection
+(`authorizeOrClaim`, worker.ts:280). So the first newcomer to open the app and
+connect would permanently own `default` for *everyone*, and every subsequent
+newcomer's preview iframe would render the raw JSON
+`{"error":"You do not have access to this preview"}` — because preview reads
+use `isProjectOwner`, which is false for an unclaimed project you don't own.
+
+This was hidden behind the D-31 WebSocket bug: the claim never happened locally,
+so the preview stayed 403 even for the person who should have owned it.
+
+**The fix:** seed every fresh visitor with a unique `proj-<rand>-<time>` id, and
+make `getActiveProjectId()` fall back to `getProjects()[0]?.id` rather than a
+constant. `createProject()` now shares one `newProjectId()` helper with the
+seeder so the two id formats can never drift.
+
+**Non-destructive by design.** No migration touches stored state: a user who
+already has a claimed `default` project keeps it, and a user whose
+`brainhalf_active_project` key still reads `default` keeps reading it. Only
+*new* seedings change. That residual is logged in ISSUES.md.
+
+Verified live with a freshly signed-up account (`firstrun@audit.test`):
+`brainhalf_projects` seeded `proj-h0lbqp-mu52qz3h`; the dev log shows the exact
+recovery sequence `403 (unclaimed) → 101 Switching Protocols (claims) →
+/preview/.../index.html 200 OK` plus `styles.css`, `main.jsx`, `App.jsx` all 200.
+
+Two dead `|| 'default'` fallbacks were removed for the same reason: `main.tsx`
+(now renders nothing for a malformed bare `/preview` URL instead of a stranger's
+project) and `Sidebar.tsx` (dead anyway — `deleteProject` re-seeds, so
+`remaining[0]` is always defined).
+
+---
+
+## D-33 · The app shell's CSP was dead code in production
+
+`wrangler.toml` declares `[assets] directory = "dist"` with `binding = "ASSETS"`
+and no `run_worker_first`. Cloudflare's asset layer serves any file that exists
+**without invoking the Worker**. So `withShellSecurity()` — the CSP,
+`X-Frame-Options: deny`, CORP and Permissions-Policy applied at worker.ts:221-233
+and 266-268 — never ran for the shell in production any more than it did in dev.
+The application surface, the thing an attacker would actually target, had
+`default-src` unconstrained.
+
+Confirmed by request, not by reading config: `curl -D - http://127.0.0.1:8788/`
+returned 200 with `ETag`, `CF-Cache-Status: HIT` and **no CSP** — the asset
+layer's fingerprint, not the Worker's. A 404 on the same path returned the full
+CSP, which is how the two paths were told apart.
+
+**The fix:** apply the header set at the asset layer, in `public/_headers`,
+mirroring `shellSecurityHeaders()` line for line. Verified after rebuild: `/`
+returns 200 with `content-security-policy`, `x-frame-Options: deny`,
+`cross-origin-resource-policy: same-origin`, `permissions-policy` and
+`referrer-policy: strict-origin-when-cross-origin`.
+
+**Considered and rejected:** `run_worker_first = true` would make the Worker the
+single source of truth and retire the duplication. It also routes every static
+asset through the Worker, and local dev already showed asset-snapshot flakiness
+under rebuild (see ISSUES.md) — I did not want to make that the default path on
+the strength of a local-dev observation. The `_headers` duplication is one file,
+one comment pointing at the function it must stay in sync with, and zero routing
+change.
+
+**Also corrected:** the existing `_headers` sent `Referrer-Policy: no-referrer`
+while the Worker sent `strict-origin-when-cross-origin`. Unified on the latter.

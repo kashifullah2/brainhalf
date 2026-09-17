@@ -28,6 +28,25 @@ export function formatRelativeTime(timestamp: number): string {
 const STORAGE_KEY = 'brainhalf_projects';
 const ACTIVE_PROJECT_KEY = 'brainhalf_active_project';
 
+// A hard-coded project id would be shared by every brand-new visitor, and the
+// server claims a project on the first authenticated connection. So the first
+// person to open the app would permanently own "default" for everyone, and
+// every other newcomer's preview iframe would 403. Always mint a unique id.
+function newProjectId(): string {
+  return 'proj-' + Math.random().toString(36).substring(2, 8) + '-' + Date.now().toString(36);
+}
+
+function seedProject(): Project {
+  return {
+    id: newProjectId(),
+    name: 'Untitled Project',
+    framework: 'React 18 + Vite',
+    status: 'ready',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
 export function getProjects(): Project[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -45,16 +64,9 @@ export function getProjects(): Project[] {
     console.error('Error reading projects:', e);
   }
 
-  const defaultProj: Project = {
-    id: 'default',
-    name: 'Untitled Project',
-    framework: 'React 18 + Vite',
-    status: 'ready',
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  };
-  saveProjects([defaultProj]);
-  return [defaultProj];
+  const seeded = seedProject();
+  saveProjects([seeded]);
+  return [seeded];
 }
 
 export function saveProjects(projects: Project[]) {
@@ -78,7 +90,10 @@ export function getActiveProjectId(): string {
     if (saved) return saved;
   }
 
-  return 'default';
+  // Never fall back to a hard-coded id: getProjects() has already seeded a
+  // uniquely-owned project for first-time visitors, so this is either that id
+  // or an existing project the user chose earlier.
+  return getProjects()[0]?.id ?? newProjectId();
 }
 
 export function setActiveProjectId(id: string) {
@@ -100,7 +115,7 @@ export function setActiveProjectId(id: string) {
 }
 
 export function createProject(name: string = 'Untitled Project'): Project {
-  const id = 'proj-' + Math.random().toString(36).substring(2, 8) + '-' + Date.now().toString(36);
+  const id = newProjectId();
   const newProj: Project = {
     id,
     name,
@@ -193,12 +208,7 @@ export function updateProjectMeta(id: string, meta: Partial<Project>) {
 export function deleteProject(id: string): Project[] {
   let projects = getProjects().filter(p => p.id !== id);
   if (projects.length === 0) {
-    projects = [{
-      id: 'default',
-      name: 'Untitled Project',
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    }];
+    projects = [seedProject()];
   }
   saveProjects(projects);
   deleteProjectFiles(id);

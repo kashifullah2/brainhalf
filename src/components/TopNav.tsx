@@ -237,20 +237,27 @@ const TopNav: React.FC<TopNavProps> = ({
           )}
         </div>
 
-        {/* Status Pill in Left Cluster */}
-        <div className="status-pill" data-testid="topbar-status-pill" style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '3px 8px',
-          borderRadius: '6px',
-          background: 'rgba(255, 255, 255, 0.03)',
-          border: '1px solid var(--border-subtle)',
-          fontSize: '11.5px',
-          fontWeight: 500,
-          color: 'var(--text-secondary)',
-          flexShrink: 0
-        }}>
+        {/* Status Pill in Left Cluster. On mobile the label is dropped (the dot
+            keeps its meaning; the full text lives in the workspace status bar)
+            because the top row already carries identity + deploy + overflow. */}
+        <div
+          className="status-pill"
+          data-testid="topbar-status-pill"
+          title={isMobile ? status.topBarLabel : undefined}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: isMobile ? '3px 6px' : '3px 8px',
+            borderRadius: '6px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--border-subtle)',
+            fontSize: '11.5px',
+            fontWeight: 500,
+            color: 'var(--text-secondary)',
+            flexShrink: 0
+          }}
+        >
           <span style={{
             width: '6px',
             height: '6px',
@@ -258,7 +265,7 @@ const TopNav: React.FC<TopNavProps> = ({
             background: status.dotColor,
             boxShadow: status.glow
           }} />
-          <span>{status.topBarLabel}</span>
+          {!isMobile && <span>{status.topBarLabel}</span>}
         </div>
       </div>
       
@@ -293,16 +300,17 @@ const TopNav: React.FC<TopNavProps> = ({
 
       {/* Right Cluster: Deploy button + more-options menu */}
       <div className="top-nav-right-cluster" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
-        {/* Primary CTA: Deploy ↗ */}
-        <button 
+        {/* Primary CTA: Deploy ↗ (icon-only on mobile — the top row has no room
+            for the label once the segmented control wraps to its own row) */}
+        <button
           className="deploy-main-action"
           onClick={() => setShowDeployModal(true)}
           title="Deploy project to Cloudflare"
           aria-label="Deploy project to Cloudflare"
-          style={{ borderRadius: '6px' }}
+          style={{ borderRadius: '6px', padding: isMobile ? '6px 8px' : undefined }}
         >
-          <Play size={16} strokeWidth={1.75} fill="white" /> 
-          <span>Deploy ↗</span>
+          <Play size={16} strokeWidth={1.75} fill="white" />
+          {!isMobile && <span>Deploy ↗</span>}
         </button>
 
         {/* More Options Dropdown (...) for all secondary project actions */}
@@ -384,10 +392,12 @@ const TopNav: React.FC<TopNavProps> = ({
           )}
         </div>
 
-        {/* Authenticated identity + sign out */}
+        {/* Authenticated identity + sign out. On mobile the row has no room for
+            the email, so it collapses to a single sign-out icon; the address
+            stays reachable via the button's tooltip. */}
         {currentUser && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            {currentUser.devMode && (
+            {!isMobile && currentUser.devMode && (
               <span
                 title="Anonymous development mode is active on this deployment. Project isolation is disabled."
                 style={{
@@ -405,17 +415,19 @@ const TopNav: React.FC<TopNavProps> = ({
                 Dev
               </span>
             )}
-            <span
-              title={currentUser.email || 'Signed in'}
-              style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
-              {currentUser.email || currentUser.name || 'Signed in'}
-            </span>
+            {!isMobile && (
+              <span
+                title={currentUser.email || 'Signed in'}
+                style={{ fontSize: '12px', color: 'var(--text-secondary)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {currentUser.email || currentUser.name || 'Signed in'}
+              </span>
+            )}
             {onLogout && (
               <button
                 className="icon-btn"
                 onClick={() => { void onLogout(); }}
-                title="Sign out"
+                title={isMobile ? `Sign out (${currentUser.email || currentUser.name || 'signed in'})` : 'Sign out'}
                 aria-label="Sign out"
                 style={{ width: '32px', height: '32px' }}
               >

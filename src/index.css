@@ -1679,8 +1679,39 @@ textarea:focus-visible {
     display: none;
   }
 
+  /* Two-row top nav: identity + project name + deploy on row one, the
+     Chat/Code/Preview segmented control wrapped to a full-width row two.
+     At <=768px a single row cannot hold hamburger + name + status + tabs +
+     deploy + overflow, and the right cluster used to be clipped off-screen,
+     which made "More project actions" unreachable. --header-height is the same
+     variable workspace-area subtracts, so the workspace tracks the header. */
+  :root {
+    --header-height: 86px;
+  }
+
   .top-nav {
-    padding: 0 10px;
+    flex-wrap: wrap;
+    height: var(--header-height);
+    padding: 6px 10px;
+    row-gap: 6px;
+    align-content: center;
+  }
+
+  .top-nav .segmented-control {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+
+  /* The left cluster must keep the hamburger + logo + truncated name visible;
+     without a floor it shrank to zero width and the name disappeared. */
+  .top-nav-left-cluster {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .top-nav-right-cluster {
+    margin-left: auto;
   }
 
   .browser-chrome {

@@ -152,12 +152,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     };
 
     const connect = () => {
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const backendHost = isLocal
-        ? (import.meta.env.VITE_BACKEND_HOST || 'brainhalf.com')
-        : window.location.host;
-      const isHttpsOrRemote = window.location.protocol === 'https:' || isLocal;
-      const protocol = isHttpsOrRemote ? 'wss:' : 'ws:';
+      // Same-origin is correct in production (the Worker terminates the WS) and
+      // in local dev, where the assets are served from the same host:port as
+      // wrangler. VITE_BACKEND_HOST is still honored as an explicit override,
+      // e.g. when the vite dev server (5173) needs to reach wrangler (8788).
+      // It must never fall back to the production host: a dev shell that
+      // silently talks to the real backend is a debugging trap and leaks local
+      // session tokens to production.
+      const backendHost = import.meta.env.VITE_BACKEND_HOST || window.location.host;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
       const wsUrl = `${protocol}//${backendHost}/agents/chat-agent/${activeProjectId}`;
       // Browsers cannot set headers on WebSocket, so the HMAC session token rides

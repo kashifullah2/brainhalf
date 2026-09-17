@@ -71,3 +71,60 @@ fields. Note the mitigation is a ceiling, not full streaming: a workspace larger
 than the ceiling receives a truncated snapshot on the post-extraction broadcast,
 and the client does not yet page to recover the remainder — it pages only if it
 asks for `limit`/`offset` explicitly, which the current UI does not do.
+
+## I-10 · [FIXED] The dev shell's chat WebSocket connected to production (D-31)
+
+`ChatPanel.connect()` fell back to the hardcoded `'brainhalf.com'` when
+`VITE_BACKEND_HOST` was unset — the normal local case. Local prompts were routed
+to the production agent and the local HMAC token was sent to a foreign origin.
+See DECISIONS D-31 for the log evidence and the fix.
+
+**Residual, deliberately not "fixed":** `VITE_BACKEND_HOST` is still read as an
+override. That is the correct behavior (vite :5173 → wrangler :8788), so only the
+*fallback* was wrong, not the mechanism.
+
+## I-11 · [FIXED] First-run visitors landed on a shared, locked `default` project (D-32)
+
+Every new user was seeded with `id: 'default'`. The first to connect claimed it
+for everyone; all later newcomers saw a raw
+`{"error":"You do not have access to this preview"}` in their iframe. Fixed by
+seeding unique ids.
+
+**Residual, not fixed because fixing it would be destructive:** users who already
+have `brainhalf_active_project === 'default'` in localStorage, or an existing
+`{id:'default'}` project, are left exactly as they are. The server cannot tell
+which of those users is the true owner of the shared project, and reassigning it
+could lock the legitimate owner out — the same reasoning as I-01. Only new
+seedings changed.
+
+## I-12 · [FIXED] App shell shipped no CSP in production (D-33)
+
+The `[assets]` binding serves `dist/` without invoking the Worker, so
+`withShellSecurity()` never ran for `/`, `/index.html` or `/assets/*`. Fixed at
+the asset layer in `public/_headers`. **Residual:** the header set is now
+duplicated in two places that must be edited together —
+`public/_headers` and `shellSecurityHeaders()` in `src/worker.ts`. The `_headers`
+file carries a comment naming the function it mirrors. `run_worker_first = true`
+would remove the duplication and was rejected for the routing risk; see D-33.
+
+## I-13 · [LOW] wrangler local asset snapshot goes stale after `vite build`
+
+Reproducible twice in this session: after `npx vite build` rewrites `dist/`,
+`curl http://127.0.0.1:8788/index.html` returns 404 (with the Worker's own
+security headers, proving the Worker handled it) until `dist/index.html` is
+touched, after which the asset layer resumes serving it with `ETag` /
+`CF-Cache-Status: HIT`. `curl /` follows the same pattern.
+
+This is a local-dev tooling artifact, not a code defect — a production deploy
+uploads a fresh asset bundle atomically. But it means any verification step that
+immediately follows a rebuild can observe a false 404. Touched the file before
+each measurement here rather than restarting wrangler.
+
+## I-14 · [BLOCKED] Generation tiers could not be run against a live model
+
+Tier 1-5/7/8 of the test matrix require the agent to actually generate an app.
+`.dev.vars` contains only `SESSION_SECRET` — no model API keys — and the
+`[ai]` binding returns **502 "Binding AI needs to be run remotely"** under
+`wrangler dev --local`, which has no outbound network to the AI gateway. This is
+a sandbox limitation, not a product bug. TEST_RESULTS.md records these tiers as
+**NOT RUN** with the 502 as evidence rather than reporting a pass.
