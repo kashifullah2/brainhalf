@@ -387,3 +387,93 @@ and always past any caller-supplied numeric id. The generic CRUD handler that ca
 store errors previously returned 500 unconditionally, which would have masked the new
 409 as an internal error; it now honours `dbErr.status` and falls back to 500 only
 when the store did not specify one.
+
+## D-26 · Phase 6: the four `readProjectFiles` copies became one method
+
+The R2 backup, `/api/files`, the generic `/api/` route and the preview
+`/index.html` handler each inlined the same `SELECT path, content` →
+`Object`/`Map` loop, all four with their own `try { } catch (e) {}` that
+swallowed the failure and returned `{}` — so a schema problem looked like an
+empty workspace in three different responses.
+
+They now share `readAllProjectFiles()`. The row limit is deliberately
+`Number.MAX_SAFE_INTEGER` here: these are HTTP responses and a backup, where
+the caller needs every file, so the *byte* ceiling is what bounds the result
+rather than the paging row cap. `get_files` — a WebSocket frame a client must
+parse — keeps the 200-row paging default.
+
+## D-27 · Phase 6: `buildFilesContext` merges the two context-selection blocks
+
+The streamText and Cloudflare paths had copy-pasted the whole selection
+algorithm — index-only path read, the node_modules/main filter, the
+`IN (...)` content fetch, and either whole-file or budgeted output — and had
+already diverged in the comment each carried about the Phase 5 LIKE removal.
+
+The merged helper takes `pinned`, `rank`, `maxFiles`, `charBudget` and
+`header`, and exists once. Two choices preserved behaviour exactly:
+
+- `pinned` affects only the *filter*, never the sort. The streamText caller
+  previously sorted pinned-first with no secondary key, and the Cloudflare
+  caller sorted purely by rank; had `pinned` also biased the sort, the
+  Cloudflare path's two `/server/*` pinned files would have jumped ahead of
+  other rank-3 files and changed which ten files a model sees.
+- `charBudget === undefined` selects whole-file output, so the streamText path
+  keeps emitting full files and only the Cloudflare path trims.
+
+## D-28 · Phase 6: the preview error card is one constant, interpolated escaped
+
+Two `ErrorBoundary` classes render the identical error card: one in the starter
+seeded into an empty workspace, one in the live edge-preview harness. Both are
+*source text* inside template literals, not shared TypeScript.
+
+The card is now `PREVIEW_ERROR_CARD_SRC`, interpolated into both. The escape is
+the subtle part: the constant is interpolated into a template literal that is
+itself source text for the preview runtime, so `${this.state.error?.message}`
+must survive as *text*. Written unescaped, it would be evaluated when the
+outer literal is built — where `this` is the ChatAgent — and the generated
+code would receive `[object Object]` in place of the message. It is written
+`\${`, which produces the two characters `${` with no substitution.
+
+Neither tsc nor vite can catch this: both happily compile an interpolated
+`[object Object]`. It is verified by a test that seeds a workspace and asserts
+on the resulting `/src/main.jsx`, checking the live interpolation is present as
+text and no `[object Object]` appears.
+
+## D-29 · Contrast: two hardcoded colors were below the WCAG AA floor
+
+Every ratio below is computed against the surfaces the color actually sits on
+(`--bg-canvas` `#09090b`, `--bg-card` `#13151f`, the preview card `#0f1015`, and
+pulseboard's `#090a0f`), not against an assumed black.
+
+**`--text-muted` / `--color-neutral-muted`: `#71717a` → `#82828b`.** The token
+backs 11px timestamps and hints — small text, so the 4.5:1 floor applies, not
+the 3:1 large-text floor. It measured 4.12:1 on the canvas and 3.76:1 on cards,
+so it failed on both. `#82828b` measures 5.22:1 and 4.78:1.
+
+**The "Reload Preview" indigo: `#6366f1` → `#5558e4`.** This is not a re-tint.
+The card's button label is 12px white on the indigo, which measured 4.47:1 —
+under the 4.5:1 floor by a hair. The darker indigo measures 5.38:1.
+
+The card exists in three places, not the two D-28 accounted for: the constant
+interpolated twice in `agent.ts`, and an inline copy in `basicReactTemplate`
+(`lib/templates.ts`) that the D-28 extraction missed. That third copy kept the
+old indigo and is fixed with it. The template copy is the reason a shared
+constant is worth having: a fix applied to the constant does not reach it.
+
+**Pulseboard's own palette** (`lib/templates/pulseboard.ts`) had the same two
+failures, measured against its `#090a0f` page and `#13151f` cards:
+
+- Its brand indigo `#6366f1` backed three white-text buttons at 4.47:1. Darkened
+  to `#5558e4` across all seven uses — headings and icons stay valid because as
+  *colored text on dark* they need only 3:1 and `#5558e4` measures 3.67:1, so
+  one value works for every role.
+- Its `#6b7280` backed 13px empty-state text at 3.76–4.09:1. Raised to `#9ca3af`,
+  which the file already used for adjacent secondary text at 7.16:1 — the
+  outlier is removed rather than a sixth gray introduced.
+
+Left alone deliberately: `#4b5563` on the pager buttons. Both occurrences are
+the *disabled* branch of a conditional (`page <= 1`, `page >= totalPages`), and
+WCAG exempts disabled controls from contrast requirements.
+
+The ratios in the `index.css` comment are stated because they are checkable —
+they were computed, not estimated, and they match.

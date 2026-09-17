@@ -245,7 +245,7 @@ export default function PulseBoardApp() {
     return (
       <div style={{ minHeight: '100vh', background: '#090a0f', color: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', fontFamily: 'system-ui, sans-serif' }}>
         <div style={{ background: '#13151f', border: '1px solid #1f2333', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '420px' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#6366f1', textAlign: 'center' }}>PulseBoard</h1>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, margin: '0 0 8px', color: '#5558e4', textAlign: 'center' }}>PulseBoard</h1>
           <p style={{ color: '#9ca3af', fontSize: '14px', textAlign: 'center', margin: '0 0 24px' }}>Multi-Tenant SaaS Analytics Platform</p>
           
           {authError && (
@@ -296,7 +296,7 @@ export default function PulseBoardApp() {
             <button
               type="submit"
               data-testid="btn-auth-submit"
-              style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', marginTop: '6px' }}
+              style={{ background: '#5558e4', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', marginTop: '6px' }}
             >
               {authMode === 'signup' ? 'Create Organization & Account' : 'Sign In'}
             </button>
@@ -322,7 +322,7 @@ export default function PulseBoardApp() {
     <div style={{ minHeight: '100vh', background: '#090a0f', color: '#f3f4f6', fontFamily: 'system-ui, sans-serif' }}>
       <header style={{ background: '#13151f', borderBottom: '1px solid #1f2333', padding: '14px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <span style={{ fontSize: '20px', fontWeight: 800, color: '#6366f1', letterSpacing: '-0.5px' }}>PulseBoard</span>
+          <span style={{ fontSize: '20px', fontWeight: 800, color: '#5558e4', letterSpacing: '-0.5px' }}>PulseBoard</span>
           <nav style={{ display: 'flex', gap: '8px' }}>
             <button
               type="button"
@@ -383,7 +383,7 @@ export default function PulseBoardApp() {
                 onChange={e => setStartDate(e.target.value)}
                 style={{ background: '#090a0f', border: '1px solid #282d42', color: '#fff', padding: '6px 10px', borderRadius: '6px', fontSize: '13px' }}
               />
-              <span style={{ color: '#6b7280' }}>to</span>
+              <span style={{ color: '#9ca3af' }}>to</span>
               <input
                 type="date"
                 data-testid="filter-end-date"
@@ -418,7 +418,7 @@ export default function PulseBoardApp() {
               <div style={{ background: '#13151f', border: '1px solid #1f2333', borderRadius: '12px', padding: '20px' }}>
                 <div style={{ fontSize: '13px', color: '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>Total Events</span>
-                  <BarChart3 size={18} color="#6366f1" />
+                  <BarChart3 size={18} color="#5558e4" />
                 </div>
                 <div data-testid="kpi-total-events" style={{ fontSize: '32px', fontWeight: 800, color: '#fff', marginTop: '10px' }}>
                   {analytics?.kpis?.totalEvents ?? totalEvents}
@@ -454,11 +454,11 @@ export default function PulseBoardApp() {
                 <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 16px', color: '#e5e7eb' }}>Daily Event Totals</h3>
                 <div data-testid="chart-daily-totals" style={{ display: 'flex', alignItems: 'flex-end', gap: '12px', height: '180px', borderBottom: '1px solid #282d42', paddingBottom: '8px' }}>
                   {(analytics?.dailyTotals || []).length === 0 ? (
-                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', fontSize: '13px' }}>No events recorded for this range</div>
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '13px' }}>No events recorded for this range</div>
                   ) : (
                     analytics.dailyTotals.map((d, i) => (
                       <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                        <div style={{ background: '#6366f1', width: '100%', borderRadius: '4px 4px 0 0', height: Math.max(15, (d.count / (analytics.kpis.totalEvents || 1)) * 140) + 'px', transition: 'height 0.3s' }} />
+                        <div style={{ background: '#5558e4', width: '100%', borderRadius: '4px 4px 0 0', height: Math.max(15, (d.count / (analytics.kpis.totalEvents || 1)) * 140) + 'px', transition: 'height 0.3s' }} />
                         <span style={{ fontSize: '10px', color: '#9ca3af', marginTop: '4px', whiteSpace: 'nowrap' }}>{d.date.slice(5)}</span>
                       </div>
                     ))
@@ -470,7 +470,7 @@ export default function PulseBoardApp() {
                 <h3 style={{ fontSize: '16px', fontWeight: 600, margin: '0 0 16px', color: '#e5e7eb' }}>Category Breakdown</h3>
                 <div data-testid="chart-category-breakdown" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {(analytics?.categoryBreakdown || []).length === 0 ? (
-                    <div style={{ color: '#6b7280', fontSize: '13px', padding: '20px 0', textAlign: 'center' }}>No category data available</div>
+                    <div style={{ color: '#9ca3af', fontSize: '13px', padding: '20px 0', textAlign: 'center' }}>No category data available</div>
                   ) : (
                     analytics.categoryBreakdown.map((cat, i) => (
                       <div key={i}>
@@ -525,7 +525,7 @@ export default function PulseBoardApp() {
                     type="submit"
                     disabled={isSubmitting}
                     data-testid="btn-create-event"
-                    style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    style={{ background: '#5558e4', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
                     <Plus size={14} /> Add Event
                   </button>
@@ -546,7 +546,7 @@ export default function PulseBoardApp() {
                 <tbody data-testid="events-table-body">
                   {events.length === 0 ? (
                     <tr>
-                      <td colSpan="6" style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>No events recorded for this organization</td>
+                      <td colSpan="6" style={{ padding: '24px', textAlign: 'center', color: '#9ca3af' }}>No events recorded for this organization</td>
                     </tr>
                   ) : (
                     events.map(ev => (
@@ -628,7 +628,7 @@ export default function PulseBoardApp() {
               <button
                 type="submit"
                 data-testid="btn-invite-member"
-                style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
+                style={{ background: '#5558e4', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
               >
                 Invite Member
               </button>

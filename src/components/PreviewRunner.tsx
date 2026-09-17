@@ -101,7 +101,7 @@ class PreviewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             }}
             style={{
               padding: '8px 16px',
-              background: '#6366f1',
+              background: '#5558e4',
               color: 'white',
               border: 'none',
               borderRadius: '6px',
@@ -388,7 +388,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
             }}
             style={{
               padding: '8px 16px',
-              background: '#6366f1',
+              background: '#5558e4',
               color: 'white',
               border: 'none',
               borderRadius: '6px',

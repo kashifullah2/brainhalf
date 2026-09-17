@@ -46,7 +46,7 @@ const PREVIEW_ERROR_CARD_SRC = `<div style={{ padding: '24px', fontFamily: 'syst
               <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', padding: '24px', maxWidth: '450px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#f87171', marginBottom: '8px' }}>Preview Error</h3>
                 <p style={{ color: '#9ca3af', fontSize: '13px', lineHeight: 1.5, marginBottom: '16px' }}>\${this.state.error?.message || 'A render error occurred.'}</p>
-                <button onClick={() => window.location.reload()} style={{ padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>
+                <button onClick={() => window.location.reload()} style={{ padding: '8px 16px', background: '#5558e4', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>
                   Reload Preview
                 </button>
               </div>
@@ -2078,7 +2078,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       }
       .bh-spinner {
         width: 24px; height: 24px; border: 2.5px solid rgba(99, 102, 241, 0.2);
-        border-top-color: #6366f1; border-radius: 50%; animation: bh-spin 0.8s linear infinite;
+        border-top-color: #5558e4; border-radius: 50%; animation: bh-spin 0.8s linear infinite;
       }
     </style>
   </head>
@@ -2199,7 +2199,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
                 }, [
                   React.createElement('h3', { key: 'h', style: { fontSize: '16px', fontWeight: 600, color: '#f87171', marginBottom: '8px' } }, 'Preview Mount Error'),
                   React.createElement('p', { key: 'p', style: { color: '#9ca3af', fontSize: '13px', lineHeight: 1.5, marginBottom: '16px' } }, err?.message || String(err)),
-                  React.createElement('button', { key: 'b', onClick: () => window.location.reload(), style: { padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 } }, 'Reload Preview')
+                  React.createElement('button', { key: 'b', onClick: () => window.location.reload(), style: { padding: '8px 16px', background: '#5558e4', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 } }, 'Reload Preview')
                 ]))
               );
             }

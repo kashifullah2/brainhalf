@@ -27,7 +27,11 @@
   /* Typography Colors */
   --text-primary: #f4f4f6;
   --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
+  /* WCAG AA: raised from #71717a (4.12:1 on the canvas, 3.76:1 on cards — below
+   * the 4.5:1 floor for small text) to #82828b, which is 5.22:1 on the canvas
+   * and 4.78:1 on card surfaces. This token is used for 11px timestamps and
+   * hints, i.e. text small enough that the large-text 3:1 floor does not apply. */
+  --text-muted: #82828b;
   
   /* Crisp Distinctive Brand Accent (Bespoke Engineering Teal) */
   --accent-primary: #0d9488;        /* Deep Teal */
@@ -62,7 +66,7 @@
   --color-ai-border: rgba(20, 184, 166, 0.28);
 
   --color-neutral: #a1a1aa;             /* Zinc */
-  --color-neutral-muted: #71717a;
+  --color-neutral-muted: #82828b;       /* WCAG AA — see --text-muted */
   --color-neutral-bg: rgba(255, 255, 255, 0.04);
   --color-neutral-border: rgba(255, 255, 255, 0.08);
 
