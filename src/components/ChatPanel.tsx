@@ -93,6 +93,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      if (input.trim()) {
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
+      }
+    }
+  }, [input]);
 
   const isGeneratingRef = useRef(false);
   const messagesRef = useRef<Message[]>(messages);
@@ -605,6 +615,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       setInput('');
       setSelectedImage(null);
       setImageType('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
     }
     
     bufferRef.current = '';
@@ -1122,31 +1135,47 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           <div style={{ 
                             display: 'flex', 
                             alignItems: 'center', 
-                            gap: '12px',
-                            padding: '12px 16px',
-                            background: 'rgba(255, 255, 255, 0.03)',
-                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                            borderRadius: '12px',
+                            gap: '10px',
+                            padding: '10px 14px',
+                            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(20, 184, 166, 0.04) 100%)',
+                            border: '1px solid rgba(99, 102, 241, 0.2)',
+                            borderRadius: '10px',
                             color: 'var(--text-primary)',
-                            fontSize: '14px',
+                            fontSize: '13.5px',
                             fontWeight: 500,
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                            marginTop: '8px'
+                            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+                            marginTop: '8px',
+                            width: 'fit-content'
                            }}>
                             <div style={{ 
                               display: 'flex', 
                               alignItems: 'center', 
                               justifyContent: 'center', 
-                              width: '28px', 
-                              height: '28px', 
-                              borderRadius: '8px', 
-                              background: 'var(--brand-primary)',
-                              boxShadow: '0 0 15px rgba(99, 102, 241, 0.5)'
+                              width: '26px', 
+                              height: '26px', 
+                              borderRadius: '7px', 
+                              background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                              boxShadow: '0 0 12px rgba(99, 102, 241, 0.4)'
                              }}>
-                               <Sparkles size={16} color="white" />
+                               <Sparkles size={14} color="white" />
                             </div>
-                            <span style={{ letterSpacing: '0.02em', background: 'linear-gradient(90deg, #fff, #a1a1aa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>BrainHalf is thinking...</span>
+                            <span style={{ 
+                              letterSpacing: '0.01em', 
+                              background: 'linear-gradient(90deg, #ffffff 0%, #cbd5e1 100%)', 
+                              WebkitBackgroundClip: 'text', 
+                              WebkitTextFillColor: 'transparent',
+                              fontWeight: 500
+                            }}>
+                              BrainHalf is thinking...
+                            </span>
+                            <span style={{ 
+                              fontSize: '11px', 
+                              color: 'rgba(255, 255, 255, 0.45)', 
+                              fontFamily: 'var(--font-mono)',
+                              marginLeft: '2px'
+                            }}>
+                              {elapsedSeconds}s
+                            </span>
                           </div>
                         ) : null;
                       }
@@ -1314,34 +1343,51 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           </div>
         )}
 
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'rgba(255, 255, 255, 0.025)',
-          border: 'none',
-          borderRadius: '8px',
-          padding: '12px 14px',
-          transition: 'all 0.15s ease',
-          position: 'relative'
-        }} className="chat-input-wrapper">
+        <div 
+          className="chat-input-wrapper"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'rgba(255, 255, 255, 0.028)',
+            border: '1px solid rgba(255, 255, 255, 0.07)',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+            position: 'relative'
+          }}
+        >
           {selectedImage && (
             <div style={{ position: 'relative', width: '56px', height: '56px', marginBottom: '8px', border: 'none', borderRadius: '6px' }}>
               <img src={selectedImage} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '5px' }} />
               <button 
                 onClick={() => { setSelectedImage(null); setImageType(''); }}
                 style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}
+                aria-label="Remove image"
               >
                 <X size={16} strokeWidth={1.75} />
               </button>
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: (input.includes('\n') || (textareaRef.current && textareaRef.current.scrollHeight > 38)) ? 'flex-end' : 'center', 
+            gap: '8px' 
+          }}>
             <button
               className="icon-btn"
               onClick={() => fileInputRef.current?.click()}
               disabled={isGenerating}
-              style={{ padding: '6px', opacity: isGenerating ? 0.4 : 0.8, borderRadius: '6px' }}
+              style={{ 
+                padding: '6px', 
+                opacity: isGenerating ? 0.4 : 0.8, 
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}
               title="Attach File (Image / Text)"
+              aria-label="Attach file"
             >
               <Paperclip size={16} strokeWidth={1.75} color="var(--text-secondary)" />
             </button>
@@ -1374,17 +1420,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               }}
             />
             <textarea
+              ref={textareaRef}
+              className="chat-input"
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
                 e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
+                if (e.target.value.trim().length > 0) {
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
+                }
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleSendMessage();
-                  e.currentTarget.style.height = 'auto'; // Reset on send
                 }
               }}
               placeholder="Ask BrainHalf to build, edit, or style..."
@@ -1399,15 +1448,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 fontFamily: 'inherit',
                 resize: 'none',
                 outline: 'none',
-                lineHeight: 1.5,
-                maxHeight: '200px',
+                lineHeight: 1.45,
+                maxHeight: '180px',
+                minHeight: '22px',
+                padding: '2px 0',
+                margin: 0,
                 overflowY: 'auto',
-                opacity: isGenerating ? 0.5 : 1,
+                opacity: isGenerating ? 0.6 : 1,
                 cursor: isGenerating ? 'not-allowed' : 'text'
               }}
             />
             {isGenerating ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                 <span style={{ 
                   fontSize: '11px', 
                   color: 'var(--text-muted)', 
@@ -1428,11 +1480,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 <button 
                   onClick={handleStopGeneration}
                   style={{
-                    background: '#ef4444',
-                    color: '#ffffff',
-                    border: 'none',
+                    background: 'rgba(239, 68, 68, 0.16)',
+                    color: '#f87171',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
                     borderRadius: '6px',
-                    height: '32px',
+                    height: '30px',
                     padding: '0 10px',
                     display: 'flex',
                     alignItems: 'center',
@@ -1441,12 +1493,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     fontWeight: 600,
                     fontSize: '12px',
                     transition: 'all 0.15s ease',
-                    boxShadow: '0 2px 6px rgba(239, 68, 68, 0.4)'
+                    boxShadow: '0 1px 4px rgba(239, 68, 68, 0.2)'
                   }}
                   title="Stop Generation"
                   aria-label="Stop Generation"
                 >
-                  <Square size={16} strokeWidth={1.75} fill="currentColor" />
+                  <Square size={13} strokeWidth={1.75} fill="currentColor" />
                   <span>Stop</span>
                 </button>
               </div>
@@ -1460,20 +1512,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   color: (!input.trim() && !selectedImage) ? 'var(--text-muted)' : '#09090b',
                   border: 'none',
                   borderRadius: '6px',
-                  width: '32px',
-                  height: '32px',
+                  width: '30px',
+                  height: '30px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: (!input.trim() && !selectedImage) ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.15s ease'
+                  transition: 'all 0.15s ease',
+                  flexShrink: 0
                 }}
                 title="Send Message (Enter)"
                 aria-label="Send message"
                 data-testid="send-prompt-btn"
                 disabled={(!input.trim() && !selectedImage) || isGenerating}
               >
-                <Send size={16} strokeWidth={1.75} />
+                <Send size={15} strokeWidth={1.75} />
               </button>
             )}
           </div>
