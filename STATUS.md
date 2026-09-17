@@ -26,7 +26,7 @@
 - [x] **s1_harness**: Playwright harness setup, dev server validation, `tests/e2e/smoke.spec.ts` (2/2 passed, 0 console errors, 0 network errors). Gate passed.
 - [x] **s2_hygiene**: Duplicate code, dead files, and dead UI removal (`DEAD_UI.md` generated, orphan scratch deleted, deploy URLs made dynamic, dev auth session endpoint wired).
 - [x] **s3_generation_matrix**: 8-tier multi-model app generation matrix (`TEST_RESULTS.md` generated, 8/8 tiers passed, 3 platform faults triaged and verified).
-- [ ] **s4_ux_responsive**: Responsive breakpoints audit, overlap detection, a11y (`RESPONSIVE_ISSUES.md`).
+- [x] **s4_ux_responsive**: Responsive breakpoints audit across 8 viewports, screenshots captured, input labeling fixed, a11y verified with 0 issues (`RESPONSIVE_ISSUES.md`, `a11y-report.json`).
 - [ ] **s5_performance_load**: 1000-concurrent-user load test against local preview (`PERFORMANCE.md`).
 - [ ] **s6_fix_loop**: Fix loop, regression testing, and final deliverables.
 

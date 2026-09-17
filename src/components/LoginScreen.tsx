@@ -164,11 +164,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
         </div>
 
         <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label htmlFor="login-email" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Email</span>
             <input
+              id="login-email"
               ref={emailRef}
               type="email"
+              aria-label="Email Address"
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -179,10 +181,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
             />
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label htmlFor="login-password" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Password</span>
             <input
+              id="login-password"
               type="password"
+              aria-label="Password"
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
