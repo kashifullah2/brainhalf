@@ -786,7 +786,39 @@ export async function executeBackendRequest(
           };
         }
 
+        // Special handler: POST /api/upload
+        if (resource === 'upload' && method === 'POST') {
+          const { filename, contentType } = req.body || {};
+          const isDangerous = /\.(html|htm|js|mjs|svg|sh|bat|exe)$/i.test(filename || '') ||
+            /^(text\/html|application\/javascript|image\/svg\+xml)/i.test(contentType || '');
+          if (isDangerous) {
+            return {
+              status: 415,
+              headers: { 'Content-Type': 'application/json' },
+              body: { error: 'Unsupported or executable file type rejected', layer: 'backend' },
+              layer: 'backend',
+              error: 'Unsupported Media Type'
+            };
+          }
+          return {
+            status: 201,
+            headers: { 'Content-Type': 'application/json' },
+            body: { success: true, filename },
+            layer: 'backend'
+          };
+        }
+
         if (method === 'POST') {
+          if (!req.body || typeof req.body !== 'object' || Object.keys(req.body).length === 0) {
+            return {
+              status: 400,
+              headers: { 'Content-Type': 'application/json' },
+              body: { error: 'Malformed or empty request body', layer: 'backend' },
+              layer: 'backend',
+              error: 'Bad Request'
+            };
+          }
+
           const bodyData = { ...req.body };
           if (currentUser && !bodyData.orgId) {
             bodyData.orgId = currentUser.orgId;
@@ -811,6 +843,25 @@ export async function executeBackendRequest(
             }
           }
 
+          // Atomic inventory management for e-commerce orders
+          if (resource === 'orders') {
+            const { productId, quantity = 1 } = bodyData;
+            if (productId) {
+              const product = store.findById('products', productId);
+              if (!product || (product.stock !== undefined && product.stock < quantity)) {
+                return {
+                  status: 400,
+                  headers: { 'Content-Type': 'application/json' },
+                  body: { error: 'Out of stock or invalid product', layer: 'backend' },
+                  layer: 'backend',
+                  error: 'Out of Stock'
+                };
+              }
+              // Atomically reduce stock
+              store.update('products', productId, { stock: Math.max(0, (product.stock || 0) - quantity) });
+            }
+          }
+
           const created = store.create(resource, bodyData);
           return {
             status: 201,
@@ -820,6 +871,18 @@ export async function executeBackendRequest(
           };
         }
       } else {
+        // Special sub-resource: POST /api/forms/submit
+        if (resource === 'forms' && resourceId === 'submit' && method === 'POST') {
+          const bodyData = { ...(req.body || {}), submittedAt: new Date().toISOString() };
+          const created = store.create('form_responses', bodyData);
+          return {
+            status: 201,
+            headers: { 'Content-Type': 'application/json' },
+            body: { success: true, responseId: created.id, data: created },
+            layer: 'backend'
+          };
+        }
+
         // Individual item operations: GET, PUT, PATCH, DELETE /api/:resource/:id
         if (method === 'GET') {
           const item = store.findById(resource, resourceId);
