@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-09-17T07:02:25.037Z",
+  "targetHost": "http://localhost:5173",
+  "totalHttpUsers": 1000,
+  "concurrencyLimit": 100,
+  "http": {
+    "totalDurationSec": 1.537,
+    "rps": 651,
+    "successful": 1000,
+    "failed": 0,
+    "stats": {
+      "avg": 141,
+      "min": 21,
+      "max": 784,
+      "p50": 144,
+      "p90": 242,
+      "p95": 255,
+      "p99": 311
+    },
+    "statusCodes": {
+      "200": 500,
+      "401": 500
+    }
+  },
+  "websocket": {
+    "connectedCount": 0,
+    "errorCount": 50,
+    "stats": {
+      "avg": 0,
+      "p50": 0,
+      "p90": 0,
+      "p95": 0,
+      "p99": 0,
+      "min": 0,
+      "max": 0
+    }
+  },
+  "verdict": "PASS"
+}
