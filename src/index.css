@@ -1791,4 +1791,64 @@ textarea:focus-visible {
   }
 }
 
+/* ==========================================================================
+   Workspace Additions
+   ========================================================================== */
+@keyframes bh-indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(385%); }
+}
+
+.bh-indeterminate-bar {
+  animation: bh-indeterminate 1.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes bh-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.lucide-spin {
+  animation: bh-spin 1s linear infinite;
+}
+
+/* Respect the OS setting for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .bh-indeterminate-bar {
+    animation: none;
+    width: 100% !important;
+    opacity: 0.35;
+  }
+  .lucide-spin {
+    animation: none;
+  }
+}
+
+/* Focus visibility for keyboard navigation */
+.segmented-tab:focus-visible,
+.viewport-pill-btn:focus-visible,
+.browser-action-btn:focus-visible,
+.deploy-menu-item:focus-visible,
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent-light, #818cf8);
+  outline-offset: 2px;
+}
+
+/* Narrow viewports: horizontal scrolling for browser chrome */
+@media (max-width: 640px) {
+  .browser-chrome {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .browser-chrome::-webkit-scrollbar {
+    display: none;
+  }
+  .workspace-panel-container {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+}
+
+
 
