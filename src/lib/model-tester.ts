@@ -465,7 +465,7 @@ export async function handleModelTest(
         outputContent += chunk;
       }
     } else if (resolved.provider === 'atria') {
-      const rawAtriaKey = env.ATRIA_API_KEY;
+      const rawAtriaKey = env.ATRIA_API_KEY || env.XKIRO_API_KEY;
       let atriaApiKey = rawAtriaKey;
       let atriaBaseUrl = env.ATRIA_BASE_URL;
 
@@ -487,7 +487,7 @@ export async function handleModelTest(
         baseURL: atriaBaseUrl,
       });
       const stream = streamText({
-        model: atria(resolved.id),
+        model: atria.chat(resolved.id),
         messages: [{ role: 'user', content: prompt }],
         abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
       });

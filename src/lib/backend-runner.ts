@@ -6,6 +6,8 @@
  * and distinct error attribution (Backend vs Frontend).
  */
 
+import { transform } from 'sucrase';
+
 export interface BackendRequestOptions {
   method: string;
   url: string;
@@ -220,15 +222,8 @@ export function validateBackendFiles(files: ProjectFiles): { error?: string; fil
     const content = files[filePath];
     if (filePath.endsWith('.js') || filePath.endsWith('.ts') || filePath.endsWith('.mjs')) {
       try {
-        // Quick syntax check using Function constructor
-        // Ignore import/export statements for check by stripping them
-        const stripped = content
-          .replace(/^import\s+.*?from\s+['"].*?['"];?/gm, '')
-          .replace(/^import\s+['"].*?['"];?/gm, '')
-          .replace(/^export\s+default\s+/gm, '')
-          .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ');
-        
-        new Function(stripped);
+        // Robust syntax check using Sucrase parser (handles ESM imports, exports, TS, and avoids CSP eval)
+        transform(content, { transforms: ['typescript', 'imports'] });
       } catch (e: any) {
         return {
           error: `[Backend Error] Syntax error in ${filePath}: ${e.message}`,

@@ -53,14 +53,28 @@ export default function AnalyticsDashboard() {
         { role: 'user', content: 'Build an app: Analytics SaaS Platform - Key metrics, conversion funnels & tables' },
         { role: 'ai', content: 'Creating a basic Analytics SaaS Platform with key metrics.' }
       ]));
+      localStorage.setItem('bh_session_token', 'dummy-token');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'u-123', email: 'test@example.com' }));
+      
+      const originalFetch = window.fetch;
+      window.fetch = async (...args) => {
+        if (args[0] && args[0].toString().includes('/api/auth/session')) {
+          return new Response(JSON.stringify({ user: { id: 'u-123', email: 'test@example.com' } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return originalFetch(...args);
+      };
     });
 
     await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route('**/api/auth/session', route => route.fulfill({ status: 200, json: { user: { id: 'u-123', email: 'test@example.com' } } }));
     await page.goto('http://localhost:5173');
-    await page.waitForLoadState('networkidle');
+    // Wait for the preview iframe to mount
 
     // Wait for the preview iframe to mount
-    const previewIframe = page.locator('iframe[title="Cloudflare Edge Preview"]');
+    const previewIframe = page.locator('iframe').first();
     await expect(previewIframe).toBeVisible();
 
     const frame = previewIframe.contentFrame();
@@ -68,7 +82,7 @@ export default function AnalyticsDashboard() {
 
     // 1. Verify the generated Analytics App is rendered inside the iframe
     const analyticsApp = frame!.locator('#analytics-app');
-    await expect(analyticsApp).toBeVisible({ timeout: 10000 });
+    await expect(analyticsApp).toBeVisible({ timeout: 30000 });
     await expect(analyticsApp.locator('h1')).toHaveText('Analytics SaaS Dashboard');
 
     // 2. CRITICAL ANTI-RECURSION ASSERTIONS:

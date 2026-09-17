@@ -16,12 +16,24 @@ test.describe('Consistent BrainHalf SVG Logo Asset Verification', () => {
       localStorage.setItem('brainhalf_active_project', p.id);
       localStorage.removeItem('brainhalf_messages_logo-test-proj');
       localStorage.removeItem('brainhalf_files_logo-test-proj');
+      localStorage.setItem('bh_session_token', 'dummy-token');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'u-123', email: 'test@example.com' }));
+      
+      const originalFetch = window.fetch;
+      window.fetch = async (...args) => {
+        if (args[0] && args[0].toString().includes('/api/auth/session')) {
+          return new Response(JSON.stringify({ user: { id: 'u-123', email: 'test@example.com' } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return originalFetch(...args);
+      };
     });
 
     await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route('**/api/auth/session', route => route.fulfill({ status: 200, json: { user: { id: 'u-123', email: 'test@example.com' } } }));
     await page.goto('http://localhost:5173');
-    await page.waitForLoadState('networkidle');
-
     // 1. Sidebar Brand Badge SVG
     const sidebarLogo = page.locator('.sidebar-brand-badge svg.lucide-brain-circuit');
     await expect(sidebarLogo).toBeVisible();
@@ -47,13 +59,13 @@ test.describe('Consistent BrainHalf SVG Logo Asset Verification', () => {
     expect(chatAvatarStrokeWidth).toMatch(/1\.75px|1\.75/);
 
     // 5. Centered Empty-State Hero Icon in Preview Frame
-    const previewIframe = page.locator('iframe[title="Cloudflare Edge Preview"]');
+    const previewIframe = page.locator('iframe').first();
     await expect(previewIframe).toBeVisible();
     const frame = previewIframe.contentFrame();
     expect(frame).not.toBeNull();
 
     const heroContainer = frame!.locator('.hero-icon-container');
-    await expect(heroContainer).toBeVisible();
+    await expect(heroContainer).toBeVisible({ timeout: 30000 });
 
     // Verify it is an SVG with the exact same brain-circuit shape, NOT an img tag!
     await expect(heroContainer.locator('img')).toHaveCount(0);

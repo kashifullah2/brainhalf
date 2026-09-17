@@ -109,12 +109,8 @@ export function resolveModel(name: string | undefined | null, provider?: string 
  * model's own ceiling. Returns the effective limit, always finite and positive.
  */
 export function capTokenLimit(requested: number | undefined | null, model: AllowedModel): number {
-  // NO TOKEN LIMIT (user requested unlimited)
-  if (typeof requested === 'number' && Number.isFinite(requested) && requested > 0) {
-    return Math.floor(requested);
-  }
-  // Return a massive number to bypass artificial caps
-  return 2147483647;
+  // Always return the absolute maximum the model allows, ignoring the arbitrary ceiling
+  return model.maxTokens;
 }
 
 /**

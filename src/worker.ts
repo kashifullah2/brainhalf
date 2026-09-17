@@ -119,7 +119,7 @@ function jsonError(message: string, status: number): Response {
 function shellSecurityHeaders(): Record<string, string> {
   const csp = [
     `default-src 'none'`,
-    `script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com`,
+    `script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net`,
     `img-src 'self' data: https: blob:`,
     `font-src 'self' data: https://fonts.gstatic.com`,
@@ -360,7 +360,25 @@ export default {
       return agentResponse;
     }
 
-    /* --------- Static frontend --------- */
+    /* --------- Unmatched API / agent routes --------- */
+    if (url.pathname.startsWith('/api/')) {
+      const referer = request.headers.get('Referer') || '';
+      const previewMatch = referer.match(/\/preview\/([^/?#]+)/);
+      if (previewMatch && previewMatch[1] && env.ChatAgent) {
+        const agentId = previewMatch[1];
+        const user = await verifySession(request, env);
+        if (user) {
+          const owns = await authorizeOrClaim(env, agentId, user.userId, request.url);
+          if (owns) {
+            const id = env.ChatAgent.idFromName(agentId);
+            const obj = env.ChatAgent.get(id);
+            const targetUrl = new URL(request.url);
+            targetUrl.pathname = `/preview/${agentId}${url.pathname}`;
+            return obj.fetch(new Request(targetUrl.toString(), injectUserId(request, user.userId)));
+          }
+        }
+      }
+    }
 
     // FIX: an unmatched /api/ or /agents/ path used to fall through to
     // env.ASSETS and return the SPA's index.html with status 200. Any client
