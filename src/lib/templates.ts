@@ -15,7 +15,8 @@ export const basicReactTemplate = {
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "lucide-react": "^1.43.0"
+    "lucide-react": "^1.43.0",
+    "react-router-dom": "^6.22.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
@@ -165,6 +166,13 @@ body {
     box-shadow: 0 0 32px rgba(99, 102, 241, 0.55), 0 0 60px rgba(139, 92, 246, 0.25);
   }
 }
+
+.suggestion-pill:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) !important;
+}
           `
         }
       },
@@ -250,9 +258,10 @@ export default function App() {
           zIndex: 1
         }}>
           <BrainCircuit 
-            size={30} 
-            strokeWidth={1.5} 
+            size={36} 
+            strokeWidth={1.75} 
             color="#e2e8f0" 
+            style={{ filter: 'drop-shadow(0 0 12px rgba(99, 102, 241, 0.4))' }}
           />
         </div>
 
@@ -311,18 +320,6 @@ export default function App() {
                 justifyContent: 'center',
                 transition: 'all 0.15s ease'
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.18)';
-                e.currentTarget.style.color = '#ffffff';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.color = '#a1a1aa';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
             >
               {example}
             </button>
@@ -335,6 +332,60 @@ export default function App() {
           `,
         },
       },
+    },
+  },
+};
+
+export const fullStackReactTemplate = {
+  ...basicReactTemplate,
+  'package.json': {
+    file: {
+      contents: `
+{
+  "name": "fullstack-preview-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start:server": "node server/index.js"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^1.43.0",
+    "react-router-dom": "^6.22.3",
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.1.4"
+  }
+}
+      `,
+    },
+  },
+  'server/index.js': {
+    file: {
+      contents: `
+import express from 'express';
+import cors from 'cors';
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.listen(3001, () => {
+  console.log('Backend server running on port 3001');
+});
+      `,
     },
   },
 };

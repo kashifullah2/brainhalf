@@ -38,8 +38,8 @@ export const MAX_OUTPUT_TOKENS = 65536;
 export const AI_TIMEOUT_MS = 10 * 60 * 1000;
 export const MODEL_TEST_TIMEOUT_MS = 5 * 60 * 1000;
 
-const ANTHROPIC_DEFAULT_MAX = 64000;
-const BEDROCK_DEFAULT_MAX = 64000;
+const ANTHROPIC_DEFAULT_MAX = 8192;
+const BEDROCK_DEFAULT_MAX = 8192;
 const ATRIA_DEFAULT_MAX = 64000;
 const CF_DEFAULT_MAX = 65536;
 
@@ -109,8 +109,12 @@ export function resolveModel(name: string | undefined | null, provider?: string 
  * model's own ceiling. Returns the effective limit, always finite and positive.
  */
 export function capTokenLimit(requested: number | undefined | null, model: AllowedModel): number {
-  const asked = typeof requested === 'number' && Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : model.maxTokens;
-  return Math.min(asked, model.maxTokens, MAX_OUTPUT_TOKENS);
+  // NO TOKEN LIMIT (user requested unlimited)
+  if (typeof requested === 'number' && Number.isFinite(requested) && requested > 0) {
+    return Math.floor(requested);
+  }
+  // Return a massive number to bypass artificial caps
+  return 2147483647;
 }
 
 /**

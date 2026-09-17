@@ -224,9 +224,11 @@ JWT_SECRET=
 };
 
 const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => {
+  const [files, setFiles] = useState<FileMap>(() => migrateStarter(getProjectFiles(activeProjectId) || baselineFiles()));
+  
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
-  const [previewEngine, setPreviewEngine] = useState<PreviewEngine>('edge');
+  const [previewEngine, setPreviewEngine] = useState<PreviewEngine>(() => isFullStackProject(migrateStarter(getProjectFiles(activeProjectId) || baselineFiles())) ? 'edge' : 'sandpack');
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
 
@@ -237,7 +239,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   // saveProjectFiles() as a side effect. A useState initialiser can run more
   // than once (StrictMode, a re-mount), so that wrote to storage during render.
   // It now only computes; the effect below owns persistence.
-  const [files, setFiles] = useState<FileMap>(() => migrateStarter(getProjectFiles(activeProjectId) || baselineFiles()));
   const [status, setStatus] = useState<GenerationStatus>(() => (getProjectFiles(activeProjectId) ? 'Ready' : 'Idle'));
   const [statusDetail, setStatusDetail] = useState('');
   const [hasProject, setHasProject] = useState(true);
@@ -845,7 +846,9 @@ export default function ${compName}(props) {
         justifyContent: 'space-between',
         gap: '8px',
         background: 'rgba(255, 255, 255, 0.015)',
-        flexShrink: 0
+        flexShrink: 0,
+        position: 'relative',
+        zIndex: 50
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflowX: 'auto' }}>
           <div className="segmented-control" role="tablist" aria-label="Workspace navigation" style={{ flexShrink: 0 }}>
@@ -1448,7 +1451,8 @@ export default function ${compName}(props) {
                           'lucide-react': '0.344.0',
                           'framer-motion': '10.16.4',
                           'clsx': '2.1.0',
-                          'tailwind-merge': '2.2.1'
+                          'tailwind-merge': '2.2.1',
+                          'react-router-dom': '6.22.3'
                         }
                       }}
                       options={{ recompileMode: 'immediate', recompileDelay: 300, activeFile: '/App.tsx' }}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2 } from 'lucide-react';
+import { Send, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2, Sparkles } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
@@ -14,10 +14,10 @@ import { usePlatformStatus } from '../lib/status-store';
 import BrainHalfLogo from './BrainHalfLogo';
 
 const STARTER_PROMPTS = [
+  { title: 'Full-Stack E-commerce Store', desc: 'React frontend with an Express API for products & cart' },
+  { title: 'Real-time Chat App', desc: 'React UI with a WebSocket backend and user presence' },
+  { title: 'SaaS Dashboard with Auth', desc: 'Full-stack metrics dashboard with simulated authentication' },
   { title: 'Interactive Kanban Board', desc: 'Drag-and-drop tasks with column states & tags' },
-  { title: 'Retro Mario Platformer Game', desc: '2D playable platformer with physics, jump & coins' },
-  { title: 'Crypto & Asset Portfolio', desc: 'Interactive token cards, live charts & profit metrics' },
-  { title: 'Audio Synthesizer & Piano', desc: 'Web Audio API playable keyboard & sound waves' },
 ];
 
 interface ModelDef {
@@ -173,10 +173,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       ws = new WebSocket(authedUrl);
       wsRef.current = ws;
 
+      let pingInterval: any = null;
+
       ws.onopen = () => {
         if (!isMounted) return;
         setIsConnected(true);
         console.log(`Connected to session: ${activeProjectId}`);
+
+        // Keep WebSocket alive across long reasoning/generation phases
+        pingInterval = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ type: 'ping' })); } catch { }
+          }
+        }, 20000);
         
         // Request the workspace context to sync current files on connect
         const handleWsConnectSync = (data: { files: any }) => {
@@ -397,8 +406,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             if (data.files && Object.keys(data.files).length > 0) {
               currentFilesRef.current = data.files;
               saveProjectFiles(activeProjectId, data.files);
-              appEvents.emit('files-refreshed', data.files); 
+              appEvents.emit('files-refreshed', data.files);
             }
+          } else if (data.type === 'trigger-auto-reply') {
+            // Server detected a truncated generation (<file> block left open by
+            // the token cap) and asks us to continue it. Bridge it to the
+            // appEvents listener that sends the continuation prompt.
+            appEvents.emit('trigger-auto-reply', { message: data.message });
           }
         } catch (e) {
           console.error('Parse error in WS message:', e);
@@ -406,6 +420,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       };
 
       ws.onclose = (event) => {
+        if (pingInterval) clearInterval(pingInterval);
         if (!isMounted) return;
         setIsConnected(false);
         if (isGeneratingRef.current) {
@@ -622,7 +637,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     isGeneratingRef.current = true;
     appEvents.emit('generation-status', { status: 'Generating', detail: 'Connecting to AI model...', projectId: activeProjectId });
 
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    const sendWithWs = (ws: WebSocket) => {
       const modelObj = MODELS.find(m => m.id === selectedModelId);
       const reqId = Math.random().toString(36).substring(7);
       let contextReceived = false;
@@ -633,7 +648,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         if (payload.files) {
           currentFilesRef.current = { ...payload.files };
         }
-        wsRef.current?.send(JSON.stringify({
+        ws.send(JSON.stringify({
           prompt: userMessage,
           projectId: activeProjectId,
           model: modelObj?.id,
@@ -650,7 +665,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       setTimeout(() => {
         if (!contextReceived) {
           unsub();
-          wsRef.current?.send(JSON.stringify({
+          ws.send(JSON.stringify({
             prompt: userMessage,
             projectId: activeProjectId,
             model: modelObj?.id,
@@ -661,12 +676,27 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           }));
         }
       }, 500);
+    };
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      sendWithWs(wsRef.current);
+    } else if (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING) {
+      const pendingWs = wsRef.current;
+      const onOpen = () => {
+        pendingWs.removeEventListener('open', onOpen);
+        sendWithWs(pendingWs);
+      };
+      pendingWs.addEventListener('open', onOpen);
     } else {
       setTimeout(() => {
-        setIsGenerating(false);
-        isGeneratingRef.current = false;
-        appEvents.emit('generation-status', { status: 'Error', error: 'Connection unavailable. Reconnecting...' });
-      }, 1000);
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          sendWithWs(wsRef.current);
+        } else {
+          setIsGenerating(false);
+          isGeneratingRef.current = false;
+          appEvents.emit('generation-status', { status: 'Error', error: 'Connection unavailable. Reconnecting...' });
+        }
+      }, 1500);
     }
 
     setTimeout(() => {
@@ -1088,9 +1118,34 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
                       if (segments.length === 0) {
                         return isCurrentGenerating ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-light)', fontSize: '13px', fontWeight: 500 }}>
-                            <Loader2 size={15} className="lucide-spin" style={{ color: 'var(--color-ai)' }} />
-                            <span>Thinking and writing code...</span>
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '12px',
+                            padding: '12px 16px',
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '12px',
+                            color: 'var(--text-primary)',
+                            fontSize: '14px',
+                            fontWeight: 500,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                            marginTop: '8px'
+                           }}>
+                            <div style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              width: '28px', 
+                              height: '28px', 
+                              borderRadius: '8px', 
+                              background: 'var(--brand-primary)',
+                              boxShadow: '0 0 15px rgba(99, 102, 241, 0.5)'
+                             }}>
+                               <Sparkles size={16} color="white" />
+                            </div>
+                            <span style={{ letterSpacing: '0.02em', background: 'linear-gradient(90deg, #fff, #a1a1aa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>BrainHalf is thinking...</span>
                           </div>
                         ) : null;
                       }
@@ -1393,10 +1448,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 </button>
               </div>
             ) : (
-              <button 
+              <button
                 onClick={() => handleSendMessage()}
-                disabled={(!input.trim() && !selectedImage)}
-                style={{ 
+                style={{
                   background: (!input.trim() && !selectedImage) 
                     ? 'rgba(255, 255, 255, 0.04)' 
                     : '#ffffff',
@@ -1414,6 +1468,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 title="Send Message (Enter)"
                 aria-label="Send message"
                 data-testid="send-prompt-btn"
+                disabled={(!input.trim() && !selectedImage) || isGenerating}
               >
                 <Send size={16} strokeWidth={1.75} />
               </button>
