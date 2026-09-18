@@ -1048,6 +1048,9 @@ export default function ${compName}(props) {
             <span>Publish</span>
           </button>
 
+          {/* Subtle separator to isolate destructive reset action from primary CTA */}
+          <div style={{ width: '1px', height: '16px', background: 'rgba(255, 255, 255, 0.1)', margin: '0 4px 0 10px' }} />
+
           <button
             onClick={() => {
               if (confirm('Reset workspace and return to default?')) {
@@ -1055,21 +1058,32 @@ export default function ${compName}(props) {
               }
             }}
             style={{
-              width: '30px',
-              height: '30px',
+              width: '28px',
+              height: '28px',
               borderRadius: '6px',
-              background: 'rgba(255, 255, 255, 0.05)',
+              background: 'transparent',
               border: '1px solid rgba(255, 255, 255, 0.08)',
-              color: 'rgba(255, 255, 255, 0.6)',
+              color: 'rgba(255, 255, 255, 0.45)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
             }}
-            title="Close / Reset"
-            aria-label="Close / Reset"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--color-error, #f87171)';
+              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'rgba(255, 255, 255, 0.45)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+            title="Reset workspace to default"
+            aria-label="Reset workspace to default"
           >
-            <X size={14} strokeWidth={1.8} />
+            <X size={13} strokeWidth={2} />
           </button>
         </div>
       </div>

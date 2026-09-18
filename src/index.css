@@ -810,21 +810,30 @@ h1, h2, h3, h4, .brand-text {
    Quick Template Cards & Chat Input
    ========================================================================== */
 .quick-template-card {
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-asym-sm, 10px 4px 10px 4px);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
   padding: 8px 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  width: fit-content;
+  max-width: 100%;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 
 .quick-template-card:hover {
   background: rgba(255, 255, 255, 0.05);
-  transform: translateX(2px);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateX(3px);
+}
+
+.quick-template-card:hover .template-arrow {
+  opacity: 1 !important;
+  color: #38bdf8 !important;
+  transform: translateX(3px);
 }
 
 .chat-input-wrapper {
@@ -1647,7 +1656,9 @@ h1, h2, h3, h4, .brand-text {
 
 .viewport-frame-container.desktop {
   padding: 0;
-  background: #0f111a;
+  background: radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.03) 0%, transparent 70%),
+              radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px) 0 0 / 24px 24px,
+              #090b10;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -60,19 +60,19 @@ function backendDevPlugin() {
   <meta charset="UTF-8" />
   <title>BrainHalf Preview - ${projectId}</title>
   <style>
-    body { margin: 0; font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; background: #090b10; color: #f4f4f5; display: flex; align-items: center; justify-content: center; height: 100vh; }
+    body { margin: 0; font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(56, 189, 248, 0.05) 0%, rgba(99, 102, 241, 0.03) 40%, transparent 75%), radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px) 0 0 / 24px 24px, #090b10; color: #f4f4f5; display: flex; align-items: center; justify-content: center; height: 100vh; }
     .hero-section-card {
       position: relative;
       max-width: 520px;
       width: 100%;
       padding: 52px 36px;
       border-radius: 20px;
-      background: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      background: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.015) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
       text-align: center;
-      box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(16px);
+      box-shadow: 0 24px 56px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(20px);
       box-sizing: border-box;
     }
     .hero-icon-container {

@@ -80,6 +80,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const platformStatus = usePlatformStatus(activeProjectId);
   const [mergeConflict, setMergeConflict] = useState<{ sourceName: string; conflicts: string[] } | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+
+  const handleMessagesScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const isScrolledUp = target.scrollHeight - target.scrollTop - target.clientHeight > 120;
+    setShowScrollBottom(isScrolledUp && messages.length > 2);
+  };
 
   useEffect(() => {
     const unsubConflict = appEvents.on('merge-conflict', (data: { sourceName: string; conflicts: string[] }) => {
@@ -799,15 +806,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   return (
     <div className="chat-panel-container" style={{ width: width ? `${width}px` : '100%', minWidth: width ? '360px' : '0', display: 'flex', flexDirection: 'column', height: '100%', background: '#0e1015', position: 'relative' }}>
       {/* Message Stream */}
-      <div style={{ 
-        flex: 1, 
-        padding: '24px 20px', 
-        overflowY: 'auto', 
-        display: 'flex', 
-        flexDirection: 'column', 
-        gap: '20px',
-        scrollBehavior: 'smooth'
-      }}>
+      <div 
+        onScroll={handleMessagesScroll}
+        style={{ 
+          flex: 1, 
+          padding: '24px 20px', 
+          overflowY: 'auto', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '20px',
+          scrollBehavior: 'smooth'
+        }}>
         {messages.map((msg, idx) => {
           const isLastMessage = idx === messages.length - 1;
           const isCurrentGenerating = isGenerating && isLastMessage;
@@ -1160,40 +1169,48 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSendMessage(`Build an app: ${sp.title} - ${sp.desc}`); }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{sp.title}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{sp.title}</span>
+                      <ArrowRight size={13} strokeWidth={2} className="template-arrow" style={{ color: 'var(--color-neutral)', opacity: 0.6, transition: 'transform 0.15s ease' }} />
+                    </div>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{sp.desc}</span>
                   </div>
-                  <ArrowRight size={16} strokeWidth={1.75} style={{ color: 'var(--color-neutral)', opacity: 0.6 }} />
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Floating scroll to bottom button right above input */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
-          <button
-            onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
-            style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              background: '#181a24',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-              transition: 'all 0.15s ease'
-            }}
-            title="Scroll to bottom"
-            aria-label="Scroll to bottom"
-          >
-            <ArrowDown size={14} strokeWidth={2} />
-          </button>
-        </div>
+        {/* Floating scroll to bottom button right above input - only when scrolled up */}
+        {showScrollBottom && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+            <button
+              onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              style={{
+                height: '28px',
+                padding: '0 12px',
+                borderRadius: '14px',
+                background: '#181a24',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '11.5px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.6)',
+                backdropFilter: 'blur(8px)',
+                transition: 'all 0.15s ease'
+              }}
+              title="Scroll to latest message"
+              aria-label="Scroll to latest message"
+            >
+              <ArrowDown size={12} strokeWidth={2} />
+              <span>Latest message</span>
+            </button>
+          </div>
+        )}
 
         <div ref={messagesEndRef} />
       </div>
