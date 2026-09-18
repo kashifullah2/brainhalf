@@ -3,8 +3,9 @@ import TopNav from './components/TopNav';
 import ChatPanel from './components/ChatPanel';
 import Workspace from './components/Workspace';
 import LoginScreen from './components/LoginScreen';
+import LandingPage from './components/LandingPage';
 import { BrainHalfLogo } from './components/BrainHalfLogo';
-import { getActiveProjectId, setActiveProjectId } from './lib/project-store';
+import { getActiveProjectId, setActiveProjectId, createProject, saveProjectMessages } from './lib/project-store';
 import { getToken, getUser, logout, verifyStoredSession, type SessionUser } from './lib/auth-client';
 import './index.css';
 
@@ -39,6 +40,14 @@ function App() {
   }, []);
 
   const [activeProjectId, setActiveId] = useState<string>(getActiveProjectId());
+  const [currentView, setCurrentView] = useState<'landing' | 'workspace'>(() => {
+    if (typeof window !== 'undefined' && window.location?.search) {
+      const p = new URLSearchParams(window.location.search).get('project');
+      if (p) return 'workspace';
+    }
+    return 'landing';
+  });
+
   const [mobileTab, setMobileTab] = useState<'chat' | 'code' | 'preview'>('chat');
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -71,6 +80,12 @@ function App() {
     const handlePopState = () => {
       const currentId = getActiveProjectId();
       setActiveId(currentId);
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('project')) {
+        setCurrentView('workspace');
+      } else {
+        setCurrentView('landing');
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -80,6 +95,28 @@ function App() {
     if (!id) return;
     setActiveProjectId(id);
     setActiveId(id);
+  };
+
+  const handleGoHome = () => {
+    setCurrentView('landing');
+    if (typeof window !== 'undefined' && window.history?.pushState) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('project');
+      window.history.pushState({}, '', url.toString());
+    }
+  };
+
+  const handleOpenProject = (id: string) => {
+    handleSelectProject(id);
+    setCurrentView('workspace');
+  };
+
+  const handleSubmitInitialPrompt = (prompt: string, _appType: 'web' | 'mobile') => {
+    const title = prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt;
+    const newProj = createProject(title);
+    saveProjectMessages(newProj.id, [{ role: 'user', content: prompt }]);
+    handleSelectProject(newProj.id);
+    setCurrentView('workspace');
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -139,12 +176,25 @@ function App() {
     return <LoginScreen onAuthenticated={setUser} />;
   }
 
+  if (currentView === 'landing') {
+    return (
+      <LandingPage
+        onOpenProject={handleOpenProject}
+        onSubmitInitialPrompt={handleSubmitInitialPrompt}
+        activeProjectId={activeProjectId}
+        currentUser={user}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
   return (
     <div className="app-container">
       <div className="main-content">
         <TopNav
           activeProjectId={activeProjectId}
           onSelectProject={handleSelectProject}
+          onGoHome={handleGoHome}
           mobileTab={mobileTab}
           onSelectMobileTab={setMobileTab}
           isMobile={isMobile}

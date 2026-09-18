@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus, BrainCircuit, LogOut } from 'lucide-react';
+import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus, BrainCircuit, LogOut, LayoutGrid } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import { usePlatformStatus } from '../lib/status-store';
@@ -19,6 +19,7 @@ interface TopNavProps {
   isMobile?: boolean;
   currentUser?: { email?: string; name?: string; devMode?: boolean } | null;
   onLogout?: () => void | Promise<void>;
+  onGoHome?: () => void;
 }
 
 const TopNav: React.FC<TopNavProps> = ({
@@ -33,6 +34,7 @@ const TopNav: React.FC<TopNavProps> = ({
   isMobile = false,
   currentUser,
   onLogout,
+  onGoHome,
 }) => {
   const [overrideName, setOverrideName] = useState<string | null>(null);
   const [prevId, setPrevId] = useState(activeProjectId);
@@ -139,6 +141,18 @@ const TopNav: React.FC<TopNavProps> = ({
   return (
     <div className="top-nav" role="banner">
       <div className="top-nav-left-cluster" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flexShrink: 1 }}>
+        {onGoHome && (
+          <button
+            onClick={onGoHome}
+            className="landing-home-pill"
+            style={{ padding: '4px 10px', fontSize: '12px', height: '28px', gap: '6px' }}
+            title="Return to Home"
+            aria-label="Return to Home"
+          >
+            <LayoutGrid size={13} strokeWidth={2} />
+            <span>Home</span>
+          </button>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{
             width: '24px',
