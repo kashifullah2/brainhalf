@@ -87,6 +87,27 @@ function migrateStarter(files: FileMap): FileMap {
   return files;
 }
 
+function hasGeneratedAppCode(files: FileMap): boolean {
+  if (!files) return false;
+  const app = files['/src/App.jsx'] || files['/src/App.tsx'];
+  if (!app) return false;
+
+  const isStarter =
+    app.includes('Architect your idea into living software') ||
+    app.includes('What do you want to build?') ||
+    LEGACY_STARTER_MARKERS.some(marker => app.includes(marker));
+
+  if (isStarter) {
+    const customFiles = Object.keys(files).filter(k =>
+      k.startsWith('/src/') &&
+      !['/src/App.jsx', '/src/App.tsx', '/src/main.jsx', '/src/main.tsx', '/src/styles.css', '/src/index.css'].includes(k)
+    );
+    return customFiles.length > 0;
+  }
+
+  return true;
+}
+
 function timestamp(): string {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
@@ -233,8 +254,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   const [previewEngine, setPreviewEngine] = useState<PreviewEngine>('edge');
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
-  const [carouselIndex, setCarouselIndex] = useState(0);
-  const totalSlides = 6;
+  const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
 
   const viewportWidth = useViewportWidth();
   const compactToolbar = viewportWidth < 1100;
@@ -1001,24 +1021,28 @@ export default function ${compName}(props) {
 
           <button
             onClick={() => {
-              appEvents.emit('open-deploy-modal');
+              if (hasGeneratedApp) {
+                appEvents.emit('open-deploy-modal');
+              }
             }}
+            disabled={!hasGeneratedApp}
             style={{
-              background: '#0ea5e9',
-              color: '#ffffff',
-              border: 'none',
+              background: hasGeneratedApp ? '#0ea5e9' : 'rgba(255, 255, 255, 0.04)',
+              color: hasGeneratedApp ? '#ffffff' : 'rgba(255, 255, 255, 0.35)',
+              border: hasGeneratedApp ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
               borderRadius: '8px',
               padding: '5px 14px',
               fontSize: '12px',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: hasGeneratedApp ? 'pointer' : 'not-allowed',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: '0 2px 8px rgba(14, 165, 233, 0.35)'
+              boxShadow: hasGeneratedApp ? '0 2px 8px rgba(14, 165, 233, 0.35)' : 'none',
+              transition: 'all 0.15s ease'
             }}
-            title="Publish application"
-            aria-label="Publish application"
+            title={hasGeneratedApp ? "Publish application" : "Generate an app in chat before publishing"}
+            aria-label={hasGeneratedApp ? "Publish application" : "Generate an app in chat before publishing"}
           >
             <Cloud size={14} strokeWidth={2} />
             <span>Publish</span>
@@ -1320,22 +1344,187 @@ export default function ${compName}(props) {
               width: '100%',
               display: 'flex',
               flexDirection: 'column',
-              background: '#090a0f',
+              background: 'var(--bg-preview-canvas)',
               position: 'relative',
               overflow: 'hidden',
-              alignItems: 'center',
-              justifyContent: 'center'
+              containerType: 'inline-size',
+              minWidth: 0
             }}
           >
-            {/* Ambient matrix glyphs background pattern */}
-            <div className="preview-matrix-backdrop" />
+            {/* Browser Chrome Toolbar */}
+            <div
+              className="browser-chrome"
+              style={{
+                padding: '0 12px',
+                minHeight: '40px',
+                boxSizing: 'border-box',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <div className="browser-chrome-left" style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                <button
+                  className="browser-action-btn"
+                  title="Refresh the preview"
+                  aria-label="Refresh the preview"
+                  onClick={handleRefresh}
+                >
+                  <RefreshCw size={16} strokeWidth={1.75} />
+                </button>
+                <button
+                  className="browser-action-btn"
+                  title="Open the preview in a new tab"
+                  aria-label="Open the preview in a new tab"
+                  onClick={() => {
+                    appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
+                    window.open(withTokenQuery(`/preview/${activeProjectId}/index.html`), '_blank', 'noopener,noreferrer');
+                  }}
+                >
+                  <ExternalLink size={16} strokeWidth={1.75} />
+                </button>
+              </div>
+
+              {/* Center: Clean URL Pill */}
+              <div
+                className="browser-chrome-center"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: compactToolbar ? 'none' : 'flex',
+                  justifyContent: 'center'
+                }}
+              >
+                <div
+                  className="browser-url-pill"
+                  title={`/preview/${activeProjectId}/index.html`}
+                  style={{ cursor: 'default', maxWidth: '100%', overflow: 'hidden' }}
+                >
+                  <Lock size={16} strokeWidth={1.75} style={{ opacity: 0.8, color: 'var(--color-success)', flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {previewEngine === 'edge' ? `brainhalf.com/preview/${activeProjectId.slice(0, 8)}` : 'preview.brainhalf.app/live'}
+                  </span>
+                  {viewportMode !== 'desktop' && (
+                    <span className="browser-viewport-badge">
+                      {viewportMode === 'tablet' ? '768px' : '375px'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: Viewport Mode & Engine Selector */}
+              <div className="browser-chrome-right" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: 'auto' }}>
+                <div className="viewport-segmented-control" role="group" aria-label="Viewport size and preview runtime">
+                  <button
+                    onClick={() => setViewportMode('desktop')}
+                    className={`viewport-pill-btn ${viewportMode === 'desktop' ? 'active' : ''}`}
+                    title="Desktop view"
+                    aria-label="Desktop view"
+                    aria-pressed={viewportMode === 'desktop'}
+                  >
+                    <Monitor size={16} strokeWidth={1.75} />
+                    <span>Desktop</span>
+                  </button>
+                  <button
+                    onClick={() => setViewportMode('tablet')}
+                    className={`viewport-pill-btn ${viewportMode === 'tablet' ? 'active' : ''}`}
+                    title="Tablet view (768px)"
+                    aria-label="Tablet view (768px)"
+                    aria-pressed={viewportMode === 'tablet'}
+                  >
+                    <Tablet size={16} strokeWidth={1.75} />
+                    <span>Tablet</span>
+                  </button>
+                  <button
+                    onClick={() => setViewportMode('mobile')}
+                    className={`viewport-pill-btn ${viewportMode === 'mobile' ? 'active' : ''}`}
+                    title="Mobile view (375px)"
+                    aria-label="Mobile view (375px)"
+                    aria-pressed={viewportMode === 'mobile'}
+                  >
+                    <Smartphone size={16} strokeWidth={1.75} />
+                    <span>Mobile</span>
+                  </button>
+
+                  {/* 4th Option: Edge / Sandpack Engine Toggle */}
+                  <div style={{ position: 'relative', display: 'inline-flex' }} ref={engineMenuRef}>
+                    <button
+                      onClick={() => setShowEngineMenu(prev => !prev)}
+                      className={`viewport-pill-btn ${showEngineMenu ? 'active' : ''}`}
+                      title={`Runtime Engine: ${previewEngine === 'edge' ? 'Cloudflare Edge' : 'Sandpack'}`}
+                      aria-label="Preview Runtime Engine"
+                      aria-expanded={showEngineMenu}
+                      style={{
+                        width: 'auto',
+                        minWidth: 'max-content',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {previewEngine === 'edge' ? <Zap size={16} strokeWidth={1.75} color="#a78bfa" /> : <Box size={16} strokeWidth={1.75} color="#38bdf8" />}
+                      <span>{previewEngine === 'edge' ? 'Edge' : 'Sandpack'}</span>
+                    </button>
+
+                    {showEngineMenu && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 4px)',
+                          right: 0,
+                          width: '190px',
+                          background: '#12141c',
+                          border: '1px solid var(--border-medium)',
+                          borderRadius: '8px',
+                          boxShadow: '0 12px 28px rgba(0, 0, 0, 0.65)',
+                          padding: '4px',
+                          zIndex: 1000,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px'
+                        }}
+                      >
+                        <div style={{ padding: '4px 8px', fontSize: '10.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          Preview Runtime
+                        </div>
+                        <button
+                          className={`deploy-menu-item ${previewEngine === 'edge' ? 'active' : ''}`}
+                          onClick={() => {
+                            setPreviewEngine('edge');
+                            setEdgeRefreshCounter(c => c + 1);
+                            addBuildLog('Switched to Cloudflare Edge Preview (Instant Edge Transpiler)', 'info');
+                            setShowEngineMenu(false);
+                          }}
+                          style={{ padding: '6px 8px', fontSize: '12px' }}
+                        >
+                          <Zap size={16} strokeWidth={1.75} color="#a78bfa" />
+                          <span>Cloudflare Edge (Fast)</span>
+                          {previewEngine === 'edge' && <Check size={16} strokeWidth={1.75} color="var(--color-success)" style={{ marginLeft: 'auto' }} />}
+                        </button>
+                        <button
+                          className={`deploy-menu-item ${previewEngine === 'sandpack' ? 'active' : ''}`}
+                          onClick={() => {
+                            setPreviewEngine('sandpack');
+                            addBuildLog('Switched to Sandpack Virtual Bundler', 'info');
+                            setShowEngineMenu(false);
+                          }}
+                          style={{ padding: '6px 8px', fontSize: '12px' }}
+                        >
+                          <Box size={16} strokeWidth={1.75} color="#38bdf8" />
+                          <span>Sandpack (In-Browser)</span>
+                          {previewEngine === 'sandpack' && <Check size={16} strokeWidth={1.75} color="var(--color-success)" style={{ marginLeft: 'auto' }} />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Indeterminate progress bar when generating */}
             {status === 'Generating' && (
               <div
                 role="progressbar"
                 aria-label="Generating"
-                style={{ height: '2px', width: '100%', background: 'rgba(255, 255, 255, 0.05)', position: 'absolute', top: 0, left: 0, overflow: 'hidden', zIndex: 40 }}
+                style={{ height: '2px', width: '100%', background: 'rgba(255, 255, 255, 0.05)', position: 'relative', overflow: 'hidden', flexShrink: 0 }}
               >
                 <div className="bh-indeterminate-bar" style={{
                   height: '100%', width: '35%', background: '#38bdf8',
@@ -1344,168 +1533,27 @@ export default function ${compName}(props) {
               </div>
             )}
 
-            {/* Centered Showcase */}
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              zIndex: 10,
-              maxWidth: '850px',
-              width: '92%',
-              margin: 'auto',
-              padding: '16px 0'
-            }}>
-              {/* Sparkle icon */}
-              <div style={{ color: 'rgba(255, 255, 255, 0.9)', marginBottom: '8px' }}>
-                <Sparkles size={20} />
-              </div>
-
-              {/* Title & Subtitle */}
-              <h2 style={{
-                fontSize: '22px',
-                fontWeight: 600,
-                color: '#ffffff',
-                margin: '0 0 6px 0',
-                letterSpacing: '-0.3px',
-                fontFamily: 'var(--font-brand)',
-                textAlign: 'center'
-              }}>
-                Deploy Your Application
-              </h2>
-              <p style={{
-                fontSize: '13px',
-                color: 'rgba(255, 255, 255, 0.6)',
-                margin: '0 0 24px 0',
-                textAlign: 'center'
-              }}>
-                Make your app publicly available with managed infrastructure.
-              </p>
-
-              {/* Tablet chassis device frame matching Screenshot 2 */}
-              <div
-                className="deploy-device-mockup-frame"
-                style={{
-                  width: '100%',
-                  maxWidth: '560px',
-                  aspectRatio: '16 / 10',
-                  borderRadius: '16px',
-                  border: '1.5px solid rgba(255, 255, 255, 0.16)',
-                  boxShadow: '0 24px 64px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-                  background: '#0b0c12',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}
-              >
-                <iframe
-                  ref={iframeRef}
-                  key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
-                  src={withTokenQuery(`/preview/${activeProjectId}/index.html`)}
-                  onLoad={() => {
-                    iframeRef.current?.contentWindow?.postMessage(
-                      { type: 'sync-files', files: filesRef.current },
-                      window.location.origin
-                    );
-                  }}
-                  style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#0d0f17' }}
-                  title="Application Preview"
-                  allow="fullscreen; clipboard-read; clipboard-write"
-                />
-
-                {/* Floating pause/action button on bottom right of the chassis */}
-                <button
-                  onClick={handleRefresh}
-                  style={{
-                    position: 'absolute',
-                    bottom: '12px',
-                    right: '12px',
-                    width: '32px',
-                    height: '24px',
-                    borderRadius: '6px',
-                    background: 'rgba(255, 255, 255, 0.15)',
-                    backdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    color: '#ffffff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    zIndex: 20
-                  }}
-                  title="Pause / Refresh Preview"
-                >
-                  <span style={{ fontSize: '10px' }}>⏸</span>
-                </button>
-              </div>
-
-              {/* Carousel navigation controls below device frame */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px',
-                marginTop: '20px'
-              }}>
-                <button
-                  onClick={() => setCarouselIndex(prev => (prev > 0 ? prev - 1 : totalSlides - 1))}
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title="Previous slide"
-                  aria-label="Previous slide"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-
-                {/* Dots indicator */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {Array.from({ length: totalSlides }).map((_, s) => (
-                    <span
-                      key={s}
-                      onClick={() => setCarouselIndex(s)}
-                      style={{
-                        height: '4px',
-                        width: carouselIndex === s ? '20px' : '4px',
-                        borderRadius: '2px',
-                        background: carouselIndex === s ? '#ffffff' : 'rgba(255, 255, 255, 0.25)',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                      }}
-                    />
-                  ))}
+            {/* Canvas Area with Responsive Viewport Chassis */}
+            <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+              <div className={`viewport-frame-container ${viewportMode}`}>
+                <div className={`viewport-device-chassis ${viewportMode}`} style={{ height: '100%', overflow: 'hidden', background: '#090a0f' }}>
+                  <iframe
+                    ref={iframeRef}
+                    key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
+                    src={withTokenQuery(`/preview/${activeProjectId}/index.html`)}
+                    onLoad={() => {
+                      iframeRef.current?.contentWindow?.postMessage(
+                        { type: 'sync-files', files: filesRef.current },
+                        window.location.origin
+                      );
+                    }}
+                    style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#090a0f' }}
+                    title="Application Preview"
+                    allow="fullscreen; clipboard-read; clipboard-write"
+                  />
                 </div>
-
-                <button
-                  onClick={() => setCarouselIndex(prev => (prev < totalSlides - 1 ? prev + 1 : 0))}
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer'
-                  }}
-                  title="Next slide"
-                  aria-label="Next slide"
-                >
-                  <ChevronRight size={14} />
-                </button>
               </div>
             </div>
-
           </div>
         )}
       </div>

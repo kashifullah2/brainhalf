@@ -35,7 +35,7 @@ test.describe('Empty-State Hero Section Redesign Verification', () => {
     });
 
     await page.route('**/api/auth/session', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'u-123', email: 'test@example.com' } }) }));
-    await page.goto('http://localhost:5173');
+    await page.goto('http://localhost:5173/?project=hero-test-proj');
     // Wait for the preview iframe to mount
 
     // Wait for the preview iframe to mount

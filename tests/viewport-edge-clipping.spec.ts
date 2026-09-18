@@ -10,10 +10,20 @@ test.describe('Viewport Toolbar and Edge Button Clipping Verification', () => {
     { name: 'mobile-390', width: 390, height: 844, isMobileLayout: true }
   ];
 
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('bh_session_token', 'mock-session-token');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'u-123', email: 'test@brainhalf.com' }));
+    });
+    await page.route('**/api/auth/session', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ user: { id: 'u-123', email: 'test@brainhalf.com' } }) })
+    );
+  });
+
   for (const vp of viewports) {
     test(`all four options remain fully visible and clickable at ${vp.name} (${vp.width}x${vp.height})`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
-      await page.goto('http://localhost:5173');
+      await page.goto('http://localhost:5173/?project=hero-test-proj');
 
       // If mobile layout, switch to preview tab to view the toolbar
       if (vp.isMobileLayout) {
@@ -66,7 +76,7 @@ test.describe('Viewport Toolbar and Edge Button Clipping Verification', () => {
 
   test('visual screenshot capture across viewports', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto('http://localhost:5173');
+    await page.goto('http://localhost:5173/?project=hero-test-proj');
     await page.waitForSelector('.browser-chrome');
     await page.screenshot({
       path: '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475/viewport-edge-verified.png'

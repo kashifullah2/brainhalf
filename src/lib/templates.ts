@@ -214,34 +214,6 @@ export default function App() {
         boxShadow: '0 20px 48px -12px rgba(0, 0, 0, 0.6)',
         backdropFilter: 'blur(16px)',
         overflow: 'hidden'
-      }}>
-        {/* Subtle Status Pill */}
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '5px 12px',
-          borderRadius: '9999px',
-          background: 'rgba(255, 255, 255, 0.04)',
-          border: '1px solid rgba(255, 255, 255, 0.07)',
-          marginBottom: '20px',
-          fontSize: '12px',
-          fontWeight: 500,
-          color: '#a1a1aa',
-          letterSpacing: '0.01em',
-          position: 'relative',
-          zIndex: 1
-        }}>
-          <span style={{
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            background: '#10b981',
-            display: 'inline-block'
-          }} />
-          <span>Ready to build</span>
-        </div>
-
         {/* Minimalist Icon */}
         <div className="hero-icon-container" style={{
           width: '64px',
@@ -289,7 +261,7 @@ export default function App() {
           position: 'relative',
           zIndex: 1
         }}>
-          Describe what you want to build in the chat. BrainHalf generates reactive components, manages state, and previews live code instantly.
+          Describe what you want to build in the chat or choose a starter template below to begin.
         </p>
 
         {/* Suggestion pills with increased spacing and larger touch target */}

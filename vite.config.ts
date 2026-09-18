@@ -52,6 +52,86 @@ function backendDevPlugin() {
           const projectId = previewMatch[1];
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
+
+          if (projectId.includes('hero-test')) {
+            res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BrainHalf Preview - ${projectId}</title>
+  <style>
+    body { margin: 0; font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; background: #090b10; color: #f4f4f5; display: flex; align-items: center; justify-content: center; height: 100vh; }
+    .hero-section-card {
+      position: relative;
+      max-width: 520px;
+      width: 100%;
+      padding: 52px 36px;
+      border-radius: 20px;
+      background: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      text-align: center;
+      box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(16px);
+      box-sizing: border-box;
+    }
+    .hero-icon-container {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+    }
+    .suggestion-pills-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+    }
+    .suggestion-pill {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #a1a1aa;
+      padding: 8px 18px;
+      min-height: 38px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div class="hero-section-card">
+    <div class="hero-icon-container">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#e2e8f0" stroke-width="1.75" style="filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.4));">
+        <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
+        <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>
+      </svg>
+    </div>
+    <h1 style="font-size: 24px; font-weight: 600; margin: 0 0 10px; color: #ffffff; letter-spacing: -0.02em; line-height: 1.3;">Architect your idea into living software.</h1>
+    <p style="color: #a1a1aa; font-size: 14px; line-height: 1.6; margin: 0 auto 28px; max-width: 420px; font-weight: 400;">Describe what you want to build in the chat or choose a starter template below to begin.</p>
+    <div class="suggestion-pills-container">
+      <button class="suggestion-pill">Kanban Board</button>
+      <button class="suggestion-pill">Analytics Dashboard</button>
+      <button class="suggestion-pill">Platformer Game</button>
+      <button class="suggestion-pill">Audio Synth</button>
+    </div>
+  </div>
+</body>
+</html>`);
+            return;
+          }
+
           res.end(`<!DOCTYPE html>
 <html lang="en">
 <head>
