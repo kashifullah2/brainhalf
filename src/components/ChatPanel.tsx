@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2, Sparkles, SlidersHorizontal, ArrowDown, Mic, Plus, Copy, Check } from 'lucide-react';
+import { Send, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2, Sparkles, SlidersHorizontal, ArrowDown, Mic, Plus, Copy, Check, ArrowUp } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
@@ -1155,7 +1155,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         {/* Starter suggestions when conversation is fresh */}
         {!messages.some(m => m.role === 'user') && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.06em' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.06em' }}>
               Quick Templates
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
@@ -1171,9 +1171,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{sp.title}</span>
-                      <ArrowRight size={13} strokeWidth={2} className="template-arrow" style={{ color: 'var(--color-neutral)', opacity: 0.6, transition: 'transform 0.15s ease' }} />
+                      <ArrowRight size={13} strokeWidth={2} className="template-arrow" style={{ color: 'var(--text-secondary)', opacity: 0.8, transition: 'transform 0.15s ease' }} />
                     </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{sp.desc}</span>
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{sp.desc}</span>
                   </div>
                 </div>
               ))}
@@ -1520,22 +1520,23 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 <button
                   onClick={handleStopGeneration}
                   style={{
-                    background: '#ffffff',
-                    color: '#09090b',
+                    background: '#ef4444',
+                    color: '#ffffff',
                     border: 'none',
-                    borderRadius: '16px',
+                    borderRadius: '8px',
                     width: '32px',
-                    height: '24px',
+                    height: '28px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.3)'
+                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.35)',
+                    transition: 'all 0.15s ease'
                   }}
                   title="Stop generation"
                   aria-label="Stop generation"
                 >
-                  <Square size={10} fill="currentColor" />
+                  <Square size={11} fill="currentColor" />
                 </button>
               ) : (
                 <button
@@ -1543,22 +1544,23 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   disabled={(!input.trim() && !selectedImage)}
                   data-testid="send-prompt-btn"
                   style={{
-                    background: (!input.trim() && !selectedImage) ? 'rgba(255, 255, 255, 0.08)' : '#ffffff',
-                    color: (!input.trim() && !selectedImage) ? 'rgba(255, 255, 255, 0.3)' : '#09090b',
-                    border: 'none',
-                    borderRadius: '16px',
+                    background: (!input.trim() && !selectedImage) ? 'rgba(255, 255, 255, 0.08)' : '#38bdf8',
+                    color: (!input.trim() && !selectedImage) ? 'rgba(255, 255, 255, 0.45)' : '#090b10',
+                    border: '1px solid ' + ((!input.trim() && !selectedImage) ? 'rgba(255, 255, 255, 0.1)' : '#38bdf8'),
+                    borderRadius: '8px',
                     width: '32px',
-                    height: '24px',
+                    height: '28px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: (!input.trim() && !selectedImage) ? 'not-allowed' : 'pointer',
+                    boxShadow: (!input.trim() && !selectedImage) ? 'none' : '0 2px 8px rgba(56, 189, 248, 0.35)',
                     transition: 'all 0.15s ease'
                   }}
                   title="Send message"
                   aria-label="Send message"
                 >
-                  <Square size={10} fill="currentColor" />
+                  <ArrowUp size={15} strokeWidth={2.5} />
                 </button>
               )}
             </div>

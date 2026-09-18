@@ -94,9 +94,9 @@ function backendDevPlugin() {
       justify-content: center;
     }
     .suggestion-pill {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: #a1a1aa;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #e2e8f0;
       padding: 8px 18px;
       min-height: 38px;
       border-radius: 9999px;
@@ -119,7 +119,7 @@ function backendDevPlugin() {
       </svg>
     </div>
     <h1 style="font-size: 24px; font-weight: 600; margin: 0 0 10px; color: #ffffff; letter-spacing: -0.02em; line-height: 1.3;">Architect your idea into living software.</h1>
-    <p style="color: #a1a1aa; font-size: 14px; line-height: 1.6; margin: 0 auto 28px; max-width: 420px; font-weight: 400;">Describe what you want to build in the chat or choose a starter template below to begin.</p>
+    <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0 auto 28px; max-width: 420px; font-weight: 400;">Describe what you want to build in the chat or choose a starter template below to begin.</p>
     <div class="suggestion-pills-container">
       <button class="suggestion-pill">Kanban Board</button>
       <button class="suggestion-pill">Analytics Dashboard</button>

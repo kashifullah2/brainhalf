@@ -403,7 +403,7 @@ export default function App() {
         </h1>
 
         <p style={{
-          color: '#a1a1aa',
+          color: '#cbd5e1',
           fontSize: '14px',
           lineHeight: '1.6',
           margin: '0 auto 28px',
@@ -428,9 +428,9 @@ export default function App() {
               key={example}
               className="suggestion-pill"
               style={{
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                color: '#a1a1aa',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+                color: '#e2e8f0',
                 padding: '8px 18px',
                 minHeight: '44px',
                 borderRadius: '9999px',

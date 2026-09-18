@@ -4,7 +4,7 @@ import {
   Terminal, Copy, Check, FolderCode, Download,
   Tablet, Smartphone, WrapText, ListFilter,
   Zap, Box, MoreHorizontal, X, Server, AlertTriangle,
-  Share2, Cloud, GitBranch, ChevronLeft, ChevronRight
+  Share2, Cloud, GitBranch, ChevronLeft, ChevronRight, HelpCircle
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
@@ -940,10 +940,14 @@ export default function ${compName}(props) {
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px'
+              gap: '6px',
+              transition: 'all 0.15s ease'
             }}
+            title="Help & Documentation"
+            aria-label="Help & Documentation"
           >
-            <span>Need Help?</span>
+            <HelpCircle size={13} strokeWidth={1.8} />
+            <span>Help</span>
           </button>
 
           <button
@@ -952,41 +956,47 @@ export default function ${compName}(props) {
               window.open(withTokenQuery(`/preview/${activeProjectId}/index.html`), '_blank', 'noopener,noreferrer');
             }}
             style={{
-              width: '30px',
-              height: '30px',
-              borderRadius: '6px',
               background: 'rgba(255, 255, 255, 0.05)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
-              color: 'rgba(255, 255, 255, 0.7)',
+              borderRadius: '8px',
+              padding: '5px 12px',
+              color: 'rgba(255, 255, 255, 0.85)',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
+              gap: '6px',
+              transition: 'all 0.15s ease'
             }}
             title="Open preview in new tab"
             aria-label="Open preview in new tab"
           >
-            <ExternalLink size={14} strokeWidth={1.8} />
+            <ExternalLink size={13} strokeWidth={1.8} />
+            <span>Popout</span>
           </button>
 
           <button
             onClick={() => setShowGithubModal(true)}
             style={{
-              width: '30px',
-              height: '30px',
-              borderRadius: '6px',
               background: 'rgba(255, 255, 255, 0.05)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
-              color: 'rgba(255, 255, 255, 0.7)',
+              borderRadius: '8px',
+              padding: '5px 12px',
+              color: 'rgba(255, 255, 255, 0.85)',
+              fontSize: '12px',
+              fontWeight: 500,
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
+              gap: '6px',
+              transition: 'all 0.15s ease'
             }}
             title="Branch & GitHub Sync"
             aria-label="Branch & GitHub Sync"
           >
-            <GitBranch size={14} strokeWidth={1.8} />
+            <GitBranch size={13} strokeWidth={1.8} />
+            <span>Branch</span>
           </button>
 
           <button
