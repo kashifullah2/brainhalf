@@ -999,7 +999,25 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES:
     - When mapping, filtering, or reducing over collections, ALWAYS guard the collection: (items || []).filter(...), (todos || []).map(...).
     - When fetching data from APIs in useEffect, always initialize state to safe defaults and handle errors gracefully:
       try { const res = await fetch('/api/items'); const data = await res.json(); setItems(Array.isArray(data) ? data : (data?.items || [])); } catch (e) { setItems([]); }
-    - Check array length before accessing indexes (e.g. items[0]?.name).`;
+    - Check array length before accessing indexes (e.g. items[0]?.name).
+
+16. ZERO DUMMY ELEMENTS & ZERO PLACEHOLDER UI (STRICT PLATFORM INVARIANT):
+    - Every button, link, toggle, input, tab, and form element MUST be fully wired to real logic.
+    - NEVER create dummy buttons with empty handlers (e.g. onClick={() => {}}), dead '#' anchors, or non-functional visual-only switches.
+    - If a button says "Add to Cart", "Submit", "Delete", "Filter", "Checkout", or "Create", it MUST execute that exact action with real state mutation and/or a real API call.
+    - Specific item handlers: "Add to Cart" or "Delete" must operate on the SPECIFIC clicked item ID/object, NEVER hardcoding index 0 or the first element.
+    - Modals & drawers: Action buttons must actually open/close the modal, commit the form data, and update the UI accordingly.
+    - Toggles & accordions: Monthly/yearly pricing toggles must actually recompute the displayed prices. Accordion headers must toggle open/closed state.
+    - Form validation: Contact forms and auth forms must perform real validation (valid email, required fields) and render user-facing validation errors.
+    - NEVER output placeholder 'Lorem Ipsum', 'TODO: implement later', or duplicate UI components (no duplicate headers, duplicate navbars, or clone cards).
+
+17. FULL-STACK END-TO-END DATA PERSISTENCE & CONTRACT INTEGRITY:
+    - For any application requiring persistence or backend functionality:
+      * Provide a complete <file path="/server/index.js"> with real Express routes and <file path="/server/db.js"> with in-memory / SQLite store.
+      * EVERY frontend action that represents data creation, update, deletion, or query (e.g. notes, todos, profiles, orders, settings) MUST call the corresponding /api/... route via fetch().
+      * The backend route MUST actually update the store in /server/db.js and return the updated entity or status.
+      * Frontend MUST initialize from the backend on mount and update reactively, ensuring that a browser page reload retains all created and modified records.
+      * Authentication flows (signup/login) must verify passwords and return real tokens/user sessions, rejecting bad passwords with HTTP 401.`;
 
     const planner = `
 

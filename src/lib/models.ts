@@ -51,6 +51,7 @@ const CF_MODELS: AllowedModel[] = [
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/qwen/qwen2.5-coder-32b-instruct', provider: 'cloudflare', id: '@cf/qwen/qwen2.5-coder-32b-instruct', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: CF_DEFAULT_MAX },
+  { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: CF_DEFAULT_MAX },
   // Image-synthesis model invoked by the generate_image tool. Not client-selectable,
   // but listed so the allowlist remains the single source of truth for AI bindings.
   { name: '@cf/black-forest-labs/flux-1-schnell', provider: 'cloudflare', id: '@cf/black-forest-labs/flux-1-schnell', maxTokens: CF_DEFAULT_MAX },

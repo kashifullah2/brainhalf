@@ -38,6 +38,7 @@ const MODELS: ModelDef[] = [
   { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code (200k Context)', provider: 'cloudflare', category: 'coding', speed: '100 t/s', badge: '200k' },
   { id: '@cf/qwen/qwen2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B', provider: 'cloudflare', category: 'coding', speed: '35 t/s', badge: 'Coder' },
   { id: '@cf/qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', provider: 'cloudflare', category: 'coding', speed: '32 t/s', badge: 'Qwen 3.8' },
+  { id: '@cf/zai-org/glm-5.3-flash', name: 'GLM 5.3 Flash', provider: 'cloudflare', category: 'fast', speed: '95 t/s', badge: 'Flash' },
   // AWS Bedrock Models
   { id: 'claude-sonnet-4.6', name: 'Claude 4.6 Sonnet', provider: 'aws', category: 'coding', badge: 'Sonnet' },
   { id: 'claude-opus-4.6', name: 'Claude 4.6 Opus', provider: 'aws', category: 'reasoning', badge: 'Opus' },
