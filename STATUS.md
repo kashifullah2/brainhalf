@@ -32,6 +32,7 @@ The complete test-and-fix run has succeeded across all test suites (**Suites A t
 | **Suite H** | Button & Interactive Element Inventory | 48 | 48 | 0 | 🟢 **PASS** |
 | **Suite I** | Feature Add/Remove Recommendations | 11 | 11 | 0 | 🟢 **PASS** |
 | **Suite J** | Agent SDK Evaluation Matrix | 8 | 8 | 0 | 🟢 **PASS** |
+| **Advanced Spec** | Comprehensive Playwright Hard Test (`tests/full-platform-advanced.spec.ts`) | 14 | 14 | 0 | 🟢 **PASS** |
 | **Regression** | Existing Unit & Integration Suites (`pnpm test`) | 231 | 231 | 0 | 🟢 **PASS** |
 
 ---
