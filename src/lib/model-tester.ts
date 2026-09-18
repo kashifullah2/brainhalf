@@ -298,7 +298,7 @@ export async function handleModelTest(
       }
 
       let aiResponse: any = null;
-      const testLadder = [65536, 32768, 16384, 8192];
+      const testLadder = [32768, 16384, 8192, 4096];
       for (const tokenLimit of testLadder) {
         try {
           aiResponse = await withTimeout(
@@ -318,9 +318,7 @@ export async function handleModelTest(
           if (aiResponse) break;
         } catch (limitErr: any) {
           const msg = String(limitErr?.message || limitErr || '');
-          if (!/token|context|length/i.test(msg)) {
-            throw limitErr;
-          }
+          console.warn(`Model test ${resolved.id} at limit ${tokenLimit} failed:`, msg);
         }
       }
 

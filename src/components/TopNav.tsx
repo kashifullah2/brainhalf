@@ -5,7 +5,6 @@ import { getProjects, updateProjectName } from '../lib/project-store';
 import { usePlatformStatus } from '../lib/status-store';
 import ConfirmModal from './ConfirmModal';
 import BrainHalfLogo from './BrainHalfLogo';
-import MacOSTrafficLights from './MacOSTrafficLights';
 import { withTokenQuery } from '../lib/auth-client';
 
 interface TopNavProps {
@@ -139,30 +138,12 @@ const TopNav: React.FC<TopNavProps> = ({
 
   return (
     <div className="top-nav" role="banner">
-      <div className="top-nav-left-cluster" style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flexShrink: 1 }}>
-        {sidebarCollapsed && (
-          <MacOSTrafficLights 
-            onMinimize={onToggleSidebar}
-            onClose={() => setShowResetConfirm(true)}
-            style={{ marginRight: '4px' }}
-          />
-        )}
-        {isMobile && onToggleMobileSidebar && (
-          <button 
-            className="icon-btn" 
-            onClick={onToggleMobileSidebar}
-            title="Open Projects"
-            aria-label="Open Projects"
-            style={{ padding: '8px', color: 'var(--text-primary)', minWidth: '36px', minHeight: '36px' }}
-          >
-            <Menu size={16} strokeWidth={1.75} />
-          </button>
-        )}
+      <div className="top-nav-left-cluster" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flexShrink: 1 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
           <div style={{
-            width: '22px',
-            height: '22px',
-            borderRadius: '5px',
+            width: '24px',
+            height: '24px',
+            borderRadius: '6px',
             background: 'rgba(255, 255, 255, 0.07)',
             border: '1px solid rgba(255, 255, 255, 0.1)',
             display: 'flex',
@@ -171,89 +152,90 @@ const TopNav: React.FC<TopNavProps> = ({
             flexShrink: 0,
             color: '#818cf8',
             boxShadow: '0 1px 2px rgba(0, 0, 0, 0.25)'
-          }} title="BrainHalf Document Proxy">
-            <BrainHalfLogo size={14} strokeWidth={1.75} />
+          }} title="BrainHalf">
+            <BrainHalfLogo size={15} strokeWidth={1.75} />
           </div>
 
-          {isEditing ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input 
-                type="text"
-                value={editedName}
-                onChange={(e) => setEditedName(e.target.value)}
+          {!isMobile && (
+            isEditing ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input 
+                  type="text"
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveName();
+                    if (e.key === 'Escape') setIsEditing(false);
+                  }}
+                  autoFocus
+                  aria-label="Rename project input"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '13.5px',
+                    fontWeight: 600,
+                    padding: '3px 8px',
+                    outline: 'none',
+                    fontFamily: 'var(--font-brand)',
+                  }}
+                />
+                <button 
+                  onClick={handleSaveName}
+                  className="icon-btn" 
+                  style={{ padding: '3px' }}
+                  title="Save name"
+                  aria-label="Save name"
+                >
+                  <Check size={16} strokeWidth={1.75} color="var(--color-success)" />
+                </button>
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="icon-btn" 
+                  style={{ padding: '3px' }}
+                  title="Cancel"
+                  aria-label="Cancel editing name"
+                >
+                  <X size={16} strokeWidth={1.75} color="var(--color-error)" />
+                </button>
+              </div>
+            ) : (
+              <div 
+                onClick={() => { setIsEditing(true); setEditedName(projectName); }}
+                title="Click to rename project"
+                tabIndex={0}
+                role="button"
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveName();
-                  if (e.key === 'Escape') setIsEditing(false);
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    setIsEditing(true);
+                    setEditedName(projectName);
+                  }
                 }}
-                autoFocus
-                aria-label="Rename project input"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid var(--border-medium)',
-                  borderRadius: '6px',
-                  color: 'var(--text-primary)',
-                  fontSize: '13.5px',
-                  fontWeight: 600,
-                  padding: '3px 8px',
-                  outline: 'none',
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', outline: 'none', minWidth: 0 }}
+              >
+                <h2 style={{ 
+                  fontSize: '13.5px', 
+                  fontWeight: 600, 
+                  margin: 0, 
                   fontFamily: 'var(--font-brand)',
-                }}
-              />
-              <button 
-                onClick={handleSaveName}
-                className="icon-btn" 
-                style={{ padding: '3px' }}
-                title="Save name"
-                aria-label="Save name"
-              >
-                <Check size={16} strokeWidth={1.75} color="var(--color-success)" />
-              </button>
-              <button 
-                onClick={() => setIsEditing(false)}
-                className="icon-btn" 
-                style={{ padding: '3px' }}
-                title="Cancel"
-                aria-label="Cancel editing name"
-              >
-                <X size={16} strokeWidth={1.75} color="var(--color-error)" />
-              </button>
-            </div>
-          ) : (
-            <div 
-              onClick={() => { setIsEditing(true); setEditedName(projectName); }}
-              title="Click to rename project"
-              tabIndex={0}
-              role="button"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  setIsEditing(true);
-                  setEditedName(projectName);
-                }
-              }}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', outline: 'none', minWidth: 0 }}
-            >
-              <h2 style={{ 
-                fontSize: '13.5px', 
-                fontWeight: 600, 
-                margin: 0, 
-                fontFamily: 'var(--font-brand)',
-                color: 'var(--text-primary)',
-                letterSpacing: '-0.2px',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                maxWidth: isMobile ? '140px' : '260px'
-              }}>
-                {projectName}
-              </h2>
-              <Edit2 size={16} strokeWidth={1.75} style={{ opacity: 0.35, flexShrink: 0 }} />
-            </div>
+                  color: 'var(--text-primary)',
+                  letterSpacing: '-0.2px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '260px'
+                }}>
+                  {projectName}
+                </h2>
+                <Edit2 size={16} strokeWidth={1.75} style={{ opacity: 0.35, flexShrink: 0 }} />
+              </div>
+            )
           )}
         </div>
 
         {/* Status Pill in Left Cluster. On mobile the label is dropped (the dot
-            keeps its meaning; the full text lives in the workspace status bar)
-            because the top row already carries identity + deploy + overflow. */}
+            keeps its meaning; the full text lives in the workspace status bar) */}
         <div
           className="status-pill"
           data-testid="topbar-status-pill"

@@ -228,7 +228,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
-  const [previewEngine, setPreviewEngine] = useState<PreviewEngine>(() => isFullStackProject(migrateStarter(getProjectFiles(activeProjectId) || baselineFiles())) ? 'edge' : 'sandpack');
+  const [previewEngine, setPreviewEngine] = useState<PreviewEngine>('edge');
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
 
@@ -1268,9 +1268,7 @@ export default function ${compName}(props) {
                 <div className="browser-url-pill" title={`/preview/${activeProjectId}/index.html`} style={{ cursor: 'default', maxWidth: '100%', overflow: 'hidden' }}>
                   <Lock size={16} strokeWidth={1.75} style={{ opacity: 0.8, color: 'var(--color-success)', flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {previewEngine === 'edge'
-                      ? `brainhalf.com/preview/${activeProjectId.slice(0, 8)}`
-                      : 'sandpack bundler (local)'}
+                    {`brainhalf.com/preview/${activeProjectId.slice(0, 8)}`}
                   </span>
                   {viewportMode !== 'desktop' && (
                     <span className="browser-viewport-badge">{viewportMode === 'tablet' ? '768px' : '375px'}</span>
@@ -1297,66 +1295,6 @@ export default function ${compName}(props) {
                       {!compactToolbar && <span>{label}</span>}
                     </button>
                   ))}
-
-                  <div style={{ position: 'relative', display: 'inline-flex' }} ref={engineMenuRef}>
-                    <button
-                      onClick={() => setShowEngineMenu(prev => !prev)}
-                      className={`viewport-pill-btn ${showEngineMenu ? 'active' : ''}`}
-                      title={`Runtime: ${previewEngine === 'edge' ? 'Cloudflare Edge' : 'Sandpack'}`}
-                      aria-label="Preview runtime engine"
-                      aria-expanded={showEngineMenu}
-                      aria-haspopup="menu"
-                      style={{ width: 'auto', minWidth: 'max-content', cursor: 'pointer' }}
-                    >
-                      {previewEngine === 'edge'
-                        ? <Zap size={16} strokeWidth={1.75} color="#a78bfa" />
-                        : <Box size={16} strokeWidth={1.75} color="#38bdf8" />}
-                      {!compactToolbar && <span>{previewEngine === 'edge' ? 'Edge' : 'Sandpack'}</span>}
-                    </button>
-
-                    {showEngineMenu && (
-                      <div role="menu" style={{
-                        position: 'absolute', top: 'calc(100% + 4px)', right: 0, width: '200px',
-                        background: '#12141c', border: '1px solid var(--border-medium)', borderRadius: '8px',
-                        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.65)', padding: '4px', zIndex: 1000,
-                        display: 'flex', flexDirection: 'column', gap: '2px'
-                      }}>
-                        <div style={{ padding: '4px 8px', fontSize: '10.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Preview runtime
-                        </div>
-                        <button
-                          role="menuitem"
-                          className={`deploy-menu-item ${previewEngine === 'edge' ? 'active' : ''}`}
-                          style={{ padding: '8px', fontSize: '12px' }}
-                          onClick={() => {
-                            setPreviewEngine('edge');
-                            appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-                            setEdgeRefreshCounter(c => c + 1);
-                            addBuildLog('Switched to the Cloudflare Edge preview', 'info');
-                            setShowEngineMenu(false);
-                          }}
-                        >
-                          <Zap size={16} strokeWidth={1.75} color="#a78bfa" />
-                          <span>Cloudflare Edge</span>
-                          {previewEngine === 'edge' && <Check size={16} strokeWidth={1.75} color="var(--color-success)" style={{ marginLeft: 'auto' }} />}
-                        </button>
-                        <button
-                          role="menuitem"
-                          className={`deploy-menu-item ${previewEngine === 'sandpack' ? 'active' : ''}`}
-                          style={{ padding: '8px', fontSize: '12px' }}
-                          onClick={() => {
-                            setPreviewEngine('sandpack');
-                            addBuildLog('Switched to the Sandpack bundler (frontend only — backend routes will not respond)', 'warn');
-                            setShowEngineMenu(false);
-                          }}
-                        >
-                          <Box size={16} strokeWidth={1.75} color="#38bdf8" />
-                          <span>Sandpack bundler</span>
-                          {previewEngine === 'sandpack' && <Check size={16} strokeWidth={1.75} color="var(--color-success)" style={{ marginLeft: 'auto' }} />}
-                        </button>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>

@@ -4,7 +4,6 @@ import { Project, getProjects, createProject, createBranch, mergeBranches, delet
 import { appEvents } from '../lib/events';
 import ConfirmModal from './ConfirmModal';
 import BrainHalfLogo from './BrainHalfLogo';
-import MacOSTrafficLights from './MacOSTrafficLights';
 
 interface SidebarProps {
   activeProjectId: string;
@@ -167,26 +166,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeProjectId, onSelectProject, col
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
-          justifyContent: collapsed ? 'center' : 'space-between',
+          justifyContent: collapsed ? 'center' : 'flex-end',
           width: '100%',
           minHeight: '16px'
         }}>
-          {!collapsed ? (
-            <MacOSTrafficLights 
-              onMinimize={onToggleCollapse}
-              onClose={() => appEvents.emit('clear-workspace')}
-            />
-          ) : (
-            <div 
-              className="traffic-dot zoom" 
-              onClick={onToggleCollapse} 
-              title="Expand Sidebar"
-              style={{ cursor: 'pointer' }}
-            >
-              <span className="dot-glyph">+</span>
-            </div>
-          )}
-
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {isMobileOpen && onCloseMobile && (
               <button 

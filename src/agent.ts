@@ -85,7 +85,7 @@ const PREVIEW_ERROR_CARD_SRC = `<div style={{ padding: '24px', fontFamily: 'syst
 // Token capacity ladder for Cloudflare Workers AI. Starts high so a full
 // multi-file full-stack generation is not truncated, and steps down only when
 // the provider rejects the request for a token/context reason.
-const TOKEN_LADDER = [65536, 32768, 16384, 8192];
+const TOKEN_LADDER = [32768, 16384, 8192, 4096];
 const MAX_CF_ATTEMPTS = 16; // Ceiling across candidates x token limits
 
 // A files_snapshot page is bounded in both rows and total bytes so no single
@@ -1074,7 +1074,7 @@ PLANNER MODE ACTIVE:
 
           const env = (this as any).env;
           const anthropicApiKey = env.ANTHROPIC_API_KEY;
-          const bedrockApiKey = env.BEDROCK_API_KEY;
+          const bedrockApiKey = env.BEDROCK_API_KEY || env.AWS_BEARER_TOKEN_BEDROCK || env.AWS_API_KEY || env.AWS_BEDROCK_API_KEY;
           const awsKey = env.AWS_ACCESS_KEY_ID;
           const awsSecret = env.AWS_SECRET_ACCESS_KEY;
           const awsRegion = env.AWS_REGION || 'us-east-1';
@@ -1141,6 +1141,7 @@ PLANNER MODE ACTIVE:
           } else if (model.provider === 'aws' && (bedrockApiKey || (awsKey && awsSecret))) {
             const bedrock = createAmazonBedrock({
               region: awsRegion,
+              apiKey: bedrockApiKey,
               accessKeyId: awsKey,
               secretAccessKey: awsSecret,
             });
@@ -1519,8 +1520,6 @@ PLANNER MODE ACTIVE:
         } catch (limitErr: any) {
           const msg = String(limitErr?.message || limitErr || '');
           console.warn(`Model ${cfModel} at limit ${tokenLimit} failed:`, msg);
-          // Only a token/context rejection is worth retrying lower.
-          if (!/token|context|length/i.test(msg)) break;
         }
       }
 

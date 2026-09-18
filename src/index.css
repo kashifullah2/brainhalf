@@ -1648,8 +1648,9 @@ h1, h2, h3, h4, .brand-text {
 .viewport-frame-container.desktop {
   padding: 0;
   background: #0f111a;
-  align-items: stretch;
-  justify-content: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .viewport-frame-container.tablet,

@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import Sidebar from './components/Sidebar';
 import TopNav from './components/TopNav';
 import ChatPanel from './components/ChatPanel';
 import Workspace from './components/Workspace';
@@ -40,13 +39,6 @@ function App() {
   }, []);
 
   const [activeProjectId, setActiveId] = useState<string>(getActiveProjectId());
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 1024;
-    }
-    return false;
-  });
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'chat' | 'code' | 'preview'>('chat');
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -64,18 +56,15 @@ function App() {
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const isDraggingRef = React.useRef(false);
 
-  // Auto-collapse sidebar & update mobile view state on window resize
+  // Update mobile view state on window resize
   React.useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth <= 768;
       setIsMobile(mobile);
-      if (window.innerWidth < 1024 && !sidebarCollapsed) {
-        setSidebarCollapsed(true);
-      }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [sidebarCollapsed]);
+  }, []);
 
   // Listen to popstate event for browser back/forward URL navigation
   React.useEffect(() => {
@@ -91,7 +80,6 @@ function App() {
     if (!id) return;
     setActiveProjectId(id);
     setActiveId(id);
-    setMobileSidebarOpen(false);
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -102,11 +90,9 @@ function App() {
     document.body.style.userSelect = 'none';
     document.body.classList.add('is-resizing');
 
-    const sidebarOffset = sidebarCollapsed ? 56 : 240;
-
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!isDraggingRef.current) return;
-      const calculatedWidth = moveEvent.clientX - sidebarOffset;
+      const calculatedWidth = moveEvent.clientX;
       const clampedWidth = Math.min(Math.max(calculatedWidth, 360), Math.min(window.innerWidth - 500, 720));
       setChatWidth(clampedWidth);
     };
@@ -155,21 +141,10 @@ function App() {
 
   return (
     <div className="app-container">
-      <Sidebar
-        activeProjectId={activeProjectId}
-        onSelectProject={handleSelectProject} 
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        isMobileOpen={mobileSidebarOpen}
-        onCloseMobile={() => setMobileSidebarOpen(false)}
-      />
       <div className="main-content">
         <TopNav
           activeProjectId={activeProjectId}
           onSelectProject={handleSelectProject}
-          onToggleMobileSidebar={() => setMobileSidebarOpen(prev => !prev)}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           mobileTab={mobileTab}
           onSelectMobileTab={setMobileTab}
           isMobile={isMobile}

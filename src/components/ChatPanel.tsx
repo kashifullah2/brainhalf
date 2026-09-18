@@ -859,21 +859,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2), inset 0 0.5px 0 rgba(255, 255, 255, 0.1)'
                 }}
               >
-                <optgroup label="Cloudflare Workers AI" style={{ background: '#14151e', color: '#9ca3af' }}>
+                <optgroup label="High Performance & Recommended" style={{ background: '#14151e', color: '#9ca3af' }}>
                   {MODELS.filter(m => m.provider === 'cloudflare').map(m => (
                     <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
                       {m.name}
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="AWS Bedrock" style={{ background: '#14151e', color: '#9ca3af' }}>
+                <optgroup label="Advanced Reasoning & Coding" style={{ background: '#14151e', color: '#9ca3af' }}>
                   {MODELS.filter(m => m.provider === 'aws').map(m => (
                     <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
                       {m.name}
                     </option>
                   ))}
                 </optgroup>
-                <optgroup label="Atria ASI" style={{ background: '#14151e', color: '#9ca3af' }}>
+                <optgroup label="Frontier Research" style={{ background: '#14151e', color: '#9ca3af' }}>
                   {MODELS.filter(m => m.provider === 'atria').map(m => (
                     <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
                       {m.name}
