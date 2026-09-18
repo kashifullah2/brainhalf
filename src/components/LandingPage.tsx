@@ -153,12 +153,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         <div className="landing-header-right">
-          {/* Credit balance badge */}
-          <div className="landing-credits-badge" title="BrainHalf AI Credits">
-            <span className="landing-credits-icon">✦</span>
-            <span className="landing-credits-value">-0.34</span>
-          </div>
-
           {/* User Avatar & Dropdown */}
           <div style={{ position: 'relative' }} ref={userMenuRef}>
             <button
@@ -233,6 +227,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               onChange={e => setPromptText(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={3}
+              style={{
+                outline: 'none',
+                border: 'none',
+                boxShadow: 'none',
+                WebkitTapHighlightColor: 'transparent',
+              }}
             />
 
             <div className="landing-prompt-toolbar">
@@ -270,28 +270,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
           </form>
-
-          {/* Announcement Banner */}
-          <div className="landing-fest-banner">
-            <div className="landing-fest-left">
-              <div className="landing-fest-icon">
-                <Award size={18} strokeWidth={2} color="#fbbf24" />
-              </div>
-              <span className="landing-fest-text">
-                Builder Fest: Participate & win up to $100K!
-              </span>
-            </div>
-            <a
-              href="#fest"
-              className="landing-fest-link"
-              onClick={e => {
-                e.preventDefault();
-                alert('Welcome to BrainHalf Builder Fest! Deploy full-stack edge applications to participate.');
-              }}
-            >
-              View invite →
-            </a>
-          </div>
         </div>
 
         {/* Filter Segmented Control */}
@@ -426,19 +404,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </main>
 
-      {/* Floating Bot Icon on Bottom-right */}
-      <button
-        className="landing-floating-bot-btn"
-        title="BrainHalf Assistant"
-        aria-label="BrainHalf Assistant"
-        onClick={() => {
-          if (activeProject) onOpenProject(activeProject.id);
-        }}
-      >
-        <div className="floating-bot-inner">
-          <BrainHalfLogo size={22} color="#000" strokeWidth={2.2} />
-        </div>
-      </button>
+      {/* Delete Confirmation Modal */}
 
       {/* Delete Confirmation Modal */}
       {projectToDelete && (

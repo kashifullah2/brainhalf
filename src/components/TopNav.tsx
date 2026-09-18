@@ -20,6 +20,7 @@ interface TopNavProps {
   currentUser?: { email?: string; name?: string; devMode?: boolean } | null;
   onLogout?: () => void | Promise<void>;
   onGoHome?: () => void;
+  onNewProject?: () => void;
 }
 
 const TopNav: React.FC<TopNavProps> = ({
@@ -35,6 +36,7 @@ const TopNav: React.FC<TopNavProps> = ({
   currentUser,
   onLogout,
   onGoHome,
+  onNewProject,
 }) => {
   const [overrideName, setOverrideName] = useState<string | null>(null);
   const [prevId, setPrevId] = useState(activeProjectId);
@@ -138,9 +140,11 @@ const TopNav: React.FC<TopNavProps> = ({
     setShowResetConfirm(false);
   };
 
+  const userInitial = (currentUser?.name || currentUser?.email || 'K').trim()[0].toUpperCase();
+
   return (
     <div className="top-nav" role="banner">
-      <div className="top-nav-left-cluster" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flexShrink: 1 }}>
+      <div className="top-nav-left-cluster" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexShrink: 1 }}>
         {onGoHome && (
           <button
             onClick={onGoHome}
@@ -153,130 +157,128 @@ const TopNav: React.FC<TopNavProps> = ({
             <span>Home</span>
           </button>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <div style={{
-            width: '24px',
-            height: '24px',
-            borderRadius: '6px',
-            background: 'rgba(255, 255, 255, 0.07)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            color: '#818cf8',
-            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.25)'
-          }} title="BrainHalf">
-            <BrainHalfLogo size={15} strokeWidth={1.75} />
-          </div>
 
-          {!isMobile && (
-            isEditing ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input 
-                  type="text"
-                  value={editedName}
-                  onChange={(e) => setEditedName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveName();
-                    if (e.key === 'Escape') setIsEditing(false);
-                  }}
-                  autoFocus
-                  aria-label="Rename project input"
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid var(--border-medium)',
-                    borderRadius: '6px',
-                    color: 'var(--text-primary)',
-                    fontSize: '13.5px',
-                    fontWeight: 600,
-                    padding: '3px 8px',
-                    outline: 'none',
-                    fontFamily: 'var(--font-brand)',
-                  }}
-                />
-                <button 
-                  onClick={handleSaveName}
-                  className="icon-btn" 
-                  style={{ padding: '3px' }}
-                  title="Save name"
-                  aria-label="Save name"
-                >
-                  <Check size={16} strokeWidth={1.75} color="var(--color-success)" />
-                </button>
-                <button 
-                  onClick={() => setIsEditing(false)}
-                  className="icon-btn" 
-                  style={{ padding: '3px' }}
-                  title="Cancel"
-                  aria-label="Cancel editing name"
-                >
-                  <X size={16} strokeWidth={1.75} color="var(--color-error)" />
-                </button>
-              </div>
-            ) : (
-              <div 
-                onClick={() => { setIsEditing(true); setEditedName(projectName); }}
-                title="Click to rename project"
-                tabIndex={0}
-                role="button"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    setIsEditing(true);
-                    setEditedName(projectName);
-                  }
-                }}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', outline: 'none', minWidth: 0 }}
-              >
-                <h2 style={{ 
-                  fontSize: '13.5px', 
-                  fontWeight: 600, 
-                  margin: 0, 
-                  fontFamily: 'var(--font-brand)',
-                  color: 'var(--text-primary)',
-                  letterSpacing: '-0.2px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  maxWidth: '260px'
-                }}>
-                  {projectName}
-                </h2>
-                <Edit2 size={16} strokeWidth={1.75} style={{ opacity: 0.35, flexShrink: 0 }} />
-              </div>
-            )
-          )}
-        </div>
-
-        {/* Status Pill in Left Cluster. On mobile the label is dropped (the dot
-            keeps its meaning; the full text lives in the workspace status bar) */}
+        {/* Tab pill: [ • chat-easy-3  × ] */}
         <div
-          className="status-pill"
-          data-testid="topbar-status-pill"
-          title={isMobile ? status.topBarLabel : undefined}
+          className="top-nav-project-tab"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '6px',
-            padding: isMobile ? '3px 6px' : '3px 8px',
-            borderRadius: '6px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            border: '1px solid var(--border-subtle)',
-            fontSize: '11.5px',
-            fontWeight: 500,
-            color: 'var(--text-secondary)',
-            flexShrink: 0
+            gap: '8px',
+            background: 'rgba(255, 255, 255, 0.07)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '7px',
+            padding: '3px 10px',
+            height: '28px',
+            minWidth: 0,
+            cursor: 'pointer'
           }}
         >
-          <span style={{
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            background: status.dotColor,
-            boxShadow: status.glow
-          }} />
-          {!isMobile && <span>{status.topBarLabel}</span>}
+          <span
+            style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: '#22c55e',
+              boxShadow: '0 0 6px rgba(34, 197, 94, 0.8)',
+              flexShrink: 0
+            }}
+          />
+          {isEditing ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <input 
+                type="text"
+                value={editedName}
+                onChange={(e) => setEditedName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveName();
+                  if (e.key === 'Escape') setIsEditing(false);
+                }}
+                autoFocus
+                aria-label="Rename project input"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#ffffff',
+                  fontSize: '12.5px',
+                  fontWeight: 500,
+                  padding: '2px 4px',
+                  outline: 'none',
+                  fontFamily: 'var(--font-brand)',
+                  width: '110px'
+                }}
+              />
+              <button 
+                onClick={handleSaveName}
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}
+                title="Save name"
+              >
+                <Check size={14} strokeWidth={2} color="var(--color-success)" />
+              </button>
+            </div>
+          ) : (
+            <span
+              onClick={() => { setIsEditing(true); setEditedName(projectName); }}
+              title="Click to rename project"
+              style={{
+                fontSize: '12.5px',
+                fontWeight: 500,
+                color: '#ffffff',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: '180px'
+              }}
+            >
+              {projectName}
+            </span>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onGoHome?.();
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              color: 'rgba(255, 255, 255, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: '2px'
+            }}
+            title="Close tab"
+            aria-label="Close tab"
+          >
+            <X size={12} strokeWidth={2} />
+          </button>
         </div>
+
+        {/* Plus Button next to project tab */}
+        <button
+          onClick={() => onNewProject ? onNewProject() : onGoHome?.()}
+          style={{
+            width: '26px',
+            height: '26px',
+            borderRadius: '6px',
+            background: 'transparent',
+            border: 'none',
+            color: 'rgba(255, 255, 255, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'background 0.15s ease, color 0.15s ease'
+          }}
+          className="icon-btn"
+          title="New project"
+          aria-label="New project"
+        >
+          <Plus size={15} strokeWidth={2} />
+        </button>
       </div>
       
       {isMobile && onSelectMobileTab && (
@@ -308,44 +310,30 @@ const TopNav: React.FC<TopNavProps> = ({
         </div>
       )}
 
-      {/* Right Cluster: Deploy button + more-options menu */}
-      <div className="top-nav-right-cluster" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
-        {/* Primary CTA: Deploy ↗ (icon-only on mobile — the top row has no room
-            for the label once the segmented control wraps to its own row) */}
-        <button
-          className="deploy-main-action"
-          onClick={() => setShowDeployModal(true)}
-          title="Deploy project to Cloudflare"
-          aria-label="Deploy project to Cloudflare"
-          style={{ 
-            borderRadius: '6px', 
-            padding: isMobile ? '5px 8px' : '5px 12px',
-            fontSize: '12px',
-            fontWeight: 500,
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)'
-          }}
-        >
-          <Play size={13} strokeWidth={2} fill="white" />
-          {!isMobile && <span>Deploy ↗</span>}
-        </button>
+      {/* Right Cluster: User avatar circle */}
+      <div className="top-nav-right-cluster" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
 
-        {/* More Options Dropdown (...) for all secondary project actions */}
         <div style={{ position: 'relative' }} ref={moreMenuRef}>
           <button 
-            className="icon-btn" 
             onClick={() => setShowMoreMenu(prev => !prev)}
-            title="More project actions"
-            aria-label="More project actions"
-            aria-expanded={showMoreMenu}
+            title={currentUser?.email || 'User Profile'}
+            aria-label="User profile and menu"
             style={{ 
               width: '28px', 
               height: '28px', 
-              borderRadius: '6px',
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.08)'
+              borderRadius: '50%',
+              background: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer'
             }}
           >
-            <MoreHorizontal size={15} strokeWidth={1.75} />
+            {userInitial}
           </button>
 
           {showMoreMenu && (
@@ -354,7 +342,7 @@ const TopNav: React.FC<TopNavProps> = ({
               top: 'calc(100% + 6px)',
               right: 0,
               width: '210px',
-              background: 'rgba(22, 24, 30, 0.9)',
+              background: 'rgba(22, 24, 30, 0.95)',
               backdropFilter: 'blur(24px) saturate(180%)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '8px',

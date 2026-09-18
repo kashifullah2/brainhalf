@@ -5,7 +5,7 @@ import Workspace from './components/Workspace';
 import LoginScreen from './components/LoginScreen';
 import LandingPage from './components/LandingPage';
 import { BrainHalfLogo } from './components/BrainHalfLogo';
-import { getActiveProjectId, setActiveProjectId, createProject, saveProjectMessages } from './lib/project-store';
+import { getActiveProjectId, setActiveProjectId, createProject, saveProjectMessages, getProjects } from './lib/project-store';
 import { getToken, getUser, logout, verifyStoredSession, type SessionUser } from './lib/auth-client';
 import './index.css';
 
@@ -58,9 +58,9 @@ function App() {
 
   const [chatWidth, setChatWidth] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      return Math.min(460, Math.max(380, Math.floor(window.innerWidth * 0.3)));
+      return Math.min(620, Math.max(460, Math.floor(window.innerWidth * 0.44)));
     }
-    return 400;
+    return 540;
   });
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const isDraggingRef = React.useRef(false);
@@ -188,6 +188,12 @@ function App() {
     );
   }
 
+  const handleCreateNewProject = () => {
+    const projects = getProjects();
+    const newProj = createProject(`chat-easy-${projects.length + 1}`);
+    handleSelectProject(newProj.id);
+  };
+
   return (
     <div className="app-container">
       <div className="main-content">
@@ -195,6 +201,7 @@ function App() {
           activeProjectId={activeProjectId}
           onSelectProject={handleSelectProject}
           onGoHome={handleGoHome}
+          onNewProject={handleCreateNewProject}
           mobileTab={mobileTab}
           onSelectMobileTab={setMobileTab}
           isMobile={isMobile}

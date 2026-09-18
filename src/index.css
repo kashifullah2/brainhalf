@@ -1776,9 +1776,9 @@ h1, h2, h3, h4, .brand-text {
    Accessibility: Focus Visible Outlines
    ========================================================================== */
 button:focus-visible,
-input:focus-visible,
+input:not(.landing-prompt-textarea):not(.chat-input):focus-visible,
 select:focus-visible,
-textarea:focus-visible {
+textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 1px;
 }
@@ -2690,4 +2690,19 @@ textarea:focus-visible {
     align-items: flex-start;
     gap: 8px;
   }
+}
+
+/* ==========================================================================
+   Preview Matrix Code Backdrop (Workspace Showcase)
+   ========================================================================== */
+.preview-matrix-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background-image: 
+    radial-gradient(circle at center, rgba(9, 10, 15, 0.4) 10%, rgba(9, 10, 15, 0.95) 90%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Ctext x='15' y='25' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.4'%3EK%3C/text%3E%3Ctext x='15' y='60' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.25'%3E9%3C/text%3E%3Ctext x='15' y='95' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.35'%3EF%3C/text%3E%3Ctext x='15' y='130' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.2'%3E2%3C/text%3E%3Ctext x='50' y='18' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.2'%3E7%3C/text%3E%3Ctext x='50' y='52' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.4'%3EJ%3C/text%3E%3Ctext x='50' y='88' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.3'%3EB%3C/text%3E%3Ctext x='50' y='124' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.15'%3EM%3C/text%3E%3Ctext x='85' y='32' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.35'%3EX%3C/text%3E%3Ctext x='85' y='68' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.18'%3EQ%3C/text%3E%3Ctext x='85' y='104' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.4'%3EW%3C/text%3E%3Ctext x='120' y='22' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.25'%3E8%3C/text%3E%3Ctext x='120' y='58' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.35'%3ER%3C/text%3E%3Ctext x='120' y='94' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.2'%3E0%3C/text%3E%3Ctext x='120' y='132' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.3'%3E%26%3C/text%3E%3C/svg%3E");
+  background-repeat: repeat;
+  z-index: 1;
 }

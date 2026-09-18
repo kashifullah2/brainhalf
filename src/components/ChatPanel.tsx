@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2, Sparkles } from 'lucide-react';
+import { Send, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2, Sparkles, SlidersHorizontal, ArrowDown, Mic, Plus, Copy, Check } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
@@ -62,10 +62,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = getProjectMessages(activeProjectId);
     if (saved && saved.length > 0) return saved;
-    return [
-      { role: 'ai', content: "Ready to co-author your application. Specify a concept, an interaction pattern, or a complex UI flow to begin building." }
-    ];
+    return [];
   });
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [confirmModalConfig, setConfirmModalConfig] = useState<{
@@ -796,153 +796,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
 
   return (
-    <div className="chat-panel-container" style={{ width: width ? `${width}px` : '100%', minWidth: width ? '360px' : '0' }}>
-      {/* Sleek Chat Panel Header */}
-      <div className="chat-panel-top-bar chat-panel-model-row" style={{
-        height: '48px',
-        padding: '0 14px',
-        borderBottom: '1px solid var(--border-subtle)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        background: 'rgba(255, 255, 255, 0.015)',
-        gap: '24px',
-        flexShrink: 0,
-        overflow: 'hidden'
-      }}>
-        {/* Left group: Brand + Model dropdown + Connection status dot */}
-        <div className="model-selector-left-group" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flexShrink: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            <div style={{
-              width: '24px',
-              height: '24px',
-              borderRadius: '6px',
-              background: '#18181b',
-              border: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-              color: '#818cf8'
-            }}>
-              <BrainHalfLogo size={16} strokeWidth={1.75} />
-            </div>
-            <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>BrainHalf AI</span>
-          </div>
-
-          {/* Model dropdown + connection status dot grouped together on the left */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flexShrink: 1 }}>
-            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', maxWidth: '170px', minWidth: '120px', flexShrink: 1 }}>
-              <select
-                value={selectedModelId}
-                onChange={handleModelChange}
-                aria-label="Select AI Model"
-                style={{
-                  appearance: 'none',
-                  WebkitAppearance: 'none',
-                  MozAppearance: 'none',
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '6px',
-                  color: '#f4f4f6',
-                  fontSize: '12px',
-                  fontWeight: 500,
-                  padding: '4px 22px 4px 8px',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  colorScheme: 'dark',
-                  width: '100%',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2), inset 0 0.5px 0 rgba(255, 255, 255, 0.1)'
-                }}
-              >
-                <optgroup label="High Performance & Recommended" style={{ background: '#14151e', color: '#9ca3af' }}>
-                  {MODELS.filter(m => m.provider === 'cloudflare').map(m => (
-                    <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
-                      {m.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Advanced Reasoning & Coding" style={{ background: '#14151e', color: '#9ca3af' }}>
-                  {MODELS.filter(m => m.provider === 'aws').map(m => (
-                    <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
-                      {m.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Frontier Research" style={{ background: '#14151e', color: '#9ca3af' }}>
-                  {MODELS.filter(m => m.provider === 'atria').map(m => (
-                    <option key={m.id} value={m.id} style={{ background: '#14151e', color: '#f3f4f6' }}>
-                      {m.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-              <ChevronDown 
-                size={13} 
-                strokeWidth={2}
-                style={{ 
-                  position: 'absolute', 
-                  right: '7px', 
-                  pointerEvents: 'none', 
-                  color: 'var(--text-muted)'
-                }} 
-              />
-            </div>
-
-            <div className="model-status-pill" data-testid="model-status-pill" style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '6px',
-              padding: '2px 4px',
-              flexShrink: 0
-            }}>
-              <span style={{ 
-                width: '6px', 
-                height: '6px', 
-                borderRadius: '50%', 
-                background: platformStatus.dotColor, 
-                boxShadow: platformStatus.glow 
-              }} />
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
-                {platformStatus.modelPanelLabel}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Delete icon isolated on the far right with extra margin */}
-        <div className="model-selector-right-isolated" style={{ marginLeft: 'auto', paddingLeft: '16px', flexShrink: 0 }}>
-          <button 
-            className="icon-btn"
-            onClick={handleClearChat}
-            title="Clear conversation history"
-            aria-label="Clear conversation history"
-            style={{ 
-              padding: '6px', 
-              borderRadius: '6px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              color: 'var(--text-muted)'
-            }}
-          >
-            <Trash2 size={16} strokeWidth={1.75} />
-          </button>
-        </div>
-      </div>
-      
-      {/* Message Stream (24px spacing, unboxed natural typography flow) */}
+    <div className="chat-panel-container" style={{ width: width ? `${width}px` : '100%', minWidth: width ? '360px' : '0', display: 'flex', flexDirection: 'column', height: '100%', background: '#0e1015', position: 'relative' }}>
+      {/* Message Stream */}
       <div style={{ 
         flex: 1, 
-        padding: '24px', 
+        padding: '24px 20px', 
         overflowY: 'auto', 
         display: 'flex', 
         flexDirection: 'column', 
-        gap: '24px',
+        gap: '20px',
         scrollBehavior: 'smooth'
       }}>
         {messages.map((msg, idx) => {
@@ -991,22 +853,43 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 alignItems: isAi ? 'flex-start' : 'flex-end',
                 gap: '4px'
               }}>
-                {/* Clean Author Header */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  letterSpacing: '0.02em',
-                  color: 'var(--text-muted)',
-                  padding: '0 2px'
-                }}>
-                  <span>{isAi ? 'BrainHalf' : 'You'}</span>
-                </div>
+                {isAi && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: '6px',
+                    fontSize: '11px',
+                    color: 'rgba(255, 255, 255, 0.4)',
+                    paddingRight: '4px',
+                    width: '100%'
+                  }}>
+                    <span>Sep 18, 09:38 AM</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.content);
+                        setCopiedIndex(idx);
+                        setTimeout(() => setCopiedIndex(null), 2000);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'inherit',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                      title="Copy message"
+                      aria-label="Copy message"
+                    >
+                      {copiedIndex === idx ? <Check size={12} color="#22c55e" /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                )}
 
                 {msg.role === 'user' ? (
-                  /* Clean User Message (Subtle contrast, no harsh box) */
+                  /* Clean User Message */
                   <div 
                     onMouseEnter={() => setHoveredMessageIndex(idx)}
                     onMouseLeave={() => setHoveredMessageIndex(null)}
@@ -1014,7 +897,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                       background: 'rgba(255, 255, 255, 0.05)',
                       color: '#f3f4f6',
                       padding: '12px 16px',
-                      borderRadius: '6px',
+                      borderRadius: '8px',
                       fontSize: '13.5px',
                       lineHeight: 1.55,
                       whiteSpace: 'pre-wrap',
@@ -1026,7 +909,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   >
                     {msg.content}
                     
-                    {/* Hover Actions */}
                     {hoveredMessageIndex === idx && !isGenerating && (
                       <div style={{
                         position: 'absolute',
@@ -1055,7 +937,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           }}
                           title="Edit Message"
                         >
-                          <Pencil size={16} strokeWidth={1.75} />
+                          <Pencil size={14} strokeWidth={1.75} />
                         </button>
                         <button
                           onClick={() => handleDeleteMessage(idx)}
@@ -1072,7 +954,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           }}
                           title="Delete Message"
                         >
-                          <Trash2 size={16} strokeWidth={1.75} />
+                          <Trash2 size={14} strokeWidth={1.75} />
                         </button>
                       </div>
                     )}
@@ -1083,18 +965,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     onMouseEnter={() => setHoveredMessageIndex(idx)}
                     onMouseLeave={() => setHoveredMessageIndex(null)}
                     style={{
-                    background: 'transparent',
-                    color: '#e2e8f0',
-                    padding: '2px 0',
-                    borderRadius: '0',
-                    fontSize: '13.5px',
-                    lineHeight: 1.65,
-                    border: 'none',
-                    boxShadow: 'none',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    position: 'relative'
-                  }}>
+                      background: 'transparent',
+                      color: '#e2e8f0',
+                      padding: '2px 0',
+                      borderRadius: '0',
+                      fontSize: '13.5px',
+                      lineHeight: 1.65,
+                      border: 'none',
+                      boxShadow: 'none',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      position: 'relative'
+                    }}
+                  >
                     {hoveredMessageIndex === idx && !isGenerating && (
                       <div className="message-actions" style={{
                         position: 'absolute',
@@ -1124,10 +1007,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           }}
                           title="Rewind conversation to this point"
                         >
-                          <Undo2 size={16} strokeWidth={1.75} />
+                          <Undo2 size={14} strokeWidth={1.75} />
                         </button>
                       </div>
                     )}
+
                     {(() => {
                       const { segments } = parseMessageSegments(msg.content, !isCurrentGenerating);
 
@@ -1247,6 +1131,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                             }
                             return null;
                           })}
+
                         </div>
                       );
                     })()}
@@ -1284,17 +1169,41 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           </div>
         )}
 
+        {/* Floating scroll to bottom button right above input */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+          <button
+            onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              background: '#181a24',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Scroll to bottom"
+            aria-label="Scroll to bottom"
+          >
+            <ArrowDown size={14} strokeWidth={2} />
+          </button>
+        </div>
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Form Bar */}
+      {/* Input Form Area */}
       <div style={{
-        padding: '16px 20px 20px 20px',
-        borderTop: '1px solid var(--border-subtle)',
+        padding: '0 20px 20px 20px',
         background: 'transparent',
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px'
+        position: 'relative'
       }}>
         {mergeConflict && (
           <div style={{
@@ -1305,7 +1214,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
-            marginBottom: '4px'
+            marginBottom: '8px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '12px', fontWeight: 600, color: '#fca5a5' }}>
@@ -1344,17 +1253,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           </div>
         )}
 
+        {/* Input Card Container */}
         <div 
           className="chat-input-wrapper"
           style={{
             display: 'flex',
             flexDirection: 'column',
-            background: 'rgba(255, 255, 255, 0.028)',
-            border: '1px solid rgba(255, 255, 255, 0.07)',
-            borderRadius: '10px',
-            padding: '10px 12px',
-            transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
-            position: 'relative'
+            background: '#13141c',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '14px',
+            padding: '12px 14px 10px 14px',
+            position: 'relative',
+            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)'
           }}
         >
           {selectedImage && (
@@ -1365,171 +1275,275 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}
                 aria-label="Remove image"
               >
-                <X size={16} strokeWidth={1.75} />
+                <X size={14} strokeWidth={2} />
               </button>
             </div>
           )}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: (input.includes('\n') || (textareaRef.current && textareaRef.current.scrollHeight > 38)) ? 'flex-end' : 'center', 
-            gap: '8px' 
-          }}>
-            <button
-              className="icon-btn"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isGenerating}
-              style={{ 
-                padding: '6px', 
-                opacity: isGenerating ? 0.4 : 0.8, 
-                borderRadius: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}
-              title="Attach File (Image / Text)"
-              aria-label="Attach file"
-            >
-              <Paperclip size={16} strokeWidth={1.75} color="var(--text-secondary)" />
-            </button>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              aria-label="Attach file or screenshot"
-              style={{ display: 'none' }} 
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                
-                if (file.type.startsWith('image/')) {
-                  const reader = new FileReader();
-                  reader.onload = (event) => {
-                    setSelectedImage(event.target?.result as string);
-                    setImageType(file.type);
-                  };
-                  reader.readAsDataURL(file);
-                } else {
-                  // For text, markdown, json, etc
-                  const reader = new FileReader();
-                  reader.onload = (event) => {
-                    const text = event.target?.result as string;
-                    setInput(prev => prev + (prev ? '\n\n' : '') + `--- ${file.name} ---\n${text}`);
-                  };
-                  reader.readAsText(file);
-                }
-                e.target.value = '';
-              }}
-            />
-            <textarea
-              ref={textareaRef}
-              className="chat-input"
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                e.target.style.height = 'auto';
-                if (e.target.value.trim().length > 0) {
-                  e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              placeholder="Ask BrainHalf to build, edit, or style..."
-              rows={1}
-              disabled={isGenerating}
-              style={{
-                width: '100%',
-                background: 'transparent',
-                border: 'none',
-                color: '#f4f4f6',
-                fontSize: '13.5px',
-                fontFamily: 'inherit',
-                resize: 'none',
-                outline: 'none',
-                lineHeight: 1.45,
-                maxHeight: '180px',
-                minHeight: '22px',
-                padding: '2px 0',
-                margin: 0,
-                overflowY: 'auto',
-                opacity: isGenerating ? 0.6 : 1,
-                cursor: isGenerating ? 'not-allowed' : 'text'
-              }}
-            />
-            {isGenerating ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                <span style={{ 
-                  fontSize: '11px', 
-                  color: 'var(--text-muted)', 
-                  fontFamily: 'var(--font-mono)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px'
-                }}>
-                  <span style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: '#3b82f6',
-                    animation: 'pulse 1.5s infinite ease-in-out'
-                  }} />
-                  {elapsedSeconds}s
-                </span>
-                <button 
-                  onClick={handleStopGeneration}
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.16)',
-                    color: '#f87171',
-                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                    borderRadius: '6px',
-                    height: '30px',
-                    padding: '0 10px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                    fontSize: '12px',
-                    transition: 'all 0.15s ease',
-                    boxShadow: '0 1px 4px rgba(239, 68, 68, 0.2)'
-                  }}
-                  title="Stop Generation"
-                  aria-label="Stop Generation"
+
+          <textarea
+            ref={textareaRef}
+            className="chat-input"
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = 'auto';
+              if (e.target.value.trim().length > 0) {
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            placeholder="Queue your message"
+            rows={1}
+            disabled={isGenerating}
+            style={{
+              width: '100%',
+              background: 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              fontSize: '13.5px',
+              fontFamily: 'inherit',
+              resize: 'none',
+              outline: 'none',
+              lineHeight: 1.45,
+              maxHeight: '180px',
+              minHeight: '26px',
+              padding: '2px 0 8px 0',
+              margin: 0,
+              overflowY: 'auto',
+              opacity: isGenerating ? 0.6 : 1,
+              cursor: isGenerating ? 'not-allowed' : 'text',
+              boxShadow: 'none'
+            }}
+          />
+
+          {/* Model picker popover menu */}
+          {showModelPicker && (
+            <div style={{
+              position: 'absolute',
+              bottom: 'calc(100% + 8px)',
+              left: '12px',
+              width: '280px',
+              background: '#161822',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '10px',
+              boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)',
+              padding: '8px',
+              zIndex: 100,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' }}>Select LLM Model</span>
+                <button
+                  onClick={() => setShowModelPicker(false)}
+                  style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: 0 }}
                 >
-                  <Square size={13} strokeWidth={1.75} fill="currentColor" />
-                  <span>Stop</span>
+                  <X size={13} />
                 </button>
               </div>
-            ) : (
+              <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {MODELS.map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setSelectedModelId(m.id);
+                      setShowModelPicker(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '6px 8px',
+                      borderRadius: '6px',
+                      background: selectedModelId === m.id ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                      color: selectedModelId === m.id ? '#38bdf8' : '#f3f4f6',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <span>{m.name}</span>
+                    {selectedModelId === m.id && <Check size={13} color="#38bdf8" />}
+                  </button>
+                ))}
+              </div>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Status: {platformStatus.modelPanelLabel}</span>
+                <button
+                  onClick={() => {
+                    handleClearChat();
+                    setShowModelPicker(false);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#f87171',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Trash2 size={12} />
+                  <span>Clear History</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Hidden File Input */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            aria-label="Attach file or screenshot"
+            style={{ display: 'none' }} 
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              
+              if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  setSelectedImage(event.target?.result as string);
+                  setImageType(file.type);
+                };
+                reader.readAsDataURL(file);
+              } else {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  const text = event.target?.result as string;
+                  setInput(prev => prev + (prev ? '\n\n' : '') + `--- ${file.name} ---\n${text}`);
+                };
+                reader.readAsText(file);
+              }
+              e.target.value = '';
+            }}
+          />
+
+          {/* Bottom Toolbar row inside input container */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
+            {/* Left Controls: Plus and Sliders/Tuning */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
-                onClick={() => handleSendMessage()}
+                type="button"
+                className="icon-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isGenerating}
                 style={{
-                  background: (!input.trim() && !selectedImage) 
-                    ? 'rgba(255, 255, 255, 0.04)' 
-                    : '#ffffff',
-                  color: (!input.trim() && !selectedImage) ? 'var(--text-muted)' : '#09090b',
-                  border: 'none',
+                  padding: '4px',
                   borderRadius: '6px',
-                  width: '30px',
-                  height: '30px',
+                  color: 'rgba(255, 255, 255, 0.65)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: (!input.trim() && !selectedImage) ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.15s ease',
-                  flexShrink: 0
+                  justifyContent: 'center'
                 }}
-                title="Send Message (Enter)"
-                aria-label="Send message"
-                data-testid="send-prompt-btn"
-                disabled={(!input.trim() && !selectedImage) || isGenerating}
+                title="Attach file"
+                aria-label="Attach file"
               >
-                <Send size={15} strokeWidth={1.75} />
+                <Plus size={16} strokeWidth={2} />
               </button>
-            )}
+
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setShowModelPicker(prev => !prev)}
+                style={{
+                  padding: '4px',
+                  borderRadius: '6px',
+                  color: showModelPicker ? '#38bdf8' : 'rgba(255, 255, 255, 0.65)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Model & Tools Settings"
+                aria-label="Model & Tools Settings"
+              >
+                <SlidersHorizontal size={15} strokeWidth={2} />
+              </button>
+            </div>
+
+            {/* Right Controls: Mic + Send/Stop button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                className="icon-btn"
+                style={{
+                  padding: '4px',
+                  borderRadius: '6px',
+                  color: 'rgba(255, 255, 255, 0.65)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Voice input"
+                aria-label="Voice input"
+              >
+                <Mic size={15} strokeWidth={2} />
+              </button>
+
+              {isGenerating ? (
+                <button
+                  onClick={handleStopGeneration}
+                  style={{
+                    background: '#ffffff',
+                    color: '#09090b',
+                    border: 'none',
+                    borderRadius: '16px',
+                    width: '32px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.3)'
+                  }}
+                  title="Stop generation"
+                  aria-label="Stop generation"
+                >
+                  <Square size={10} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleSendMessage()}
+                  disabled={(!input.trim() && !selectedImage)}
+                  data-testid="send-prompt-btn"
+                  style={{
+                    background: (!input.trim() && !selectedImage) ? 'rgba(255, 255, 255, 0.08)' : '#ffffff',
+                    color: (!input.trim() && !selectedImage) ? 'rgba(255, 255, 255, 0.3)' : '#09090b',
+                    border: 'none',
+                    borderRadius: '16px',
+                    width: '32px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: (!input.trim() && !selectedImage) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Send message"
+                  aria-label="Send message"
+                >
+                  <Square size={10} fill="currentColor" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
