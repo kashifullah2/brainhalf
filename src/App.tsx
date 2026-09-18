@@ -95,6 +95,11 @@ function App() {
     if (!id) return;
     setActiveProjectId(id);
     setActiveId(id);
+    if (typeof window !== 'undefined' && window.history?.pushState) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('project', id);
+      window.history.pushState({}, '', url.toString());
+    }
   };
 
   const handleGoHome = () => {
