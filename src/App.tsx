@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import TopNav from './components/TopNav';
 import ChatPanel from './components/ChatPanel';
 import Workspace from './components/Workspace';
 import LoginScreen from './components/LoginScreen';
 import LandingPage from './components/LandingPage';
 import { BrainHalfLogo } from './components/BrainHalfLogo';
+import { appEvents } from './lib/events';
 import { getActiveProjectId, setActiveProjectId, createProject, saveProjectMessages, getProjects } from './lib/project-store';
 import { getToken, getUser, logout, verifyStoredSession, type SessionUser } from './lib/auth-client';
 import './index.css';
@@ -16,9 +17,10 @@ function App() {
   const [authChecked, setAuthChecked] = useState<boolean>(!getToken());
 
   useEffect(() => {
+    // No token: the useState initialisers already hold the logged-out state
+    // (user=null, authChecked=true), both derived from getToken() at the same
+    // instant, so there is nothing for the effect to correct here.
     if (!getToken()) {
-      setUser(null);
-      setAuthChecked(true);
       return;
     }
     let mounted = true;
@@ -40,6 +42,21 @@ function App() {
   }, []);
 
   const [activeProjectId, setActiveId] = useState<string>(getActiveProjectId());
+  const activeIdRef = useRef(activeProjectId);
+  activeIdRef.current = activeProjectId;
+
+  useEffect(() => {
+    const handleProjectSwitched = (data: { projectId: string }) => {
+      if (data.projectId && data.projectId !== activeIdRef.current) {
+        setActiveProjectId(data.projectId);
+        setActiveId(data.projectId);
+      }
+    };
+    appEvents.on('project-switched', handleProjectSwitched);
+    return () => {
+      appEvents.off('project-switched', handleProjectSwitched);
+    };
+  }, []);
   const [currentView, setCurrentView] = useState<'landing' | 'workspace'>(() => {
     if (typeof window !== 'undefined' && window.location?.search) {
       const p = new URLSearchParams(window.location.search).get('project');
@@ -111,12 +128,41 @@ function App() {
     }
   };
 
+  const [authModal, setAuthModal] = useState<{ isOpen: boolean; mode: 'login' | 'signup' }>({
+    isOpen: false,
+    mode: 'signup',
+  });
+  const pendingPromptRef = React.useRef<{ prompt: string; appType: 'web' | 'mobile' } | null>(null);
+
+  const handleAuthenticated = (newUser: SessionUser) => {
+    setUser(newUser);
+    setAuthModal({ isOpen: false, mode: 'login' });
+    if (pendingPromptRef.current) {
+      const { prompt, appType } = pendingPromptRef.current;
+      pendingPromptRef.current = null;
+      handleSubmitInitialPrompt(prompt, appType);
+    }
+  };
+
+  const handleOpenLogin = (mode: 'login' | 'signup' = 'signup') => {
+    setAuthModal({ isOpen: true, mode });
+  };
+
   const handleOpenProject = (id: string) => {
+    if (!user) {
+      setAuthModal({ isOpen: true, mode: 'login' });
+      return;
+    }
     handleSelectProject(id);
     setCurrentView('workspace');
   };
 
-  const handleSubmitInitialPrompt = (prompt: string, _appType: 'web' | 'mobile') => {
+  const handleSubmitInitialPrompt = (prompt: string, appType: 'web' | 'mobile') => {
+    if (!user) {
+      pendingPromptRef.current = { prompt, appType };
+      setAuthModal({ isOpen: true, mode: 'signup' });
+      return;
+    }
     const title = prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt;
     const newProj = createProject(title);
     saveProjectMessages(newProj.id, [{ role: 'user', content: prompt }]);
@@ -177,19 +223,36 @@ function App() {
     );
   }
 
-  if (!user) {
-    return <LoginScreen onAuthenticated={setUser} />;
+  // When visiting workspace directly (e.g. ?project=xyz) without an authenticated session,
+  // require login gate
+  if (!user && currentView === 'workspace') {
+    return (
+      <LoginScreen
+        onAuthenticated={handleAuthenticated}
+        onClose={() => setCurrentView('landing')}
+      />
+    );
   }
 
-  if (currentView === 'landing') {
+  if (currentView === 'landing' || !user) {
     return (
-      <LandingPage
-        onOpenProject={handleOpenProject}
-        onSubmitInitialPrompt={handleSubmitInitialPrompt}
-        activeProjectId={activeProjectId}
-        currentUser={user}
-        onLogout={handleLogout}
-      />
+      <>
+        <LandingPage
+          onOpenProject={handleOpenProject}
+          onSubmitInitialPrompt={handleSubmitInitialPrompt}
+          activeProjectId={activeProjectId}
+          currentUser={user}
+          onLogout={handleLogout}
+          onLoginRequest={handleOpenLogin}
+        />
+        {authModal.isOpen && (
+          <LoginScreen
+            onAuthenticated={handleAuthenticated}
+            onClose={() => setAuthModal({ isOpen: false, mode: 'login' })}
+            initialMode={authModal.mode}
+          />
+        )}
+      </>
     );
   }
 

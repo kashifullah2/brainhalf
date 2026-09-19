@@ -7,6 +7,7 @@
  */
 
 import { transform } from 'sucrase';
+import { hashPassword, parsePasswordHash, verifyPassword } from './crypto.ts';
 
 export interface BackendRequestOptions {
   method: string;
@@ -98,7 +99,15 @@ export function checkUnsupportedBackendFeatures(promptOrConfig: string): { suppo
 
 /**
  * In-memory / SQLite table store for preview and edge execution.
+ *
+ * Bounded in both directions: a generated app with a runaway insert loop would
+ * otherwise grow these maps until the Durable Object hit its memory limit,
+ * taking the whole project down. The ceilings are generous for any real demo
+ * app and the failure is a 507 the app's own UI can show, not a silent OOM.
  */
+const MAX_TABLES = 64;
+const MAX_ROWS_PER_TABLE = 10_000;
+
 export class InMemoryDataStore {
   private tables: Map<string, Map<string | number, any>> = new Map();
   private autoIds: Map<string, number> = new Map();
@@ -115,6 +124,12 @@ export class InMemoryDataStore {
   private getTable(name: string): Map<string | number, any> {
     const tableKey = name.toLowerCase();
     if (!this.tables.has(tableKey)) {
+      if (this.tables.size >= MAX_TABLES) {
+        const err: any = new Error(`Too many tables (limit ${MAX_TABLES})`);
+        err.status = 507;
+        err.code = 'STORE_FULL';
+        throw err;
+      }
       this.tables.set(tableKey, new Map());
       this.autoIds.set(tableKey, 1);
     }
@@ -133,6 +148,15 @@ export class InMemoryDataStore {
   create(table: string, data: any): any {
     const tbl = this.getTable(table);
     const tableKey = table.toLowerCase();
+
+    // A table that has hit the ceiling refuses further inserts. Seeding and
+    // reads keep working, so an app at the limit degrades rather than crashing.
+    if (tbl.size >= MAX_ROWS_PER_TABLE) {
+      const err: any = new Error(`${table} is full (limit ${MAX_ROWS_PER_TABLE} rows)`);
+      err.status = 507;
+      err.code = 'STORE_FULL';
+      throw err;
+    }
 
     // An explicit id that is already taken used to overwrite the existing row
     // silently — a POST that looked like a 201 success while clobbering data.
@@ -207,6 +231,26 @@ export class InMemoryDataStore {
 export const globalPreviewStore = new InMemoryDataStore();
 
 /**
+ * Removes credentials a generated app has no reason to receive in a response.
+ *
+ * The auto-CRUD layer answers `GET /api/users` with whatever the row holds, and
+ * the row holds a password digest and `GET /api/sessions` holds live tokens. A
+ * digest is not a password, but shipping it to the browser is still handing a
+ * verifiable offline-guessing target to any script at the preview origin, so it
+ * does not leave the store. Login and /auth/me return the fields the app needs
+ * and never these.
+ */
+const SECRET_RESPONSE_FIELDS = ['password', 'token'] as const;
+
+export function stripSecrets<T>(item: T): T {
+  if (!item || typeof item !== 'object') return item;
+  if (Array.isArray(item)) return item.map(stripSecrets) as unknown as T;
+  const copy: Record<string, any> = { ...(item as Record<string, any>) };
+  for (const field of SECRET_RESPONSE_FIELDS) delete copy[field];
+  return copy as T;
+}
+
+/**
  * Validates backend files for syntax and structure errors.
  * Returns error with attribution if broken, or null if healthy.
  */
@@ -261,10 +305,6 @@ export async function executeBackendRequest(
   const urlObj = new URL(req.url, 'http://localhost');
   const pathname = urlObj.pathname.replace(/^\/(?:preview|p)\/[^/]+/, ''); // normalize
   const searchParams = urlObj.searchParams;
-
-  // Extract .env variables
-  const envContent = files['/server/.env'] || files['server/.env'] || files['/.env'] || files['.env'] || '';
-  const env = parseEnvFile(envContent);
 
   // Check out-of-scope features
   const outOfScopeCheck = checkUnsupportedBackendFeatures(pathname + ' ' + JSON.stringify(req.body || {}));
@@ -337,11 +377,13 @@ export async function executeBackendRequest(
       createdAt: new Date().toISOString()
     });
 
-    // Create Admin User
+    // Create Admin User. The digest is what is stored — a plaintext password in
+    // this table was readable by the generated app itself through GET /api/users,
+    // and by anything that later dumped the store.
     const user = store.create('users', {
       email: userEmail,
       name: name || userEmail.split('@')[0],
-      password: password || 'default_secret',
+      password: await hashPassword(String(password || 'default_secret')),
       orgId: org.id,
       role: 'admin',
       status: 'active',
@@ -395,13 +437,31 @@ export async function executeBackendRequest(
       org = store.create('organizations', { name: `${userEmail.split('@')[0]} Org` });
       user = store.create('users', {
         email: userEmail,
-        password,
+        password: await hashPassword(password),
         name: userEmail.split('@')[0],
         orgId: org.id,
         role: 'admin',
         status: 'active'
       });
     } else {
+      // The password used to be ignored here: any password logged any existing
+      // account in. A row from before digests existed still compares directly and
+      // is upgraded in place, so an in-flight demo keeps working.
+      const stored = String(user.password ?? '');
+      const isDigest = parsePasswordHash(stored) !== null;
+      const ok = isDigest ? await verifyPassword(password, stored) : stored === password;
+      if (!ok) {
+        return {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+          body: { error: 'Invalid email or password', layer: 'backend' },
+          layer: 'backend',
+          error: 'Invalid email or password'
+        };
+      }
+      if (!isDigest) {
+        store.update('users', user.id, { password: await hashPassword(password) });
+      }
       org = store.findById('organizations', user.orgId);
     }
 
@@ -486,7 +546,7 @@ export async function executeBackendRequest(
     }
     const members = store.findAll('users')
       .filter(u => u.orgId === currentUser.orgId && u.status !== 'removed')
-      .map(({ password, ...m }) => m);
+      .map(({ password: _password, ...m }) => m);
     return {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -533,7 +593,7 @@ export async function executeBackendRequest(
       status: 'active',
       createdAt: new Date().toISOString()
     });
-    const { password, ...safeInvited } = invited;
+    const { password: _password, ...safeInvited } = invited;
     return {
       status: 201,
       headers: { 'Content-Type': 'application/json' },
@@ -765,8 +825,8 @@ export async function executeBackendRequest(
 
           // For frontend compatibility, provide structured object if pagination is requested
           const responseBody = hasPagination
-            ? { events: paginatedItems, total, page, limit, totalPages }
-            : paginatedItems;
+            ? { events: paginatedItems.map(stripSecrets), total, page, limit, totalPages }
+            : paginatedItems.map(stripSecrets);
 
           return {
             status: 200,
@@ -861,7 +921,7 @@ export async function executeBackendRequest(
           return {
             status: 201,
             headers: { 'Content-Type': 'application/json' },
-            body: created,
+            body: stripSecrets(created),
             layer: 'backend'
           };
         }
@@ -902,7 +962,7 @@ export async function executeBackendRequest(
           return {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
-            body: item,
+            body: stripSecrets(item),
             layer: 'backend'
           };
         }
@@ -931,7 +991,7 @@ export async function executeBackendRequest(
           return {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
-            body: updated,
+            body: stripSecrets(updated),
             layer: 'backend'
           };
         }

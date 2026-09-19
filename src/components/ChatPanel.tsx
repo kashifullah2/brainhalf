@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Paperclip, ChevronDown, Undo2, Sparkles, SlidersHorizontal, ArrowDown, Mic, Plus, Copy, Check, ArrowUp } from 'lucide-react';
+import { Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, SlidersHorizontal, ArrowDown, Mic, Plus, Copy, Check, ArrowUp } from 'lucide-react';
 import { appEvents } from '../lib/events';
-import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
+import { parseMessageSegments, parseMessageSegmentsMemoized, applyEditsToFile, type CodeEdit, type ParseResult } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
-import { getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName } from '../lib/project-store';
-import { getToken, withTokenQuery } from '../lib/auth-client';
+import { getProjectFiles, getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName, setActiveProjectId } from '../lib/project-store';
+import { getToken, verifyStoredSession, withWsAuthQuery, authFetch } from '../lib/auth-client';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
 import PlanBlock from './PlanBlock';
 import ConfirmModal from './ConfirmModal';
 import { usePlatformStatus } from '../lib/status-store';
+import { CLIENT_SELECTABLE_MODELS, type ModelProvider } from '../lib/models';
 import BrainHalfLogo from './BrainHalfLogo';
 
 const STARTER_PROMPTS = [
@@ -23,33 +24,67 @@ const STARTER_PROMPTS = [
 interface ModelDef {
   id: string;
   name: string;
-  provider: 'cloudflare' | 'anthropic' | 'aws' | 'atria';
+  provider: ModelProvider;
   category: 'recommended' | 'coding' | 'fast' | 'reasoning';
   speed?: string;
   badge?: string;
 }
 
-const MODELS: ModelDef[] = [
-  // Verified High-Performance Production Fleet
-  { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B (Recommended)', provider: 'cloudflare', category: 'recommended', speed: '72 t/s', badge: 'Flagship' },
-  { id: '@cf/openai/gpt-oss-20b', name: 'GPT-OSS 20B (Ultra-Fast 114 t/s)', provider: 'cloudflare', category: 'fast', speed: '114 t/s', badge: 'Ultra-Fast' },
-  { id: '@cf/meta/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (Next-Gen)', provider: 'cloudflare', category: 'coding', speed: '58 t/s', badge: 'Next-Gen' },
-  { id: '@cf/openai/gpt-oss-120b', name: 'GPT-OSS 120B (High-Capacity)', provider: 'cloudflare', category: 'reasoning', speed: '51 t/s', badge: 'Heavyweight' },
-  { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code (200k Context)', provider: 'cloudflare', category: 'coding', speed: '100 t/s', badge: '200k' },
-  { id: '@cf/qwen/qwen2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B', provider: 'cloudflare', category: 'coding', speed: '35 t/s', badge: 'Coder' },
-  { id: '@cf/qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', provider: 'cloudflare', category: 'coding', speed: '32 t/s', badge: 'Qwen 3.8' },
-  { id: '@cf/zai-org/glm-5.3-flash', name: 'GLM 5.3 Flash', provider: 'cloudflare', category: 'fast', speed: '95 t/s', badge: 'Flash' },
-  // AWS Bedrock Models
-  { id: 'claude-sonnet-4.6', name: 'Claude 4.6 Sonnet', provider: 'aws', category: 'coding', badge: 'Sonnet' },
-  { id: 'claude-opus-4.6', name: 'Claude 4.6 Opus', provider: 'aws', category: 'reasoning', badge: 'Opus' },
-  { id: 'minimax-m2.5', name: 'MiniMax m2.5', provider: 'aws', category: 'fast', badge: 'MiniMax' },
-  // Atria ASI Models
-  { id: 'Atria-Dawn-Preview', name: 'Atria Dawn Preview', provider: 'atria', category: 'reasoning', badge: 'Atria ASI' },
-];
+/**
+ * Presentation metadata for each selectable model. The ids and providers come
+ * from the server's allowlist (CLIENT_SELECTABLE_MODELS), so this map can only
+ * describe a model the backend will actually accept — it can never add one.
+ * An allowlist entry without an entry here still renders, labelled by its id.
+ */
+const MODEL_DISPLAY: Record<string, Omit<ModelDef, 'id' | 'provider'>> = {
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast': { name: 'Llama 3.3 70B (Recommended)', category: 'recommended', speed: '72 t/s', badge: 'Flagship' },
+  '@cf/openai/gpt-oss-20b': { name: 'GPT-OSS 20B (Ultra-Fast 114 t/s)', category: 'fast', speed: '114 t/s', badge: 'Ultra-Fast' },
+  '@cf/meta/llama-4-scout-17b-16e-instruct': { name: 'Llama 4 Scout 17B (Next-Gen)', category: 'coding', speed: '58 t/s', badge: 'Next-Gen' },
+  '@cf/openai/gpt-oss-120b': { name: 'GPT-OSS 120B (High-Capacity)', category: 'reasoning', speed: '51 t/s', badge: 'Heavyweight' },
+  '@cf/moonshotai/kimi-k2.7-code': { name: 'Kimi K2.7 Code (200k Context)', category: 'coding', speed: '100 t/s', badge: '200k' },
+  '@cf/qwen/qwen2.5-coder-32b-instruct': { name: 'Qwen 2.5 Coder 32B', category: 'coding', speed: '35 t/s', badge: 'Coder' },
+  '@cf/qwen/qwen3.8-27b': { name: 'Qwen 3.8 27B', category: 'coding', speed: '32 t/s', badge: 'Qwen 3.8' },
+  '@cf/zai-org/glm-5.3-flash': { name: 'GLM 5.3 Flash', category: 'fast', speed: '95 t/s', badge: 'Flash' },
+  'claude-sonnet-4.6': { name: 'Claude 4.6 Sonnet', category: 'coding', badge: 'Sonnet' },
+  'claude-opus-4.6': { name: 'Claude 4.6 Opus', category: 'reasoning', badge: 'Opus' },
+  'minimax-m2.5': { name: 'MiniMax m2.5', category: 'fast', badge: 'MiniMax' },
+  'kimi-k3': { name: 'Kimi K3 v1 (1M Context)', category: 'reasoning', speed: '90 t/s', badge: '1M Context' },
+  'Atria-Dawn-Preview': { name: 'Atria Dawn Preview', category: 'reasoning', badge: 'Atria ASI' },
+};
+
+const MODELS: ModelDef[] = CLIENT_SELECTABLE_MODELS.map((m) => ({
+  id: m.name,
+  provider: m.provider,
+  ...(MODEL_DISPLAY[m.name] ?? { name: m.name, category: 'fast' as const }),
+}));
 
 interface Message {
   role: 'user' | 'ai';
   content: string;
+  /** When the message was created; absent for rows that carry no time. */
+  timestamp?: number;
+}
+
+/**
+ * The message list re-renders on every token of a streaming response, and every
+ * row parses its own content on each of those renders. All but the streaming row
+ * have content that has not changed since the last frame, so the parse is
+ * memoised in the parser module and re-run only when the content actually moves.
+ */
+function memoizedParse(content: string, includeStreaming: boolean): ParseResult {
+  return parseMessageSegmentsMemoized(content, includeStreaming);
+}
+
+/** Matches the "Sep 18, 09:38 AM" shape the panel previously hard-coded. */
+function formatMessageTime(timestamp?: number): string | null {
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) return null;
+  try {
+    return new Date(timestamp).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+  } catch {
+    return null;
+  }
 }
 
 interface ChatPanelProps {
@@ -138,11 +173,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   // File parsing & workspace state
   const bufferRef = useRef('');
   const aiMessageRef = useRef('');
-  const currentFilesRef = useRef<Record<string, string>>({});
+  const currentFilesRef = useRef<Record<string, string>>(getProjectFiles(activeProjectId) || {});
+  const preGenerationFilesRef = useRef<Record<string, string>>({});
+  const currentGenIdRef = useRef(0);
+  const pendingSendRef = useRef<((ws: WebSocket) => void) | null>(null);
+
+  useEffect(() => {
+    currentFilesRef.current = getProjectFiles(activeProjectId) || {};
+  }, [activeProjectId]);
 
   // RAF throttle: pending token queue to avoid calling setMessages on every token
   const pendingTokensRef = useRef('');
   const rafHandleRef = useRef<number | null>(null);
+  // Stable ref so the WS onmessage handler always calls the latest handleStopGeneration
+  // without needing to re-subscribe every time activeProjectId changes.
+  const handleStopGenerationRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -171,7 +216,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       }
     };
 
-    const connect = () => {
+    let connectAttempts = 0;
+
+    const connect = async () => {
       // Same-origin is correct in production (the Worker terminates the WS) and
       // in local dev, where the assets are served from the same host:port as
       // wrangler. VITE_BACKEND_HOST is still honored as an explicit override,
@@ -183,9 +230,25 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
       const wsUrl = `${protocol}//${backendHost}/agents/chat-agent/${activeProjectId}`;
-      // Browsers cannot set headers on WebSocket, so the HMAC session token rides
-      // in the query string; the Worker verifies it before the DO is reached.
-      const authedUrl = withTokenQuery(wsUrl);
+      // Browsers cannot set headers on a WebSocket upgrade, so a single-use
+      // ticket rides in the query string and the Worker redeems it before the
+      // Durable Object is ever reached. The session token itself never lands in
+      // a URL.
+      const authedUrl = await withWsAuthQuery(wsUrl);
+      if (authedUrl === wsUrl) {
+        // No credential at all — the user genuinely has no session.
+        // Dispatch session-expired so the app redirects to login.
+        console.warn('No session credential available for WebSocket; triggering sign-in.');
+        setIsConnected(false);
+        setIsGenerating(false);
+        isGeneratingRef.current = false;
+        appEvents.emit('generation-status', {
+          status: 'Error',
+          error: 'Session expired. Please sign in again.',
+        });
+        window.dispatchEvent(new CustomEvent('bh-session-expired'));
+        return;
+      }
       console.log(`Connecting to Durable Object session: ${activeProjectId}`);
 
       ws = new WebSocket(authedUrl);
@@ -195,6 +258,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
       ws.onopen = () => {
         if (!isMounted) return;
+        connectAttempts = 0;
         setIsConnected(true);
         console.log(`Connected to session: ${activeProjectId}`);
 
@@ -217,6 +281,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         };
         appEvents.on('workspace-context-response-ws-connect', handleWsConnectSync);
         appEvents.emit('request-workspace-context', { requestId: 'ws-connect' });
+
+        if (pendingSendRef.current && ws) {
+          const sendFn = pendingSendRef.current;
+          pendingSendRef.current = null;
+          sendFn(ws);
+        }
       };
 
       ws.onmessage = async (event) => {
@@ -263,6 +333,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               }
             }
           } else if (data.type === 'stream') {
+            if (!isGeneratingRef.current) return;
             if (data.chunk?.response) {
               const text = data.chunk.response;
               bufferRef.current += text;
@@ -327,16 +398,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
                   // Single batched state update for all tokens accumulated in this frame
                   const snapshot = aiMessageRef.current;
-                  setMessages(prev => {
-                    const newMsgs = [...prev];
-                    if (newMsgs[newMsgs.length - 1]?.role === 'user') {
-                      newMsgs.push({ role: 'ai', content: snapshot });
-                    } else {
-                      newMsgs[newMsgs.length - 1] = { ...newMsgs[newMsgs.length - 1], content: snapshot };
-                    }
-                    messagesRef.current = newMsgs;
-                    return newMsgs;
-                  });
+                  const streamMsgs = [...messagesRef.current];
+                  if (streamMsgs[streamMsgs.length - 1]?.role === 'user') {
+                    streamMsgs.push({ role: 'ai', content: snapshot });
+                  } else {
+                    streamMsgs[streamMsgs.length - 1] = { ...streamMsgs[streamMsgs.length - 1], content: snapshot };
+                  }
+                  messagesRef.current = streamMsgs;
+                  setMessages(streamMsgs);
                 });
               }
             }
@@ -358,16 +427,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
               // Ensure the final complete message content is committed to state
               const finalContent = aiMessageRef.current;
-              setMessages(prev => {
-                const newMsgs = [...prev];
-                if (newMsgs[newMsgs.length - 1]?.role === 'user') {
-                  newMsgs.push({ role: 'ai', content: finalContent });
-                } else {
-                  newMsgs[newMsgs.length - 1] = { ...newMsgs[newMsgs.length - 1], content: finalContent };
-                }
-                messagesRef.current = newMsgs;
-                return newMsgs;
-              });
+              const completedAt = Date.now();
+              const doneMsgs = [...messagesRef.current];
+              if (doneMsgs[doneMsgs.length - 1]?.role === 'user') {
+                doneMsgs.push({ role: 'ai', content: finalContent, timestamp: completedAt });
+              } else {
+                doneMsgs[doneMsgs.length - 1] = { ...doneMsgs[doneMsgs.length - 1], content: finalContent, timestamp: completedAt };
+              }
+              messagesRef.current = doneMsgs;
+              setMessages(doneMsgs);
 
               appEvents.emit('generation-status', { status: 'Ready', detail: 'App code updated', projectId: activeProjectId });
 
@@ -377,7 +445,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             }
             
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          } else if (data.type === 'stopped') {
+            if (isGeneratingRef.current) {
+              handleStopGenerationRef.current();
+            }
           } else if (data.type === 'error') {
+            if (!isGeneratingRef.current) return;
             setIsGenerating(false);
             isGeneratingRef.current = false;
             const errMsg = data.error || data.message || 'Generation failed';
@@ -446,15 +519,67 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         }
         setIsGenerating(false);
         isGeneratingRef.current = false;
-        // 4401 = rejected by the auth gate; 1006 with no stored token = the
-        // Worker refused the upgrade. Either way, retrying would just hammer
-        // the server — hand the user back to the login screen instead.
-        const unauthorized = event?.code === 4401 || event?.code === 1006;
-        if (unauthorized && !getToken()) {
-          window.dispatchEvent(new CustomEvent('bh-session-expired'));
+        // Only explicit 4401 close code indicates an authorization / permission failure.
+        // Abnormal close (1006) is a standard network/transport disconnect event in browser WebSockets,
+        // which must simply trigger reconnect backoff, NEVER an auto-switch to a previous project.
+        if (event?.code === 4401) {
+          verifyStoredSession().then(async (user) => {
+            if (!user) {
+              if (isMounted) window.dispatchEvent(new CustomEvent('bh-session-expired'));
+              return;
+            }
+            // If the user is authenticated and received 4401, check if this project
+            // is foreign (e.g. opened via shared URL belonging to another user) vs. locally created.
+            const isLocal = getProjects().some((p: any) => p.id === activeProjectId);
+            if (!isLocal && isMounted) {
+              try {
+                const res = await authFetch('/api/projects');
+                if (res.ok) {
+                  const data = await res.json().catch(() => null);
+                  const userProjects = data?.projects || (Array.isArray(data) ? data : []);
+                  if (Array.isArray(userProjects) && userProjects.length > 0) {
+                    const isOwned = userProjects.some((p: any) => p.project_id === activeProjectId || p.id === activeProjectId);
+                    if (!isOwned) {
+                      console.warn(`Project ${activeProjectId} is not owned by user ${user.id}. Auto-switching to owned workspace.`);
+                      const targetId = userProjects[0]?.project_id || userProjects[0]?.id;
+                      if (targetId) {
+                        setActiveProjectId(targetId);
+                        appEvents.emit('project-switched', { projectId: targetId });
+                        return;
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('Failed verifying project ownership list:', e);
+              }
+            } else if (isLocal && isMounted) {
+              appEvents.emit('generation-status', {
+                status: 'Error',
+                error: 'Unable to connect to workspace session. You may have reached your project quota.',
+                projectId: activeProjectId,
+              });
+            }
+          });
+          if (!getToken()) {
+            window.dispatchEvent(new CustomEvent('bh-session-expired'));
+            return;
+          }
+        }
+        connectAttempts++;
+        if (connectAttempts > 10) {
+          console.warn(`WS connection failed after ${connectAttempts - 1} attempts; stopping reconnect loop.`);
+          appEvents.emit('generation-status', {
+            status: 'Error',
+            error: 'Connection to workspace session lost. Please refresh the page.',
+            projectId: activeProjectId,
+          });
           return;
         }
-        reconnectTimer = setTimeout(connect, 3000);
+        // Use capped exponential backoff (1s, 2s, 4s, 8s … 30s max)
+        const backoffMs = Math.min(1000 * Math.pow(2, connectAttempts - 1), 30_000);
+        console.warn(`WS closed (attempt ${connectAttempts}), retrying in ${Math.round(backoffMs / 1000)}s…`);
+        reconnectTimer = setTimeout(connect, backoffMs);
       };
 
       ws.onerror = (err) => {
@@ -539,13 +664,52 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   };
 
   const handleStopGeneration = useCallback(() => {
+    // 1. Invalidate current generation ID to ignore trailing stream chunks
+    currentGenIdRef.current += 1;
+
+    // 2. Tell backend agent to abort and bump write epoch
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'stop' }));
     }
+
+    // 3. Cancel scheduled RAF flush and reset streaming token buffers
+    if (rafHandleRef.current !== null) {
+      cancelAnimationFrame(rafHandleRef.current);
+      rafHandleRef.current = null;
+    }
+    pendingTokensRef.current = '';
+
+    // 4. Halt generating state
     setIsGenerating(false);
     isGeneratingRef.current = false;
+
+    // 5. Restore workspace files to pre-generation snapshot if partial edits occurred
+    if (preGenerationFilesRef.current && Object.keys(preGenerationFilesRef.current).length > 0) {
+      currentFilesRef.current = { ...preGenerationFilesRef.current };
+      appEvents.emit('files-refreshed', preGenerationFilesRef.current);
+    }
+
+    // 6. Commit the stopped message state
+    const stoppedMsgs = [...messagesRef.current];
+    const last = stoppedMsgs[stoppedMsgs.length - 1];
+    if (last && last.role === 'ai') {
+      const text = (aiMessageRef.current || last.content || '').trim();
+      stoppedMsgs[stoppedMsgs.length - 1] = {
+        ...last,
+        content: text ? `${text}\n\n*[Generation stopped by user]*` : '*[Generation stopped by user]*',
+        timestamp: Date.now()
+      };
+    }
+    messagesRef.current = stoppedMsgs;
+    saveProjectMessages(activeProjectId, stoppedMsgs);
+    setMessages(stoppedMsgs);
+
+    // 7. Emit Stopped platform status
     appEvents.emit('generation-status', { status: 'Stopped', detail: 'Generation stopped by user', projectId: activeProjectId });
   }, [activeProjectId]);
+
+  // Keep the stable ref up-to-date so the WS handler always calls the latest version
+  handleStopGenerationRef.current = handleStopGeneration;
 
   const handleEditMessage = (index: number) => {
     if (isGeneratingRef.current) return;
@@ -594,7 +758,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       confirmLabel: 'Delete',
       onConfirm: () => {
         const newMsgs = [...messagesRef.current];
-        newMsgs.splice(index, 2); // Remove user message and the following AI response
+        const deleteCount = (index + 1 < newMsgs.length && newMsgs[index + 1].role === 'ai') ? 2 : 1;
+        newMsgs.splice(index, deleteCount);
         setMessages(newMsgs);
         messagesRef.current = newMsgs;
         saveProjectMessages(activeProjectId, newMsgs);
@@ -633,7 +798,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
     const newMsgs: Message[] = [
       ...messagesRef.current,
-      { role: 'user', content: userMessage },
+      { role: 'user', content: userMessage, timestamp: Date.now() },
       { role: 'ai', content: '' }
     ];
     setMessages(newMsgs);
@@ -645,7 +810,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     try {
       const allProjects = getProjects();
       const currentProj = allProjects.find(p => p.id === activeProjectId);
-      if (currentProj && (/^Project \d+$/i.test(currentProj.name) || currentProj.name === 'Untitled Project')) {
+      if (currentProj && (/^Project \d+$/i.test(currentProj.name) || currentProj.name === 'Untitled Project' || /^chat-easy-\d+$/i.test(currentProj.name))) {
         const cleanedPrompt = userMessage.trim().replace(/\s+/g, ' ');
         const newTitle = cleanedPrompt.length > 30 ? `${cleanedPrompt.slice(0, 30)}…` : cleanedPrompt;
         updateProjectName(activeProjectId, newTitle);
@@ -655,6 +820,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       console.error('Error auto-renaming project from first prompt:', e);
     }
 
+    preGenerationFilesRef.current = { ...currentFilesRef.current };
+    currentGenIdRef.current += 1;
     setIsGenerating(true);
     isGeneratingRef.current = true;
     appEvents.emit('generation-status', { status: 'Generating', detail: 'Connecting to AI model...', projectId: activeProjectId });
@@ -669,6 +836,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         unsub();
         if (payload.files) {
           currentFilesRef.current = { ...payload.files };
+          preGenerationFilesRef.current = { ...payload.files };
         }
         ws.send(JSON.stringify({
           prompt: userMessage,
@@ -710,15 +878,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       };
       pendingWs.addEventListener('open', onOpen);
     } else {
+      pendingSendRef.current = (openedWs: WebSocket) => {
+        sendWithWs(openedWs);
+      };
       setTimeout(() => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           sendWithWs(wsRef.current);
-        } else {
-          setIsGenerating(false);
-          isGeneratingRef.current = false;
-          appEvents.emit('generation-status', { status: 'Error', error: 'Connection unavailable. Reconnecting...' });
         }
-      }, 1500);
+      }, 1000);
     }
 
     setTimeout(() => {
@@ -765,42 +932,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     };
   }, [handleSendMessage]);
 
-  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newModelId = e.target.value;
-    setSelectedModelId(newModelId);
-    
-    if (isGenerating && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      // Trigger mid-task handoff
-      wsRef.current.send(JSON.stringify({ type: 'stop' }));
-      
-      const partialText = aiMessageRef.current;
-      if (partialText) {
-        // Rewrite history on the server to include the partial output as an AI message
-        const updatedMsgs: Message[] = [
-          ...messagesRef.current,
-          { role: 'ai', content: partialText }
-        ];
-        wsRef.current.send(JSON.stringify({ type: 'rewrite_history', messages: updatedMsgs }));
-        setMessages(updatedMsgs);
-        messagesRef.current = updatedMsgs;
-        
-        // Find model definition and send continuation prompt
-        const modelObj = MODELS.find(m => m.id === newModelId);
-        
-        // We reset the buffer so the new tokens just append cleanly to the UI
-        aiMessageRef.current = '';
-        bufferRef.current = '';
-        
-        wsRef.current.send(JSON.stringify({
-          prompt: "Continue the previous code generation exactly from where you left off. Do not output any markdown formatting or introductory text if you are already inside a code block, just output the raw code continuation.",
-          projectId: activeProjectId,
-          model: modelObj?.id,
-          provider: modelObj?.provider,
-          workspaceFiles: currentFilesRef.current
-        }));
-      }
-    }
-  };
+  // NOTE: the model picker is a custom dropdown of buttons, so there is no
+  // <select> to drive. Mid-task model handoff used to live in a handleChange
+  // here; the picker now just sets the id, and the switch takes effect on the
+  // next prompt.
 
 
   return (
@@ -818,9 +953,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           scrollBehavior: 'smooth'
         }}>
         {messages.map((msg, idx) => {
+          // Index keys are deliberate: the list is append-only and positional, so
+          // a message's position *is* its identity. Content-derived keys would
+          // remount the streaming row on every token, discarding its scroll
+          // position and remounting the code blocks beneath it.
           const isLastMessage = idx === messages.length - 1;
           const isCurrentGenerating = isGenerating && isLastMessage;
           const isAi = msg.role === 'ai';
+          const timeLabel = formatMessageTime(msg.timestamp);
 
           return (
             <div 
@@ -874,7 +1014,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     paddingRight: '4px',
                     width: '100%'
                   }}>
-                    <span>Sep 18, 09:38 AM</span>
+                    {timeLabel && <span>{timeLabel}</span>}
                     <button
                       onClick={() => {
                         navigator.clipboard.writeText(msg.content);
@@ -1023,7 +1163,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     )}
 
                     {(() => {
-                      const { segments } = parseMessageSegments(msg.content, !isCurrentGenerating);
+                      const { segments } = memoizedParse(msg.content, !isCurrentGenerating);
 
                       if (segments.length === 0) {
                         return isCurrentGenerating ? (
@@ -1448,8 +1588,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
           {/* Bottom Toolbar row inside input container */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
-            {/* Left Controls: Plus and Sliders/Tuning */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Left Controls: Plus, Model pill, Sliders */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button
                 type="button"
                 className="icon-btn"
@@ -1472,25 +1612,37 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 <Plus size={16} strokeWidth={2} />
               </button>
 
+              {/* Model name pill — visible at all times, click to open picker */}
               <button
                 type="button"
-                className="icon-btn"
                 onClick={() => setShowModelPicker(prev => !prev)}
                 style={{
-                  padding: '4px',
-                  borderRadius: '6px',
-                  color: showModelPicker ? '#38bdf8' : 'rgba(255, 255, 255, 0.65)',
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  gap: '5px',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  background: showModelPicker ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.06)',
+                  border: `1px solid ${showModelPicker ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255, 255, 255, 0.1)'}`,
+                  color: showModelPicker ? '#38bdf8' : 'rgba(255, 255, 255, 0.75)',
+                  cursor: 'pointer',
+                  fontSize: '11.5px',
+                  fontWeight: 500,
+                  fontFamily: 'inherit',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '160px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  transition: 'all 0.15s ease'
                 }}
-                title="Model & Tools Settings"
-                aria-label="Model & Tools Settings"
+                title="Change AI model"
+                aria-label="Change AI model"
+                data-testid="model-picker-btn"
               >
-                <SlidersHorizontal size={15} strokeWidth={2} />
+                <SlidersHorizontal size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {MODELS.find(m => m.id === selectedModelId)?.name ?? selectedModelId}
+                </span>
               </button>
             </div>
 

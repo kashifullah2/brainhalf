@@ -1,19 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Download, Share2, Check, Edit2, X, ExternalLink, MoreHorizontal, Cloud, Settings, RotateCcw, Menu, Bot, Code2, Plus, BrainCircuit, LogOut, LayoutGrid } from 'lucide-react';
+import { Play, Download, Share2, Check, X, ExternalLink, Cloud, Settings, RotateCcw, Bot, Code2, Plus, LogOut, LayoutGrid } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
-import { usePlatformStatus } from '../lib/status-store';
 import ConfirmModal from './ConfirmModal';
-import BrainHalfLogo from './BrainHalfLogo';
-import { withTokenQuery } from '../lib/auth-client';
 
 interface TopNavProps {
   activeProjectId: string;
   onProjectRenamed?: (id: string, name: string) => void;
   onSelectProject?: (id: string) => void;
-  onToggleMobileSidebar?: () => void;
-  sidebarCollapsed?: boolean;
-  onToggleSidebar?: () => void;
   mobileTab?: 'chat' | 'code' | 'preview';
   onSelectMobileTab?: (tab: 'chat' | 'code' | 'preview') => void;
   isMobile?: boolean;
@@ -27,9 +21,6 @@ const TopNav: React.FC<TopNavProps> = ({
   activeProjectId,
   onProjectRenamed,
   onSelectProject: _onSelectProject,
-  onToggleMobileSidebar,
-  sidebarCollapsed = false,
-  onToggleSidebar,
   mobileTab = 'chat',
   onSelectMobileTab,
   isMobile = false,
@@ -45,11 +36,7 @@ const TopNav: React.FC<TopNavProps> = ({
     setOverrideName(null);
   }
 
-  const currentProjectName = React.useMemo(() => {
-    const projects = getProjects();
-    const curr = projects.find(p => p.id === activeProjectId);
-    return curr?.name || 'Untitled Project';
-  }, [activeProjectId]);
+  const currentProjectName = getProjects().find(p => p.id === activeProjectId)?.name || 'Untitled Project';
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
@@ -63,16 +50,20 @@ const TopNav: React.FC<TopNavProps> = ({
 
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
-  // Unified single source of truth for platform and project status
-  const status = usePlatformStatus(activeProjectId);
-
   useEffect(() => {
+    // The workspace's "Publish" button emits this; the modal lives here because
+    // TopNav is the one component rendered above both the chat and workspace
+    // panes. Without this listener the button silently did nothing.
+    const unsubDeploy = appEvents.on('open-deploy-modal', () => {
+      setShowDeployModal(true);
+    });
     const unsub = appEvents.on('project-renamed', (payload: { id: string; name: string }) => {
       if (payload.id === activeProjectId) {
         setOverrideName(payload.name);
       }
     });
     return () => {
+      unsubDeploy();
       unsub();
     };
   }, [activeProjectId]);
@@ -581,7 +572,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 className="button-ghost"
                 onClick={() => {
                   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://brainhalf.com';
-                  window.open(withTokenQuery(`${baseUrl}/preview/${activeProjectId}/index.html`), '_blank');
+                  window.open(`${baseUrl}/preview/${activeProjectId}/index.html`, '_blank');
                   setShowDeployModal(false);
                 }}
               >

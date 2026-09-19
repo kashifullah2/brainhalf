@@ -4,7 +4,10 @@ import * as LucideIcons from 'lucide-react';
 import { transform } from 'sucrase';
 import { basicReactTemplate } from '../lib/templates';
 import { getProjectFiles, saveProjectFiles } from '../lib/project-store';
-import { executeBackendRequest } from '../lib/backend-runner';
+import { executeBackendRequest, InMemoryDataStore } from '../lib/backend-runner';
+import { isAllowedOrigin } from '../lib/allowed-origins';
+
+const nativeFetch = window.fetch.bind(window);
 
 // Safe proxy for Lucide icons: if an icon doesn't exist, return a fallback SVG icon instead of crashing
 const safeLucideIcons: any = new Proxy(LucideIcons, {
@@ -143,6 +146,10 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
   // Listen for file sync messages from parent window
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      // The files arrive as `sync-files` and are written straight into the render,
+      // so a message from anywhere would let a third-party page swap the previewed
+      // app for code of its choosing. Only the app's own origins may speak to us.
+      if (!isAllowedOrigin(event.origin)) return;
       if (!event.data || typeof event.data !== 'object') return;
       if (event.data.type === 'sync-files' && event.data.files) {
         setFiles(event.data.files);
@@ -159,9 +166,13 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
     return () => window.removeEventListener('message', handleMessage);
   }, [projectId]);
 
-  // Intercept window.fetch to route /api/* requests to backend runner in preview
+  // The simulated backend store for this preview. Held on the component instance
+  // (lazy init, never re-created) rather than falling back to the module-level
+  // globalPreviewStore default: the generated app's database belongs to this one
+  // preview, and nothing else. Mirrors the per-Durable-Object store in agent.ts.
+  const [store] = useState(() => new InMemoryDataStore());
+
   useEffect(() => {
-    const originalFetch = window.fetch;
     window.fetch = async (...args) => {
       const urlStr = typeof args[0] === 'string' ? args[0] : ((args[0] as Request).url || '');
       const urlObj = new URL(urlStr, window.location.origin);
@@ -171,7 +182,9 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
           const init = args[1] || {};
           let bodyData = null;
           if (init.body) {
-            try { bodyData = typeof init.body === 'string' ? JSON.parse(init.body) : init.body; } catch (_) {}
+            // A body that isn't valid JSON (form-encoded, plain text) is left as
+            // null; the log viewer only needs structured bodies.
+            try { bodyData = typeof init.body === 'string' ? JSON.parse(init.body) : init.body; } catch { /* non-JSON body */ }
           }
           const headersObj: Record<string, string> = {};
           if (init.headers) {
@@ -187,7 +200,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
             url: urlObj.toString(),
             headers: headersObj,
             body: bodyData
-          });
+          }, store);
 
           if (backendRes.status >= 400 && window.parent && window.parent !== window) {
             window.parent.postMessage({
@@ -218,13 +231,13 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
         }
       }
 
-      return originalFetch(...args);
+      return nativeFetch(...args);
     };
 
     return () => {
-      window.fetch = originalFetch;
+      window.fetch = nativeFetch;
     };
-  }, [files]);
+  }, [files, store]);
 
   // Extract CSS
   const stylesCode = useMemo(() => {
@@ -406,7 +419,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
 
   return (
     <>
-      {stylesCode && <style dangerouslySetInnerHTML={{ __html: stylesCode }} />}
+      {stylesCode && <style dangerouslySetInnerHTML={{ __html: stylesCode.replace(/<\/style/gi, '<\\/style') }} />}
       <PreviewErrorBoundary onError={(err) => {
         if (window.parent && window.parent !== window) {
           const isBackend = (err.message || '').includes('[Backend Error]');

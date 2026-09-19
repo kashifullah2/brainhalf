@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  Code2, Monitor, ExternalLink, RefreshCw, Loader2, Play, Sparkles, Lock,
+  Code2, Monitor, ExternalLink, RefreshCw, Loader2, Lock,
   Terminal, Copy, Check, FolderCode, Download,
   Tablet, Smartphone, WrapText, ListFilter,
-  Zap, Box, MoreHorizontal, X, Server, AlertTriangle,
-  Share2, Cloud, GitBranch, ChevronLeft, ChevronRight, HelpCircle
+  X, Server, Eye,
+  Share2, Cloud, GitBranch, HelpCircle
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
@@ -12,17 +12,13 @@ import { appEvents } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
 import { exportToGitHub } from '../lib/github-export';
 import { normalizePath } from '../lib/utils';
-import { getProjectFiles, saveProjectFiles } from '../lib/project-store';
+import { getProjectFiles, saveProjectFiles, saveProjectFilesDebounced, flushProjectFileWrites, forkProject, createProject, setActiveProjectId } from '../lib/project-store';
 import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
 import FileExplorer from './FileExplorer';
-import { SandpackProvider, SandpackPreview } from '@codesandbox/sandpack-react';
-import { withTokenQuery } from '../lib/auth-client';
-import BrainHalfLogo from './BrainHalfLogo';
 
-type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error';
+type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error' | 'Stopped';
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
-type PreviewEngine = 'edge' | 'sandpack';
 type FileMap = Record<string, string>;
 
 interface BuildLogItem {
@@ -44,8 +40,8 @@ const MAX_LOG_ENTRIES = 250;
  *
  * The legacy-starter migration was written out three separate times —
  * in the useState initialiser, again in the project-change effect, and
- * partially in the Sandpack memo. The three copies had already drifted
- * (only one of them applied the 100vh fix). One function now.
+ * partially in a since-removed Sandpack file map. The three copies had
+ * already drifted (only one of them applied the 100vh fix). One function now.
  * ------------------------------------------------------------------ */
 
 const LEGACY_STARTER_MARKERS = [
@@ -251,7 +247,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
-  const [previewEngine, setPreviewEngine] = useState<PreviewEngine>('edge');
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
@@ -264,9 +259,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   // than once (StrictMode, a re-mount), so that wrote to storage during render.
   // It now only computes; the effect below owns persistence.
   const [status, setStatus] = useState<GenerationStatus>(() => (getProjectFiles(activeProjectId) ? 'Ready' : 'Idle'));
-  const [statusDetail, setStatusDetail] = useState('');
-  const [hasProject, setHasProject] = useState(true);
-  const [generatingFile, setGeneratingFile] = useState('');
   const [activeFile, setActiveFile] = useState('/src/App.jsx');
 
   const [consoleLogs, setConsoleLogs] = useState<string[]>(['Preview ready.', 'Waiting for changes...']);
@@ -283,10 +275,26 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   const [githubStatus, setGithubStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
 
   const [showDiagnosticMenu, setShowDiagnosticMenu] = useState(false);
-  const [showEngineMenu, setShowEngineMenu] = useState(false);
+  const [isReadOnlyProject, setIsReadOnlyProject] = useState(false);
+
+  useEffect(() => {
+    setIsReadOnlyProject(false);
+    const handleOwnershipDenied = (data: { projectId?: string }) => {
+      if (!data?.projectId || data.projectId === activeProjectId) {
+        setIsReadOnlyProject(true);
+      }
+    };
+    const unsub = appEvents.on('project-ownership-denied', handleOwnershipDenied);
+    return () => { unsub(); };
+  }, [activeProjectId]);
+
+  const handleForkProject = async () => {
+    const forked = await forkProject(activeProjectId);
+    setActiveProjectId(forked.id);
+    window.location.search = `?project=${forked.id}`;
+  };
 
   const diagnosticMenuRef = useRef<HTMLDivElement>(null);
-  const engineMenuRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const githubTriggerRef = useRef<HTMLElement | null>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
@@ -322,11 +330,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
    * Every write now produces a new object, updates the ref, persists, and
    * syncs — in that order, once.
    */
-  const commitFiles = useCallback((next: FileMap, opts: { replaceAll?: boolean; persist?: boolean } = {}) => {
-    const { replaceAll = false, persist = true } = opts;
+  const commitFiles = useCallback((next: FileMap, opts: { replaceAll?: boolean; persist?: boolean; debounce?: boolean } = {}) => {
+    const { replaceAll = false, persist = true, debounce = false } = opts;
     filesRef.current = next;
     setFiles(next);
-    if (persist) saveProjectFiles(activeProjectId, next);
+    if (persist) {
+      // The editor path fires on every keystroke; debouncing collapses the
+      // burst into one storage write. The preview still gets every edit
+      // immediately via the sync-files event below.
+      if (debounce) saveProjectFilesDebounced(activeProjectId, next);
+      else saveProjectFiles(activeProjectId, next);
+    }
     appEvents.emit('sync-files', { files: next, replaceAll });
   }, [activeProjectId]);
 
@@ -363,17 +377,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (diagnosticMenuRef.current && !diagnosticMenuRef.current.contains(e.target as Node)) setShowDiagnosticMenu(false);
-      if (engineMenuRef.current && !engineMenuRef.current.contains(e.target as Node)) setShowEngineMenu(false);
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (showGithubModal) { setShowGithubModal(false); return; }
-      if (showEngineMenu) { setShowEngineMenu(false); return; }
       if (showDiagnosticMenu) setShowDiagnosticMenu(false);
     };
     const handleWindowBlur = () => {
       setShowDiagnosticMenu(false);
-      setShowEngineMenu(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
@@ -383,7 +394,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [showGithubModal, showEngineMenu, showDiagnosticMenu]);
+  }, [showGithubModal, showDiagnosticMenu]);
 
   // Modal focus management: move focus in on open, restore it on close, and keep
   // Tab inside the dialog while it is up.
@@ -449,122 +460,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     } catch { /* storage may be unavailable */ }
   }, []);
 
-  /* ---------------- Sandpack file map ---------------- */
-  const sandpackFiles = useMemo(() => {
-    const spFiles: Record<string, string> = {};
-
-    for (const [rawPath, content] of Object.entries(files)) {
-      // Server files are not bundled by Sandpack and a .env in the bundler's
-      // virtual FS is a secret sitting in the browser for no benefit.
-      if (isServerPath(rawPath)) continue;
-      const cleanPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
-      spFiles[cleanPath] = content;
-      if (cleanPath.startsWith('/src/')) spFiles[cleanPath.replace(/^\/src\//, '/')] = content;
-    }
-
-    const appCode =
-      files['/src/App.jsx'] || files['/src/App.tsx'] || files['/src/App.js'] ||
-      files['/App.jsx'] || files['/App.tsx'] || files['/App.js'] ||
-      files['App.jsx'] || files['App.tsx'] || files['src/App.jsx'] || '';
-
-    if (appCode) {
-      spFiles['/App.tsx'] = appCode;
-      spFiles['/App.jsx'] = appCode;
-      spFiles['/App.js'] = appCode;
-      spFiles['/src/App.jsx'] = appCode;
-    }
-
-    const stylesCode =
-      files['/src/styles.css'] || files['/styles.css'] || files['src/styles.css'] || files['styles.css'] || '';
-    spFiles['/styles.css'] = stylesCode;
-    spFiles['/src/styles.css'] = stylesCode;
-
-    spFiles['/index.tsx'] = `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './styles.css';
-
-const rootElement = document.getElementById('root');
-if (rootElement) {
-  ReactDOM.createRoot(rootElement).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-}
-`;
-
-    // Auto-stub missing relative imports so Sandpack does not hard-crash with
-    // "Could not find module in path" mid-generation.
-    //
-    // FIX: the scan iterated Object.entries(spFiles) captured once, so a stub
-    // created during the pass was never itself scanned — a missing component
-    // that imported another missing component still crashed. A worklist handles
-    // the transitive case, with a ceiling so a pathological project cannot spin.
-    const registered = new Set(Object.keys(spFiles));
-    const queue = Object.keys(spFiles).filter(p => /\.(jsx?|tsx?)$/.test(p));
-    let processed = 0;
-
-    while (queue.length > 0 && processed < 500) {
-      const filePath = queue.shift() as string;
-      processed++;
-      const content = spFiles[filePath];
-      if (typeof content !== 'string') continue;
-
-      const importRegex = /(?:from|import)\s*\(?['"](\.[^'"]+)['"]\)?/g;
-      let match: RegExpExecArray | null;
-      while ((match = importRegex.exec(content)) !== null) {
-        const relImport = match[1];
-        const dir = filePath.substring(0, filePath.lastIndexOf('/')) || '';
-        const parts = (dir + '/' + relImport).split('/').filter(Boolean);
-        const resolvedParts: string[] = [];
-        for (const p of parts) {
-          if (p === '.') continue;
-          if (p === '..') resolvedParts.pop();
-          else resolvedParts.push(p);
-        }
-        const resolvedPath = '/' + resolvedParts.join('/');
-
-        const exists = ['', '.jsx', '.tsx', '.js', '.ts', '/index.jsx', '/index.tsx']
-          .some(suffix => registered.has(resolvedPath + suffix));
-        if (exists) continue;
-
-        const compName = resolvedPath.split('/').pop()?.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '') || 'Component';
-        const stubCode = `import React from 'react';
-export default function ${compName}(props) {
-  return (
-    <div style={{
-      padding: '16px 20px',
-      margin: '12px 0',
-      border: '1px dashed rgba(99, 102, 241, 0.4)',
-      borderRadius: '8px',
-      background: 'rgba(99, 102, 241, 0.05)',
-      color: '#818cf8',
-      fontFamily: 'system-ui, sans-serif'
-    }}>
-      <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>${compName}</div>
-      <div style={{ fontSize: '11px', opacity: 0.7 }}>Component loading...</div>
-      {props?.children}
-    </div>
-  );
-}
-`;
-        const register = (p: string) => {
-          if (registered.has(p)) return;
-          spFiles[p] = stubCode;
-          registered.add(p);
-          if (/\.(jsx?|tsx?)$/.test(p)) queue.push(p);
-        };
-
-        register(resolvedPath);
-        if (!/\.(jsx?|tsx?)$/.test(resolvedPath)) register(resolvedPath + '.jsx');
-        register(resolvedPath.startsWith('/src/') ? resolvedPath.replace(/^\/src\//, '/') : '/src' + resolvedPath);
-      }
-    }
-
-    return spFiles;
-  }, [files]);
-
   /* ---------------- Project lifecycle ---------------- */
   useEffect(() => {
     const stored = getProjectFiles(activeProjectId);
@@ -573,7 +468,6 @@ export default function ${compName}(props) {
 
     filesRef.current = next;
     setFiles(next);
-    setHasProject(true);
     setStatus('Ready');
     setActiveFile(prev => (next[prev] ? prev : '/src/App.jsx'));
     saveProjectFiles(activeProjectId, next);
@@ -583,9 +477,7 @@ export default function ${compName}(props) {
       const fresh = baselineFiles();
       filesRef.current = fresh;
       setFiles(fresh);
-      setHasProject(true);
       setStatus('Idle');
-      setStatusDetail('');
       setActiveFile('/src/App.jsx');
       saveProjectFiles(activeProjectId, fresh);
       appEvents.emit('sync-files', { files: fresh, replaceAll: true });
@@ -601,32 +493,25 @@ export default function ${compName}(props) {
     const handleGenerationStatus = ({ status: newStatus, detail, file, error }: any) => {
       if (newStatus === 'Generating') {
         setStatus('Generating');
-        setHasProject(true);
         if (detail) {
-          setStatusDetail(detail);
           addBuildLog(detail, 'info');
           addConsoleLog(`[ai] ${detail}`);
         }
         if (file) {
-          setGeneratingFile(file);
           addBuildLog(`Generating: ${file}`, 'info');
         }
         return;
       }
 
       if (newStatus === 'Ready') {
-        setHasProject(true);
-        setGeneratingFile('');
         const backendErr = validateBackendFiles(filesRef.current);
         if (backendErr) {
           setStatus('Error');
           const msg = backendErr.error || '[Backend Error] Syntax or configuration error in server files';
-          setStatusDetail(msg);
           addBuildLog(msg, 'error');
           addConsoleLog(`[backend-error] ${msg}`);
           return;
         }
-        setStatusDetail('');
         setStatus('Ready');
         addBuildLog(
           isFullStackProject(filesRef.current)
@@ -640,12 +525,18 @@ export default function ${compName}(props) {
         return;
       }
 
+      if (newStatus === 'Stopped') {
+        setStatus('Stopped');
+        const detailMsg = detail || 'Generation stopped by user';
+        addBuildLog(detailMsg, 'warn');
+        addConsoleLog(`[ai] ${detailMsg}`);
+        return;
+      }
+
       if (newStatus === 'Error') {
         setStatus('Error');
-        setGeneratingFile('');
         const errMsg = error || 'Generation failed';
         const attributed = errMsg.startsWith('[') ? errMsg : `[Build Error] ${errMsg}`;
-        setStatusDetail(attributed);
         addBuildLog(attributed, 'error');
         addConsoleLog(`[error] ${attributed}`);
       }
@@ -653,8 +544,6 @@ export default function ${compName}(props) {
 
     const handleFileGenerated = ({ path, content, isComplete }: { path: string; content: string; isComplete?: boolean }) => {
       const cleanPath = normalizePath(path);
-      setHasProject(true);
-      setGeneratingFile(path);
 
       // Streaming chunks arrive many times per file, so only the completed file
       // is persisted and synced; intermediate states just update the editor.
@@ -715,7 +604,6 @@ export default function ${compName}(props) {
       filesRef.current = newFiles;
       setFiles(newFiles);
       saveProjectFiles(activeProjectId, newFiles);
-      setHasProject(true);
       setStatus('Ready');
       handleRefreshRef.current?.();
     };
@@ -725,7 +613,6 @@ export default function ${compName}(props) {
       filesRef.current = changedFiles;
       setFiles(changedFiles);
       saveProjectFiles(activeProjectId, changedFiles);
-      setHasProject(true);
       handleRefreshRef.current?.();
     };
 
@@ -764,7 +651,6 @@ export default function ${compName}(props) {
         const lineInfo = event.data.lineno ? ` (line ${event.data.lineno})` : '';
         const fullErr = `${cleanMsg}${lineInfo}`;
         setStatus('Error');
-        setStatusDetail(fullErr);
         addBuildLog(`${prefix} in ${file}: ${errorMsg}`, 'error');
         addConsoleLog(`[${layer}-error] ${fullErr}`);
         return;
@@ -779,7 +665,6 @@ export default function ${compName}(props) {
 
       if (type === 'preview-success') {
         setStatus(prev => (prev === 'Error' ? 'Ready' : prev));
-        setStatusDetail(prev => (prev.includes('Transpile') || prev.includes('Preview') ? '' : prev));
         appEvents.emit('preview-success', null);
         return;
       }
@@ -794,32 +679,36 @@ export default function ${compName}(props) {
 
     window.addEventListener('message', handleWindowMessage);
     return () => window.removeEventListener('message', handleWindowMessage);
-    // FIX: this effect depended on `statusDetail`, so it tore down and
-    // re-registered the window listener on every error message — a listener
-    // churn that occasionally dropped a message mid-swap. The handler reads
-    // what it needs from refs and functional setState instead.
   }, [addBuildLog, addConsoleLog]);
 
   const handleEditorChange = useCallback((value: string | undefined) => {
     if (value === undefined) return;
-    commitFiles({ ...filesRef.current, [activeFileRef.current]: value });
+    commitFiles({ ...filesRef.current, [activeFileRef.current]: value }, { debounce: true });
   }, [commitFiles]);
-
-  const handleLaunchPreview = useCallback(() => {
-    setHasProject(true);
-    setStatus('Ready');
-    appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-    setEdgeRefreshCounter(c => c + 1);
-    addBuildLog(`Launching ${previewEngine === 'edge' ? 'Cloudflare Edge' : 'Sandpack'} preview`, 'info');
-  }, [previewEngine, addBuildLog]);
 
   const handleRefresh = useCallback(() => {
     appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
     setEdgeRefreshCounter(c => c + 1);
-    addBuildLog(`Reloading ${previewEngine === 'edge' ? 'Cloudflare Edge' : 'Sandpack'} preview`, 'info');
-  }, [previewEngine, addBuildLog]);
+    addBuildLog('Reloading Cloudflare Edge preview', 'info');
+  }, [addBuildLog]);
 
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
+
+  // Keystroke-saves are debounced, so an edit made inside the debounce window
+  // would be lost on a tab close or navigation. Force the write out before the
+  // page goes away. pagehide covers close/navigate/back; visibilitychange
+  // covers mobile backgrounding, where the JS may be killed without further
+  // notice.
+  useEffect(() => {
+    const flush = () => flushProjectFileWrites();
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', flush);
+      flush();
+    };
+  }, []);
 
   const handleCopyCurrentFile = useCallback(async () => {
     const ok = await copyText(files[activeFile] || '');
@@ -953,7 +842,7 @@ export default function ${compName}(props) {
           <button
             onClick={() => {
               appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-              window.open(withTokenQuery(`/preview/${activeProjectId}/index.html`), '_blank', 'noopener,noreferrer');
+              window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
             }}
             style={{
               background: 'rgba(255, 255, 255, 0.05)',
@@ -1402,7 +1291,7 @@ export default function ${compName}(props) {
                   aria-label="Open the preview in a new tab"
                   onClick={() => {
                     appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-                    window.open(withTokenQuery(`/preview/${activeProjectId}/index.html`), '_blank', 'noopener,noreferrer');
+                    window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
                   }}
                 >
                   <ExternalLink size={16} strokeWidth={1.75} />
@@ -1426,7 +1315,7 @@ export default function ${compName}(props) {
                 >
                   <Lock size={16} strokeWidth={1.75} style={{ opacity: 0.8, color: 'var(--color-success)', flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {previewEngine === 'edge' ? `brainhalf.com/preview/${activeProjectId.slice(0, 8)}` : 'preview.brainhalf.app/live'}
+                    {`brainhalf.com/preview/${activeProjectId.slice(0, 8)}`}
                   </span>
                   {viewportMode !== 'desktop' && (
                     <span className="browser-viewport-badge">
@@ -1470,75 +1359,6 @@ export default function ${compName}(props) {
                     <span>Mobile</span>
                   </button>
 
-                  {/* 4th Option: Edge / Sandpack Engine Toggle */}
-                  <div style={{ position: 'relative', display: 'inline-flex' }} ref={engineMenuRef}>
-                    <button
-                      onClick={() => setShowEngineMenu(prev => !prev)}
-                      className={`viewport-pill-btn ${showEngineMenu ? 'active' : ''}`}
-                      title={`Runtime Engine: ${previewEngine === 'edge' ? 'Cloudflare Edge' : 'Sandpack'}`}
-                      aria-label="Preview Runtime Engine"
-                      aria-expanded={showEngineMenu}
-                      style={{
-                        width: 'auto',
-                        minWidth: 'max-content',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {previewEngine === 'edge' ? <Zap size={16} strokeWidth={1.75} color="#a78bfa" /> : <Box size={16} strokeWidth={1.75} color="#38bdf8" />}
-                      <span>{previewEngine === 'edge' ? 'Edge' : 'Sandpack'}</span>
-                    </button>
-
-                    {showEngineMenu && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: 'calc(100% + 4px)',
-                          right: 0,
-                          width: '190px',
-                          background: '#12141c',
-                          border: '1px solid var(--border-medium)',
-                          borderRadius: '8px',
-                          boxShadow: '0 12px 28px rgba(0, 0, 0, 0.65)',
-                          padding: '4px',
-                          zIndex: 1000,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '2px'
-                        }}
-                      >
-                        <div style={{ padding: '4px 8px', fontSize: '10.5px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Preview Runtime
-                        </div>
-                        <button
-                          className={`deploy-menu-item ${previewEngine === 'edge' ? 'active' : ''}`}
-                          onClick={() => {
-                            setPreviewEngine('edge');
-                            setEdgeRefreshCounter(c => c + 1);
-                            addBuildLog('Switched to Cloudflare Edge Preview (Instant Edge Transpiler)', 'info');
-                            setShowEngineMenu(false);
-                          }}
-                          style={{ padding: '6px 8px', fontSize: '12px' }}
-                        >
-                          <Zap size={16} strokeWidth={1.75} color="#a78bfa" />
-                          <span>Cloudflare Edge (Fast)</span>
-                          {previewEngine === 'edge' && <Check size={16} strokeWidth={1.75} color="var(--color-success)" style={{ marginLeft: 'auto' }} />}
-                        </button>
-                        <button
-                          className={`deploy-menu-item ${previewEngine === 'sandpack' ? 'active' : ''}`}
-                          onClick={() => {
-                            setPreviewEngine('sandpack');
-                            addBuildLog('Switched to Sandpack Virtual Bundler', 'info');
-                            setShowEngineMenu(false);
-                          }}
-                          style={{ padding: '6px 8px', fontSize: '12px' }}
-                        >
-                          <Box size={16} strokeWidth={1.75} color="#38bdf8" />
-                          <span>Sandpack (In-Browser)</span>
-                          {previewEngine === 'sandpack' && <Check size={16} strokeWidth={1.75} color="var(--color-success)" style={{ marginLeft: 'auto' }} />}
-                        </button>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
@@ -1559,12 +1379,51 @@ export default function ${compName}(props) {
 
             {/* Canvas Area with Responsive Viewport Chassis */}
             <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+              {isReadOnlyProject && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 16px',
+                  background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%)',
+                  borderBottom: '1px solid rgba(56, 189, 248, 0.25)',
+                  fontSize: '12px',
+                  color: '#e2e8f0',
+                  zIndex: 10
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={14} style={{ color: '#38bdf8' }} />
+                    <span><strong>Read-Only Preview</strong> — This project is owned by another account. Clone a copy to edit files and chat.</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={handleForkProject}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        background: '#0ea5e9',
+                        color: '#ffffff',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <GitBranch size={13} />
+                      <span>Clone to My Projects</span>
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className={`viewport-frame-container ${viewportMode}`}>
                 <div className={`viewport-device-chassis ${viewportMode}`} style={{ height: '100%', overflow: 'hidden', background: '#090a0f' }}>
                   <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
-                    src={withTokenQuery(`/preview/${activeProjectId}/index.html`)}
+                    src={`/preview/${activeProjectId}/index.html`}
                     onLoad={() => {
                       iframeRef.current?.contentWindow?.postMessage(
                         { type: 'sync-files', files: filesRef.current },

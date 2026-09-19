@@ -50,6 +50,7 @@ function backendDevPlugin() {
         const previewMatch = url.match(/^\/preview\/([^/?#]+)(?:\/index\.html|\/)?(?:[?#].*)?$/);
         if (previewMatch && (method === 'GET' || method === 'HEAD')) {
           const projectId = previewMatch[1];
+          const safeProjectId = projectId.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
@@ -58,7 +59,7 @@ function backendDevPlugin() {
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>BrainHalf Preview - ${projectId}</title>
+  <title>BrainHalf Preview - ${safeProjectId}</title>
   <style>
     body { margin: 0; font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(56, 189, 248, 0.05) 0%, rgba(99, 102, 241, 0.03) 40%, transparent 75%), radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px) 0 0 / 24px 24px, #090b10; color: #f4f4f5; display: flex; align-items: center; justify-content: center; height: 100vh; }
     .hero-section-card {
@@ -136,7 +137,7 @@ function backendDevPlugin() {
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>BrainHalf Preview - ${projectId}</title>
+  <title>BrainHalf Preview - ${safeProjectId}</title>
   <style>
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b0c11; color: #fff; padding: 24px; }
     input[type="text"] { padding: 8px 12px; background: #1e293b; color: #fff; border: 1px solid #334155; border-radius: 6px; font-size: 14px; outline: none; }
@@ -215,7 +216,38 @@ function backendDevPlugin() {
           return;
         }
 
-        // 5. Backend runner for /api/ routes
+        // 5. Auth routes — the Worker owns these in production; in dev they are
+        // stubbed so the login gate does not block every local visit.
+        if (url.startsWith('/api/auth/')) {
+          let authBody: any = null;
+          const authChunks: any[] = [];
+          req.on('data', (chunk: any) => authChunks.push(chunk));
+          req.on('end', async () => {
+            const raw = Buffer.concat(authChunks).toString('utf-8');
+            if (raw) {
+              try { authBody = JSON.parse(raw); } catch { authBody = raw; }
+            }
+            try {
+              const { handleDevAuth } = await import('./src/lib/dev-auth-mock.ts');
+              const out = handleDevAuth(method, url, req.headers as Record<string, string>, authBody);
+              if (out) {
+                res.statusCode = out.status;
+                for (const [k, v] of Object.entries(out.headers || {})) res.setHeader(k, v);
+                res.end(JSON.stringify(out.body));
+                return;
+              }
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message, layer: 'dev-auth' }));
+              return;
+            }
+            next();
+          });
+          return;
+        }
+
+        // 6. Backend runner for /api/ routes
         if (url.includes('/api/')) {
           let bodyData: any = null;
           const chunks: any[] = [];
@@ -225,7 +257,7 @@ function backendDevPlugin() {
             if (rawBody) {
               try {
                 bodyData = JSON.parse(rawBody);
-              } catch (_) {
+              } catch {
                 bodyData = rawBody;
               }
             }
@@ -255,6 +287,90 @@ function backendDevPlugin() {
         }
         next();
       });
+
+      if (server.httpServer) {
+        import('ws').then(({ WebSocketServer }) => {
+          const wss = new WebSocketServer({ noServer: true });
+
+          server.httpServer.on('upgrade', (req: any, socket: any, head: any) => {
+            const url = req.url || '';
+            if (url.includes('/agents/chat-agent/')) {
+              wss.handleUpgrade(req, socket, head, (ws: any) => {
+                wss.emit('connection', ws, req);
+              });
+            }
+          });
+
+          wss.on('connection', (ws: any) => {
+            let activeTimer: any = null;
+            let isGenerating = false;
+
+            ws.on('message', (raw: any) => {
+              try {
+                const msg = JSON.parse(raw.toString());
+                if (msg.type === 'ping') {
+                  try { ws.send(JSON.stringify({ type: 'pong' })); } catch { }
+                  return;
+                }
+                if (msg.type === 'stop') {
+                  if (activeTimer) clearInterval(activeTimer);
+                  isGenerating = false;
+                  try { ws.send(JSON.stringify({ type: 'stopped' })); } catch { }
+                  return;
+                }
+                if (msg.prompt) {
+                  isGenerating = true;
+                  const prompt = msg.prompt;
+                  const chunks = [
+                    'Thinking through your requirements...\n\n',
+                    'Building application components and modern UI layout...\n\n',
+                    '```jsx\n// src/App.jsx\nimport React from "react";\n\nexport default function App() {\n  return <div>App Ready</div>;\n}\n```\n'
+                  ];
+                  let i = 0;
+                  activeTimer = setInterval(() => {
+                    if (!isGenerating) {
+                      clearInterval(activeTimer);
+                      return;
+                    }
+                    if (i < chunks.length) {
+                      try {
+                        ws.send(JSON.stringify({
+                          type: 'stream',
+                          chunk: { response: chunks[i], done: false }
+                        }));
+                      } catch { }
+                      i++;
+                    } else {
+                      clearInterval(activeTimer);
+                      isGenerating = false;
+                      const appCode = `import React from 'react';\n\nexport default function App() {\n  return (\n    <div style={{ padding: '24px', color: '#fff', fontFamily: 'system-ui' }}>\n      <h1>Generated App</h1>\n      <p>${prompt.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/</g, '\\u003c').replace(/>/g, '\\u003e')}</p>\n    </div>\n  );\n}`;
+                      try {
+                        ws.send(JSON.stringify({
+                          type: 'file_updated',
+                          path: '/src/App.jsx',
+                          content: appCode
+                        }));
+                        ws.send(JSON.stringify({
+                          type: 'stream',
+                          chunk: { response: '', done: true }
+                        }));
+                      } catch { }
+                    }
+                  }, 250);
+                }
+              } catch (e) {
+                console.error('Dev WS message error:', e);
+              }
+            });
+
+            ws.on('close', () => {
+              if (activeTimer) clearInterval(activeTimer);
+            });
+          });
+        }).catch((err) => {
+          console.error('Failed to initialize dev WebSocket server:', err);
+        });
+      }
     }
   };
 }
@@ -290,11 +406,8 @@ export default defineConfig({
           if (id.includes('node_modules/sucrase')) {
             return 'vendor-sucrase';
           }
-          if (id.includes('node_modules/@aws-sdk') || id.includes('node_modules/@anthropic-ai') || id.includes('node_modules/@ai-sdk')) {
+          if (id.includes('node_modules/@ai-sdk')) {
             return 'vendor-ai-sdks';
-          }
-          if (id.includes('node_modules/@codesandbox')) {
-            return 'vendor-sandpack';
           }
         },
       },

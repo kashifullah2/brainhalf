@@ -1,5 +1,5 @@
 import { transform } from 'sucrase';
-import { isAllowedOrigin } from './auth';
+import { isAllowedOrigin, USER_ID_HEADER } from './auth';
 import {
   MODEL_ALLOWLIST,
   MODEL_TEST_TIMEOUT_MS,
@@ -109,7 +109,7 @@ export function autoBalanceTruncatedJsx(code: string): string {
   try {
     transform(cleaned, { transforms: ['jsx', 'typescript'] });
     return cleaned;
-  } catch (_) {}
+  } catch {}
 
   // Strip trailing incomplete line (e.g. '<td className' or truncated expressions)
   const lines = cleaned.split('\n');
@@ -148,7 +148,7 @@ export function autoBalanceTruncatedJsx(code: string): string {
       const test = cleaned + s;
       transform(test, { transforms: ['jsx', 'typescript'] });
       return test;
-    } catch (_) {}
+    } catch {}
   }
 
   return code;
@@ -229,7 +229,9 @@ export async function handleModelTest(
   const corsHeaders: Record<string, string> = {
     'Access-Control-Allow-Origin': origin && isAllowedOrigin(origin) ? origin : 'https://brainhalf.com',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, content-type, x-bh-csrf',
+    // No custom request headers are defined for this endpoint (see the worker's
+    // CORS: x-bh-csrf was once advertised but never validated).
+    'Access-Control-Allow-Headers': 'authorization, content-type',
     Vary: 'Origin',
     'Content-Type': 'application/json',
     // The body is JSON, never HTML: prevent a content-sniffing browser from
@@ -437,7 +439,7 @@ export async function handleModelTest(
     } else if (resolved.provider === 'aws') {
       const awsKey = env.AWS_ACCESS_KEY_ID;
       const awsSecret = env.AWS_SECRET_ACCESS_KEY;
-      const bedrockApiKey = env.BEDROCK_API_KEY;
+      const bedrockApiKey = env.BEDROCK_API_KEY || env.AWS_BEARER_TOKEN_BEDROCK || env.AWS_API_KEY || env.AWS_BEDROCK_API_KEY || env.BEDROCK_TOKEN || env.AWS_BEDROCK_KEY;
 
       if (!bedrockApiKey && (!awsKey || !awsSecret)) {
         throw new Error(`AWS Bedrock credentials are not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
@@ -447,21 +449,53 @@ export async function handleModelTest(
       const { streamText } = await import('ai');
       const bedrock = createAmazonBedrock({
         region: env.AWS_REGION || 'us-east-1',
-        accessKeyId: awsKey,
-        secretAccessKey: awsSecret
-      });
-      const stream = streamText({
-        model: bedrock(resolved.id),
-        messages: [{ role: 'user', content: prompt }],
-        abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS)
+        apiKey: bedrockApiKey || undefined,
+        accessKeyId: awsKey || undefined,
+        secretAccessKey: awsSecret || undefined,
       });
 
-      for await (const chunk of stream.textStream) {
-        if (!firstTokenTime) {
-          firstTokenTime = Date.now() - startTime;
+      const BEDROCK_ALIASES: Record<string, string[]> = {
+        'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'moonshotai.kimi-k3', 'global.moonshotai.kimi-k3'],
+        'moonshotai.kimi-k3': ['moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3'],
+        'global.moonshotai.kimi-k3': ['global.moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
+        'us.anthropic.claude-3-7-sonnet-20250219-v1:0': ['us.anthropic.claude-3-7-sonnet-20250219-v1:0', 'anthropic.claude-3-7-sonnet-20250219-v1:0'],
+        'us.anthropic.claude-3-opus-20240229-v1:0': ['us.anthropic.claude-3-opus-20240229-v1:0', 'anthropic.claude-3-opus-20240229-v1:0'],
+        'us.anthropic.claude-3-5-sonnet-20241022-v2:0': ['us.anthropic.claude-3-5-sonnet-20241022-v2:0', 'anthropic.claude-3-5-sonnet-20241022-v2:0'],
+        'minimax.minimax-m2.5': ['minimax.minimax-m2.5', 'us.minimax.minimax-m2.5'],
+      };
+
+      const candidates = BEDROCK_ALIASES[resolved.id] || [resolved.id];
+      let lastErr: any = null;
+
+      for (let idx = 0; idx < candidates.length; idx++) {
+        const candidateId = candidates[idx];
+        try {
+          outputContent = '';
+          firstTokenTime = null;
+          const stream = streamText({
+            model: bedrock(candidateId),
+            messages: [{ role: 'user', content: prompt }],
+            abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS)
+          });
+
+          for await (const chunk of stream.textStream) {
+            if (!firstTokenTime) {
+              firstTokenTime = Date.now() - startTime;
+            }
+            outputContent += chunk;
+          }
+          lastErr = null;
+          break;
+        } catch (bErr: any) {
+          lastErr = bErr;
+          const msg = bErr?.message || String(bErr);
+          if (/model identifier is invalid/i.test(msg) && idx + 1 < candidates.length) {
+            continue;
+          }
+          throw bErr;
         }
-        outputContent += chunk;
       }
+      if (lastErr) throw lastErr;
     } else if (resolved.provider === 'atria') {
       const rawAtriaKey = env.ATRIA_API_KEY || env.XKIRO_API_KEY;
       let atriaApiKey = rawAtriaKey;
@@ -481,9 +515,11 @@ export async function handleModelTest(
       const { createOpenAI } = await import('@ai-sdk/openai');
       const { streamText } = await import('ai');
       const atria = createOpenAI({
+        name: 'atria',
         apiKey: atriaApiKey,
         baseURL: atriaBaseUrl,
-      });
+        compatibility: 'compatible',
+      } as any);
       const stream = streamText({
         model: atria.chat(resolved.id),
         messages: [{ role: 'user', content: prompt }],
@@ -501,7 +537,7 @@ export async function handleModelTest(
       throw new Error(`Unsupported provider for model: ${resolved.name}`);
     }
   } catch (err: any) {
-    errorMsg = err.message || String(err);
+    errorMsg = (err.message || String(err)).replace(/^undefined:\s*/i, '');
   }
 
   const durationMs = Date.now() - startTime;
@@ -551,9 +587,15 @@ export async function handleModelTest(
     if (env.ChatAgent) {
       const doId = env.ChatAgent.idFromName(testProjectId);
       const doObj = env.ChatAgent.get(doId);
-      await doObj.fetch(new Request(`https://brainhalf.com/preview/${testProjectId}/api/sync`, {
+      // The Durable Object fails closed on every HTTP path, so this internal
+      // hand-off has to identify itself the same way the Worker does for a
+      // user request. Without it the sync answered 401 and the preview the
+      // result links to was never populated — silently, inside this catch.
+      const syncHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (identity?.userId) syncHeaders[USER_ID_HEADER] = identity.userId;
+      const syncRes = await doObj.fetch(new Request(`https://brainhalf.com/preview/${testProjectId}/api/sync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: syncHeaders,
         body: JSON.stringify({
           files: {
             '/src/App.jsx': extractedCode,
@@ -561,6 +603,9 @@ export async function handleModelTest(
           }
         })
       }));
+      if (!syncRes.ok) {
+        console.warn(`Preview sync rejected with ${syncRes.status}; the result's preview URL may be stale`);
+      }
     }
   } catch (syncErr: any) {
     console.warn('Failed to auto-sync to Edge Preview DO:', syncErr);
