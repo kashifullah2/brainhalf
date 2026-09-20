@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  Code2, Monitor, ExternalLink, RefreshCw, Loader2, Lock,
+  Code2, Monitor, ExternalLink, Loader2,
   Terminal, Copy, Check, FolderCode, Download,
   Tablet, Smartphone, WrapText, ListFilter,
-  X, Server, Eye,
+  X, Server, Eye, MoreHorizontal,
   Share2, Cloud, GitBranch, HelpCircle
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
@@ -250,6 +250,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
+  const isWaitingForFirstApp = !hasGeneratedApp && (status === 'Generating' || status === 'Idle');
 
   const viewportWidth = useViewportWidth();
   const compactToolbar = viewportWidth < 1100;
@@ -275,6 +276,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   const [githubStatus, setGithubStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
 
   const [showDiagnosticMenu, setShowDiagnosticMenu] = useState(false);
+  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
   const [isReadOnlyProject, setIsReadOnlyProject] = useState(false);
 
   useEffect(() => {
@@ -300,6 +302,16 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // When the first real app file lands, force a clean iframe reload so the
+  // preview renders immediately rather than waiting for the next user action.
+  const prevHasGeneratedRef = useRef(hasGeneratedApp);
+  useEffect(() => {
+    if (!prevHasGeneratedRef.current && hasGeneratedApp) {
+      handleRefreshRef.current?.();
+    }
+    prevHasGeneratedRef.current = hasGeneratedApp;
+  }, [hasGeneratedApp]);
 
   const filesRef = useRef<FileMap>(files);
   const activeFileRef = useRef(activeFile);
@@ -814,79 +826,106 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
           </div>
         </div>
 
-        {/* Right: Need Help?, Popout, Branch, Share, Publish, Close */}
+        {/* Right: ⋯ overflow (Help, Popout, Branch), Share, Publish, Close */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            onClick={() => alert('BrainHalf Docs: Deploy edge applications globally to Cloudflare with one click.')}
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '8px',
-              padding: '5px 12px',
-              color: 'rgba(255, 255, 255, 0.85)',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease'
-            }}
-            title="Help & Documentation"
-            aria-label="Help & Documentation"
-          >
-            <HelpCircle size={13} strokeWidth={1.8} />
-            <span>Help</span>
-          </button>
-
-          <button
-            onClick={() => {
-              appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-              window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
-            }}
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '8px',
-              padding: '5px 12px',
-              color: 'rgba(255, 255, 255, 0.85)',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease'
-            }}
-            title="Open preview in new tab"
-            aria-label="Open preview in new tab"
-          >
-            <ExternalLink size={13} strokeWidth={1.8} />
-            <span>Popout</span>
-          </button>
-
-          <button
-            onClick={() => setShowGithubModal(true)}
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '8px',
-              padding: '5px 12px',
-              color: 'rgba(255, 255, 255, 0.85)',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease'
-            }}
-            title="Branch & GitHub Sync"
-            aria-label="Branch & GitHub Sync"
-          >
-            <GitBranch size={13} strokeWidth={1.8} />
-            <span>Branch</span>
-          </button>
+          {/* Overflow menu */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setOverflowMenuOpen(o => !o)}
+              style={{
+                background: overflowMenuOpen ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '8px',
+                padding: '5px 10px',
+                color: 'rgba(255, 255, 255, 0.85)',
+                fontSize: '12px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'all 0.15s ease'
+              }}
+              title="More options"
+              aria-label="More options"
+              aria-expanded={overflowMenuOpen}
+            >
+              <MoreHorizontal size={15} strokeWidth={1.8} />
+            </button>
+            {overflowMenuOpen && (
+              <>
+                <div
+                  style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+                  onClick={() => setOverflowMenuOpen(false)}
+                />
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  right: 0,
+                  zIndex: 100,
+                  background: 'var(--bg-surface, #1a1d27)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '10px',
+                  padding: '4px',
+                  minWidth: '160px',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
+                }}>
+                  {[
+                    {
+                      label: 'Help',
+                      icon: <HelpCircle size={13} strokeWidth={1.8} />,
+                      onClick: () => {
+                        setOverflowMenuOpen(false);
+                        alert('BrainHalf Docs: Deploy edge applications globally to Cloudflare with one click.');
+                      }
+                    },
+                    {
+                      label: 'Popout',
+                      icon: <ExternalLink size={13} strokeWidth={1.8} />,
+                      onClick: () => {
+                        setOverflowMenuOpen(false);
+                        appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
+                        window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
+                      }
+                    },
+                    {
+                      label: 'Branch',
+                      icon: <GitBranch size={13} strokeWidth={1.8} />,
+                      onClick: () => {
+                        setOverflowMenuOpen(false);
+                        setShowGithubModal(true);
+                      }
+                    }
+                  ].map(item => (
+                    <button
+                      key={item.label}
+                      onClick={item.onClick}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        width: '100%',
+                        padding: '7px 10px',
+                        background: 'transparent',
+                        border: 'none',
+                        borderRadius: '7px',
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'background 0.1s'
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.07)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           <button
             onClick={async () => {
@@ -1276,28 +1315,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                 gap: '8px'
               }}
             >
-              <div className="browser-chrome-left" style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                <button
-                  className="browser-action-btn"
-                  title="Refresh the preview"
-                  aria-label="Refresh the preview"
-                  onClick={handleRefresh}
-                >
-                  <RefreshCw size={16} strokeWidth={1.75} />
-                </button>
-                <button
-                  className="browser-action-btn"
-                  title="Open the preview in a new tab"
-                  aria-label="Open the preview in a new tab"
-                  onClick={() => {
-                    appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-                    window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
-                  }}
-                >
-                  <ExternalLink size={16} strokeWidth={1.75} />
-                </button>
-              </div>
-
               {/* Center: Clean URL Pill */}
               <div
                 className="browser-chrome-center"
@@ -1313,7 +1330,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                   title={`/preview/${activeProjectId}/index.html`}
                   style={{ cursor: 'default', maxWidth: '100%', overflow: 'hidden' }}
                 >
-                  <Lock size={16} strokeWidth={1.75} style={{ opacity: 0.8, color: 'var(--color-success)', flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {`brainhalf.com/preview/${activeProjectId.slice(0, 8)}`}
                   </span>
@@ -1335,8 +1351,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                     aria-label="Desktop view"
                     aria-pressed={viewportMode === 'desktop'}
                   >
-                    <Monitor size={16} strokeWidth={1.75} />
-                    <span>Desktop</span>
+                    <Monitor size={15} strokeWidth={1.75} />
                   </button>
                   <button
                     onClick={() => setViewportMode('tablet')}
@@ -1345,8 +1360,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                     aria-label="Tablet view (768px)"
                     aria-pressed={viewportMode === 'tablet'}
                   >
-                    <Tablet size={16} strokeWidth={1.75} />
-                    <span>Tablet</span>
+                    <Tablet size={15} strokeWidth={1.75} />
                   </button>
                   <button
                     onClick={() => setViewportMode('mobile')}
@@ -1355,10 +1369,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                     aria-label="Mobile view (375px)"
                     aria-pressed={viewportMode === 'mobile'}
                   >
-                    <Smartphone size={16} strokeWidth={1.75} />
-                    <span>Mobile</span>
+                    <Smartphone size={15} strokeWidth={1.75} />
                   </button>
-
                 </div>
               </div>
             </div>
@@ -1379,6 +1391,43 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
 
             {/* Canvas Area with Responsive Viewport Chassis */}
             <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+              {/* Skeleton overlay — visible until the first real app file lands */}
+              {isWaitingForFirstApp && (
+                <div className="preview-skeleton-overlay" aria-hidden="true">
+                  {/* Simulated nav bar */}
+                  <div className="pso-nav">
+                    <div className="skeleton-block" style={{ width: 72, height: 9, borderRadius: 5 }} />
+                    <div style={{ display: 'flex', gap: 10, marginLeft: 24 }}>
+                      <div className="skeleton-block" style={{ width: 44, height: 9, borderRadius: 5 }} />
+                      <div className="skeleton-block" style={{ width: 44, height: 9, borderRadius: 5 }} />
+                      <div className="skeleton-block" style={{ width: 44, height: 9, borderRadius: 5 }} />
+                    </div>
+                    <div style={{ flex: 1 }} />
+                    <div className="skeleton-block" style={{ width: 60, height: 22, borderRadius: 6 }} />
+                  </div>
+
+                  {/* Simulated hero + content */}
+                  <div className="pso-body">
+                    <div className="skeleton-block" style={{ width: '58%', height: 13, borderRadius: 5, marginBottom: 10 }} />
+                    <div className="skeleton-block" style={{ width: '42%', height: 13, borderRadius: 5, marginBottom: 28 }} />
+                    <div className="skeleton-block" style={{ width: '72%', height: 9, borderRadius: 5, marginBottom: 8 }} />
+                    <div className="skeleton-block" style={{ width: '55%', height: 9, borderRadius: 5, marginBottom: 28 }} />
+                    <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+                      <div className="skeleton-block" style={{ flex: 1, height: 72, borderRadius: 8 }} />
+                      <div className="skeleton-block" style={{ flex: 1, height: 72, borderRadius: 8 }} />
+                      <div className="skeleton-block" style={{ flex: 1, height: 72, borderRadius: 8 }} />
+                    </div>
+                    <div className="skeleton-block" style={{ width: '65%', height: 9, borderRadius: 5, marginBottom: 8 }} />
+                    <div className="skeleton-block" style={{ width: '48%', height: 9, borderRadius: 5 }} />
+                  </div>
+
+                  {/* Status strip */}
+                  <div className="pso-status">
+                    <span className="status-dot generating" style={{ width: 6, height: 6 }} />
+                    <span>{status === 'Generating' ? 'Building your app…' : 'Connecting…'}</span>
+                  </div>
+                </div>
+              )}
               {isReadOnlyProject && (
                 <div style={{
                   display: 'flex',

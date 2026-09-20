@@ -331,27 +331,26 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 }
               }
               appEvents.emit('generation-status', { status: 'Ready', detail: 'Loaded saved session', projectId: activeProjectId });
+            } else if (pendingAutoSendRef.current) {
+              // Landing page submitted a prompt — always takes priority over
+              // any locally-cached messages that may have leaked in before the
+              // WS history arrived.
+              const autoPrompt = pendingAutoSendRef.current;
+              pendingAutoSendRef.current = null;
+              onInitialPromptConsumedRef.current?.();
+              deleteProjectMessages(activeProjectId);
+              setTimeout(() => { handleSendMessageRef.current?.(autoPrompt); }, 60);
             } else {
               const localSaved = getProjectMessages(activeProjectId);
               if (!localSaved || localSaved.length === 0) {
-                if (pendingAutoSendRef.current) {
-                  // Landing page submitted a prompt — auto-send it into this fresh project
-                  const autoPrompt = pendingAutoSendRef.current;
-                  pendingAutoSendRef.current = null;
-                  onInitialPromptConsumedRef.current?.();
-                  setTimeout(() => { handleSendMessageRef.current?.(autoPrompt); }, 60);
-                } else {
-                  const freshWelcome: Message[] = [
-                    { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
-                  ];
-                  setMessages(freshWelcome);
-                  messagesRef.current = freshWelcome;
-                  saveProjectMessages(activeProjectId, freshWelcome);
-                  appEvents.emit('generation-status', { status: 'Ready', detail: 'Fresh project ready', projectId: activeProjectId });
-                }
+                const freshWelcome: Message[] = [
+                  { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
+                ];
+                setMessages(freshWelcome);
+                messagesRef.current = freshWelcome;
+                saveProjectMessages(activeProjectId, freshWelcome);
+                appEvents.emit('generation-status', { status: 'Ready', detail: 'Fresh project ready', projectId: activeProjectId });
               } else {
-                // If local has history but server has none, this is a newly created branch.
-                // Sync the local history to the new server DO instance.
                 setMessages(localSaved);
                 messagesRef.current = localSaved;
                 if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -478,7 +477,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               handleStopGenerationRef.current();
             }
           } else if (data.type === 'error') {
-            if (!isGeneratingRef.current) return;
             setIsGenerating(false);
             isGeneratingRef.current = false;
             const errMsg = data.error || data.message || 'Generation failed';
@@ -1767,7 +1765,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 <button
                   onClick={handleStopGeneration}
                   style={{
-                    background: '#ef4444',
+                    background: '#3b82f6',
                     color: '#ffffff',
                     border: 'none',
                     borderRadius: '8px',
@@ -1777,7 +1775,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.35)',
+                    boxShadow: '0 2px 8px rgba(59, 130, 246, 0.35)',
                     transition: 'all 0.15s ease'
                   }}
                   title="Stop generation"

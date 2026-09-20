@@ -1001,8 +1001,8 @@ h1, h2, h3, h4, .brand-text {
 }
 
 .status-badge.generating {
-  background: var(--color-ai-bg);
-  color: var(--accent-light);
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
   border: none;
   box-shadow: none;
   padding: 4px 10px;
@@ -1068,13 +1068,13 @@ h1, h2, h3, h4, .brand-text {
 }
 
 .status-dot.idle {
-  background: var(--color-neutral);
-  box-shadow: 0 0 4px rgba(148, 163, 184, 0.3);
+  background: var(--color-success);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
 }
 
 .status-dot.generating {
-  background: var(--color-ai);
-  box-shadow: 0 0 8px var(--color-ai);
+  background: #3b82f6;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.7);
   animation: status-pulse 1.6s ease-in-out infinite;
 }
 
@@ -1283,17 +1283,12 @@ h1, h2, h3, h4, .brand-text {
   border: none;
   color: var(--text-secondary);
   border-radius: 5px;
-  padding: 3px 8px;
+  padding: 4px 6px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
+  justify-content: center;
   cursor: pointer;
   transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  white-space: nowrap;
-  width: auto;
-  min-width: max-content;
   user-select: none;
 }
 
@@ -1890,23 +1885,12 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
     display: none;
   }
 
-  .viewport-pill-btn {
-    padding: 3px 6px;
-    font-size: 10.5px;
-    gap: 3px;
-  }
 }
 
 @media (max-width: 480px) {
   .browser-chrome {
     padding: 0 8px;
     gap: 4px;
-  }
-
-  .viewport-pill-btn {
-    padding: 3px 5px;
-    font-size: 10px;
-    gap: 2px;
   }
 }
 
@@ -1921,22 +1905,6 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   }
 }
 
-@container (max-width: 440px) {
-  .viewport-pill-btn {
-    padding: 3px 5px;
-    font-size: 10px;
-    gap: 2px;
-  }
-}
-
-@container (max-width: 320px) {
-  .viewport-pill-btn span {
-    display: none;
-  }
-  .viewport-pill-btn {
-    padding: 4px 6px;
-  }
-}
 
 /* Prevent iframe from intercepting mouse drag events during panel resize */
 .is-resizing iframe {
@@ -1975,6 +1943,67 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
 @keyframes bh-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   Preview skeleton overlay (shown while waiting for the first generated file)
+   ========================================================================== */
+.preview-skeleton-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: #090a0f;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: pso-fade-in 0.2s ease;
+}
+
+@keyframes pso-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.pso-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}
+
+.pso-body {
+  flex: 1;
+  padding: 28px 24px 0;
+  overflow: hidden;
+}
+
+.pso-status {
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.38);
+  flex-shrink: 0;
+}
+
+.skeleton-block {
+  background: rgba(255, 255, 255, 0.07);
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes skeleton-shimmer {
+  0%, 100% { opacity: 0.45; }
+  50%       { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block { animation: none; opacity: 0.6; }
+  .preview-skeleton-overlay { animation: none; }
 }
 
 .lucide-spin {
@@ -2418,12 +2447,6 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   max-width: 720px;
 }
 
-.landing-headline-gradient {
-  background: linear-gradient(135deg, #2dd4bf 0%, #38bdf8 50%, #818cf8 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  display: inline-block;
-}
 
 .landing-subheadline {
   font-size: 15px;
@@ -2835,6 +2858,15 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   font-weight: 500;
   color: #ffffff;
   margin: 0 0 4px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landing-card-snippet {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.38);
+  margin: 3px 0 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

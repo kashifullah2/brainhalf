@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FileCode, Check, Copy, Code2, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileCode, Check, Copy, Code2, ChevronDown } from 'lucide-react';
 import { getLanguageFromPath, highlightCodeToLines } from '../lib/prism-loader';
 import { appEvents } from '../lib/events';
 import { normalizePath } from '../lib/utils';
@@ -13,9 +13,10 @@ interface CodeFileBlockProps {
 const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStreaming }) => {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [viewDropdownOpen, setViewDropdownOpen] = useState(false);
 
   const language = useMemo(() => getLanguageFromPath(filePath), [filePath]);
-  
+
   const lineCount = useMemo(() => {
     return (content || '').split('\n').length;
   }, [content]);
@@ -69,11 +70,11 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
           }}>
             <FileCode size={16} strokeWidth={1.75} color="var(--accent-light)" />
           </div>
-          
+
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <span style={{ 
-              fontFamily: 'var(--font-mono)', 
-              fontWeight: 600, 
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 600,
               color: 'var(--text-primary)',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -107,78 +108,151 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
             </span>
           ) : (
             <>
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                title={isExpanded ? "Collapse inline preview" : "Expand inline preview"}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
-                  transition: 'all 0.15s'
-                }}
-                className="hover-bright"
-              >
-                {isExpanded ? <ChevronUp size={16} strokeWidth={1.75} /> : <ChevronDown size={16} strokeWidth={1.75} />}
-                <span>{isExpanded ? 'Hide' : 'Code'}</span>
-              </button>
-
+              {/* Copy — icon only */}
               <button
                 onClick={handleCopy}
-                title="Copy code"
+                title={copied ? 'Copied!' : 'Copy code'}
                 style={{
                   background: 'transparent',
                   border: 'none',
                   color: copied ? '#34d399' : 'var(--text-secondary)',
                   cursor: 'pointer',
-                  padding: '4px 8px',
+                  padding: '4px 6px',
                   borderRadius: '4px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
                   transition: 'all 0.15s'
                 }}
                 className="hover-bright"
               >
-                {copied ? <Check size={16} strokeWidth={1.75} color="#34d399" /> : <Copy size={16} strokeWidth={1.75} />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
+                {copied
+                  ? <Check size={15} strokeWidth={1.75} color="#34d399" />
+                  : <Copy size={15} strokeWidth={1.75} />
+                }
               </button>
 
-              <button
-                onClick={handleOpenInEditor}
-                title="Open and edit this file in the full editor"
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: 'none',
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
-                  fontWeight: 500,
-                  transition: 'all 0.15s'
-                }}
-                className="hover-bright"
-              >
-                <Code2 size={16} strokeWidth={1.75} color="var(--accent-light)" />
-                <span>Editor ↗</span>
-              </button>
+              {/* Open in Editor split-button */}
+              <div style={{ position: 'relative', display: 'flex' }}>
+                {/* Primary segment */}
+                <button
+                  onClick={handleOpenInEditor}
+                  title="Open and edit this file in the full editor"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRight: 'none',
+                    borderRadius: '4px 0 0 4px',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    transition: 'all 0.15s',
+                    whiteSpace: 'nowrap'
+                  }}
+                  className="hover-bright"
+                >
+                  <Code2 size={13} strokeWidth={1.75} color="var(--accent-light)" />
+                  Open in Editor
+                </button>
+
+                {/* Chevron / dropdown segment */}
+                <button
+                  onClick={() => setViewDropdownOpen(o => !o)}
+                  title="View options"
+                  aria-expanded={viewDropdownOpen}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderLeft: '1px solid rgba(255, 255, 255, 0.18)',
+                    borderRadius: '0 4px 4px 0',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    padding: '4px 5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    transition: 'all 0.15s'
+                  }}
+                  className="hover-bright"
+                >
+                  <ChevronDown
+                    size={13}
+                    strokeWidth={2}
+                    style={{
+                      transform: viewDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.15s'
+                    }}
+                  />
+                </button>
+
+                {/* Dropdown */}
+                {viewDropdownOpen && (
+                  <>
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+                      onClick={() => setViewDropdownOpen(false)}
+                    />
+                    <div style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      right: 0,
+                      zIndex: 100,
+                      background: 'var(--bg-surface, #1a1d27)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '6px',
+                      padding: '3px',
+                      minWidth: '140px',
+                      boxShadow: '0 6px 24px rgba(0,0,0,0.5)'
+                    }}>
+                      <button
+                        onClick={() => {
+                          setIsExpanded(e => !e);
+                          setViewDropdownOpen(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '7px',
+                          width: '100%',
+                          padding: '6px 9px',
+                          background: 'transparent',
+                          border: 'none',
+                          borderRadius: '4px',
+                          color: 'rgba(255,255,255,0.8)',
+                          fontSize: '11.5px',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'background 0.1s',
+                          whiteSpace: 'nowrap'
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <ChevronDown
+                          size={12}
+                          strokeWidth={2}
+                          style={{
+                            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.15s',
+                            flexShrink: 0
+                          }}
+                        />
+                        {isExpanded ? 'Hide inline code' : 'View inline code'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
       </div>
 
-      {/* Collapsible Inline Code Area (Only shown when expanded or streaming) */}
+      {/* Collapsible Inline Code Area */}
       {(isExpanded || isStreaming) && (
         <div style={{
           maxHeight: isStreaming ? '140px' : '280px',
@@ -192,8 +266,8 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
         }}>
           <div style={{ display: 'table', width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             {highlightedLines.map((lineHtml, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 style={{ display: 'table-row', backgroundColor: 'transparent' }}
                 className="code-line-row"
               >
@@ -210,8 +284,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 }}>
                   {idx + 1}
                 </span>
-
-                <span 
+                <span
                   style={{
                     display: 'table-cell',
                     paddingRight: '10px',

@@ -17,7 +17,79 @@ import {
   deleteProject,
   updateProjectName,
   formatRelativeTime,
+  getProjectMessages,
+  getProjectDisplayTitle,
 } from '../lib/project-store';
+
+// Accent palette — one per project, derived from ID hash
+const THUMB_ACCENTS = [
+  { bg: 'rgba(99,102,241,0.18)',  bar: '#6366f1' },
+  { bg: 'rgba(14,165,233,0.18)',  bar: '#0ea5e9' },
+  { bg: 'rgba(16,185,129,0.18)',  bar: '#10b981' },
+  { bg: 'rgba(245,158,11,0.18)',  bar: '#f59e0b' },
+  { bg: 'rgba(236,72,153,0.18)',  bar: '#ec4899' },
+  { bg: 'rgba(139,92,246,0.18)',  bar: '#8b5cf6' },
+];
+
+function accentForId(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return THUMB_ACCENTS[h % THUMB_ACCENTS.length];
+}
+
+function projectSnippet(id: string): string {
+  const msgs = getProjectMessages(id);
+  if (!msgs) return '';
+  const first = msgs.find(m => m?.role === 'user' && typeof m.content === 'string');
+  if (!first) return '';
+  const text = first.content.trim().replace(/\s+/g, ' ');
+  return text.length > 55 ? text.slice(0, 55) + '…' : text;
+}
+
+function dedupe(projects: Project[]): Project[] {
+  const seen = new Set<string>();
+  return projects.filter(p => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
+}
+
+function displayName(proj: Project): string {
+  const title = getProjectDisplayTitle(proj);
+  if (!title || title === 'Untitled Project' || title === 'New project') {
+    return 'Draft — continue building.';
+  }
+  return title;
+}
+
+interface ProjectThumbnailProps { project: Project }
+const ProjectThumbnail: React.FC<ProjectThumbnailProps> = ({ project }) => {
+  const accent = accentForId(project.id);
+  return (
+    <div className="landing-card-thumbnail">
+      <div className="thumbnail-window">
+        <div className="thumb-header">
+          <div className="thumb-dots">
+            <span /><span /><span />
+          </div>
+          <div className="thumb-url-bar" />
+        </div>
+        <div className="thumb-body" style={{ background: accent.bg }}>
+          <div className="thumb-sidebar" style={{ background: `${accent.bar}22` }} />
+          <div className="thumb-content">
+            <div className="thumb-box-1" style={{ background: `${accent.bar}44` }} />
+            <div style={{ display: 'flex', gap: 3, marginTop: 1 }}>
+              <div style={{ flex: 2, height: 5, borderRadius: 2, background: `${accent.bar}28` }} />
+              <div style={{ flex: 1, height: 5, borderRadius: 2, background: `${accent.bar}18` }} />
+            </div>
+            <div style={{ flex: 1, marginTop: 3, borderRadius: 3, background: `${accent.bar}14` }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 import { appEvents } from '../lib/events';
 import ConfirmModal from './ConfirmModal';
 import { BrainHalfLogo } from './BrainHalfLogo';
@@ -46,7 +118,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onLogout,
   onLoginRequest,
 }) => {
-  const [projects, setProjects] = useState<Project[]>(() => getProjects());
+  const [projects, setProjects] = useState<Project[]>(() => dedupe(getProjects()));
   const [promptText, setPromptText] = useState('');
   const [activeMenuProjectId, setActiveMenuProjectId] = useState<string | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
@@ -59,7 +131,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const refreshProjects = () => {
-    setProjects(getProjects());
+    setProjects(dedupe(getProjects()));
   };
 
   useEffect(() => {
@@ -102,7 +174,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const handleDeleteConfirm = () => {
     if (!projectToDelete) return;
     const remaining = deleteProject(projectToDelete);
-    setProjects(remaining);
+    setProjects(dedupe(remaining));
     setProjectToDelete(null);
     setActiveMenuProjectId(null);
   };
@@ -215,10 +287,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* Hero */}
       <main className="landing-main-content">
         <h1 className="landing-headline">
-          What would you like to <span className="landing-headline-gradient">build today?</span>
+          Turn any idea into a full-stack app.
         </h1>
         <p className="landing-subheadline">
-          Describe your idea and watch it come to life.
+          BrainHalf generates working frontend and backend code, deploys it to Cloudflare's global edge, and hands you the source. Describe what you want — no boilerplate, no config.
         </p>
 
         {/* Prompt Box */}
@@ -302,14 +374,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <h2 className="landing-section-title" style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(255,255,255,0.45)', marginBottom: '12px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Recent projects</h2>
 
             <div className="landing-projects-list">
-              {projects.map(proj => (
+              {projects.map(proj => {
+                const snippet = projectSnippet(proj.id);
+                return (
                 <div
                   key={proj.id}
                   className="landing-project-card"
                   onClick={() => onOpenProject(proj.id)}
                 >
+                  <ProjectThumbnail project={proj} />
                   <div className="landing-card-info">
-                    <h3 className="landing-card-title">{proj.name}</h3>
+                    <h3 className="landing-card-title">{displayName(proj)}</h3>
+                    {snippet && (
+                      <p className="landing-card-snippet">{snippet}</p>
+                    )}
                     <p className="landing-card-time">{formatRelativeTime(proj.updatedAt)}</p>
                   </div>
 
@@ -368,7 +446,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}

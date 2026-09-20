@@ -42,8 +42,8 @@ export function getStatusVisuals(status: PlatformStatus): StatusVisuals {
         status: 'Stopped',
         topBarLabel: 'Stopped',
         modelPanelLabel: 'Stopped',
-        dotColor: '#f59e0b',
-        glow: 'none',
+        dotColor: '#10b981',
+        glow: '0 0 6px rgba(16, 185, 129, 0.5)',
         isBuilding: false,
       };
     case 'Connecting':
@@ -51,8 +51,8 @@ export function getStatusVisuals(status: PlatformStatus): StatusVisuals {
         status: 'Connecting',
         topBarLabel: 'Connecting',
         modelPanelLabel: 'Connecting',
-        dotColor: '#f59e0b',
-        glow: 'none',
+        dotColor: '#3b82f6',
+        glow: '0 0 6px rgba(59, 130, 246, 0.7)',
         isBuilding: false,
       };
     case 'Ready':
