@@ -3,6 +3,13 @@ main = "src/worker.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = [ "nodejs_compat" ]
 
+# No [vars] block on purpose. The only runtime configuration the worker reads is
+# credentials -- ANTHROPIC_API_KEY, BEDROCK_API_KEY / AWS_ACCESS_KEY_ID &
+# AWS_SECRET_ACCESS_KEY, AWS_REGION -- and those are secrets, set with
+# `wrangler secret put`, never checked in here. AWS_REGION alone has a sane
+# default (us-east-1). If a non-secret knob is ever added, put it here rather
+# than hard-coding it in src/.
+
 [[routes]]
 pattern = "brainhalf.com"
 custom_domain = true
@@ -30,6 +37,17 @@ class_name = "ChatAgent"
 name = "REGISTRY"
 class_name = "AuthRegistry"
 
+# Durable Object migration safety: renaming a class_name above without a
+# matching `renamed_classes` entry here makes Wrangler treat the new name as a
+# brand-new class and abandon the old one's storage in place -- every ChatAgent
+# conversation and every AuthRegistry account would silently start over. A
+# rename must be deployed as its own migration tag:
+#
+#   [[migrations]]
+#   tag = "v3"
+#   renamed_classes = [ { from = "ChatAgent", to = "ChatAgentV2" } ]
+#
+# Never edit a tag that has already been deployed; always append a new one.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = [ "ChatAgent" ]
@@ -41,6 +59,13 @@ new_sqlite_classes = [ "AuthRegistry" ]
 [[r2_buckets]]
 binding = "PROJECT_BACKUPS"
 bucket_name = "brainhalf-project-backups"
+# NOTE: this bucket has an out-of-band lifecycle rule, `expire-abandoned-backups`,
+# that expires objects 365 days after they were last written. Wrangler does not
+# accept lifecycle config in wrangler.toml, so it is applied with
+# `npm run r2:lifecycle` (see package.json) whenever the bucket is recreated.
+# Backups are rewritten on every generation, which restarts the clock for any
+# project that is still alive; the rule only reaps objects that were orphaned by
+# a failed delete or by a project that was abandoned rather than deleted.
 
 [[dispatch_namespaces]]
 binding = "DISPATCHER"

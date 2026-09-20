@@ -133,9 +133,21 @@ export function createProject(name: string = 'Untitled Project'): Project {
 export async function createBranch(sourceId: string, branchName: string): Promise<Project> {
   const newProj = createProject(branchName);
   
-  // Clone files
-  const sourceFiles = await getProjectFilesAsync(sourceId);
-  if (sourceFiles) {
+  // Clone files (check local cache/IndexedDB, falling back to edge preview API)
+  let sourceFiles = await getProjectFilesAsync(sourceId);
+  if (!sourceFiles || Object.keys(sourceFiles).length === 0) {
+    try {
+      const res = await fetch(`/preview/${sourceId}/api/files`);
+      if (res.ok) {
+        const fetched = await res.json();
+        if (fetched && typeof fetched === 'object' && Object.keys(fetched).length > 0) {
+          sourceFiles = fetched;
+        }
+      }
+    } catch {}
+  }
+
+  if (sourceFiles && Object.keys(sourceFiles).length > 0) {
     saveProjectFiles(newProj.id, JSON.parse(JSON.stringify(sourceFiles)));
   }
 
@@ -146,6 +158,13 @@ export async function createBranch(sourceId: string, branchName: string): Promis
   }
   
   return newProj;
+}
+
+export async function forkProject(sourceId: string, customName?: string): Promise<Project> {
+  const currentProjects = getProjects();
+  const sourceProj = currentProjects.find(p => p.id === sourceId);
+  const name = customName || (sourceProj ? `Fork of ${sourceProj.name}` : `Fork of ${sourceId}`);
+  return createBranch(sourceId, name);
 }
 
 export interface MergeResult {
@@ -355,6 +374,23 @@ export async function getProjectFilesAsync(projectId: string): Promise<Record<st
 
 export function saveProjectFiles(projectId: string, files: Record<string, string>) {
   if (!projectId || !files || Object.keys(files).length === 0) return;
+  persistFiles(projectId, files);
+}
+
+/**
+ * Writes `files` for `projectId` to the memory cache, IndexedDB, and
+ * localStorage. Split out of saveProjectFiles() so the debounced path below
+ * can share one implementation.
+ */
+function persistFiles(projectId: string, files: Record<string, string>) {
+  // A write still in the debounce window holds an older snapshot and would
+  // overwrite this one when it fires. Any newer state being persisted
+  // explicitly supersedes it.
+  const pending = pendingFileWrites.get(projectId);
+  if (pending) {
+    clearTimeout(pending);
+    pendingFileWrites.delete(projectId);
+  }
   memoryCache[`files_${projectId}`] = files;
 
   // 1. Asynchronously persist to high-capacity IndexedDB
@@ -371,7 +407,53 @@ export function saveProjectFiles(projectId: string, files: Record<string, string
   }
 }
 
+// Monaco calls the change handler on every keystroke. Each call used to
+// JSON.stringify() the whole file map and write it to localStorage
+// synchronously, which is real main-thread cost on a multi-file project and
+// none of those intermediate states are worth keeping -- only the latest one
+// is. The debounce collapses a burst of edits into a single write.
+const EDITOR_SAVE_DEBOUNCE_MS = 400;
+const pendingFileWrites = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Persists files on a trailing debounce. The memory cache is updated
+ * immediately, so reads between the edit and the write still see the editor's
+ * current content rather than the last persisted snapshot.
+ */
+export function saveProjectFilesDebounced(projectId: string, files: Record<string, string>) {
+  if (!projectId || !files || Object.keys(files).length === 0) return;
+  memoryCache[`files_${projectId}`] = files;
+
+  const pending = pendingFileWrites.get(projectId);
+  if (pending) clearTimeout(pending);
+  pendingFileWrites.set(projectId, setTimeout(() => {
+    pendingFileWrites.delete(projectId);
+    persistFiles(projectId, files);
+  }, EDITOR_SAVE_DEBOUNCE_MS));
+}
+
+/**
+ * Writes anything still inside the debounce window. Call on pagehide /
+ * visibilitychange so an edit made less than EDITOR_SAVE_DEBOUNCE_MS before
+ * the tab is closed or hidden is not lost.
+ */
+export function flushProjectFileWrites(): void {
+  for (const [projectId, timer] of pendingFileWrites) {
+    clearTimeout(timer);
+    pendingFileWrites.delete(projectId);
+    const pendingFiles = memoryCache[`files_${projectId}`];
+    if (pendingFiles) persistFiles(projectId, pendingFiles);
+  }
+}
+
 export function deleteProjectFiles(projectId: string) {
+  // A write still in the debounce window would otherwise land after the
+  // delete and resurrect the files the user just got rid of.
+  const pending = pendingFileWrites.get(projectId);
+  if (pending) {
+    clearTimeout(pending);
+    pendingFileWrites.delete(projectId);
+  }
   delete memoryCache[`files_${projectId}`];
   void idbDelete('files', projectId);
 

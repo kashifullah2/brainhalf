@@ -6,9 +6,19 @@
  * endpoints, internal services on private ranges, and loopback listeners that are
  * not exposed to the public internet.
  *
- * The guard resolves the hostname, refuses anything that is not a public, routable
- * address, and then fetches with redirect caps and a size ceiling so a redirect
- * cannot be used to escape the check after the fact.
+ * The guard refuses anything that is not a public, routable address, and then
+ * fetches with redirect caps and a size ceiling so a redirect cannot be used to
+ * escape the check after the fact.
+ *
+ * Scope limitation, stated plainly: hostname *literals* are range-checked, but a
+ * DNS name is validated by shape only — the guard does not resolve it. So a
+ * public name that resolves to a private or loopback address (a rebinding setup,
+ * or a domain pointing at a cloud metadata endpoint) is not refused here. On the
+ * Cloudflare Workers runtime outbound fetch to RFC1918 and loopback is not
+ * routable, which is the real control; in local `wrangler dev` or under Vitest,
+ * where loopback *is* reachable, that platform guarantee does not apply. Resolve
+ * and pin the address before fetch if this guard ever needs to be a hard
+ * guarantee.
  */
 
 /** Maximum bytes read from a tool fetch. The tool only surfaces a short excerpt. */
@@ -21,11 +31,13 @@ export const FETCH_MAX_REDIRECTS = 3;
 export const FETCH_TIMEOUT_MS = 30 * 1000;
 
 /**
- * True only for a hostname that resolves to a public, routable address.
+ * True only for a hostname that is shape-valid and not a known-internal name.
  *
- * Note on ordering: DNS resolution happens *per fetch*, so a hostname that resolves
- * publicly today is re-checked on every call — this is a check-then-use on the same
- * resolved address, not a cache that can go stale.
+ * Scope: this is a *shape* check, not a resolution. IPv4/IPv6 literals are
+ * range-checked against private/loopback/link-local ranges; a DNS name is only
+ * matched against a regex and a small internal-name blocklist. It does NOT
+ * resolve the name, so a public-looking name pointing at a private address is
+ * still accepted here — see the file header for the control that covers it.
  */
 export function isPublicRoutableHost(hostname: string): boolean {
   const host = (hostname || '').toLowerCase().replace(/\.$/, '');

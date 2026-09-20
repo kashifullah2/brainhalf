@@ -3,10 +3,9 @@ import {
   resolvePlatformStatusForProject,
   setPlatformStatus,
   resetPlatformStatusToReady,
-  getStatusVisuals,
-  PlatformStatus
+  getStatusVisuals
 } from '../lib/status-store';
-import { saveProjectMessages, deleteProjectMessages } from '../lib/project-store';
+import { saveProjectMessages } from '../lib/project-store';
 
 describe('Status Store & Platform Status Single Source of Truth', () => {
   let mockStorage: Record<string, string> = {};

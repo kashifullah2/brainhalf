@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { 
-  parseEditPairs, 
-  applyEditsToFile, 
-  parseMessageSegments 
+import {
+  parseEditPairs,
+  applyEditsToFile,
+  parseMessageSegments,
+  parseMessageSegmentsMemoized
 } from '../lib/message-parser';
 
 describe('Message Parser & Surgical Diff Engine', () => {
@@ -167,6 +168,53 @@ function greet() {
       const { fileMap } = parseMessageSegments(msg, true);
 
       expect(fileMap['src/styles.css']).toContain('background: #000;');
+    });
+  });
+
+  describe('parseMessageSegmentsMemoized (the render hot path)', () => {
+    it('returns the same shape as a direct parse', () => {
+      const msg = '<plan>Build it</plan><file path="src/App.jsx"><content>export default 1;</content></file>';
+      const direct = parseMessageSegments(msg, true);
+      const cached = parseMessageSegmentsMemoized(msg, true);
+      expect(cached.segments).toEqual(direct.segments);
+      expect(cached.fileMap).toEqual(direct.fileMap);
+    });
+
+    it('hands back the very same result object for a repeat call', () => {
+      // A reference-equal hit is what saves the work: a deep-equal copy would
+      // still have parsed it.
+      const msg = '<file path="src/App.jsx"><content>x</content></file>';
+      const first = parseMessageSegmentsMemoized(msg, true);
+      const second = parseMessageSegmentsMemoized(msg, true);
+      expect(second).toBe(first);
+    });
+
+    it('caches the streaming and the finished parse separately', () => {
+      // The same partial content parses differently depending on whether the
+      // stream is mid-flight, so the flag is part of the key.
+      const msg = '<file path="src/App.jsx"><content>partial';
+      const streaming = parseMessageSegmentsMemoized(msg, false);
+      const done = parseMessageSegmentsMemoized(msg, true);
+      expect(streaming).not.toBe(done);
+      expect(parseMessageSegmentsMemoized(msg, false)).toBe(streaming);
+      expect(parseMessageSegmentsMemoized(msg, true)).toBe(done);
+    });
+
+    it('re-parses when the content moves', () => {
+      const a = parseMessageSegmentsMemoized('<plan>A</plan>', true);
+      const b = parseMessageSegmentsMemoized('<plan>B</plan>', true);
+      expect(b).not.toBe(a);
+    });
+
+    it('does not grow past the entry cap', () => {
+      // Distinct contents are distinct entries; the oldest is evicted rather
+      // than the map growing for the life of the tab.
+      const first = parseMessageSegmentsMemoized('<plan>first</plan>', true);
+      for (let i = 0; i < 200; i++) {
+        parseMessageSegmentsMemoized(`<plan>filler-${i}</plan>`, true);
+      }
+      // `first` is long gone from the cache, so this must have parsed again.
+      expect(parseMessageSegmentsMemoized('<plan>first</plan>', true)).not.toBe(first);
     });
   });
 });

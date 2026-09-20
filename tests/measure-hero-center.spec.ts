@@ -14,7 +14,7 @@ test('verify hero card is vertically centered based on available preview panel h
     localStorage.setItem('brainhalf_projects', JSON.stringify([p]));
     localStorage.setItem('brainhalf_active_project', p.id);
     localStorage.removeItem('brainhalf_messages_measure-hero-test-proj');
-    localStorage.setItem('bh_session_token', 'dummy-token');
+    localStorage.setItem('bh_session_token', 'bh_dev_local_token_not_a_real_session');
     localStorage.setItem('bh_session_user', JSON.stringify({ id: 'u-123', email: 'test@example.com' }));
     
     const originalFetch = window.fetch;
@@ -31,8 +31,9 @@ test('verify hero card is vertically centered based on available preview panel h
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.route('**/api/auth/session', route => route.fulfill({ status: 200, json: { user: { id: 'u-123', email: 'test@example.com' } } }));
-  await page.goto('http://localhost:5173');
-  await page.waitForSelector('iframe');
+  await page.goto('http://localhost:5173/?project=measure-hero-test-proj', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(1000);
+  await page.waitForSelector('iframe', { timeout: 15000 });
 
   const previewIframe = page.locator('iframe').first();
   await expect(previewIframe).toBeVisible();

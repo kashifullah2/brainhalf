@@ -6,7 +6,7 @@ import LoginScreen from './components/LoginScreen';
 import LandingPage from './components/LandingPage';
 import { BrainHalfLogo } from './components/BrainHalfLogo';
 import { appEvents } from './lib/events';
-import { getActiveProjectId, setActiveProjectId, createProject, saveProjectMessages, getProjects } from './lib/project-store';
+import { getActiveProjectId, setActiveProjectId, createProject, getProjects } from './lib/project-store';
 import { getToken, getUser, logout, verifyStoredSession, type SessionUser } from './lib/auth-client';
 import './index.css';
 
@@ -138,9 +138,14 @@ function App() {
     setUser(newUser);
     setAuthModal({ isOpen: false, mode: 'login' });
     if (pendingPromptRef.current) {
-      const { prompt, appType } = pendingPromptRef.current;
+      const { prompt } = pendingPromptRef.current;
       pendingPromptRef.current = null;
-      handleSubmitInitialPrompt(prompt, appType);
+      // Use newUser directly — React state hasn't re-rendered yet
+      const title = prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt;
+      const newProj = createProject(title);
+      setPendingInitialPrompt(prompt);
+      handleSelectProject(newProj.id);
+      setCurrentView('workspace');
     }
   };
 
@@ -157,6 +162,8 @@ function App() {
     setCurrentView('workspace');
   };
 
+  const [pendingInitialPrompt, setPendingInitialPrompt] = useState<string | null>(null);
+
   const handleSubmitInitialPrompt = (prompt: string, appType: 'web' | 'mobile') => {
     if (!user) {
       pendingPromptRef.current = { prompt, appType };
@@ -165,7 +172,7 @@ function App() {
     }
     const title = prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt;
     const newProj = createProject(title);
-    saveProjectMessages(newProj.id, [{ role: 'user', content: prompt }]);
+    setPendingInitialPrompt(prompt);
     handleSelectProject(newProj.id);
     setCurrentView('workspace');
   };
@@ -278,7 +285,13 @@ function App() {
         />
         <div className={`workspace-area ${isMobile ? 'is-mobile' : ''}`}>
           {(!isMobile || mobileTab === 'chat') && (
-            <ChatPanel key={`chat-${activeProjectId}`} activeProjectId={activeProjectId} width={isMobile ? undefined : chatWidth} />
+            <ChatPanel
+              key={`chat-${activeProjectId}`}
+              activeProjectId={activeProjectId}
+              width={isMobile ? undefined : chatWidth}
+              initialPrompt={pendingInitialPrompt}
+              onInitialPromptConsumed={() => setPendingInitialPrompt(null)}
+            />
           )}
           {!isMobile && (
             <div 

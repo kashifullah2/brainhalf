@@ -24,7 +24,7 @@ function mockRegistry(opts: { userId?: string; ownerId?: string } = {}) {
   const userId = opts.userId ?? 'user-1';
   const ownerId = opts.ownerId ?? userId;
   const stubId = { name: 'auth', toString: () => 'auth' };
-  const fetch = vi.fn(async (input: string | Request, init?: RequestInit) => {
+  const fetch = vi.fn(async (input: string | Request) => {
     const url = typeof input === 'string' ? new URL(input) : new URL(input.url);
     if (url.pathname.startsWith('/sessions/')) {
       // Revocation lookup keyed by the token hash.
@@ -218,10 +218,56 @@ describe('P1 Worker auth gate (fail-closed)', () => {
     expect((rewritten as Request).headers.get('x-auth-user-id')).toBe('user-1');
   });
 
-  it('denies a preview request for a project owned by someone else', async () => {
+  it('allows public preview read for any project while denying mutations without ownership', async () => {
+    const mockDoObj = { fetch: vi.fn().mockResolvedValue(new Response('Preview HTML', { status: 200 })) };
+    const registry = mockRegistry({ ownerId: 'someone-else' });
+    const env = envWith(registry, {
+      ChatAgent: { idFromName: vi.fn().mockReturnValue('mock-id'), get: vi.fn().mockReturnValue(mockDoObj) },
+    });
+    // GET preview read is public
+    const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-alpha/index.html');
+    const res = await worker.fetch(request, env, {} as any);
+    expect(res.status).toBe(200);
+
+    // Mutating write operation without ownership is strictly forbidden (403)
+    const { request: syncReq } = await authenticatedRequest('https://brainhalf.com/preview/proj-alpha/api/sync', {
+      method: 'POST',
+      body: JSON.stringify({ files: { '/src/App.jsx': 'malicious write' } }),
+    });
+    const syncRes = await worker.fetch(syncReq, env, {} as any);
+    expect(syncRes.status).toBe(403);
+  });
+
+  it('allows public showcase preview for all-models-studio even for other users', async () => {
+    const mockDoObj = { fetch: vi.fn().mockResolvedValue(new Response('Studio App', { status: 200 })) };
+    const registry = mockRegistry({ ownerId: 'different-owner' });
+    const env = envWith(registry, {
+      ChatAgent: { idFromName: vi.fn().mockReturnValue('mock-id'), get: vi.fn().mockReturnValue(mockDoObj) },
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/preview/all-models-studio/index.html');
+    const res = await worker.fetch(request, env, {} as any);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('Studio App');
+  });
+
+  it('allows unauthenticated visitors to preview public showcase projects', async () => {
+    const mockDoObj = { fetch: vi.fn().mockResolvedValue(new Response('Studio App', { status: 200 })) };
+    const registry = mockRegistry();
+    const env = envWith(registry, {
+      ChatAgent: { idFromName: vi.fn().mockReturnValue('mock-id'), get: vi.fn().mockReturnValue(mockDoObj) },
+    });
+    const req = new Request('https://brainhalf.com/preview/all-models-studio/index.html');
+    const res = await worker.fetch(req, env, {} as any);
+    expect(res.status).toBe(200);
+  });
+
+  it('denies mutating public showcase projects without ownership', async () => {
     const registry = mockRegistry({ ownerId: 'someone-else' });
     const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
-    const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-alpha/index.html');
+    const { request } = await authenticatedRequest('https://brainhalf.com/preview/all-models-studio/api/sync', {
+      method: 'POST',
+      body: JSON.stringify({ files: { '/test.js': 'content' } }),
+    });
     const res = await worker.fetch(request, env, {} as any);
     expect(res.status).toBe(403);
   });

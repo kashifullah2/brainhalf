@@ -23,11 +23,16 @@ import {
   sha256Hex,
   verifyTokenSignature,
 } from './crypto';
+import { isAllowedOrigin } from './allowed-origins';
+
+export { isAllowedOrigin };
 
 export const AUTH_COOKIE = 'bh_session';
 /** Header the Worker injects after verifying identity. Treated as authoritative
  *  by the Durable Objects *because* the Worker strips any client-supplied copy. */
 export const USER_ID_HEADER = 'x-auth-user-id';
+/** Query param used for DO WebSocket upgrades where custom headers may not be forwarded. */
+export const USER_ID_QUERY_PARAM = '_uid';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -37,20 +42,9 @@ export interface RegistryEnv {
   REGISTRY: DurableObjectNamespace;
 }
 
-/** Origin allowlist — replaces the previous `Access-Control-Allow-Origin: *`. */
-const ALLOWED_ORIGINS = new Set<string>([
-  'https://brainhalf.com',
-  'https://www.brainhalf.com',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:8788',
-  'http://127.0.0.1:8788',
-]);
-
-export function isAllowedOrigin(origin: string | null | undefined): boolean {
-  if (!origin) return false;
-  return ALLOWED_ORIGINS.has(origin);
-}
+/** Origin allowlist — re-exported from ./allowed-origins so the Worker and the
+ *  browser share one list. Replaces the previous `Access-Control-Allow-Origin: *`. */
+export { ALLOWED_ORIGINS } from './allowed-origins';
 
 /**
  * Session secret. Prefer the configured Wrangler secret; otherwise fall back to
@@ -153,6 +147,68 @@ export function getRegistry(env: RegistryEnv): DurableObjectStub {
   return env.REGISTRY.get(id);
 }
 
+/* ------------------------------------------------------------------ */
+/* WebSocket tickets                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A browser cannot set headers on a `new WebSocket(...)`, so the upgrade URL is
+ * the only transport available for authenticating the handshake. Putting the
+ * 30-day session token there meant it sat in access logs and, with
+ * `[observability.traces]` sampling, in trace data. A ticket is a one-time
+ * substitute: minted for an already-verified user, valid for one handshake, and
+ * deleted on use. See {@link verifyWsTicket}.
+ */
+export async function issueWsTicket(env: RegistryEnv, userId: string): Promise<string | null> {
+  try {
+    const registry = getRegistry(env);
+    const res = await registry.fetch('https://registry/ws-tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { ticket?: string };
+    return body.ticket ?? null;
+  } catch (err) {
+    console.error('WS ticket issuance failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Redeem a ticket for the user id it was minted for. The Registry deletes the
+ * row as part of the lookup, so this is single-use: a replay always fails. An
+ * expired or unknown ticket yields `null`, and the caller must refuse the
+ * handshake.
+ */
+export async function verifyWsTicket(env: RegistryEnv, ticket: string): Promise<string | null> {
+  try {
+    const registry = getRegistry(env);
+    const res = await registry.fetch('https://registry/ws-tickets/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket }),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { userId?: string };
+    return body.userId ?? null;
+  } catch (err) {
+    console.error('WS ticket verification failed:', err);
+    return null;
+  }
+}
+
+/** Read the `?ticket=` parameter, or `null` when the URL carries none. */
+export function extractWsTicket(request: Request): string | null {
+  try {
+    const value = new URL(request.url).searchParams.get('ticket');
+    return value && value.startsWith('bhwt_') ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Ensure `projectId` is owned by `userId`, atomically claiming it if it has
  * never been claimed. Returns true when the caller owns it afterwards.
@@ -162,7 +218,7 @@ export async function authorizeProject(
   projectId: string,
   userId: string,
   name?: string
-): Promise<boolean> {
+): Promise<{ ok: boolean; status: number }> {
   try {
     const registry = getRegistry(env);
     const res = await registry.fetch('https://registry/projects/claim', {
@@ -170,10 +226,10 @@ export async function authorizeProject(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, userId, name }),
     });
-    return res.ok;
+    return { ok: res.ok, status: res.status };
   } catch (err) {
     console.error('Project authorization failed:', err);
-    return false;
+    return { ok: false, status: 500 };
   }
 }
 
@@ -351,13 +407,23 @@ export function json(status: number, body: any): Response {
  * precisely because only the Worker can set it.
  */
 export function injectUserId(request: Request, userId: string): Request {
-  const cloned = new Request(request, { method: request.method });
+  const url = new URL(request.url);
+  // Encode userId in both the header (for HTTP requests) and URL param (for
+  // WebSocket upgrade requests where custom headers may be stripped by the
+  // Cloudflare Workers runtime when forwarding to Durable Objects).
+  url.searchParams.set(USER_ID_QUERY_PARAM, userId);
+  const cloned = new Request(url.toString(), request);
   cloned.headers.delete(USER_ID_HEADER);
   cloned.headers.set(USER_ID_HEADER, userId);
   return cloned;
 }
 
-/** Read the header the Worker set; `null` when the request bypassed the gate. */
+/** Read the user id injected by the Worker. Checks URL param first (reliable for
+ *  WS upgrades), then falls back to the header (reliable for HTTP). */
 export function getRequestUserId(request: Request): string | null {
+  try {
+    const fromUrl = new URL(request.url).searchParams.get(USER_ID_QUERY_PARAM);
+    if (fromUrl) return fromUrl;
+  } catch { /* malformed URL */ }
   return request.headers.get(USER_ID_HEADER);
 }

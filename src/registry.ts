@@ -11,17 +11,41 @@
  * ----------
  * users(id, email, password_hash, created_at)        email is UNIQUE
  * sessions(token_hash, user_id, created_at, expires_at)  supports real revocation
- * project_owners(project_id, user_id, name, created_at, updated_at)
+ * project_owners(project_id, user_id, name, created_at, updated_at, deleted_at)
+ * ws_tickets(ticket_hash, user_id, expires_at)
  *
  * The password hash is PBKDF2-SHA256 (see lib/crypto.ts); the plaintext is
  * never stored and never logged. Token *signing* happens in the Worker —
  * this object only ever sees hashes of tokens, so a DB leak cannot forge a
- * session.
+ * session. WebSocket tickets are the same idea at shorter range: a random
+ * secret is handed out once, stored only as a hash, and deleted on use, so a
+ * ticket captured from a URL or a trace is already dead.
  */
 import type { DurableObjectState } from '@cloudflare/workers-types';
-import { hashPassword, isValidEmail, isValidPassword, isValidProjectId, randomId, verifyPassword } from './lib/crypto';
+import {
+  hashPassword,
+  isValidEmail,
+  isValidPassword,
+  isValidProjectId,
+  randomId,
+  sha256Hex,
+  verifyPassword,
+} from './lib/crypto';
 
 const SCHEMA_VERSION = 1;
+
+// One minute is generous for a single handshake and short enough that a ticket
+// observed in a log or a trace is already, or is soon, worthless.
+const WS_TICKET_TTL_MS = 60 * 1000;
+
+// Per-user ceiling on live projects. Claim-on-first-access means a project row
+// appears the moment a user opens an id, so the registry needs a bound or a
+// single client can fill its SQLite database with ids it never intends to use.
+const MAX_PROJECTS_PER_USER = 50;
+// Including tombstones: a deleted project's row is kept forever as the marker
+// that stops its id being reclaimed, so the total row count needs its own
+// ceiling or a create-delete cycle could write to this table without limit.
+const MAX_PROJECT_ROWS_PER_USER = 200;
 
 // NOTE: deliberately *not* declared `implements DurableObject`. This tsconfig
 // also pulls in the DOM lib, whose global `Request` is structurally incompatible
@@ -79,6 +103,23 @@ export class AuthRegistry {
       )`
     );
     sql.exec(`CREATE INDEX IF NOT EXISTS idx_project_owners_user ON project_owners(user_id, updated_at DESC)`);
+    // A deleted project keeps its row as a tombstone. Removing the row entirely
+    // left the id unowned, and /projects/claim — which runs on first access to a
+    // project — would hand the orphaned Durable Object (and its R2 backup,
+    // still full of the previous owner's files) to whoever hit the id next.
+    // ALTER has no IF NOT EXISTS, so the column is added only where missing.
+    const columns = sql.exec('PRAGMA table_info(project_owners)').toArray() as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === 'deleted_at')) {
+      sql.exec('ALTER TABLE project_owners ADD COLUMN deleted_at INTEGER');
+    }
+    sql.exec(
+      `CREATE TABLE IF NOT EXISTS ws_tickets (
+        ticket_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
+      )`
+    );
+    sql.exec(`CREATE INDEX IF NOT EXISTS idx_ws_tickets_expires ON ws_tickets(expires_at)`);
     sql.exec(
       `INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (${SCHEMA_VERSION}, ${Date.now()})`
     );
@@ -103,6 +144,19 @@ export class AuthRegistry {
     } catch (e) {
       // A failed sweep must never break the login it was called from.
       console.warn('Session TTL sweep failed:', e);
+    }
+  }
+
+  /**
+   * Same treatment for spent WebSocket tickets. Verification already deletes the
+   * row it finds, so this only reclaims the ones whose handshake never arrived —
+   * a browser tab closed between minting a ticket and opening the socket.
+   */
+  private sweepExpiredTickets(now: number): void {
+    try {
+      this.sql.exec('DELETE FROM ws_tickets WHERE expires_at <= ?', now);
+    } catch (e) {
+      console.warn('WS ticket sweep failed:', e);
     }
   }
 
@@ -201,6 +255,44 @@ export class AuthRegistry {
         return this.json(200, { userId: rows[0].user_id });
       }
 
+      /* -------- WebSocket tickets: short-lived, single-use -------- */
+      // Browsers cannot set headers on a WebSocket upgrade, so the session token
+      // used to ride in the query string — where it landed in access logs and,
+      // with traces enabled, in sampled observability data. A ticket is a
+      // one-time stand-in: the Worker mints it for a verified user, it lives for
+      // a minute, and consuming it deletes it, so anything that captured the
+      // value holds a secret that no longer works.
+      if (path === '/ws-tickets' && method === 'POST') {
+        const body = await json<{ userId?: string }>();
+        if (!body?.userId) return this.json(400, { error: 'Missing userId' });
+        const ticket = randomId('bhwt_', 24);
+        const now = Date.now();
+        this.sweepExpiredTickets(now);
+        this.sql.exec(
+          'INSERT INTO ws_tickets (ticket_hash, user_id, expires_at) VALUES (?, ?, ?)',
+          await sha256Hex(ticket),
+          body.userId,
+          now + WS_TICKET_TTL_MS
+        );
+        return this.json(201, { ticket });
+      }
+
+      if (path === '/ws-tickets/verify' && method === 'POST') {
+        const body = await json<{ ticket?: string }>();
+        const ticket = body?.ticket;
+        if (!ticket || !ticket.startsWith('bhwt_')) return this.json(401, { error: 'Invalid ticket' });
+        const ticketHash = await sha256Hex(ticket);
+        const rows = this.sql
+          .exec('SELECT user_id, expires_at FROM ws_tickets WHERE ticket_hash = ?', ticketHash)
+          .toArray() as Array<{ user_id: string; expires_at: number }>;
+        // Delete before deciding: a valid ticket is single-use regardless of
+        // outcome, and an expired one is reclaimed either way.
+        this.sql.exec('DELETE FROM ws_tickets WHERE ticket_hash = ?', ticketHash);
+        if (rows.length === 0) return this.json(401, { error: 'Ticket not found' });
+        if (rows[0].expires_at <= Date.now()) return this.json(401, { error: 'Ticket expired' });
+        return this.json(200, { userId: rows[0].user_id });
+      }
+
       /* ---------------------------- logout ---------------------------- */
       if (path === '/sessions' && method === 'DELETE') {
         const body = await json<{ tokenHash?: string }>();
@@ -217,6 +309,44 @@ export class AuthRegistry {
           return this.json(400, { error: 'Invalid project or user' });
         const now = Date.now();
         const name = typeof body.name === 'string' && body.name.trim() ? body.name.slice(0, 120) : 'Untitled Project';
+
+        // If the project was already claimed, verify ownership immediately without
+        // charging against or blocking on the new-project creation quota.
+        const existing = this.sql
+          .exec('SELECT user_id, deleted_at FROM project_owners WHERE project_id = ?', body.projectId as string)
+          .toArray() as Array<{ user_id: string; deleted_at: number | null }>;
+        if (existing.length > 0) {
+          if (existing[0].deleted_at != null) return this.json(410, { error: 'This project has been deleted' });
+          const ownerId = existing[0].user_id;
+          if (ownerId !== body.userId) return this.json(403, { error: 'Project is owned by another account' });
+          return this.json(200, { projectId: body.projectId, ownerId, claimed: false });
+        }
+
+        // A quota is what makes claim-on-first-access safe as an ownership model:
+        // without one, a client could mint unbounded rows — one per request — and
+        // fill the registry's SQLite database with ids it never intends to use.
+        const counts = this.sql
+          .exec(
+            `SELECT
+               SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) AS live,
+               COUNT(*) AS total
+             FROM project_owners WHERE user_id = ?`,
+            body.userId
+          )
+          .toArray() as Array<{ live: number; total: number }>;
+        const live = Number(counts[0]?.live ?? 0);
+        const total = Number(counts[0]?.total ?? 0);
+        if (live >= MAX_PROJECTS_PER_USER) {
+          return this.json(409, {
+            error: `You have reached the ${MAX_PROJECTS_PER_USER}-project limit. Delete a project to create another.`,
+          });
+        }
+        if (total >= MAX_PROJECT_ROWS_PER_USER) {
+          return this.json(409, {
+            error: `You have reached the project limit. Deleting projects keeps their ids reserved; contact support to reclaim them.`,
+          });
+        }
+
         this.sql.exec(
           'INSERT OR IGNORE INTO project_owners (project_id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
           body.projectId as string,
@@ -226,9 +356,10 @@ export class AuthRegistry {
           now
         );
         const rows = this.sql
-          .exec('SELECT user_id FROM project_owners WHERE project_id = ?', body.projectId as string)
-          .toArray() as Array<{ user_id: string }>;
+          .exec('SELECT user_id, deleted_at FROM project_owners WHERE project_id = ?', body.projectId as string)
+          .toArray() as Array<{ user_id: string; deleted_at: number | null }>;
         if (rows.length === 0) return this.json(500, { error: 'Claim failed' });
+        if (rows[0].deleted_at != null) return this.json(410, { error: 'This project has been deleted' });
         const ownerId = rows[0].user_id;
         if (ownerId !== body.userId) return this.json(403, { error: 'Project is owned by another account' });
         return this.json(200, { projectId: body.projectId, ownerId, claimed: true });
@@ -242,9 +373,9 @@ export class AuthRegistry {
         if (!isValidProjectId(projectId) || !userId)
           return this.json(400, { error: 'Invalid request' });
         const rows = this.sql
-          .exec('SELECT user_id FROM project_owners WHERE project_id = ?', projectId as string)
-          .toArray() as Array<{ user_id: string }>;
-        if (rows.length === 0) return this.json(404, { error: 'Project not found' });
+          .exec('SELECT user_id, deleted_at FROM project_owners WHERE project_id = ?', projectId as string)
+          .toArray() as Array<{ user_id: string; deleted_at: number | null }>;
+        if (rows.length === 0 || rows[0].deleted_at != null) return this.json(404, { error: 'Project not found' });
         if (rows[0].user_id !== userId) return this.json(403, { error: 'Not the owner' });
         return this.json(200, { ownerId: rows[0].user_id });
       }
@@ -255,7 +386,7 @@ export class AuthRegistry {
         const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') || 100)));
         const rows = this.sql
           .exec(
-            'SELECT project_id, user_id, name, created_at, updated_at FROM project_owners WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?',
+            'SELECT project_id, user_id, name, created_at, updated_at FROM project_owners WHERE user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT ?',
             userId,
             limit
           )
@@ -301,11 +432,15 @@ export class AuthRegistry {
         const userId = url.searchParams.get('userId');
         if (!isValidProjectId(projectId) || !userId) return this.json(400, { error: 'Invalid request' });
         const rows = this.sql
-          .exec('SELECT user_id FROM project_owners WHERE project_id = ?', projectId as string)
-          .toArray() as Array<{ user_id: string }>;
-        if (rows.length === 0) return this.json(404, { error: 'Project not found' });
+          .exec('SELECT user_id, deleted_at FROM project_owners WHERE project_id = ?', projectId as string)
+          .toArray() as Array<{ user_id: string; deleted_at: number | null }>;
+        if (rows.length === 0 || rows[0].deleted_at != null) return this.json(404, { error: 'Project not found' });
         if (rows[0].user_id !== userId) return this.json(403, { error: 'Not the project owner' });
-        this.sql.exec('DELETE FROM project_owners WHERE project_id = ?', projectId as string);
+        // Tombstone instead of a hard delete: an absent row means "unclaimed",
+        // which the claim path treats as free to take — and the Durable Object
+        // and R2 backup still hold the previous owner's files. Repeated deletes
+        // are idempotent; the row stays so the id can never be reclaimed.
+        this.sql.exec('UPDATE project_owners SET deleted_at = ? WHERE project_id = ?', Date.now(), projectId as string);
         return this.json(200, { ok: true });
       }
 

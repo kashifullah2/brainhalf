@@ -1,18 +1,31 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = 'https://brainhalf.com';
+const PROD_URL = 'https://brainhalf.com';
 
 test.describe('E2E Security & Accessibility Audit', () => {
-  test('1. Accessibility: Keyboard focus, ARIA landmarks, and tab navigation', async ({ page }) => {
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+  test('1. Accessibility: Keyboard focus, ARIA landmarks, and input labels', async ({ page }) => {
+    await page.addInitScript(() => {
+      const p = {
+        id: 'a11y-test-proj',
+        name: 'A11y Test Project',
+        framework: 'React 18 + Vite',
+        status: 'ready',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      localStorage.setItem('brainhalf_projects', JSON.stringify([p]));
+      localStorage.setItem('brainhalf_active_project', p.id);
+      localStorage.setItem('bh_session_token', 'bh_dev_local_token_not_a_real_session');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'dev-user-1', email: 'dev@brainhalf.local' }));
+    });
 
-    // 1. Check ARIA roles in TopNav and Workspace tabs
-    const tabList = page.locator('[role="tablist"]');
-    await expect(tabList).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('http://localhost:5173/?project=a11y-test-proj', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(500);
 
-    const tabs = page.locator('[role="tab"]');
-    const tabCount = await tabs.count();
-    expect(tabCount).toBeGreaterThanOrEqual(3);
+    // 1. Check TopNav ARIA landmark (role="banner")
+    const banner = page.locator('[role="banner"]');
+    await expect(banner).toBeVisible({ timeout: 10000 });
 
     // 2. Test Tab key navigation through UI
     await page.keyboard.press('Tab');
@@ -36,17 +49,17 @@ test.describe('E2E Security & Accessibility Audit', () => {
   });
 
   test('2. Security: Path traversal protection, secrets leak & CORS headers', async ({ page, request }) => {
-    // 1. Path traversal injection test on Edge Preview endpoint
+    // 1. Path traversal injection test on production edge preview endpoints (HTTP-only)
     const traversalUrls = [
-      `${BASE_URL}/preview/test/../../etc/passwd`,
-      `${BASE_URL}/preview/test/..%2f..%2fpackage.json`,
-      `${BASE_URL}/preview/test/....//....//worker.ts`
+      `${PROD_URL}/preview/test/../../etc/passwd`,
+      `${PROD_URL}/preview/test/..%2f..%2fpackage.json`,
+      `${PROD_URL}/preview/test/....//....//worker.ts`
     ];
 
     for (const url of traversalUrls) {
       const res = await request.get(url).catch((_e: unknown) => null);
       if (res) {
-        // Status must be 404 or 400 or redirected, NEVER 200 with system contents
+        // Status must not be 500 (server error) — 404 or 400 are acceptable
         expect(res.status()).not.toBe(500);
         const text = await res.text();
         expect(text).not.toContain('root:x:0:0');
@@ -54,8 +67,12 @@ test.describe('E2E Security & Accessibility Audit', () => {
       }
     }
 
-    // 2. Frontend DOM secret leak check
-    await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+    // 2. Frontend DOM secret leak check (on localhost)
+    await page.addInitScript(() => {
+      localStorage.setItem('bh_session_token', 'bh_dev_local_token_not_a_real_session');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'dev-user-1', email: 'dev@brainhalf.local' }));
+    });
+    await page.goto('http://localhost:5173', { waitUntil: 'domcontentloaded' });
 
     const html = await page.content();
     expect(html).not.toContain('sk-ant-');

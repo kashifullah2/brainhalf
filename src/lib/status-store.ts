@@ -15,7 +15,6 @@ export interface StatusVisuals {
 
 // Module-level single source of truth state
 let globalStatus: PlatformStatus = 'Ready';
-let globalDetail: string = '';
 let activeGeneratingProjectId: string | null = null;
 
 export function getStatusVisuals(status: PlatformStatus): StatusVisuals {
@@ -105,7 +104,6 @@ export function setPlatformStatus(newStatus: PlatformStatus, detail: string = ''
     }
   }
   globalStatus = newStatus;
-  globalDetail = detail;
 
   appEvents.emit('platform-status-sync', {
     status: newStatus,
@@ -120,7 +118,6 @@ export function resetPlatformStatusToReady(projectId?: string) {
     activeGeneratingProjectId = null;
   }
   globalStatus = 'Ready';
-  globalDetail = '';
   appEvents.emit('platform-status-sync', {
     status: 'Ready',
     detail: '',
@@ -178,7 +175,6 @@ export function usePlatformStatus(activeProjectId: string): StatusVisuals {
         globalStatus = 'Ready';
         activeGeneratingProjectId = null;
       }
-      globalDetail = payload.detail || payload.error || '';
       setCurrentStatus(resolvePlatformStatusForProject(activeProjectId));
     };
 

@@ -42,21 +42,52 @@ export class WriteEpoch {
  * A non-reentrant busy lock. A generation taken while one is in flight is refused
  * rather than queued: the caller is told the reason and the client can retry,
  * which is safer than silently serialising an unknown amount of work.
+ *
+ * `fn` may never settle — a provider that stops responding mid-stream, an
+ * abandoned abort — and a lock with no timeout would then stay held for the life
+ * of the Durable Object: every subsequent prompt on that project would be
+ * refused with "still running" and nothing could clear it short of an eviction.
+ * So `run` takes a timeout and, when it fires, releases the lock and reports the
+ * timeout as a reason exactly like a refusal.
  */
 export class BusyLock {
   private held = false;
   private holder = '';
 
-  /** Runs `fn` under the lock; returns null and a reason if it is already held. */
-  async run<T>(label: string, fn: () => Promise<T>): Promise<{ value: T } | { reason: string }> {
+  async run<T>(
+    label: string,
+    fn: () => Promise<T>,
+    timeoutMs = 5 * 60_000
+  ): Promise<{ value: T } | { reason: string }> {
     if (this.held) {
       return { reason: `${this.holder} is still running` };
     }
     this.held = true;
     this.holder = label;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
     try {
-      return { value: await fn() };
+      const work = fn().then(
+        (value) => { settled = true; return { value } as { value: T }; },
+        (err) => { settled = true; throw err; }
+      );
+      const timeout = new Promise<{ reason: string }>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ reason: `${label} exceeded ${timeoutMs}ms and was abandoned` }),
+          timeoutMs
+        );
+      });
+      const result = await Promise.race([work, timeout]);
+      if (!settled) {
+        // The timeout won and `fn` is still in flight; nobody is awaiting it, so
+        // a later rejection would be an unhandled-rejection crash of the
+        // isolate. Detach it — the caller has already been told the job was
+        // abandoned.
+        work.catch(() => { /* no longer awaited by design */ });
+      }
+      return result;
     } finally {
+      if (timer) clearTimeout(timer);
       this.held = false;
       this.holder = '';
     }
@@ -87,6 +118,17 @@ export class IdempotencyStore {
   /**
    * Records `key` and returns true the first time it is seen, false afterwards.
    * A null/empty key is treated as "no dedup requested" and always accepted.
+   *
+   * Both guards here are deliberate evictions, not errors, because either way
+   * the caller proceeds to generate: a key longer than 256 chars is accepted
+   * rather than stored (it can never be presented again anyway, since a retry
+   * redelivers the identical string), and once the store holds `capacity`
+   * entries the oldest is dropped to make room. That means dedup is a
+   * bounded-history guarantee, not an unbounded one — a message whose key was
+   * evicted will generate again if it is redelivered. capacity defaults to 256,
+   * far above the number of in-flight generations a single ChatAgent holds, so
+   * eviction only happens if a client hammers the agent with hundreds of
+   * distinct keys without a reconnect.
    */
   claim(key: string | undefined | null): boolean {
     if (!key || typeof key !== 'string') return true;

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   AI_TIMEOUT_MS,
+  CLIENT_SELECTABLE_MODELS,
   MAX_OUTPUT_TOKENS,
   MODEL_ALLOWLIST,
   MODEL_TEST_TIMEOUT_MS,
@@ -10,20 +11,12 @@ import {
 } from '../lib/models';
 import { handleModelTest } from '../lib/model-tester';
 
-/** The catalog the frontend offers in ChatPanel.tsx — the allowlist must cover it. */
-const FRONTEND_CATALOG = [
-  '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-  '@cf/openai/gpt-oss-20b',
-  '@cf/meta/llama-4-scout-17b-16e-instruct',
-  '@cf/openai/gpt-oss-120b',
-  '@cf/moonshotai/kimi-k2.7-code',
-  '@cf/qwen/qwen2.5-coder-32b-instruct',
-  '@cf/qwen/qwen3.8-27b',
-  'claude-sonnet-4.6',
-  'claude-opus-4.6',
-  'minimax-m2.5',
-  'Atria-Dawn-Preview',
-];
+/**
+ * The catalog the frontend offers in ChatPanel.tsx. It is derived from
+ * CLIENT_SELECTABLE_MODELS, so this test is a contract on the one list rather
+ * than a second copy that can drift out of sync with it.
+ */
+const FRONTEND_CATALOG = CLIENT_SELECTABLE_MODELS.map((m) => m.name);
 
 describe('P2 Model allowlist — exact match, no substring dispatch', () => {
   it('covers every model the frontend catalog offers', () => {
@@ -54,7 +47,7 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
 
   it('disambiguates an anthropic-family model by the provider hint', () => {
     expect(resolveModel('claude-sonnet-4.6', 'anthropic')?.id).toBe('claude-sonnet-4-6');
-    expect(resolveModel('claude-sonnet-4.6', 'aws')?.id).toBe('us.anthropic.claude-sonnet-4-6-v1:0');
+    expect(resolveModel('claude-sonnet-4.6', 'aws')?.id).toBe('us.anthropic.claude-sonnet-4-6');
     // Without a hint the first declared match still resolves.
     expect(resolveModel('claude-sonnet-4.6')).not.toBeNull();
   });
@@ -81,6 +74,35 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
   it('exposes the allowlist so an API can echo it to the caller', () => {
     expect(MODEL_ALLOWLIST.length).toBeGreaterThanOrEqual(FRONTEND_CATALOG.length);
     expect(MODEL_ALLOWLIST.map((m) => m.name)).toEqual(expect.arrayContaining(FRONTEND_CATALOG));
+  });
+
+  it('offers only ids the server will resolve', () => {
+    // The picker derives from the allowlist, so a selectable entry that does not
+    // resolve would be a button that always errors.
+    for (const m of CLIENT_SELECTABLE_MODELS) {
+      expect(resolveModel(m.name, m.provider), `${m.provider}/${m.name} must resolve`).not.toBeNull();
+    }
+  });
+
+  it('keeps the image-synthesis and alias models out of the picker', () => {
+    const offered = new Set(FRONTEND_CATALOG);
+    expect(offered.has('@cf/black-forest-labs/flux-1-schnell')).toBe(false);
+    // An alias would show the same model twice under two names.
+    expect(offered.has('minimax')).toBe(false);
+    expect(offered.has('claude-sonnet')).toBe(false);
+    expect(offered.has('atria-dawn-preview')).toBe(false);
+    expect(offered.has('us.moonshot.kimi-k3-v1:0')).toBe(false);
+    expect(offered.has('us.moonshotai.kimi-k3')).toBe(false);
+    expect(offered.has('moonshotai.kimi-k3')).toBe(false);
+    expect(offered.has('global.moonshotai.kimi-k3')).toBe(false);
+    expect(offered.has('Kimi-K3')).toBe(false);
+  });
+
+  it('resolves kimi-k3 to the official AWS Bedrock cross-region model ID', () => {
+    const m = resolveModel('kimi-k3', 'aws');
+    expect(m).not.toBeNull();
+    expect(m?.id).toBe('us.moonshotai.kimi-k3');
+    expect(m?.provider).toBe('aws');
   });
 });
 

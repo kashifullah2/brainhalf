@@ -5,7 +5,7 @@ import { normalizePath, isNodeModulesPath } from './lib/utils';
 import { parseEditPairs, applyEditsToFile } from './lib/message-parser';
 import { autoHealAppCode } from './lib/model-tester';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
-import { getRequestUserId, USER_ID_HEADER } from './lib/auth';
+import { getRequestUserId, USER_ID_HEADER, USER_ID_QUERY_PARAM } from './lib/auth';
 import { AI_TIMEOUT_MS, capTokenLimit, resolveModel, withTimeout, type AllowedModel } from './lib/models';
 import { safeFetchText } from './lib/ssrf';
 import { buildDynamicImportMap as buildDynamicImportMapModule, isHarnessEntry as isHarnessEntryModule } from './lib/preview-import-map';
@@ -546,7 +546,12 @@ export class ChatAgent extends Agent {
     // Fail closed: no verified user id on the upgrade request means the
     // connection bypassed the Worker's auth gate.
     const userId = ctx?.request ? getRequestUserId(ctx.request) : null;
-    if (!userId) {
+    console.warn(`[onConnect] userId resolved: ${JSON.stringify(userId)} url: ${ctx?.request?.url?.split('?')[0]}`);
+    if (userId === 'QUOTA_EXCEEDED') {
+      try { connection.close(4409, 'Quota exceeded'); } catch {}
+      return;
+    }
+    if (userId === 'FORBIDDEN' || !userId) {
       console.warn('Rejected unauthenticated WebSocket connection');
       try { connection.close(4401, 'Unauthorized'); } catch { }
       return;
@@ -556,35 +561,47 @@ export class ChatAgent extends Agent {
     const openForUser = [...this.connectionUserIds.values()].filter((u) => u === userId).length;
     if (openForUser >= MAX_CONNECTIONS_PER_USER) {
       console.warn(`Rejected ${MAX_CONNECTIONS_PER_USER + 1}th connection for user ${userId}`);
-      try { connection.close(4401, 'Too many open connections'); } catch { }
+      try { connection.close(4429, 'Too many open connections'); } catch { }
       return;
     }
 
     this.connectionUserIds.set(connection.id, userId);
+    // Persist userId through DO hibernation. After a DO is evicted and revived,
+    // connectionUserIds (in-memory Map) is empty, but connection.state survives
+    // via Cloudflare's serializeAttachment API. onMessage reads it as fallback.
+    try { connection.setState(userId); } catch { /* non-critical */ }
 
-    // Order matters: create the tables, restore a saved workspace from R2, and
-    // only then seed the starter template into whatever is still empty. Seeding
-    // before the restore would satisfy restoreFromR2's "already initialized"
-    // check and make every reconnect silently discard the backup.
-    this.ensureSchema();
-    await this.restoreFromR2(userId);
-    this.seedStarterIfEmpty();
     try {
-      // Ship the recent tail only: the full history of a long project is a WS
-      // frame the client renders all at once, and older turns stay queryable
-      // through the model's own bounded context window. `total` tells the client
-      // how much is not included.
-      const totalRows = [...this.sql`SELECT COUNT(*) as count FROM messages`];
-      const total = Number(totalRows[0]?.count ?? 0);
-      const rows = total > HISTORY_ON_CONNECT
-        ? [...this.sql`SELECT role, content FROM messages ORDER BY id DESC LIMIT ${HISTORY_ON_CONNECT}`].reverse()
-        : [...this.sql`SELECT role, content FROM messages ORDER BY id ASC`];
-      connection.send(JSON.stringify({ type: 'history', data: rows, total, truncated: total > rows.length }));
-    } catch (e) {
-      console.warn('Failed retrieving history onConnect:', e);
-      connection.send(JSON.stringify({ type: 'history', data: [] }));
+      // Order matters: create the tables, restore a saved workspace from R2, and
+      // only then seed the starter template into whatever is still empty. Seeding
+      // before the restore would satisfy restoreFromR2's "already initialized"
+      // check and make every reconnect silently discard the backup.
+      this.ensureSchema();
+      await this.restoreFromR2(userId);
+      this.seedStarterIfEmpty();
+      try {
+        // Ship the recent tail only: the full history of a long project is a WS
+        // frame the client renders all at once, and older turns stay queryable
+        // through the model's own bounded context window. `total` tells the client
+        // how much is not included.
+        const totalRows = [...this.sql`SELECT COUNT(*) as count FROM messages`];
+        const total = Number(totalRows[0]?.count ?? 0);
+        const rows = total > HISTORY_ON_CONNECT
+          ? [...this.sql`SELECT role, content FROM messages ORDER BY id DESC LIMIT ${HISTORY_ON_CONNECT}`].reverse()
+          : [...this.sql`SELECT role, content FROM messages ORDER BY id ASC`];
+        connection.send(JSON.stringify({ type: 'history', data: rows, total, truncated: total > rows.length }));
+      } catch (e) {
+        console.warn('Failed retrieving history onConnect:', e);
+        connection.send(JSON.stringify({ type: 'history', data: [] }));
+      }
+      try { connection.send(JSON.stringify({ type: 'request_sync' })); } catch { }
+    } catch (err) {
+      console.error('[onConnect] CRITICAL: uncaught exception in onConnect body:', err);
+      // Don't rethrow — the SDK will close the socket with 1011 if we do, which
+      // the client sees as 1006 and retries. Instead we close explicitly with a
+      // message so the client can surface the error rather than looping forever.
+      try { connection.send(JSON.stringify({ type: 'error', error: 'Session initialisation failed. Please refresh.' })); } catch {}
     }
-    try { connection.send(JSON.stringify({ type: 'request_sync' })); } catch { }
   }
 
   async onClose(connection: Connection) {
@@ -614,10 +631,27 @@ export class ChatAgent extends Agent {
   async onMessage(connection: Connection, message: string) {
     try {
       // Only connections that passed the Worker's auth gate may act here.
+      // After DO hibernation the in-memory connectionUserIds is empty, but
+      // connection.state carries the userId via serializeAttachment.
       if (!this.connectionUserIds.has(connection.id)) {
-        console.warn('Rejected message from unauthenticated connection');
-        try { connection.close(4401, 'Unauthorized'); } catch { }
-        return;
+        let stateUserId = typeof connection.state === 'string' ? connection.state : null;
+        // Fallback: after DO hibernation connection.state is lost (it's in-memory on the
+        // SDK wrapper). Read the _uid param injected by the Worker into the upgrade URL.
+        if (!stateUserId && connection.uri) {
+          try {
+            stateUserId = new URL(connection.uri).searchParams.get(USER_ID_QUERY_PARAM);
+          } catch { /* malformed URI */ }
+        }
+        if (stateUserId === 'QUOTA_EXCEEDED') {
+          try { connection.close(4409, 'Quota exceeded'); } catch {}
+          return;
+        }
+        if (stateUserId === 'FORBIDDEN' || !stateUserId) {
+          console.warn('Rejected message from unauthenticated connection');
+          try { connection.close(4401, 'Unauthorized'); } catch { }
+          return;
+        }
+        this.connectionUserIds.set(connection.id, stateUserId);
       }
 
       let data: any;
@@ -1198,12 +1232,11 @@ export class ChatAgent extends Agent {
             };
 
             const BEDROCK_ALIASES: Record<string, string[]> = {
-              'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'moonshotai.kimi-k3', 'global.moonshotai.kimi-k3'],
-              'moonshotai.kimi-k3': ['moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3'],
+              'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
+              'moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
               'global.moonshotai.kimi-k3': ['global.moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-              'us.anthropic.claude-3-7-sonnet-20250219-v1:0': ['us.anthropic.claude-3-7-sonnet-20250219-v1:0', 'anthropic.claude-3-7-sonnet-20250219-v1:0'],
-              'us.anthropic.claude-3-opus-20240229-v1:0': ['us.anthropic.claude-3-opus-20240229-v1:0', 'anthropic.claude-3-opus-20240229-v1:0'],
-              'us.anthropic.claude-3-5-sonnet-20241022-v2:0': ['us.anthropic.claude-3-5-sonnet-20241022-v2:0', 'anthropic.claude-3-5-sonnet-20241022-v2:0'],
+              'us.anthropic.claude-sonnet-4-6': ['us.anthropic.claude-sonnet-4-6', 'global.anthropic.claude-sonnet-4-6', 'anthropic.claude-sonnet-4-6', 'us.anthropic.claude-sonnet-4-6-v1:0', 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'],
+              'us.anthropic.claude-opus-4-6': ['us.anthropic.claude-opus-4-6', 'global.anthropic.claude-opus-4-6', 'anthropic.claude-opus-4-6', 'us.anthropic.claude-opus-4-6-v1:0', 'us.anthropic.claude-3-opus-20240229-v1:0'],
               'minimax.minimax-m2.5': ['minimax.minimax-m2.5', 'us.minimax.minimax-m2.5'],
             };
 
@@ -1280,14 +1313,13 @@ export class ChatAgent extends Agent {
                   try { this.broadcast(doneMsg, [connection.id]); } catch { }
 
                   const text = event?.text || '';
+                  if (!text) {
+                    console.warn(`streamText finished with empty text for ${model.name}`);
+                  }
                   this.extractAndSaveFiles(text, connection, epoch);
                   this.saveTurn(actualPrompt, text);
                 }
               };
-
-              if (model.provider !== 'atria') {
-                streamOptions.tools = agentTools;
-              }
 
               try {
                 const result = (streamText as any)(streamOptions);
@@ -1298,8 +1330,8 @@ export class ChatAgent extends Agent {
                 const effectiveErr = streamErrorCaught || streamErr;
                 const errMessage = effectiveErr?.message || String(effectiveErr);
                 lastStreamError = effectiveErr;
-                if (/model identifier is invalid/i.test(errMessage) && idx + 1 < candidates.length) {
-                  console.warn(`Bedrock ID ${currentModelId} was invalid; retrying alternate profile ${candidates[idx + 1]}`);
+                if ((/model identifier is invalid/i.test(errMessage) || /ResourceNotFoundException/i.test(errMessage) || /is not authorized/i.test(errMessage) || /reached the end of its life/i.test(errMessage)) && idx + 1 < candidates.length) {
+                  console.warn(`Bedrock ID ${currentModelId} failed (${errMessage}); retrying alternate profile ${candidates[idx + 1]}`);
                   continue;
                 }
                 throw new Error(errMessage);

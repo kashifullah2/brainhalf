@@ -21,6 +21,15 @@ export interface AllowedModel {
   id: string;
   /** Server-side ceiling on output tokens for this model. */
   maxTokens: number;
+  /**
+   * False for rows that exist so `resolveModel` can accept a legitimate
+   * request, but that the model picker must not offer: the image-synthesis
+   * model, and aliases that would otherwise show the same model twice.
+   *
+   * The picker in ChatPanel.tsx builds its list from CLIENT_SELECTABLE_MODELS,
+   * so this flag — not a second copy of the catalog — is what the UI shows.
+   */
+  clientSelectable?: boolean;
 }
 
 /**
@@ -54,37 +63,62 @@ const CF_MODELS: AllowedModel[] = [
   { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: CF_DEFAULT_MAX },
   // Image-synthesis model invoked by the generate_image tool. Not client-selectable,
   // but listed so the allowlist remains the single source of truth for AI bindings.
-  { name: '@cf/black-forest-labs/flux-1-schnell', provider: 'cloudflare', id: '@cf/black-forest-labs/flux-1-schnell', maxTokens: CF_DEFAULT_MAX },
+  { name: '@cf/black-forest-labs/flux-1-schnell', provider: 'cloudflare', id: '@cf/black-forest-labs/flux-1-schnell', maxTokens: CF_DEFAULT_MAX, clientSelectable: false },
 ];
 
 const ANTHROPIC_MODELS: AllowedModel[] = [
-  { name: 'claude-3-7-sonnet', provider: 'anthropic', id: 'claude-3-7-sonnet-20250219', maxTokens: ANTHROPIC_DEFAULT_MAX },
-  { name: 'claude-3-5-sonnet', provider: 'anthropic', id: 'claude-3-5-sonnet-20241022', maxTokens: ANTHROPIC_DEFAULT_MAX },
-  { name: 'claude-3-opus', provider: 'anthropic', id: 'claude-3-opus-20240229', maxTokens: ANTHROPIC_DEFAULT_MAX },
-  { name: 'claude-3-5-haiku', provider: 'anthropic', id: 'claude-3-5-haiku-20241022', maxTokens: ANTHROPIC_DEFAULT_MAX },
-  { name: 'claude-sonnet-4.6', provider: 'anthropic', id: 'claude-sonnet-4-6', maxTokens: ANTHROPIC_DEFAULT_MAX },
-  { name: 'claude-opus-4.6', provider: 'anthropic', id: 'claude-opus-4-6', maxTokens: ANTHROPIC_DEFAULT_MAX },
+  // Legacy ids kept resolvable for existing API clients. The picker routes the
+  // 4.6 models through Bedrock, so these are not offered in the UI.
+  { name: 'claude-3-7-sonnet', provider: 'anthropic', id: 'claude-3-7-sonnet-20250219', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-3-5-sonnet', provider: 'anthropic', id: 'claude-3-5-sonnet-20241022', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-3-opus', provider: 'anthropic', id: 'claude-3-opus-20240229', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-3-5-haiku', provider: 'anthropic', id: 'claude-3-5-haiku-20241022', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
+  // Resolvable for a client that asks for the native Anthropic backend; the
+  // picker offers the Bedrock route below instead.
+  { name: 'claude-sonnet-4.6', provider: 'anthropic', id: 'claude-sonnet-4-6', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-opus-4.6', provider: 'anthropic', id: 'claude-opus-4-6', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
 ];
 
 const BEDROCK_MODELS: AllowedModel[] = [
-  { name: 'claude-opus-4.6', provider: 'aws', id: 'us.anthropic.claude-opus-4-6-v1:0', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'claude-sonnet-4.6', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6-v1:0', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'claude-sonnet', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6-v1:0', maxTokens: BEDROCK_DEFAULT_MAX },
+  { name: 'claude-opus-4.6', provider: 'aws', id: 'us.anthropic.claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-sonnet-4.6', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX },
+  { name: 'claude-sonnet', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-3-7-sonnet', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-3-5-sonnet', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-3-opus', provider: 'aws', id: 'us.anthropic.claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
   { name: 'minimax-m2.5', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'minimax', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX },
+  { name: 'minimax', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'kimi-k3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX },
+  { name: 'us.moonshotai.kimi-k3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'moonshotai.kimi-k3', provider: 'aws', id: 'moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'global.moonshotai.kimi-k3', provider: 'aws', id: 'global.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'Kimi-K3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'us.moonshot.kimi-k3-v1:0', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
 ];
 
 const ATRIA_MODELS: AllowedModel[] = [
   { name: 'Atria-Dawn-Preview', provider: 'atria', id: 'Atria-Dawn-Preview', maxTokens: ATRIA_DEFAULT_MAX },
-  { name: 'atria-dawn-preview', provider: 'atria', id: 'Atria-Dawn-Preview', maxTokens: ATRIA_DEFAULT_MAX },
+  // Case variant of the row above; offering both would be the same model twice.
+  { name: 'atria-dawn-preview', provider: 'atria', id: 'Atria-Dawn-Preview', maxTokens: ATRIA_DEFAULT_MAX, clientSelectable: false },
 ];
 
 export const MODEL_ALLOWLIST: readonly AllowedModel[] = [
   ...CF_MODELS,
-  ...ANTHROPIC_MODELS,
   ...BEDROCK_MODELS,
+  ...ANTHROPIC_MODELS,
   ...ATRIA_MODELS,
 ];
+
+/**
+ * The subset the model picker may show. Anything a client can select must also
+ * be resolvable server-side, so this is derived from the allowlist rather than
+ * maintained beside it — a model added here without an allowlist entry would be
+ * a button that always errors, and one removed from the allowlist would be a
+ * button that silently vanishes.
+ */
+export const CLIENT_SELECTABLE_MODELS: readonly AllowedModel[] = MODEL_ALLOWLIST.filter(
+  (m) => m.clientSelectable !== false
+);
 
 /**
  * Exact-match resolution. The optional `provider` hint disambiguates names that

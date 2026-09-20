@@ -6,20 +6,22 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:all-models": "playwright test tests/e2e/multi-model-complexity-suite.spec.ts",
     "benchmark": "playwright test tests/benchmark/orchestrator.spec.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "node scripts/check-secrets.mjs && wrangler deploy",
+    "predeploy": "vite build",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "r2:lifecycle": "wrangler r2 bucket lifecycle add brainhalf-project-backups expire-abandoned-backups --expire-days 365 --force"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^5.0.81",
     "@ai-sdk/anthropic": "^4.0.53",
     "@ai-sdk/openai": "^4.0.65",
-    "@anthropic-ai/sdk": "^0.125.0",
-    "@aws-sdk/client-bedrock-runtime": "^3.1127.0",
-    "@codesandbox/sandpack-react": "^2.20.0",
     "@monaco-editor/react": "^4.7.0",
     "agents": "^0.22.0",
     "ai": "^7.0.97",
@@ -34,7 +36,6 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260908.1",
     "@playwright/test": "^1.63.0",
-    "@types/jszip": "^3.4.0",
     "@types/node": "^26.5.0",
     "@types/prismjs": "^1.26.6",
     "@types/react": "^19.2.18",
@@ -46,5 +47,9 @@
     "vite": "^8.2.2",
     "vitest": "^5.0.0",
     "ws": "^8.21.3"
+  },
+  "overridesNotes": "// is not supported inside npm overrides; the dompurify override exists because monaco-editor 0.56.0 pins dompurify@3.4.8, which carries four advisories (GHSA-c2j3-45gr-mqc4 et al.) fixed in 3.4.13+ — all patch releases. Drop the override once monaco re-pins.",
+  "overrides": {
+    "dompurify": "^3.4.15"
   }
 }

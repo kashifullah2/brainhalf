@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getProjects,
   saveProjects,
@@ -10,9 +10,12 @@ import {
   setActiveProjectId,
   getProjectFiles,
   saveProjectFiles,
+  saveProjectFilesDebounced,
+  flushProjectFileWrites,
   getProjectMessages,
   saveProjectMessages,
   deleteProjectMessages,
+  deleteProjectFiles,
   getProjectDisplayTitle
 } from '../lib/project-store';
 
@@ -233,6 +236,71 @@ describe('Project Store & LocalStorage State Management', () => {
     it('falls back to generic Project N if no user prompt exists yet', () => {
       const proj = createProject('Project 4');
       expect(getProjectDisplayTitle(proj)).toBe('Project 4');
+    });
+  });
+});
+
+describe('Debounced file persistence (editor keystroke path)', () => {
+  let mockStorage: Record<string, string> = {};
+
+  beforeEach(() => {
+    mockStorage = {};
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => (key in mockStorage ? mockStorage[key] : null),
+      setItem: (key: string, val: string) => { mockStorage[key] = val; },
+      removeItem: (key: string) => { delete mockStorage[key]; },
+      clear: () => { mockStorage = {}; }
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const read = (projectId: string) =>
+    mockStorage[`brainhalf_files_${projectId}`] ?? null;
+
+  it('does not touch localStorage synchronously, only the memory cache', () => {
+    saveProjectFilesDebounced('proj-deb-1', { '/src/App.jsx': 'a' });
+    expect(read('proj-deb-1')).toBeNull();
+    expect(getProjectFiles('proj-deb-1')).toEqual({ '/src/App.jsx': 'a' });
+  });
+
+  it('collapses a burst of edits into the last write only', () => {
+    for (let i = 0; i < 50; i++) {
+      saveProjectFilesDebounced('proj-deb-2', { '/src/App.jsx': `line ${i}` });
+    }
+    expect(read('proj-deb-2')).toBeNull();
+
+    vi.advanceTimersByTime(400);
+    expect(JSON.parse(read('proj-deb-2'))).toEqual({ '/src/App.jsx': 'line 49' });
+  });
+
+  it('writes immediately when flushed', () => {
+    saveProjectFilesDebounced('proj-deb-3', { '/src/App.jsx': 'flushed' });
+    flushProjectFileWrites();
+    expect(JSON.parse(read('proj-deb-3'))).toEqual({ '/src/App.jsx': 'flushed' });
+  });
+
+  it('does not resurrect deleted files with a late debounced write', () => {
+    saveProjectFilesDebounced('proj-deb-4', { '/src/App.jsx': 'doomed' });
+    deleteProjectFiles('proj-deb-4');
+
+    // The pending timer would otherwise fire now and restore the files.
+    vi.advanceTimersByTime(400);
+    expect(read('proj-deb-4')).toBeNull();
+  });
+
+  it('lets an explicit synchronous save win over a pending debounced one', () => {
+    // Keystroke, then the agent emits a completed file before the debounce fires.
+    saveProjectFilesDebounced('proj-deb-5', { '/src/App.jsx': 'stale typing' });
+    saveProjectFiles('proj-deb-5', { '/src/App.jsx': 'generated', '/src/Other.jsx': 'new' });
+
+    vi.advanceTimersByTime(400);
+    expect(JSON.parse(read('proj-deb-5'))).toEqual({
+      '/src/App.jsx': 'generated',
+      '/src/Other.jsx': 'new'
     });
   });
 });

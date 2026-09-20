@@ -1,19 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  LayoutGrid,
-  Globe,
-  Smartphone,
   Plus,
   Mic,
   ArrowUp,
-  Award,
-  Monitor,
-  Radio,
+  ArrowRight,
+  Sparkles,
   MoreHorizontal,
   Trash2,
   Edit2,
   LogOut,
-  FolderOpen
+  FolderOpen,
 } from 'lucide-react';
 import {
   Project,
@@ -24,7 +20,7 @@ import {
 } from '../lib/project-store';
 import { appEvents } from '../lib/events';
 import ConfirmModal from './ConfirmModal';
-import BrainHalfLogo from './BrainHalfLogo';
+import { BrainHalfLogo } from './BrainHalfLogo';
 
 interface LandingPageProps {
   onOpenProject: (projectId: string) => void;
@@ -32,7 +28,15 @@ interface LandingPageProps {
   activeProjectId?: string;
   currentUser?: { email?: string; name?: string } | null;
   onLogout?: () => void | Promise<void>;
+  onLoginRequest?: (mode?: 'login' | 'signup') => void;
 }
+
+const SUGGESTIONS = [
+  { label: 'SaaS analytics dashboard', prompt: 'Build a SaaS analytics dashboard with MRR cards, revenue charts, and user retention tables.' },
+  { label: 'Real-time kanban board', prompt: 'Create a kanban board with drag-and-drop task cards, priority labels, and search filters.' },
+  { label: 'Crypto portfolio tracker', prompt: 'Build a cryptocurrency portfolio tracker with live prices for BTC/ETH/SOL and an allocation chart.' },
+  { label: 'E-commerce storefront', prompt: 'Build a modern e-commerce storefront with a product grid, cart, and checkout flow.' },
+];
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenProject,
@@ -40,11 +44,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   activeProjectId,
   currentUser,
   onLogout,
+  onLoginRequest,
 }) => {
   const [projects, setProjects] = useState<Project[]>(() => getProjects());
   const [promptText, setPromptText] = useState('');
-  const [appType, setAppType] = useState<'web' | 'mobile'>('web');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'apps' | 'published'>('all');
   const [activeMenuProjectId, setActiveMenuProjectId] = useState<string | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   const [projectToRename, setProjectToRename] = useState<Project | null>(null);
@@ -86,7 +89,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     if (e) e.preventDefault();
     const trimmed = promptText.trim();
     if (!trimmed) return;
-    onSubmitInitialPrompt(trimmed, appType);
+    onSubmitInitialPrompt(trimmed, 'web');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -116,29 +119,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
 
-  const filteredProjects = projects.filter(p => {
-    if (activeFilter === 'apps') return true;
-    if (activeFilter === 'published') return p.status === 'ready';
-    return true;
-  });
-
-  const userInitial = (currentUser?.name || currentUser?.email || 'W')
+  const userInitial = (currentUser?.name || currentUser?.email || 'U')
     .trim()[0]
     .toUpperCase();
 
   return (
     <div className="landing-container">
-      {/* Background dark atmosphere */}
-      <div className="landing-sky-backdrop" />
+      <div className="landing-radial-glow" />
 
-      {/* Top Bar */}
+      {/* Nav */}
       <header className="landing-header">
         <div className="landing-header-left">
-          <button className="landing-home-pill" title="Home" aria-label="Home">
-            <LayoutGrid size={15} strokeWidth={2} />
-            <span>Home</span>
-          </button>
-          {activeProject && (
+          <div
+            className="landing-brand-group"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="landing-brand-logo">
+              <BrainHalfLogo size={20} strokeWidth={1.8} color="#2dd4bf" />
+            </div>
+            <span className="landing-brand-text">BrainHalf</span>
+          </div>
+
+          {currentUser && activeProject && (
             <div
               className="landing-project-breadcrumb"
               onClick={() => onOpenProject(activeProject.id)}
@@ -153,76 +157,77 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         <div className="landing-header-right">
-          {/* User Avatar & Dropdown */}
-          <div style={{ position: 'relative' }} ref={userMenuRef}>
-            <button
-              className="landing-user-avatar"
-              onClick={() => setShowUserMenu(prev => !prev)}
-              title={currentUser?.email || 'User Profile'}
-              aria-label="User Profile"
-            >
-              <span>{userInitial}</span>
-            </button>
+          {currentUser ? (
+            <div style={{ position: 'relative' }} ref={userMenuRef}>
+              <button
+                className="landing-user-avatar"
+                onClick={() => setShowUserMenu(prev => !prev)}
+                title={currentUser?.email || 'User Profile'}
+                aria-label="User Profile"
+              >
+                <span>{userInitial}</span>
+              </button>
 
-            {showUserMenu && (
-              <div className="landing-user-dropdown">
-                <div className="landing-user-dropdown-info">
-                  <p className="user-email">{currentUser?.email || 'user@brainhalf.com'}</p>
-                  <p className="user-status">Free Developer Tier</p>
+              {showUserMenu && (
+                <div className="landing-user-dropdown">
+                  <div className="landing-user-dropdown-info">
+                    <p className="user-email">{currentUser?.email || 'user@brainhalf.com'}</p>
+                  </div>
+                  <hr className="landing-dropdown-divider" />
+                  {onLogout && (
+                    <button
+                      className="landing-dropdown-item"
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        onLogout();
+                      }}
+                    >
+                      <LogOut size={14} />
+                      <span>Sign Out</span>
+                    </button>
+                  )}
                 </div>
-                <hr className="landing-dropdown-divider" />
-                {onLogout && (
-                  <button
-                    className="landing-dropdown-item"
-                    onClick={() => {
-                      setShowUserMenu(false);
-                      onLogout();
-                    }}
-                  >
-                    <LogOut size={14} />
-                    <span>Sign Out</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          ) : (
+            <div className="landing-auth-buttons">
+              <button
+                type="button"
+                className="landing-signin-btn"
+                onClick={() => onLoginRequest?.('login')}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                className="landing-get-started-btn"
+                onClick={() => onLoginRequest?.('signup')}
+              >
+                <Sparkles size={14} className="landing-sparkle-icon" />
+                <span>Get Started</span>
+                <ArrowRight size={13} />
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
-      {/* Main Hero Section */}
+      {/* Hero */}
       <main className="landing-main-content">
         <h1 className="landing-headline">
-          Start with one prompt. You can change everything later.
+          What would you like to <span className="landing-headline-gradient">build today?</span>
         </h1>
+        <p className="landing-subheadline">
+          Describe your idea and watch it come to life.
+        </p>
 
-        {/* Prompt Card with Docked Tabs */}
+        {/* Prompt Box */}
         <div className="landing-prompt-wrapper">
-          {/* App Type Tabs */}
-          <div className="landing-tabs-bar">
-            <button
-              type="button"
-              className={`landing-type-tab ${appType === 'web' ? 'active' : ''}`}
-              onClick={() => setAppType('web')}
-            >
-              <Globe size={14} strokeWidth={1.8} />
-              <span>Web app</span>
-            </button>
-            <button
-              type="button"
-              className={`landing-type-tab ${appType === 'mobile' ? 'active' : ''}`}
-              onClick={() => setAppType('mobile')}
-            >
-              <Smartphone size={14} strokeWidth={1.8} />
-              <span>Mobile app</span>
-            </button>
-          </div>
-
-          {/* Main Prompt Box */}
           <form className="landing-prompt-box" onSubmit={handlePromptSubmit}>
             <textarea
               ref={textareaRef}
               className="landing-prompt-textarea"
-              placeholder="Describe your idea we will bring it to life.."
+              placeholder="Describe an app idea, e.g. 'Build a crypto portfolio tracker with real-time prices and charts'"
               value={promptText}
               onChange={e => setPromptText(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -262,7 +267,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   type="submit"
                   className={`landing-submit-btn ${promptText.trim() ? 'active' : ''}`}
                   disabled={!promptText.trim()}
-                  title="Create app from prompt"
+                  title="Create app from prompt (Enter)"
                   aria-label="Create app from prompt"
                 >
                   <ArrowUp size={16} strokeWidth={2.5} />
@@ -270,79 +275,44 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
           </form>
-        </div>
 
-        {/* Filter Segmented Control */}
-        <div className="landing-filters-row">
-          <div className="landing-segmented-filter">
-            <button
-              className={`landing-filter-btn ${activeFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setActiveFilter('all')}
-            >
-              <LayoutGrid size={13} strokeWidth={2} />
-              <span>All ({projects.length})</span>
-            </button>
-            <button
-              className={`landing-filter-btn ${activeFilter === 'apps' ? 'active' : ''}`}
-              onClick={() => setActiveFilter('apps')}
-            >
-              <Monitor size={13} strokeWidth={2} />
-              <span>Apps</span>
-            </button>
-            <button
-              className={`landing-filter-btn ${activeFilter === 'published' ? 'active' : ''}`}
-              onClick={() => setActiveFilter('published')}
-            >
-              <Radio size={13} strokeWidth={2} />
-              <span>Published</span>
-            </button>
+          {/* Suggestion Chips */}
+          <div className="landing-chips-container">
+            <div className="landing-chips-scroll">
+              {SUGGESTIONS.map((s, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className="landing-chip-btn"
+                  onClick={() => {
+                    setPromptText(s.prompt);
+                    textareaRef.current?.focus();
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Project Cards List / Grid */}
-        <div className="landing-projects-section">
-          {filteredProjects.length === 0 ? (
-            <div className="landing-empty-projects">
-              <p>No projects in this category.</p>
-            </div>
-          ) : (
+        {/* Recent Projects */}
+        {projects.length > 0 && (
+          <section className="landing-projects-section" style={{ marginTop: '40px' }}>
+            <h2 className="landing-section-title" style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(255,255,255,0.45)', marginBottom: '12px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Recent projects</h2>
+
             <div className="landing-projects-list">
-              {filteredProjects.map(proj => (
+              {projects.map(proj => (
                 <div
                   key={proj.id}
                   className="landing-project-card"
                   onClick={() => onOpenProject(proj.id)}
                 >
-                  {/* Miniature App Wireframe Preview */}
-                  <div className="landing-card-thumbnail">
-                    <div className="thumbnail-window">
-                      <div className="thumb-header">
-                        <div className="thumb-dots">
-                          <span />
-                          <span />
-                          <span />
-                        </div>
-                        <div className="thumb-url-bar" />
-                      </div>
-                      <div className="thumb-body">
-                        <div className="thumb-sidebar" />
-                        <div className="thumb-content">
-                          <div className="thumb-box-1" />
-                          <div className="thumb-box-2" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Project Info */}
                   <div className="landing-card-info">
                     <h3 className="landing-card-title">{proj.name}</h3>
-                    <p className="landing-card-time">
-                      Updated {formatRelativeTime(proj.updatedAt)}
-                    </p>
+                    <p className="landing-card-time">{formatRelativeTime(proj.updatedAt)}</p>
                   </div>
 
-                  {/* Actions Menu */}
                   <div
                     className="landing-card-actions"
                     onClick={e => e.stopPropagation()}
@@ -370,7 +340,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                           }}
                         >
                           <FolderOpen size={14} />
-                          <span>Open in Workspace</span>
+                          <span>Open</span>
                         </button>
                         <button
                           className="landing-card-dropdown-item"
@@ -400,18 +370,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </section>
+        )}
       </main>
-
-      {/* Delete Confirmation Modal */}
 
       {/* Delete Confirmation Modal */}
       {projectToDelete && (
         <ConfirmModal
           isOpen={true}
           title="Delete Project"
-          message="Are you sure you want to delete this project? All project files and conversation history will be permanently deleted."
+          message="Are you sure you want to delete this project? All files and conversation history will be permanently deleted."
           confirmLabel="Delete Project"
           isDestructive={true}
           onConfirm={handleDeleteConfirm}

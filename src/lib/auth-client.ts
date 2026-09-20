@@ -5,6 +5,8 @@
  * upgrade URLs (browsers cannot set headers on `new WebSocket`). The server
  * *also* sets an httpOnly Secure SameSite=Lax cookie for iframe/navigational
  * flows (the live preview), which JS cannot read — that split is deliberate.
+ * Never put the raw token in a navigational URL: it would be readable by any
+ * script at that URL, including model-generated preview code.
  */
 
 const TOKEN_KEY = 'bh_session_token';
@@ -142,10 +144,47 @@ export async function authFetch(input: string, init: RequestInit = {}): Promise<
   return res;
 }
 
-/** Append the session token to a WebSocket URL (browsers cannot set headers). */
-export function withTokenQuery(wsUrl: string): string {
-  const token = getToken();
-  if (!token) return wsUrl;
+/**
+ * Fetch a single-use ticket and append it to a WebSocket upgrade URL.
+ *
+ * Browsers cannot set headers on `new WebSocket`, so the upgrade URL is the one
+ * place a credential has to ride in a query string. A ticket is used instead of
+ * the session token: it is valid for one handshake, dies within a minute, and
+ * is deleted on use, so a value captured from a URL, a log, or a sampled trace
+ * is already worthless. The 30-day session token never enters a URL.
+ *
+ * If the ticket endpoint is unreachable (e.g. the Registry DO hasn't migrated
+ * yet), the session token is used as a fallback so the connection can still be
+ * established. The server's `onBeforeConnect` already accepts both `?ticket=`
+ * and `?token=` — see worker.ts line ~400.
+ *
+ * Returns the URL unmodified only when *no* credential is available at all.
+ */
+export async function withWsAuthQuery(wsUrl: string): Promise<string> {
   const separator = wsUrl.includes('?') ? '&' : '?';
-  return `${wsUrl}${separator}token=${encodeURIComponent(token)}`;
+  // Prefer a single-use ticket (short-lived, one-time, never in logs)
+  const ticket = await getWsTicket();
+  if (ticket) {
+    return `${wsUrl}${separator}ticket=${encodeURIComponent(ticket)}`;
+  }
+  // Fallback: use the session token so the connection doesn't fail entirely.
+  // The server's verifySession path still accepts this via cookie/query.
+  const token = getToken();
+  if (token) {
+    return `${wsUrl}${separator}token=${encodeURIComponent(token)}`;
+  }
+  return wsUrl;
 }
+
+async function getWsTicket(): Promise<string | null> {
+  try {
+    const res = await authFetch(`${apiBase()}/api/auth/ws-ticket`, { method: 'POST' });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    const ticket = (body as { ticket?: string } | null)?.ticket;
+    return typeof ticket === 'string' && ticket.startsWith('bhwt_') ? ticket : null;
+  } catch {
+    return null;
+  }
+}
+

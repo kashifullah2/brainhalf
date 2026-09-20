@@ -3,7 +3,7 @@ import { Trash2, X, User, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Spark
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, parseMessageSegmentsMemoized, applyEditsToFile, type CodeEdit, type ParseResult } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
-import { getProjectFiles, getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName, setActiveProjectId } from '../lib/project-store';
+import { getProjectFiles, getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName, setActiveProjectId, deleteProject } from '../lib/project-store';
 import { getToken, verifyStoredSession, withWsAuthQuery, authFetch } from '../lib/auth-client';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
@@ -90,9 +90,11 @@ function formatMessageTime(timestamp?: number): string | null {
 interface ChatPanelProps {
   activeProjectId?: string;
   width?: number;
+  initialPrompt?: string | null;
+  onInitialPromptConsumed?: () => void;
 }
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', width }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', width, initialPrompt, onInitialPromptConsumed }) => {
   const [input, setInput] = useState('');
   const [selectedModelId, setSelectedModelId] = useState(MODELS[0].id);
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -135,6 +137,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const [hoveredMessageIndex, setHoveredMessageIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const connectRef = useRef<(() => Promise<void>) | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -189,6 +192,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   // without needing to re-subscribe every time activeProjectId changes.
   const handleStopGenerationRef = useRef<() => void>(() => {});
 
+  // Auto-send support: when landing page passes an initialPrompt for a brand-new project
+  const pendingAutoSendRef = useRef<string | null>(null);
+  const handleSendMessageRef = useRef<((override?: string) => void) | null>(null);
+  const onInitialPromptConsumedRef = useRef(onInitialPromptConsumed);
+  useEffect(() => { onInitialPromptConsumedRef.current = onInitialPromptConsumed; }, [onInitialPromptConsumed]);
+  useEffect(() => {
+    if (initialPrompt) pendingAutoSendRef.current = initialPrompt;
+  }, [initialPrompt]);
+
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimer: any = null;
@@ -219,6 +231,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     let connectAttempts = 0;
 
     const connect = async () => {
+      connectRef.current = connect;
       // Same-origin is correct in production (the Worker terminates the WS) and
       // in local dev, where the assets are served from the same host:port as
       // wrangler. VITE_BACKEND_HOST is still honored as an explicit override,
@@ -258,9 +271,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
       ws.onopen = () => {
         if (!isMounted) return;
-        connectAttempts = 0;
         setIsConnected(true);
         console.log(`Connected to session: ${activeProjectId}`);
+
+        // Reset the attempt counter only after the connection has survived
+        // long enough to receive a message. An open-then-immediate-close
+        // (e.g. the DO rejecting ownership) must not reset the counter or
+        // the backoff cap is defeated and the client loops forever.
+        const stableTimer = setTimeout(() => { connectAttempts = 0; }, 2000);
+        ws!.addEventListener('close', () => clearTimeout(stableTimer), { once: true });
 
         // Keep WebSocket alive across long reasoning/generation phases
         pingInterval = setInterval(() => {
@@ -315,13 +334,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             } else {
               const localSaved = getProjectMessages(activeProjectId);
               if (!localSaved || localSaved.length === 0) {
-                const freshWelcome: Message[] = [
-                  { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
-                ];
-                setMessages(freshWelcome);
-                messagesRef.current = freshWelcome;
-                saveProjectMessages(activeProjectId, freshWelcome);
-                appEvents.emit('generation-status', { status: 'Ready', detail: 'Fresh project ready', projectId: activeProjectId });
+                if (pendingAutoSendRef.current) {
+                  // Landing page submitted a prompt — auto-send it into this fresh project
+                  const autoPrompt = pendingAutoSendRef.current;
+                  pendingAutoSendRef.current = null;
+                  onInitialPromptConsumedRef.current?.();
+                  setTimeout(() => { handleSendMessageRef.current?.(autoPrompt); }, 60);
+                } else {
+                  const freshWelcome: Message[] = [
+                    { role: 'ai', content: 'What kind of application would you like to build today? For example, "Create a crypto tracker app."' }
+                  ];
+                  setMessages(freshWelcome);
+                  messagesRef.current = freshWelcome;
+                  saveProjectMessages(activeProjectId, freshWelcome);
+                  appEvents.emit('generation-status', { status: 'Ready', detail: 'Fresh project ready', projectId: activeProjectId });
+                }
               } else {
                 // If local has history but server has none, this is a newly created branch.
                 // Sync the local history to the new server DO instance.
@@ -427,12 +454,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
               // Ensure the final complete message content is committed to state
               const finalContent = aiMessageRef.current;
+              const effectiveContent = finalContent || (bufferRef.current ? bufferRef.current : '⚠️ Model completed without generating response text. Please try sending your prompt again.');
               const completedAt = Date.now();
               const doneMsgs = [...messagesRef.current];
               if (doneMsgs[doneMsgs.length - 1]?.role === 'user') {
-                doneMsgs.push({ role: 'ai', content: finalContent, timestamp: completedAt });
+                doneMsgs.push({ role: 'ai', content: effectiveContent, timestamp: completedAt });
               } else {
-                doneMsgs[doneMsgs.length - 1] = { ...doneMsgs[doneMsgs.length - 1], content: finalContent, timestamp: completedAt };
+                doneMsgs[doneMsgs.length - 1] = { ...doneMsgs[doneMsgs.length - 1], content: effectiveContent, timestamp: completedAt };
               }
               messagesRef.current = doneMsgs;
               setMessages(doneMsgs);
@@ -455,10 +483,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             isGeneratingRef.current = false;
             const errMsg = data.error || data.message || 'Generation failed';
             appEvents.emit('generation-status', { status: 'Error', error: errMsg, projectId: activeProjectId });
-            setMessages(prev => [
-              ...prev,
-              { role: 'ai', content: errMsg }
-            ]);
+            const current = [...messagesRef.current];
+            if (current.length > 0 && current[current.length - 1].role === 'ai' && !current[current.length - 1].content) {
+              current[current.length - 1] = { role: 'ai', content: `⚠️ ${errMsg}`, timestamp: Date.now() };
+            } else {
+              current.push({ role: 'ai', content: `⚠️ ${errMsg}`, timestamp: Date.now() });
+            }
+            messagesRef.current = current;
+            setMessages(current);
+            saveProjectMessages(activeProjectId, current);
           } else if (data.type === 'tool_call') {
             appEvents.emit('generation-status', {
               status: 'Generating',
@@ -519,17 +552,50 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         }
         setIsGenerating(false);
         isGeneratingRef.current = false;
-        // Only explicit 4401 close code indicates an authorization / permission failure.
-        // Abnormal close (1006) is a standard network/transport disconnect event in browser WebSockets,
-        // which must simply trigger reconnect backoff, NEVER an auto-switch to a previous project.
+        // 4401 = auth/ownership failure (do not reconnect)
+        // 4409 = project quota exceeded (do not reconnect, delete local project)
+        // 4429 = too many open connections (retryable — user closes another tab)
+        // 1006 = abnormal network close (reconnect with backoff)
+        if (event?.code === 4409) {
+          appEvents.emit('generation-status', {
+            status: 'Error',
+            error: 'You have reached your project quota. Please delete an existing project before creating a new one.',
+            projectId: activeProjectId,
+          });
+          if (isMounted) {
+            // Cleanup the local dummy project that was rejected by the server
+            deleteProject(activeProjectId);
+            const remaining = getProjects();
+            if (remaining.length > 0) {
+              const targetId = remaining[0].id;
+              setActiveProjectId(targetId);
+              appEvents.emit('project-switched', { projectId: targetId });
+            }
+          }
+          return;
+        }
+        if (event?.code === 4429) {
+          appEvents.emit('generation-status', {
+            status: 'Error',
+            error: 'Too many open tabs for this project. Close a tab and it will reconnect.',
+            projectId: activeProjectId,
+          });
+          // Fall through to reconnect with backoff — the extra tab may close.
+        }
+
         if (event?.code === 4401) {
+          if (!getToken()) {
+            window.dispatchEvent(new CustomEvent('bh-session-expired'));
+            return;
+          }
+          // Authorization failure — do NOT reconnect. The async check below
+          // determines whether this is a session expiry or an ownership conflict
+          // and surfaces the right message; reconnecting would just loop.
           verifyStoredSession().then(async (user) => {
             if (!user) {
               if (isMounted) window.dispatchEvent(new CustomEvent('bh-session-expired'));
               return;
             }
-            // If the user is authenticated and received 4401, check if this project
-            // is foreign (e.g. opened via shared URL belonging to another user) vs. locally created.
             const isLocal = getProjects().some((p: any) => p.id === activeProjectId);
             if (!isLocal && isMounted) {
               try {
@@ -561,10 +627,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               });
             }
           });
-          if (!getToken()) {
-            window.dispatchEvent(new CustomEvent('bh-session-expired'));
-            return;
-          }
+          return;
         }
         connectAttempts++;
         if (connectAttempts > 10) {
@@ -881,6 +944,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       pendingSendRef.current = (openedWs: WebSocket) => {
         sendWithWs(openedWs);
       };
+      if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED || wsRef.current.readyState === WebSocket.CLOSING) {
+        connectRef.current?.();
+      }
       setTimeout(() => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           sendWithWs(wsRef.current);
@@ -892,6 +958,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   }, [activeProjectId, imageType, input, selectedImage, selectedModelId]);
+
+  // Keep ref in sync so the WS closure can always call the latest handleSendMessage
+  useEffect(() => {
+    handleSendMessageRef.current = handleSendMessage;
+  }, [handleSendMessage]);
 
   const autoFixCountRef = useRef(0);
 
@@ -1455,7 +1526,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 handleSendMessage();
               }
             }}
-            placeholder="Queue your message"
+            placeholder="Message..."
             rows={1}
             disabled={isGenerating}
             style={{
@@ -1509,6 +1580,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 {MODELS.map(m => (
                   <button
                     key={m.id}
+                    data-testid={`model-option-${m.id}`}
+                    aria-label={`Select model ${m.name}`}
                     onClick={() => {
                       setSelectedModelId(m.id);
                       setShowModelPicker(false);
@@ -1588,8 +1661,30 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
           {/* Bottom Toolbar row inside input container */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
-            {/* Left Controls: Plus, Model pill, Sliders */}
+            {/* Left Controls: Plus, Model pill, Status */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Model status pill — always visible, reflects generation state */}
+              <div
+                data-testid="model-status-pill"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  color: 'rgba(255,255,255,0.5)',
+                  userSelect: 'none',
+                }}
+              >
+                <span style={{
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  background: platformStatus.dotColor,
+                  boxShadow: platformStatus.glow,
+                  flexShrink: 0,
+                }} />
+                <span>{platformStatus.modelPanelLabel}</span>
+              </div>
               <button
                 type="button"
                 className="icon-btn"
@@ -1641,7 +1736,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               >
                 <SlidersHorizontal size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {MODELS.find(m => m.id === selectedModelId)?.name ?? selectedModelId}
+                  {(MODELS.find(m => m.id === selectedModelId)?.name ?? selectedModelId).replace(/\s*\([^)]*\)/g, '')}
                 </span>
               </button>
             </div>
@@ -1687,6 +1782,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   }}
                   title="Stop generation"
                   aria-label="Stop generation"
+                  data-testid="stop-generation-btn"
                 >
                   <Square size={11} fill="currentColor" />
                 </button>

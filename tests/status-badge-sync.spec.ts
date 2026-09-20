@@ -14,12 +14,14 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
       };
       localStorage.setItem('brainhalf_projects', JSON.stringify([freshProj]));
       localStorage.setItem('brainhalf_active_project', freshProj.id);
+      localStorage.setItem('bh_session_token', 'bh_dev_local_token_not_a_real_session');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'dev-user-1', email: 'dev@brainhalf.local' }));
       localStorage.removeItem('brainhalf_messages_fresh-status-proj');
     });
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('http://localhost:5173');
-    await page.waitForLoadState('networkidle');
+    await page.goto('http://localhost:5173/?project=fresh-status-proj');
+    await page.waitForLoadState('domcontentloaded');
 
     // 1. Verify Top-bar status badge
     const topBarStatus = page.locator('[data-testid="topbar-status-pill"]');
@@ -60,12 +62,14 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
       };
       localStorage.setItem('brainhalf_projects', JSON.stringify([p]));
       localStorage.setItem('brainhalf_active_project', p.id);
+      localStorage.setItem('bh_session_token', 'bh_dev_local_token_not_a_real_session');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'dev-user-1', email: 'dev@brainhalf.local' }));
       localStorage.removeItem('brainhalf_messages_build-test-proj');
     });
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('http://localhost:5173');
-    await page.waitForLoadState('networkidle');
+    await page.goto('http://localhost:5173/?project=build-test-proj');
+    await page.waitForLoadState('domcontentloaded');
 
     const topBarStatus = page.locator('[data-testid="topbar-status-pill"]');
     const modelStatus = page.locator('[data-testid="model-status-pill"]');
@@ -75,7 +79,7 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
     await expect(modelStatus).toContainText('Active');
 
     // Type a prompt into chat textarea
-    const chatInput = page.locator('textarea[placeholder*="BrainHalf"]');
+    const chatInput = page.locator('textarea[placeholder*="BrainHalf"], textarea').first();
     await chatInput.fill('Build a simple counter widget');
 
     // Click send
@@ -95,7 +99,7 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
     expect(modelDotColor).toBe('rgb(59, 130, 246)');
 
     // Click stop button to test transition to Stopped
-    const stopBtn = page.locator('button[title="Stop generating response"]');
+    const stopBtn = page.locator('button[title*="Stop"]');
     if (await stopBtn.isVisible()) {
       await stopBtn.click();
       await expect(topBarStatus).toContainText('Stopped');
@@ -125,6 +129,8 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
       };
       localStorage.setItem('brainhalf_projects', JSON.stringify([p1, p2]));
       localStorage.setItem('brainhalf_active_project', p1.id);
+      localStorage.setItem('bh_session_token', 'bh_dev_local_token_not_a_real_session');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'dev-user-1', email: 'dev@brainhalf.local' }));
       localStorage.setItem('brainhalf_messages_proj-with-history', JSON.stringify([
         { role: 'user', content: 'Initial prompt' },
         { role: 'ai', content: 'Generated code' }
@@ -133,8 +139,8 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
     });
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('http://localhost:5173');
-    await page.waitForLoadState('networkidle');
+    await page.goto('http://localhost:5173/?project=proj-with-history');
+    await page.waitForLoadState('domcontentloaded');
 
     const topBarStatus = page.locator('[data-testid="topbar-status-pill"]');
     const modelStatus = page.locator('[data-testid="model-status-pill"]');
@@ -143,9 +149,9 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
     await expect(topBarStatus).toContainText('Ready');
     await expect(modelStatus).toContainText('Active');
 
-    // Switch to fresh project
-    const emptyProjItem = page.locator('text=Project Empty Fresh');
-    await emptyProjItem.click();
+    // Switch to fresh project via URL navigation (workspace project switching uses URL params)
+    await page.goto('http://localhost:5173/?project=proj-empty-fresh');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify on the fresh project it is strictly Ready & Active, never Building
     await expect(topBarStatus).toContainText('Ready');

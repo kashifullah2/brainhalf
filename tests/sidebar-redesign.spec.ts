@@ -1,12 +1,11 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Sidebar Redesign Verification', () => {
-  test('renders first user prompt as title, right-aligned timestamps, reduced padding, and subtle hover with no border', async ({ page }) => {
-    // Populate projects with messages in localStorage prior to page load
+test.describe('Landing Page Project List Verification', () => {
+  test('renders project cards with names, timestamps, and action menu', async ({ page }) => {
     await page.addInitScript(() => {
       const p1 = {
         id: 'proj-financial-tracker',
-        name: 'Project 1',
+        name: 'Financial Budget Dashboard',
         framework: 'React 18 + Vite',
         status: 'ready',
         createdAt: Date.now() - 3600000,
@@ -14,7 +13,7 @@ test.describe('Sidebar Redesign Verification', () => {
       };
       const p2 = {
         id: 'proj-chess-game',
-        name: 'Project 2',
+        name: 'Chess Game',
         framework: 'React 18 + Vite',
         status: 'ready',
         createdAt: Date.now() - 7200000,
@@ -22,7 +21,7 @@ test.describe('Sidebar Redesign Verification', () => {
       };
       const p3 = {
         id: 'proj-empty-new',
-        name: 'Project 3',
+        name: 'New Project',
         framework: 'React 18 + Vite',
         status: 'ready',
         createdAt: Date.now() - 60000,
@@ -30,9 +29,9 @@ test.describe('Sidebar Redesign Verification', () => {
       };
 
       localStorage.setItem('brainhalf_projects', JSON.stringify([p1, p2, p3]));
-      localStorage.setItem('brainhalf_active_project', p1.id);
+      localStorage.setItem('bh_session_token', 'bh_dev_local_token_not_a_real_session');
+      localStorage.setItem('bh_session_user', JSON.stringify({ id: 'dev-user-1', email: 'dev@brainhalf.local' }));
 
-      // p1 has a long prompt (> 30 chars)
       localStorage.setItem(
         'brainhalf_messages_proj-financial-tracker',
         JSON.stringify([
@@ -40,7 +39,6 @@ test.describe('Sidebar Redesign Verification', () => {
         ])
       );
 
-      // p2 has a short prompt (< 30 chars)
       localStorage.setItem(
         'brainhalf_messages_proj-chess-game',
         JSON.stringify([
@@ -51,77 +49,45 @@ test.describe('Sidebar Redesign Verification', () => {
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('http://localhost:5173');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(500);
 
-    // 1. Verify item 1 title is truncated first user prompt
-    const p1Item = page.locator('.sidebar-nav-item', { hasText: 'Build an interactive financial…' });
-    await expect(p1Item).toBeVisible();
+    // 1. Verify project cards are visible on landing page
+    const cards = page.locator('.landing-project-card');
+    await expect(cards.first()).toBeVisible({ timeout: 10000 });
+    const cardCount = await cards.count();
+    expect(cardCount).toBeGreaterThanOrEqual(3);
 
-    // 2. Verify item 2 title is exact short user prompt
-    const p2Item = page.locator('.sidebar-nav-item', { hasText: 'Create a chess game' });
-    await expect(p2Item).toBeVisible();
+    // 2. Verify project names appear in cards
+    const p1Card = page.locator('.landing-project-card', { hasText: 'Financial Budget Dashboard' });
+    await expect(p1Card).toBeVisible();
 
-    // 3. Verify item 3 fallback
-    const p3Item = page.locator('.sidebar-nav-item', { hasText: 'Project 3' });
-    await expect(p3Item).toBeVisible();
+    const p2Card = page.locator('.landing-project-card', { hasText: 'Chess Game' });
+    await expect(p2Card).toBeVisible();
 
-    // 4. Verify right-aligned timestamp on p1
-    const p1Timestamp = p1Item.locator('span:has-text("ago"), span:has-text("h ago"), span:has-text("m ago"), span:has-text("now")').first();
-    await expect(p1Timestamp).toBeVisible();
+    const p3Card = page.locator('.landing-project-card', { hasText: 'New Project' });
+    await expect(p3Card).toBeVisible();
 
-    const timestampStyles = await p1Timestamp.evaluate((el) => {
-      const computed = window.getComputedStyle(el);
-      return {
-        fontSize: computed.fontSize,
-        color: computed.color,
-        textAlign: computed.textAlign
-      };
-    });
-    expect(timestampStyles.fontSize).toBe('11px');
-
-    // 5. Verify row padding is reduced and no borders
-    const rowStyles = await p1Item.evaluate((el) => {
-      const computed = window.getComputedStyle(el);
-      return {
-        paddingTop: computed.paddingTop,
-        paddingBottom: computed.paddingBottom,
-        paddingLeft: computed.paddingLeft,
-        paddingRight: computed.paddingRight,
-        borderTopWidth: computed.borderTopWidth,
-        borderBottomWidth: computed.borderBottomWidth,
-        borderLeftWidth: computed.borderLeftWidth,
-        borderRightWidth: computed.borderRightWidth,
-        borderLeftStyle: computed.borderLeftStyle
-      };
-    });
-
-    // Padding should be 5px (reduced from 8px/9px)
-    expect(parseInt(rowStyles.paddingTop, 10)).toBeLessThanOrEqual(6);
-    expect(parseInt(rowStyles.paddingBottom, 10)).toBeLessThanOrEqual(6);
-
-    // No border
-    expect(rowStyles.borderLeftStyle).toBe('none');
-    expect(rowStyles.borderLeftWidth).toBe('0px');
-
-    // 6. Test hover on p2
-    await p2Item.hover();
+    // 3. Verify action menu opens on a project card
+    const actionsBtn = p1Card.locator('button[aria-label="Project actions"]');
+    await actionsBtn.click();
     await page.waitForTimeout(200);
 
-    const p2HoverStyles = await p2Item.evaluate((el) => {
-      const computed = window.getComputedStyle(el);
-      return {
-        background: computed.backgroundColor,
-        borderLeftStyle: computed.borderLeftStyle,
-        transform: computed.transform
-      };
-    });
-    expect(p2HoverStyles.borderLeftStyle).toBe('none');
-    expect(p2HoverStyles.transform).toBe('none');
+    const deleteItem = page.locator('.landing-card-dropdown-item.danger').first();
+    await expect(deleteItem).toBeVisible();
 
-    // 7. Capture visual screenshot of the redesigned sidebar
-    const sidebar = page.locator('.sidebar-container');
-    await sidebar.screenshot({
-      path: '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475/sidebar_redesign_preview.png'
-    });
+    // Close menu
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+
+    // 4. Verify clicking a card navigates to the project workspace
+    await p2Card.click();
+    await page.waitForTimeout(500);
+    expect(page.url()).toContain('project=proj-chess-game');
+
+    // 5. Visual screenshot of landing page project list
+    await page.goto('http://localhost:5173');
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: 'test-results/landing-project-list.png' });
   });
 });

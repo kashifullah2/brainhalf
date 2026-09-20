@@ -7,8 +7,6 @@ import {
   isFullStackProject,
   executeBackendRequest
 } from '../lib/backend-runner';
-import { exportProjectAsZip } from '../lib/zip-export';
-import JSZip from 'jszip';
 
 describe('BrainHalf Full-Stack Backend Runner', () => {
   describe('Environment Variable (.env) Parser', () => {

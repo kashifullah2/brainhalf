@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Download, Share2, Check, X, ExternalLink, Cloud, Settings, RotateCcw, Bot, Code2, Plus, LogOut, LayoutGrid } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
+import { usePlatformStatus } from '../lib/status-store';
 import ConfirmModal from './ConfirmModal';
 
 interface TopNavProps {
@@ -132,6 +133,7 @@ const TopNav: React.FC<TopNavProps> = ({
   };
 
   const userInitial = (currentUser?.name || currentUser?.email || 'K').trim()[0].toUpperCase();
+  const platformStatus = usePlatformStatus(activeProjectId);
 
   return (
     <div className="top-nav" role="banner">
@@ -301,8 +303,37 @@ const TopNav: React.FC<TopNavProps> = ({
         </div>
       )}
 
-      {/* Right Cluster: User avatar circle */}
+      {/* Right Cluster: Status pill + User avatar */}
       <div className="top-nav-right-cluster" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
+
+        {!isMobile && (
+          <div
+            data-testid="topbar-status-pill"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '3px 9px',
+              borderRadius: '6px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              fontSize: '11.5px',
+              color: 'rgba(255,255,255,0.7)',
+              flexShrink: 0,
+              userSelect: 'none',
+            }}
+          >
+            <span style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: platformStatus.dotColor,
+              boxShadow: platformStatus.glow,
+              flexShrink: 0,
+            }} />
+            <span>{platformStatus.topBarLabel}</span>
+          </div>
+        )}
 
         <div style={{ position: 'relative' }} ref={moreMenuRef}>
           <button 

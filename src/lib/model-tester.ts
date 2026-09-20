@@ -270,12 +270,23 @@ export async function handleModelTest(
 
   // Strict allowlist: an exact match is required. Previously any @cf/ string
   // was passed straight to env.AI.run and any claude-* id ran as sonnet.
-  const resolved = resolveModel(modelId, provider);
+  let resolved = resolveModel(modelId, provider);
   if (!resolved) {
     return new Response(JSON.stringify({
       error: `Model "${modelId}" is not in the model allowlist`,
       allowedModels: MODEL_ALLOWLIST.map((m) => m.name)
     }), { status: 400, headers: corsHeaders });
+  }
+
+  // Anthropic-family models may be served by the native API or by Bedrock.
+  // Match agent.ts transport choice: if native API key is missing but Bedrock
+  // is configured (or vice versa), route through the configured transport.
+  if (resolved.provider === 'anthropic' && !env.ANTHROPIC_API_KEY) {
+    const alt = resolveModel(resolved.name, 'aws');
+    if (alt) resolved = alt;
+  } else if (resolved.provider === 'aws' && !(env.BEDROCK_API_KEY || (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY))) {
+    const alt = resolveModel(resolved.name, 'anthropic');
+    if (alt) resolved = alt;
   }
 
   const modelSlug = modelId.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').toLowerCase();
@@ -455,12 +466,11 @@ export async function handleModelTest(
       });
 
       const BEDROCK_ALIASES: Record<string, string[]> = {
-        'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'moonshotai.kimi-k3', 'global.moonshotai.kimi-k3'],
-        'moonshotai.kimi-k3': ['moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3'],
+        'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
+        'moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
         'global.moonshotai.kimi-k3': ['global.moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-        'us.anthropic.claude-3-7-sonnet-20250219-v1:0': ['us.anthropic.claude-3-7-sonnet-20250219-v1:0', 'anthropic.claude-3-7-sonnet-20250219-v1:0'],
-        'us.anthropic.claude-3-opus-20240229-v1:0': ['us.anthropic.claude-3-opus-20240229-v1:0', 'anthropic.claude-3-opus-20240229-v1:0'],
-        'us.anthropic.claude-3-5-sonnet-20241022-v2:0': ['us.anthropic.claude-3-5-sonnet-20241022-v2:0', 'anthropic.claude-3-5-sonnet-20241022-v2:0'],
+        'us.anthropic.claude-sonnet-4-6': ['us.anthropic.claude-sonnet-4-6', 'global.anthropic.claude-sonnet-4-6', 'anthropic.claude-sonnet-4-6', 'us.anthropic.claude-sonnet-4-6-v1:0', 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'],
+        'us.anthropic.claude-opus-4-6': ['us.anthropic.claude-opus-4-6', 'global.anthropic.claude-opus-4-6', 'anthropic.claude-opus-4-6', 'us.anthropic.claude-opus-4-6-v1:0', 'us.anthropic.claude-3-opus-20240229-v1:0'],
         'minimax.minimax-m2.5': ['minimax.minimax-m2.5', 'us.minimax.minimax-m2.5'],
       };
 
@@ -469,13 +479,17 @@ export async function handleModelTest(
 
       for (let idx = 0; idx < candidates.length; idx++) {
         const candidateId = candidates[idx];
+        let streamErrorCaught: any = null;
         try {
           outputContent = '';
           firstTokenTime = null;
           const stream = streamText({
             model: bedrock(candidateId),
             messages: [{ role: 'user', content: prompt }],
-            abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS)
+            abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+            onError: (errEvent: any) => {
+              streamErrorCaught = errEvent?.error || errEvent;
+            }
           });
 
           for await (const chunk of stream.textStream) {
@@ -484,12 +498,20 @@ export async function handleModelTest(
             }
             outputContent += chunk;
           }
+
+          if (streamErrorCaught) {
+            throw streamErrorCaught;
+          }
+          if (!outputContent) {
+            await stream.text;
+          }
           lastErr = null;
           break;
         } catch (bErr: any) {
           lastErr = bErr;
           const msg = bErr?.message || String(bErr);
-          if (/model identifier is invalid/i.test(msg) && idx + 1 < candidates.length) {
+          if ((/model identifier is invalid/i.test(msg) || /ResourceNotFoundException/i.test(msg) || /is not authorized/i.test(msg) || /reached the end of its life/i.test(msg)) && idx + 1 < candidates.length) {
+            console.warn(`Bedrock candidate ${candidateId} failed (${msg}); trying ${candidates[idx + 1]}`);
             continue;
           }
           throw bErr;

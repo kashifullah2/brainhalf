@@ -1,20 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import { login, signup, type SessionUser } from '../lib/auth-client';
 
 interface LoginScreenProps {
   onAuthenticated: (user: SessionUser) => void;
+  onClose?: () => void;
+  initialMode?: 'login' | 'signup';
 }
 
 type Mode = 'login' | 'signup';
 
 /**
- * Full-screen auth gate. Shown by App.tsx whenever no valid server-side
- * session exists. All access to the studio requires it — there is no
- * anonymous mode.
+ * Full-screen or modal auth gate.
+ * When onClose is provided, operates as an accessible modal overlay with
+ * close button and backdrop click dismiss.
  */
-const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
-  const [mode, setMode] = useState<Mode>('login');
+const LoginScreen: React.FC<LoginScreenProps> = ({
+  onAuthenticated,
+  onClose,
+  initialMode = 'login',
+}) => {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -22,8 +29,23 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
   const emailRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  useEffect(() => {
     emailRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (!onClose) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,30 +82,69 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onAuthenticated }) => {
   return (
     <div
       className="login-screen"
+      onClick={() => onClose && onClose()}
       style={{
         position: 'fixed',
         inset: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background:
-          'radial-gradient(120% 100% at 50% 0%, #14161f 0%, #0b0c11 55%, #08090d 100%)',
+        background: onClose
+          ? 'rgba(7, 8, 12, 0.85)'
+          : 'radial-gradient(120% 100% at 50% 0%, #14161f 0%, #0b0c11 55%, #08090d 100%)',
+        backdropFilter: 'blur(10px)',
         padding: '24px',
         zIndex: 99999,
       }}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
+          position: 'relative',
           width: '100%',
           maxWidth: '392px',
-          background: 'rgba(255, 255, 255, 0.025)',
+          background: 'rgba(20, 22, 31, 0.95)',
           border: '1px solid var(--border-subtle)',
           borderRadius: '12px',
           padding: '32px 28px',
-          boxShadow: '0 24px 64px rgba(0, 0, 0, 0.55)',
-          backdropFilter: 'blur(12px)',
+          boxShadow: '0 24px 64px rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(16px)',
         }}
       >
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            title="Close"
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              width: '28px',
+              height: '28px',
+              borderRadius: '6px',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#ffffff';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-muted)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <X size={16} />
+          </button>
+        )}
         {/* Brand */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '26px' }}>
           <div
