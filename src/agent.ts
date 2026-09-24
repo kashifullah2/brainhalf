@@ -1624,6 +1624,17 @@ export class ChatAgent extends Agent {
             return;
           }
 
+          const isStaged = !plannerMode && !isConversationalPrompt(actualPrompt) && !fileOutputRetry && !actualPrompt.includes('<edit ') && !(typeof process !== 'undefined' && process.env?.VITEST);
+          const pipelineStages = isStaged ? [
+            { stageId: 'architecture', notice: 'Step 1 of 3: Architecture & Schema', extraPrompt: '\n\nSTAGE 1 INSTRUCTION: Generate ONLY the core architecture, database schema, types, and project structure (e.g. package.json, schema.sql). Do NOT generate UI components or routes yet.' },
+            { stageId: 'layout', notice: 'Step 2 of 3: Core layout & UI', extraPrompt: '\n\nSTAGE 2 INSTRUCTION: Using the architecture defined, generate the core layout, main navigation, and primary UI components. Do NOT implement backend routes or detailed feature logic yet.' },
+            { stageId: 'features', notice: 'Step 3 of 3: Feature modules & backend', extraPrompt: '\n\nSTAGE 3 INSTRUCTION: Complete the application by generating detailed feature modules, backend API routes, and wiring everything together.' }
+          ] : [
+            { stageId: 'single', notice: 'The app builder is working…', extraPrompt: '' }
+          ];
+
+          let currentNativeMessages = [...nativeMessages];
+
           try {
             const BEDROCK_ALIASES: Record<string, string[]> = {
               'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
@@ -1639,121 +1650,148 @@ export class ChatAgent extends Agent {
               : [model.id];
 
             let lastStreamError: any = null;
-            let streamErrorCaught: any = null;
 
-            for (let idx = 0; idx < candidates.length; idx++) {
-              const currentModelId = candidates[idx];
-              let activeAiModel = aiModel;
-              if (model.provider === 'aws' && currentModelId !== model.id) {
-                const bedrock = createAmazonBedrock({
-                  region: awsRegion,
-                  apiKey: bedrockApiKey,
-                  accessKeyId: awsKey,
-                  secretAccessKey: awsSecret,
-                });
-                activeAiModel = bedrock(currentModelId);
-              }
+            for (let stageIdx = 0; stageIdx < pipelineStages.length; stageIdx++) {
+              const stage = pipelineStages[stageIdx];
+              const isLastStage = stageIdx === pipelineStages.length - 1;
+              const stageSystemPrompt = systemPrompt + stage.extraPrompt;
+              
+              let streamErrorCaught: any = null;
+              let stageCompleted = false;
 
-              streamErrorCaught = null;
-              let streamedText = '';
-              let displayContent = '';
-              const transcript = new ToolTranscriptStream();
-              const sendDisplay = (response: string) => {
-                if (!response) return;
-                displayContent += response;
-                this.rememberGenerationText(response, epoch);
-                const message = JSON.stringify({ type: 'stream', chunk: { response, done: false } });
-                try { connection.send(message); } catch { }
-                try { this.broadcast(message, [connection.id]); } catch { }
-              };
-              const streamOptions: Parameters<typeof streamText>[0] = {
-                model: meteredModel(activeAiModel, () => { accounting.providerCalls++; }),
-                system: systemPrompt,
-                messages: nativeMessages,
-                tools: plannerMode || fileOutputRetry ? undefined : agentTools,
-                toolChoice: fileOutputRetry ? 'none' : 'auto',
-                stopWhen: isStepCount(maxSteps + 1),
-                prepareStep: ({ stepNumber, messages }) => stepNumber >= maxSteps ? {
-                  activeTools: [],
-                  toolChoice: 'none',
-                  messages: [...messages, { role: 'user', content: 'The tool phase is complete. Finish the original task using the results above. Return remaining implementation as complete file blocks. Report any checks that still need to run.' }],
-                } : undefined,
-                maxOutputTokens: requestedMaxTokens ?? maxTokensForModel,
-                maxRetries: 0,
-                abortSignal: abortController.signal,
-                onError: (event: any) => {
-                  const err = event?.error || event;
-                  console.error(`streamText error (${model.name}, id=${currentModelId}):`, err);
-                  streamErrorCaught = err;
-                },
-                onChunk: (event: any) => {
-                  if (!this.writeEpoch.accepts(epoch) || abortController.signal.aborted) {
-                    abortController.abort();
-                    return;
+              for (let idx = 0; idx < candidates.length; idx++) {
+                const currentModelId = candidates[idx];
+                let activeAiModel = aiModel;
+                if (model.provider === 'aws' && currentModelId !== model.id) {
+                  const bedrock = createAmazonBedrock({
+                    region: awsRegion,
+                    apiKey: bedrockApiKey,
+                    accessKeyId: awsKey,
+                    secretAccessKey: awsSecret,
+                  });
+                  activeAiModel = bedrock(currentModelId);
+                }
+
+                streamErrorCaught = null;
+                let streamedText = '';
+                let displayContent = '';
+                const transcript = new ToolTranscriptStream();
+                const sendDisplay = (response: string) => {
+                  if (!response) return;
+                  displayContent += response;
+                  this.rememberGenerationText(response, epoch);
+                  const message = JSON.stringify({ type: 'stream', chunk: { response, done: false } });
+                  try { connection.send(message); } catch { }
+                  try { this.broadcast(message, [connection.id]); } catch { }
+                };
+                
+                const streamOptions: Parameters<typeof streamText>[0] = {
+                  model: meteredModel(activeAiModel, () => { accounting.providerCalls++; }),
+                  system: stageSystemPrompt,
+                  messages: currentNativeMessages,
+                  tools: plannerMode || fileOutputRetry ? undefined : agentTools,
+                  toolChoice: fileOutputRetry ? 'none' : 'auto',
+                  stopWhen: isStepCount(maxSteps + 1),
+                  prepareStep: ({ stepNumber, messages }) => stepNumber >= maxSteps ? {
+                    activeTools: [],
+                    toolChoice: 'none',
+                    messages: [...messages, { role: 'user', content: 'The tool phase is complete. Finish the original task using the results above. Return remaining implementation as complete file blocks. Report any checks that still need to run.' }],
+                  } : undefined,
+                  maxOutputTokens: requestedMaxTokens ?? maxTokensForModel,
+                  maxRetries: 0,
+                  abortSignal: abortController.signal,
+                  onError: (event: any) => {
+                    const err = event?.error || event;
+                    console.error(`streamText error (${model.name}, id=${currentModelId}):`, err);
+                    streamErrorCaught = err;
+                  },
+                  onChunk: (event: any) => {
+                    if (!this.writeEpoch.accepts(epoch) || abortController.signal.aborted) {
+                      abortController.abort();
+                      return;
+                    }
+                    const chunk = event?.chunk ?? event;
+                    const textDelta =
+                      chunk?.textDelta ??
+                      chunk?.text ??
+                      chunk?.delta ??
+                      (chunk?.type === 'text-delta' ? chunk.text ?? chunk.textDelta : undefined);
+
+                    if (chunk?.type === 'text-delta' && textDelta) {
+                      streamedText += String(textDelta);
+                      sendDisplay(transcript.push(String(textDelta)));
+                    }
+
+                    if (chunk?.type === 'tool-call') {
+                      sendDisplay(toolSummaryMarkup([String(chunk.toolName || 'tool')]));
+                      const toolMsg = JSON.stringify({
+                        type: 'tool_call',
+                        tool: chunk.toolName,
+                      });
+                      try { connection.send(toolMsg); } catch { }
+                      try { this.broadcast(toolMsg, [connection.id]); } catch { }
+                    }
                   }
-                  const chunk = event?.chunk ?? event;
-                  const textDelta =
-                    chunk?.textDelta ??
-                    chunk?.text ??
-                    chunk?.delta ??
-                    (chunk?.type === 'text-delta' ? chunk.text ?? chunk.textDelta : undefined);
+                };
 
-                  if (chunk?.type === 'text-delta' && textDelta) {
-                    streamedText += String(textDelta);
-                    sendDisplay(transcript.push(String(textDelta)));
+                try {
+                  connection.send(JSON.stringify({ type: 'generation_notice', message: stage.notice, stage: stage.stageId, requestId: data.idempotencyKey }));
+                  const result = streamText(streamOptions);
+                  const finalText = await withAbortSignal(result.text, abortController.signal);
+                  const usage = await withAbortSignal(result.totalUsage, abortController.signal);
+                  this.captureUsage(usage.inputTokens, usage.outputTokens);
+                  if (streamErrorCaught) throw streamErrorCaught;
+                  if (!this.writeEpoch.accepts(epoch)) return;
+                  const text = streamedText || finalText;
+                  if (!streamedText) sendDisplay(transcript.push(finalText));
+                  sendDisplay(transcript.push('', true));
+                  if (!text.trim() && (plannerMode || isConversationalPrompt(actualPrompt)) && toolWrittenPaths.size === 0) throw new Error('The model returned no response. Please retry.');
+                  
+                  const extraction = this.extractAndSaveFiles(text, connection, epoch);
+                  extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...toolWrittenPaths])];
+                  extraction.writtenCount = extraction.writtenPaths.length;
+                  
+                  // Only save turn if it's the last stage, OR save partial turns? 
+                  // It's better to just save the overall turn at the end or save each stage.
+                  // We'll save the turn for each stage to keep context accurate in history.
+                  this.saveTurn(stageIdx === 0 ? actualPrompt : 'Continue to the next stage.', displayContent || (toolWrittenPaths.size ? `Updated ${[...toolWrittenPaths].join(', ')}.` : ''));
+                  
+                  if (toolWrittenPaths.size > 0) {
+                    const changed = JSON.stringify({ type: 'files_changed' });
+                    try { connection.send(changed); } catch { }
+                    try { this.broadcast(changed, [connection.id]); } catch { }
                   }
-
-                  if (chunk?.type === 'tool-call') {
-                    sendDisplay(toolSummaryMarkup([String(chunk.toolName || 'tool')]));
-                    const toolMsg = JSON.stringify({
-                      type: 'tool_call',
-                      tool: chunk.toolName,
+                  this.handleIncompleteAppGeneration({ actualPrompt, responseText: text, extraction, connection, expectFiles: !plannerMode && isLastStage, epoch, deferTerminal });
+                  
+                  if (isLastStage) {
+                    const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
+                    deferTerminal(() => {
+                      try { connection.send(doneMsg); } catch { }
+                      try { this.broadcast(doneMsg, [connection.id]); } catch { }
                     });
-                    try { connection.send(toolMsg); } catch { }
-                    try { this.broadcast(toolMsg, [connection.id]); } catch { }
+                    completed = true;
+                  } else {
+                    currentNativeMessages.push({ role: 'assistant', content: text });
+                    currentNativeMessages.push({ role: 'user', content: 'Great. Proceed to the next stage and output the remaining files. Ensure you use the exact same architecture.' });
                   }
+                  
+                  lastStreamError = null;
+                  stageCompleted = true;
+                  break;
+                } catch (streamErr: any) {
+                  const effectiveErr = streamErrorCaught || streamErr;
+                  const errMessage = effectiveErr?.message || String(effectiveErr);
+                  lastStreamError = effectiveErr;
+                  if (!streamedText && toolWrittenPaths.size === 0 && !abortController.signal.aborted && (/model identifier is invalid/i.test(errMessage) || /ResourceNotFoundException/i.test(errMessage) || /is not authorized/i.test(errMessage) || /reached the end of its life/i.test(errMessage)) && idx + 1 < candidates.length) {
+                    console.warn(`Bedrock ID ${currentModelId} failed (${errMessage}); retrying alternate profile ${candidates[idx + 1]}`);
+                    continue;
+                  }
+                  throw new Error(errMessage);
                 }
-              };
-
-              try {
-                connection.send(JSON.stringify({ type: 'generation_notice', message: 'The app builder is working…', stage: 'model', requestId: data.idempotencyKey }));
-                const result = streamText(streamOptions);
-                const finalText = await withAbortSignal(result.text, abortController.signal);
-                const usage = await withAbortSignal(result.totalUsage, abortController.signal);
-                this.captureUsage(usage.inputTokens, usage.outputTokens);
-                if (streamErrorCaught) throw streamErrorCaught;
-                if (!this.writeEpoch.accepts(epoch)) return;
-                const text = streamedText || finalText;
-                if (!streamedText) sendDisplay(transcript.push(finalText));
-                sendDisplay(transcript.push('', true));
-                if (!text.trim() && (plannerMode || isConversationalPrompt(actualPrompt)) && toolWrittenPaths.size === 0) throw new Error('The model returned no response. Please retry.');
-                const extraction = this.extractAndSaveFiles(text, connection, epoch);
-                extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...toolWrittenPaths])];
-                extraction.writtenCount = extraction.writtenPaths.length;
-                this.saveTurn(actualPrompt, displayContent || (toolWrittenPaths.size ? `Updated ${[...toolWrittenPaths].join(', ')}.` : ''));
-                if (toolWrittenPaths.size > 0) {
-                  const changed = JSON.stringify({ type: 'files_changed' });
-                  try { connection.send(changed); } catch { }
-                  try { this.broadcast(changed, [connection.id]); } catch { }
-                }
-                this.handleIncompleteAppGeneration({ actualPrompt, responseText: text, extraction, connection, expectFiles: !plannerMode, epoch, deferTerminal });
-                const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
-                deferTerminal(() => {
-                  try { connection.send(doneMsg); } catch { }
-                  try { this.broadcast(doneMsg, [connection.id]); } catch { }
-                });
-                completed = true;
-                lastStreamError = null;
+              }
+              
+              if (!stageCompleted && lastStreamError) {
                 break;
-              } catch (streamErr: any) {
-                const effectiveErr = streamErrorCaught || streamErr;
-                const errMessage = effectiveErr?.message || String(effectiveErr);
-                lastStreamError = effectiveErr;
-                if (!streamedText && toolWrittenPaths.size === 0 && !abortController.signal.aborted && (/model identifier is invalid/i.test(errMessage) || /ResourceNotFoundException/i.test(errMessage) || /is not authorized/i.test(errMessage) || /reached the end of its life/i.test(errMessage)) && idx + 1 < candidates.length) {
-                  console.warn(`Bedrock ID ${currentModelId} failed (${errMessage}); retrying alternate profile ${candidates[idx + 1]}`);
-                  continue;
-                }
-                throw new Error(errMessage);
               }
             }
 
