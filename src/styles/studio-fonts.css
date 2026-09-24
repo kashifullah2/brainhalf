@@ -1,0 +1,25 @@
+@font-face {
+  font-family: 'Bricolage Studio';
+  src: url('/fonts/bricolage-grotesque.woff') format('woff');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Studio';
+  src: url('/fonts/instrument-sans.woff') format('woff');
+  font-weight: 400 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Studio';
+  src: url('/fonts/instrument-sans-bold.woff') format('woff');
+  font-weight: 600 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DM Studio Mono';
+  src: url('/fonts/dm-mono.woff') format('woff');
+  font-weight: 400;
+  font-display: swap;
+}

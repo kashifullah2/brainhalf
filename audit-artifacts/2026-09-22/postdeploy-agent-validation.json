@@ -1,0 +1,14 @@
+{
+  "version": "5c3bde99-5095-4da0-b0ad-a30cad44f236",
+  "model": "@cf/deepseek-ai/deepseek-v4-pro-0813",
+  "projectId": "proj-c4d4bb16-5fff-4966-bb57-33a35f46bef8",
+  "success": true,
+  "defaultSelectionPassed": true,
+  "interactionsPassed": true,
+  "reloadPassed": true,
+  "durationMs": 26780,
+  "firstTokenMs": 10687,
+  "httpErrors": [],
+  "agentErrors": [],
+  "browserErrors": []
+}

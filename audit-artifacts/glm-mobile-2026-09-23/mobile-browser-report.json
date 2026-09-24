@@ -1,0 +1,60 @@
+{
+  "metadata": {
+    "actualWorkers": 1
+  },
+  "startTime": 1790181687922,
+  "duration": 27765.884,
+  "files": [
+    {
+      "fileId": "bb0f847d6010989e02a1",
+      "fileName": "audit-remediation.spec.ts",
+      "tests": [
+        {
+          "testId": "bb0f847d6010989e02a1-95cf7ddca80c663c5361",
+          "title": "chat controls and content fit narrow screens without hiding overflow",
+          "projectName": "chromium",
+          "location": {
+            "file": "audit-remediation.spec.ts",
+            "line": 65,
+            "column": 1
+          },
+          "duration": 8880,
+          "annotations": [],
+          "tags": [],
+          "outcome": "expected",
+          "path": [],
+          "ok": true,
+          "results": [
+            {
+              "attachments": [],
+              "startTime": "2026-09-23T16:41:41.603Z",
+              "workerIndex": 0
+            }
+          ]
+        }
+      ],
+      "stats": {
+        "total": 1,
+        "expected": 1,
+        "unexpected": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "ok": true
+      }
+    }
+  ],
+  "projectNames": [
+    "chromium"
+  ],
+  "stats": {
+    "total": 1,
+    "expected": 1,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "ok": true
+  },
+  "errors": [],
+  "options": {},
+  "machines": []
+}

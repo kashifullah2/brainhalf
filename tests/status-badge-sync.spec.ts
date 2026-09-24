@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Status Badge Logic & Unified Single Source of Truth Verification', () => {
-  test('fresh project with no prompt sent reads Ready (top-bar) and Active (model-panel), never Building', async ({ page }) => {
+  test('fresh project with no prompt sent reads Ready (top-bar) and Ready (model-panel), never Building', async ({ page }) => {
     // Initialize with a fresh/empty project
     await page.addInitScript(() => {
       const freshProj = {
@@ -38,7 +38,7 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
     // 2. Verify Model-panel status indicator
     const modelStatus = page.locator('[data-testid="model-status-pill"]');
     await expect(modelStatus).toBeVisible();
-    await expect(modelStatus).toContainText('Active');
+    await expect(modelStatus).toContainText('Ready');
     await expect(modelStatus).not.toContainText('Building');
 
     // Check model panel dot is also green
@@ -76,7 +76,7 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
 
     // Initial state check
     await expect(topBarStatus).toContainText('Ready');
-    await expect(modelStatus).toContainText('Active');
+    await expect(modelStatus).toContainText('Ready');
 
     // Type a prompt into chat textarea
     const chatInput = page.locator('textarea[placeholder*="BrainHalf"], textarea').first();
@@ -145,18 +145,18 @@ test.describe('Status Badge Logic & Unified Single Source of Truth Verification'
     const topBarStatus = page.locator('[data-testid="topbar-status-pill"]');
     const modelStatus = page.locator('[data-testid="model-status-pill"]');
 
-    // Both should start as Ready / Active
+    // Both should start as Ready / Ready
     await expect(topBarStatus).toContainText('Ready');
-    await expect(modelStatus).toContainText('Active');
+    await expect(modelStatus).toContainText('Ready');
 
     // Switch to fresh project via URL navigation (workspace project switching uses URL params)
     await page.goto('http://localhost:5173/?project=proj-empty-fresh');
     await page.waitForLoadState('domcontentloaded');
 
-    // Verify on the fresh project it is strictly Ready & Active, never Building
+    // Verify on the fresh project it is strictly Ready & Ready, never Building
     await expect(topBarStatus).toContainText('Ready');
     await expect(topBarStatus).not.toContainText('Building');
-    await expect(modelStatus).toContainText('Active');
+    await expect(modelStatus).toContainText('Ready');
     await expect(modelStatus).not.toContainText('Building');
   });
 });

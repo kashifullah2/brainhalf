@@ -1,0 +1,152 @@
+{
+  "metadata": {
+    "actualWorkers": 1
+  },
+  "startTime": 1790180709520,
+  "duration": 19190.204,
+  "files": [
+    {
+      "fileId": "2496485211eb1d5df32d",
+      "fileName": "managed-runtime.spec.ts",
+      "tests": [
+        {
+          "testId": "2496485211eb1d5df32d-b2ab7abfc22edf72bff7",
+          "title": "agent-generated backend automatically starts development hosting",
+          "projectName": "chromium",
+          "location": {
+            "file": "managed-runtime.spec.ts",
+            "line": 19,
+            "column": 36
+          },
+          "duration": 2506,
+          "annotations": [],
+          "tags": [],
+          "outcome": "expected",
+          "path": [],
+          "ok": true,
+          "results": [
+            {
+              "attachments": [],
+              "startTime": "2026-09-23T16:25:13.226Z",
+              "workerIndex": 0
+            }
+          ]
+        },
+        {
+          "testId": "2496485211eb1d5df32d-187454a0466380750168",
+          "title": "agent-generated backend honors pilot availability",
+          "projectName": "chromium",
+          "location": {
+            "file": "managed-runtime.spec.ts",
+            "line": 19,
+            "column": 36
+          },
+          "duration": 4137,
+          "annotations": [],
+          "tags": [],
+          "outcome": "expected",
+          "path": [],
+          "ok": true,
+          "results": [
+            {
+              "attachments": [],
+              "startTime": "2026-09-23T16:25:16.438Z",
+              "workerIndex": 0
+            }
+          ]
+        },
+        {
+          "testId": "2496485211eb1d5df32d-6951f7d2899728d6b16e",
+          "title": "frontend-only generations do not create hosting jobs",
+          "projectName": "chromium",
+          "location": {
+            "file": "managed-runtime.spec.ts",
+            "line": 39,
+            "column": 1
+          },
+          "duration": 2271,
+          "annotations": [],
+          "tags": [],
+          "outcome": "expected",
+          "path": [],
+          "ok": true,
+          "results": [
+            {
+              "attachments": [],
+              "startTime": "2026-09-23T16:25:20.607Z",
+              "workerIndex": 0
+            }
+          ]
+        },
+        {
+          "testId": "2496485211eb1d5df32d-5d46379d532448ec99aa",
+          "title": "a delayed hosting check cannot send a prompt after stop",
+          "projectName": "chromium",
+          "location": {
+            "file": "managed-runtime.spec.ts",
+            "line": 48,
+            "column": 51
+          },
+          "duration": 2324,
+          "annotations": [],
+          "tags": [],
+          "outcome": "expected",
+          "path": [],
+          "ok": true,
+          "results": [
+            {
+              "attachments": [],
+              "startTime": "2026-09-23T16:25:22.910Z",
+              "workerIndex": 0
+            }
+          ]
+        },
+        {
+          "testId": "2496485211eb1d5df32d-03d8b02abd742288ee30",
+          "title": "a delayed hosting check cannot send a prompt after switch",
+          "projectName": "chromium",
+          "location": {
+            "file": "managed-runtime.spec.ts",
+            "line": 48,
+            "column": 51
+          },
+          "duration": 3234,
+          "annotations": [],
+          "tags": [],
+          "outcome": "expected",
+          "path": [],
+          "ok": true,
+          "results": [
+            {
+              "attachments": [],
+              "startTime": "2026-09-23T16:25:25.267Z",
+              "workerIndex": 0
+            }
+          ]
+        }
+      ],
+      "stats": {
+        "total": 5,
+        "expected": 5,
+        "unexpected": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "ok": true
+      }
+    }
+  ],
+  "projectNames": [
+    "chromium"
+  ],
+  "stats": {
+    "total": 5,
+    "expected": 5,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 0,
+    "ok": true
+  },
+  "errors": [],
+  "options": {},
+  "machines": []
+}

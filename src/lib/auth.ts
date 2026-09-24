@@ -15,6 +15,7 @@
  * degrading to an anonymous mode.
  */
 import type { DurableObjectNamespace, DurableObjectStub } from '@cloudflare/workers-types';
+import { validSessionSecret } from './runtime-config';
 import {
   TOKEN_PREFIX,
   TOKEN_TTL_SECONDS,
@@ -24,6 +25,7 @@ import {
   verifyTokenSignature,
 } from './crypto';
 import { isAllowedOrigin } from './allowed-origins';
+import { getAppSessionToken } from './app-session';
 
 export { isAllowedOrigin };
 
@@ -33,6 +35,7 @@ export const AUTH_COOKIE = 'bh_session';
 export const USER_ID_HEADER = 'x-auth-user-id';
 /** Query param used for DO WebSocket upgrades where custom headers may not be forwarded. */
 export const USER_ID_QUERY_PARAM = '_uid';
+export const SESSION_HASH_QUERY_PARAM = '_sid';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -46,27 +49,18 @@ export interface RegistryEnv {
  *  browser share one list. Replaces the previous `Access-Control-Allow-Origin: *`. */
 export { ALLOWED_ORIGINS } from './allowed-origins';
 
-/**
- * Session secret. Prefer the configured Wrangler secret; otherwise fall back to
- * a per-isolate random key. We deliberately never ship a hardcoded fallback —
- * an unknown deployment stays *unforgeable* at the cost of losing sessions when
- * the isolate restarts. Local dev sets SESSION_SECRET via `.dev.vars`.
- */
-let ephemeralSecret: string | null = null;
 export function getSessionSecret(env: any): string {
-  if (env?.SESSION_SECRET && typeof env.SESSION_SECRET === 'string' && env.SESSION_SECRET.length >= 32) {
+  if (validSessionSecret(env?.SESSION_SECRET)) {
     return env.SESSION_SECRET;
   }
-  if (!ephemeralSecret) {
-    const bytes = new Uint8Array(48);
-    crypto.getRandomValues(bytes);
-    ephemeralSecret = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-    console.warn(
-      'SESSION_SECRET is not configured — using an ephemeral random key. ' +
-        'Sessions will not survive an isolate restart. Run: npx wrangler secret put SESSION_SECRET'
-    );
-  }
-  return ephemeralSecret;
+  throw new Error('SESSION_SECRET must contain at least 32 non-padding characters');
+}
+
+export function authUnavailable(): Response {
+  return new Response(JSON.stringify({ error: 'Authentication service unavailable' }), {
+    status: 503,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
 }
 
 /** Extract a bearer token from any of the supported transport locations. */
@@ -120,14 +114,12 @@ export async function verifySession(
   request: Request,
   env: RegistryEnv
 ): Promise<AuthenticatedUser | null> {
-  const token = extractToken(request);
-  const secret = getSessionSecret(env);
-
-  const verified = await verifyTokenSignature(token, secret);
-  if (!verified) return null;
-
-  // Revocation check against the Registry. A missing/dead session row denies.
   try {
+    const token = extractToken(request);
+    const secret = getSessionSecret(env);
+    const verified = await verifyTokenSignature(token, secret);
+    if (!verified) return null;
+
     const registry = getRegistry(env);
     const res = await registry.fetch(`https://registry/sessions/${encodeURIComponent(verified.tokenId)}`);
     if (!res.ok) return null;
@@ -139,6 +131,13 @@ export async function verifySession(
     console.error('Session revocation check failed:', err);
     return null;
   }
+}
+
+export async function verifyPreviewSession(request: Request, env: RegistryEnv): Promise<AuthenticatedUser | null> {
+  if (!getAppSessionToken(request.headers)) return verifySession(request, env);
+  const headers = new Headers(request.headers);
+  headers.delete('authorization');
+  return verifySession(new Request(request.url, { headers }), env);
 }
 
 /** Registry DO singleton lookup (idFromName is stable per deployment). */
@@ -159,13 +158,13 @@ export function getRegistry(env: RegistryEnv): DurableObjectStub {
  * substitute: minted for an already-verified user, valid for one handshake, and
  * deleted on use. See {@link verifyWsTicket}.
  */
-export async function issueWsTicket(env: RegistryEnv, userId: string): Promise<string | null> {
+export async function issueWsTicket(env: RegistryEnv, userId: string, sessionHash?: string): Promise<string | null> {
   try {
     const registry = getRegistry(env);
     const res = await registry.fetch('https://registry/ws-tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, sessionHash }),
     });
     if (!res.ok) return null;
     const body = (await res.json()) as { ticket?: string };
@@ -183,6 +182,10 @@ export async function issueWsTicket(env: RegistryEnv, userId: string): Promise<s
  * handshake.
  */
 export async function verifyWsTicket(env: RegistryEnv, ticket: string): Promise<string | null> {
+  return (await redeemWsIdentity(env, ticket))?.userId ?? null;
+}
+
+export async function redeemWsIdentity(env: RegistryEnv, ticket: string): Promise<{ userId: string; sessionHash: string } | null> {
   try {
     const registry = getRegistry(env);
     const res = await registry.fetch('https://registry/ws-tickets/verify', {
@@ -191,8 +194,8 @@ export async function verifyWsTicket(env: RegistryEnv, ticket: string): Promise<
       body: JSON.stringify({ ticket }),
     });
     if (!res.ok) return null;
-    const body = (await res.json()) as { userId?: string };
-    return body.userId ?? null;
+    const body = (await res.json()) as { userId?: string; sessionHash?: string };
+    return body.userId ? { userId: body.userId, sessionHash: body.sessionHash || '' } : null;
   } catch (err) {
     console.error('WS ticket verification failed:', err);
     return null;
@@ -217,14 +220,15 @@ export async function authorizeProject(
   env: RegistryEnv,
   projectId: string,
   userId: string,
-  name?: string
+  name?: string,
+  idempotencyKey?: string
 ): Promise<{ ok: boolean; status: number }> {
   try {
     const registry = getRegistry(env);
     const res = await registry.fetch('https://registry/projects/claim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, userId, name }),
+      body: JSON.stringify({ projectId, userId, name, idempotencyKey }),
     });
     return { ok: res.ok, status: res.status };
   } catch (err) {
@@ -267,6 +271,8 @@ export async function handleSignup(
   request: Request,
   env: RegistryEnv
 ): Promise<Response> {
+  let secret: string;
+  try { secret = getSessionSecret(env); } catch { return authUnavailable(); }
   let body: any;
   try {
     body = await request.json();
@@ -287,8 +293,8 @@ export async function handleSignup(
     return json(res.status || 400, { error: result.error || 'Signup failed' });
   }
 
-  const { token } = await issueToken(getSessionSecret(env), result.userId, TOKEN_TTL_SECONDS);
-  await registerSession(env, token, result.userId);
+  const { token } = await issueToken(secret, result.userId, TOKEN_TTL_SECONDS);
+  if (!await registerSession(env, token, result.userId)) return authUnavailable();
   return sessionResponse(200, { user: { id: result.userId, email: result.email }, token });
 }
 
@@ -296,6 +302,8 @@ export async function handleLogin(
   request: Request,
   env: RegistryEnv
 ): Promise<Response> {
+  let secret: string;
+  try { secret = getSessionSecret(env); } catch { return authUnavailable(); }
   let body: any;
   try {
     body = await request.json();
@@ -316,28 +324,31 @@ export async function handleLogin(
     return json(res.status || 401, { error: result.error || 'Login failed' });
   }
 
-  const { token } = await issueToken(getSessionSecret(env), result.userId, TOKEN_TTL_SECONDS);
-  await registerSession(env, token, result.userId);
+  const { token } = await issueToken(secret, result.userId, TOKEN_TTL_SECONDS);
+  if (!await registerSession(env, token, result.userId)) return authUnavailable();
   return sessionResponse(200, { user: { id: result.userId, email: result.email }, token });
 }
 
 export async function handleLogout(request: Request, env: RegistryEnv): Promise<Response> {
+  let revoked = true;
   const token = extractToken(request);
   if (token) {
     const tokenHash = await sha256Hex(token);
     try {
-      await getRegistry(env).fetch('https://registry/sessions', {
+      const response = await getRegistry(env).fetch('https://registry/sessions', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tokenHash }),
       });
+      revoked = response.ok;
     } catch (err) {
+      revoked = false;
       console.error('Logout failed:', err);
     }
   }
   // Clear the cookie regardless of the token's state.
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
+  return new Response(JSON.stringify(revoked ? { ok: true } : { error: 'Session revocation could not be confirmed. Please try again.' }), {
+    status: revoked ? 200 : 503,
     headers: {
       'Content-Type': 'application/json',
       'Set-Cookie': `${AUTH_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`,
@@ -355,7 +366,7 @@ export async function handleSession(
   return json(200, { userId: user.userId });
 }
 
-async function registerSession(env: RegistryEnv, token: string, userId: string): Promise<void> {
+async function registerSession(env: RegistryEnv, token: string, userId: string): Promise<boolean> {
   const tokenHash = await sha256Hex(token);
   const payloadPart = token.slice(TOKEN_PREFIX.length).split('.')[0];
   // exp comes from the signed payload; recompute it from the token itself so the
@@ -371,20 +382,23 @@ async function registerSession(env: RegistryEnv, token: string, userId: string):
     }
   }
   try {
-    await getRegistry(env).fetch('https://registry/sessions', {
+    const response = await getRegistry(env).fetch('https://registry/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tokenHash, userId, expiresAt }),
     });
+    return response.ok;
   } catch (err) {
     console.error('Failed to register session:', err);
+    return false;
   }
 }
 
-function sessionResponse(status: number, body: any): Response {
+export function sessionResponse(status: number, body: any): Response {
   const token = body?.token as string | undefined;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
     Vary: 'Origin',
   };
   if (token) {
@@ -406,12 +420,14 @@ export function json(status: number, body: any): Response {
  * client-supplied copy of the header removed first — the DO trusts this header
  * precisely because only the Worker can set it.
  */
-export function injectUserId(request: Request, userId: string): Request {
+export function injectUserId(request: Request, userId: string, sessionHash?: string): Request {
   const url = new URL(request.url);
   // Encode userId in both the header (for HTTP requests) and URL param (for
   // WebSocket upgrade requests where custom headers may be stripped by the
   // Cloudflare Workers runtime when forwarding to Durable Objects).
   url.searchParams.set(USER_ID_QUERY_PARAM, userId);
+  url.searchParams.delete(SESSION_HASH_QUERY_PARAM);
+  if (sessionHash && /^[a-f0-9]{64}$/.test(sessionHash)) url.searchParams.set(SESSION_HASH_QUERY_PARAM, sessionHash);
   const cloned = new Request(url.toString(), request);
   cloned.headers.delete(USER_ID_HEADER);
   cloned.headers.set(USER_ID_HEADER, userId);

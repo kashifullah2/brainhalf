@@ -1,0 +1,117 @@
+{
+  "label": "after-default",
+  "status": "generated",
+  "events": [
+    {
+      "type": "generation_notice",
+      "message": "Thinking...",
+      "ms": 373
+    },
+    {
+      "type": "generation_notice",
+      "stage": "accepted",
+      "message": "Preparing your app request\u2026",
+      "ms": 377
+    },
+    {
+      "type": "generation_notice",
+      "stage": "model",
+      "message": "The app builder is working\u2026",
+      "ms": 428
+    },
+    {
+      "type": "tool",
+      "name": "read_file",
+      "ms": 5186
+    },
+    {
+      "type": "generation_notice",
+      "stage": "model",
+      "message": "The app builder is working\u2026",
+      "ms": 5195
+    },
+    {
+      "type": "tool",
+      "name": "write_file",
+      "ms": 38262
+    },
+    {
+      "type": "tool",
+      "name": "write_file",
+      "ms": 38331
+    },
+    {
+      "type": "generation_notice",
+      "stage": "model",
+      "message": "The app builder is working\u2026",
+      "ms": 38333
+    },
+    {
+      "type": "tool",
+      "name": "read_file",
+      "ms": 40720
+    },
+    {
+      "type": "generation_notice",
+      "stage": "model",
+      "message": "The app builder is working\u2026",
+      "ms": 40727
+    },
+    {
+      "type": "tool",
+      "name": "write_file",
+      "ms": 43997
+    },
+    {
+      "type": "generation_notice",
+      "stage": "model",
+      "message": "The app builder is working\u2026",
+      "ms": 44873
+    },
+    {
+      "type": "tool",
+      "name": "write_file",
+      "ms": 71747
+    },
+    {
+      "type": "generation_notice",
+      "stage": "model",
+      "message": "The app builder is working\u2026",
+      "ms": 71754
+    },
+    {
+      "type": "tool",
+      "name": "read_file",
+      "ms": 75741
+    },
+    {
+      "type": "generation_notice",
+      "stage": "model",
+      "message": "The app builder is working\u2026",
+      "ms": 75748
+    }
+  ],
+  "files": [
+    "/src/components/AppointmentForm.tsx",
+    "/src/App.tsx"
+  ],
+  "requests": [
+    {
+      "id": "570359ce-8bb2-4fe9-85e5-6e897e0411d5",
+      "ms": 0
+    }
+  ],
+  "startedAt": "2026-09-24T17:44:49.377Z",
+  "projectId": "proj-2871be52-6390-441c-9089-1648408f7978",
+  "clickedAt": 1790271894436,
+  "sentMs": 1871,
+  "model": "@cf/deepseek-ai/deepseek-v4-pro-0813",
+  "firstTextMs": 3550,
+  "characters": 327,
+  "firstToolMs": 5186,
+  "firstFileMs": 38276,
+  "generationMs": 102265,
+  "browserAcceptance": "generated-inspection.json",
+  "publicationAcceptance": "generated-publication.json",
+  "testInfrastructureError": "apiRequestContext.get: getaddrinfo EAI_AGAIN brainhalf.com"
+}

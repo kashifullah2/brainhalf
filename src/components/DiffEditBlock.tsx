@@ -12,13 +12,20 @@ interface DiffEditBlockProps {
 
 export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, isStreaming }) => {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const diffText = edits.map(e => `// REMOVED:\n${e.search}\n\n// ADDED:\n${e.replace}`).join('\n\n---\n\n');
-    navigator.clipboard.writeText(diffText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopyError(false);
+    try {
+      await navigator.clipboard.writeText(diffText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setCopyError(true);
+    }
   };
 
   const handleOpenInEditor = () => {
@@ -30,26 +37,27 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
     <div className="diff-edit-artifact-card" style={{
       borderRadius: 'var(--radius-asym-sm, 10px 4px 10px 4px)',
       border: isStreaming ? '1px solid var(--border-accent)' : '1px solid rgba(14, 165, 233, 0.3)',
-      background: 'rgba(15, 17, 26, 0.75)',
+      background: 'var(--bg-card)',
       backdropFilter: 'blur(8px)',
       overflow: 'hidden',
       margin: '8px 0',
       transition: 'all 0.15s ease',
       boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)'
     }}>
+      {copyError && <p className="studio-copy-error" role="status">Couldn’t copy. Select the code and copy it manually.</p>}
       {/* Card Header Bar */}
-      <div style={{
+      <div className="studio-artifact-header" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '8px 12px',
         background: isStreaming ? 'var(--color-ai-bg)' : 'rgba(14, 165, 233, 0.06)',
-        borderBottom: isExpanded ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
+        borderBottom: isExpanded ? '1px solid rgba(36, 60, 75, 0.06)' : 'none',
         fontSize: '12px',
         gap: '8px'
       }}>
         {/* Left: Icon & File Path */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+        <div className="studio-artifact-identity" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
           <div style={{
             width: '24px',
             height: '24px',
@@ -60,7 +68,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
             justifyContent: 'center',
             flexShrink: 0
           }}>
-            <Wrench size={16} strokeWidth={1.75} color="#60a5fa" />
+            <Wrench size={16} strokeWidth={1.75} color="var(--color-info)" />
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -75,14 +83,14 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
             }}>
               {filePath}
             </span>
-            <span style={{ fontSize: '10px', color: '#93c5fd', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--color-info)', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span>Targeted Fix Applied</span> • {edits.length} {edits.length === 1 ? 'replacement' : 'replacements'}
             </span>
           </div>
         </div>
 
         {/* Right: Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        <div className="studio-artifact-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {isStreaming ? (
             <span style={{
               display: 'inline-flex',
@@ -107,7 +115,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
           ) : (
             <span style={{
               fontSize: '10.5px',
-              color: '#4ade80',
+              color: 'var(--color-success)',
               background: 'rgba(34, 197, 94, 0.1)',
               padding: '2px 6px',
               borderRadius: '4px',
@@ -148,7 +156,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
               alignItems: 'center'
             }}
           >
-            {copied ? <Check size={16} strokeWidth={1.75} color="#4ade80" /> : <Copy size={16} strokeWidth={1.75} />}
+            {copied ? <Check size={16} strokeWidth={1.75} color="var(--color-success)" /> : <Copy size={16} strokeWidth={1.75} />}
           </button>
 
           <button
@@ -189,12 +197,12 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
                   border: '1px solid rgba(239, 68, 68, 0.2)',
                   borderRadius: '5px',
                   padding: '6px 10px',
-                  color: '#fca5a5',
+                  color: 'var(--color-error)',
                   marginBottom: '4px',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word'
                 }}>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#f87171', marginBottom: '2px', textTransform: 'uppercase' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-error)', marginBottom: '2px', textTransform: 'uppercase' }}>
                     - Buggy Code Replaced
                   </div>
                   {edit.search}
@@ -208,11 +216,11 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
                   border: '1px solid rgba(34, 197, 94, 0.2)',
                   borderRadius: '5px',
                   padding: '6px 10px',
-                  color: '#86efac',
+                  color: 'var(--color-success)',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word'
                 }}>
-                  <div style={{ fontSize: '10px', fontWeight: 600, color: '#4ade80', marginBottom: '2px', textTransform: 'uppercase' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-success)', marginBottom: '2px', textTransform: 'uppercase' }}>
                     + Corrected Logic
                   </div>
                   {edit.replace}

@@ -1,0 +1,1 @@
+Error: Sign-in did not finish. Keep Chrome open, complete sign-in or email verification, and run this command again. No app generation was started.

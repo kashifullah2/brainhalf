@@ -1,0 +1,46 @@
+[
+  {
+    "environment": "development",
+    "httpStatus": 200,
+    "settings": {
+      "appName": "My app",
+      "passwordEnabled": true,
+      "magicLinkEnabled": true,
+      "googleEnabled": true,
+      "emailEnabled": true,
+      "welcomeEnabled": false,
+      "googleMode": "managed",
+      "emailMode": "managed"
+    },
+    "providers": {
+      "ownerEmail": "whyai4@gmail.com",
+      "ownerVerified": true,
+      "emailReady": true,
+      "googleReady": true,
+      "from": "support@brainhalf.com",
+      "googleCallback": "https://brainhalf.com/api/auth/google/callback"
+    }
+  },
+  {
+    "environment": "production",
+    "httpStatus": 200,
+    "settings": {
+      "appName": "Brainhalf Task Board",
+      "passwordEnabled": false,
+      "magicLinkEnabled": false,
+      "googleEnabled": true,
+      "emailEnabled": false,
+      "welcomeEnabled": false,
+      "googleMode": "managed",
+      "emailMode": "managed"
+    },
+    "providers": {
+      "ownerEmail": "whyai4@gmail.com",
+      "ownerVerified": true,
+      "emailReady": false,
+      "googleReady": true,
+      "from": "support@brainhalf.com",
+      "googleCallback": "https://brainhalf.com/api/auth/google/callback"
+    }
+  }
+]

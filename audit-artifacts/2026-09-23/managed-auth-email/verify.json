@@ -1,0 +1,137 @@
+{
+  "job": {
+    "id": "db534e9a-5a64-4965-a292-c89b54f1f127",
+    "kind": "verify",
+    "environment": "development",
+    "revision": "2e9f26e449fe7cbd6c4b9bcbcfc46db039c5ac42509d0150bef2052a0b249459",
+    "status": "passed",
+    "createdAt": 1790142043871,
+    "updatedAt": 1790142117413,
+    "leaseUntil": 1790142158229,
+    "processIds": [
+      "f88fe12e-8ead-4624-8904-7e3150aaf092",
+      "1c2f2904-abe7-40f5-9cba-b19e592f5d95",
+      "b621b46e-0f65-4382-9925-68f6a8e03373",
+      "ed457658-ed12-49f8-bd84-9c6ec9560f91"
+    ],
+    "message": "Verification passed",
+    "startedAt": 1790142051263,
+    "finishedAt": 1790142117413
+  },
+  "verification": {
+    "jobId": "db534e9a-5a64-4965-a292-c89b54f1f127",
+    "revision": "2e9f26e449fe7cbd6c4b9bcbcfc46db039c5ac42509d0150bef2052a0b249459",
+    "environment": "development",
+    "at": 1790142097060,
+    "passed": true,
+    "checks": [
+      {
+        "name": "Page loads",
+        "passed": true,
+        "detail": "HTTP 200"
+      },
+      {
+        "name": "Anonymous access denied",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 401."
+      },
+      {
+        "name": "Create a record",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 201."
+      },
+      {
+        "name": "Prove database persistence",
+        "passed": true,
+        "detail": "Checked directly in disposable D1."
+      },
+      {
+        "name": "Other user cannot delete record",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 404."
+      },
+      {
+        "name": "Read saved record",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 200."
+      },
+      {
+        "name": "Delete own record",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 200."
+      },
+      {
+        "name": "Prove database deletion",
+        "passed": true,
+        "detail": "Checked directly in disposable D1."
+      },
+      {
+        "name": "Capture test contact message",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 201."
+      },
+      {
+        "name": "Upload private file to R2",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 201."
+      },
+      {
+        "name": "Download private R2 file",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 200."
+      },
+      {
+        "name": "Other app user cannot download file",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 404."
+      },
+      {
+        "name": "Other app user sees no files",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 200."
+      },
+      {
+        "name": "Delete private R2 file",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 200."
+      },
+      {
+        "name": "App interface rendered",
+        "passed": true,
+        "detail": "Browser interaction matched the expected result."
+      },
+      {
+        "name": "Enter browser value",
+        "passed": true,
+        "detail": "Browser interaction matched the expected result."
+      },
+      {
+        "name": "Save through browser",
+        "passed": true,
+        "detail": "Browser interaction matched the expected result."
+      },
+      {
+        "name": "Browser confirms saved value",
+        "passed": true,
+        "detail": "Browser interaction matched the expected result."
+      },
+      {
+        "name": "Browser write reached D1",
+        "passed": true,
+        "detail": "Checked directly in disposable D1."
+      },
+      {
+        "name": "Backend service binding queues a private development receipt",
+        "passed": true,
+        "detail": "Real app API returned expected HTTP 202."
+      },
+      {
+        "name": "Browser errors",
+        "passed": true,
+        "detail": "No uncaught browser errors."
+      }
+    ],
+    "screenshotKey": "5af3e6e8c30ee6c061c536e5dff94ca1/verification/db534e9a-5a64-4965-a292-c89b54f1f127.png"
+  },
+  "database": null
+}

@@ -3,12 +3,9 @@ main = "src/worker.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = [ "nodejs_compat" ]
 
-# No [vars] block on purpose. The only runtime configuration the worker reads is
-# credentials -- ANTHROPIC_API_KEY, BEDROCK_API_KEY / AWS_ACCESS_KEY_ID &
-# AWS_SECRET_ACCESS_KEY, AWS_REGION -- and those are secrets, set with
-# `wrangler secret put`, never checked in here. AWS_REGION alone has a sane
-# default (us-east-1). If a non-secret knob is ever added, put it here rather
-# than hard-coding it in src/.
+[vars]
+REQUIRED_MODEL_PROVIDERS = "cloudflare"
+REQUIRED_PUBLIC_SERVICES = "email,google"
 
 [[routes]]
 pattern = "brainhalf.com"
@@ -21,6 +18,9 @@ custom_domain = true
 [assets]
 directory = "dist"
 binding = "ASSETS"
+html_handling = "drop-trailing-slash"
+not_found_handling = "404-page"
+run_worker_first = ["/", "/index.html", "/dashboard", "/api/*", "/agents/*", "/preview/*", "/p/*", "/preview-runtime.js", "/preview-rules.json"]
 
 [ai]
 binding = "AI"
@@ -70,3 +70,8 @@ bucket_name = "brainhalf-project-backups"
 [[dispatch_namespaces]]
 binding = "DISPATCHER"
 namespace = "brainhalf-projects"
+
+[[services]]
+binding = "RUNTIME"
+service = "brainhalf-runtime"
+entrypoint = "RuntimeControl"

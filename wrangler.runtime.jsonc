@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "brainhalf-runtime",
+  "main": "src/runtime/worker.ts",
+  "compatibility_date": "2026-09-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "services": [{ "binding": "PLATFORM", "service": "brainhalf", "entrypoint": "ManagedProviders" }],
+  "routes": [
+    { "pattern": "*.apps.brainhalf.com/*", "zone_name": "brainhalf.com" }
+  ],
+  "vars": {
+    "RUNTIME_ENABLED": "true",
+    "RUNTIME_ACCESS": "all",
+    "RUNTIME_DOMAIN": "apps.brainhalf.com",
+    "RUNTIME_SERVICE_NAME": "brainhalf-runtime",
+    "CF_ACCOUNT_ID": "12fc31472161e3ebb8a01b4722ec1725",
+    "DISPATCH_NAMESPACE": "brainhalf-projects",
+    "PILOT_OWNER_IDS": "usr_GjkBFAup0hlHmg1HJXRgtVdR"
+  },
+  "durable_objects": { "bindings": [
+    { "name": "PROJECTS", "class_name": "ProjectRuntime" },
+    { "name": "PILOT", "class_name": "PilotCoordinator" },
+    { "name": "Sandbox", "class_name": "Sandbox" }
+  ] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ProjectRuntime", "PilotCoordinator", "Sandbox"] }],
+  "containers": [{ "class_name": "Sandbox", "image": "./Dockerfile.runtime", "max_instances": 2, "instance_type": "standard-1" }],
+  "r2_buckets": [{ "binding": "ARTIFACTS", "bucket_name": "brainhalf-runtime-artifacts" }],
+  "dispatch_namespaces": [{ "binding": "DISPATCHER", "namespace": "brainhalf-projects" }],
+  "browser": { "binding": "BROWSER" },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
+}

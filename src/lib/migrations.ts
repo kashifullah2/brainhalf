@@ -1,3 +1,6 @@
+import { ATTACHMENT_CHUNK_SCHEMA, BUILDER_SCHEMA } from './builder-service';
+import { OAUTH_SCHEMA } from './oauth-schema';
+import { SOURCE_HISTORY_SCHEMA } from './source-history';
 /**
  * Versioned schema migrations for a Durable Object's SQLite storage.
  *
@@ -52,6 +55,34 @@ export const AGENT_MIGRATIONS: Migration[] = [
          ON messages(id DESC, role, content)`,
     ],
   },
+  {
+    version: 3,
+    name: 'workspace_snapshot_revision',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS project_file_revision (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL)`,
+      `INSERT OR IGNORE INTO project_file_revision (id, revision) VALUES (1, 0)`,
+      ...['INSERT', 'UPDATE', 'DELETE'].map(operation =>
+        `CREATE TRIGGER IF NOT EXISTS project_files_revision_${operation.toLowerCase()}
+         AFTER ${operation} ON project_files BEGIN
+           UPDATE project_file_revision SET revision = revision + 1 WHERE id = 1;
+         END`
+      ),
+    ],
+  },
+  { version: 4, name: 'source_checkpoints', statements: SOURCE_HISTORY_SCHEMA },
+  { version: 5, name: 'generation_usage', statements: [
+    'CREATE TABLE IF NOT EXISTS generation_usage (id TEXT PRIMARY KEY, model TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER, status TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER)',
+    'CREATE INDEX IF NOT EXISTS generation_usage_recent ON generation_usage(started_at DESC)',
+  ] },
+  { version: 6, name: 'agent_tools_and_attachments', statements: BUILDER_SCHEMA },
+  { version: 7, name: 'generation_source_evidence', statements: ['ALTER TABLE generation_usage ADD COLUMN source_revision TEXT'] },
+  { version: 8, name: 'product_outbox', statements: ['CREATE TABLE IF NOT EXISTS product_outbox (id TEXT PRIMARY KEY, event TEXT NOT NULL)'] },
+  { version: 9, name: 'chunked_builder_attachments', statements: ATTACHMENT_CHUNK_SCHEMA },
+  { version: 10, name: 'generation_latency', statements: [
+    'ALTER TABLE generation_usage ADD COLUMN first_response_at INTEGER',
+    'ALTER TABLE generation_usage ADD COLUMN provider_calls INTEGER',
+  ] },
+
 ];
 
 /**
@@ -96,6 +127,7 @@ export const REGISTRY_MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
     ],
   },
+  { version: 3, name: 'google_oauth', statements: OAUTH_SCHEMA },
 ];
 
 /**

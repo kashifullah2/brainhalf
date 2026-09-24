@@ -3,14 +3,16 @@ import {
   resolvePlatformStatusForProject,
   setPlatformStatus,
   resetPlatformStatusToReady,
-  getStatusVisuals
+  getStatusVisuals,
+  setPreviewStatus
 } from '../lib/status-store';
-import { saveProjectMessages } from '../lib/project-store';
+import { saveProjectMessages, setProjectAccount } from '../lib/project-store';
 
 describe('Status Store & Platform Status Single Source of Truth', () => {
   let mockStorage: Record<string, string> = {};
 
   beforeEach(() => {
+    setProjectAccount(null);
     mockStorage = {};
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => mockStorage[key] || null,
@@ -19,6 +21,45 @@ describe('Status Store & Platform Status Single Source of Truth', () => {
       clear: () => { mockStorage = {}; }
     });
     resetPlatformStatusToReady();
+    setProjectAccount('test-account');
+  });
+
+  it('keeps preview errors visible after generation reports Ready', () => {
+    saveProjectMessages('preview-error', [{ role: 'user', content: 'Build' }]);
+    setPreviewStatus('preview-error', 'Error');
+    setPlatformStatus('Ready', 'Generated', 'preview-error');
+    expect(resolvePlatformStatusForProject('preview-error')).toBe('Error');
+    setPreviewStatus('preview-error', 'Ready');
+    expect(resolvePlatformStatusForProject('preview-error')).toBe('Ready');
+  });
+
+  it('does not leak errors or resets between projects', () => {
+    saveProjectMessages('project-error-a', [{ role: 'user', content: 'A' }]);
+    saveProjectMessages('project-error-b', [{ role: 'user', content: 'B' }]);
+    setPlatformStatus('Error', 'Failed', 'project-error-a');
+    setPreviewStatus('project-error-b', 'Error');
+    resetPlatformStatusToReady('project-error-b');
+    expect(resolvePlatformStatusForProject('project-error-a')).toBe('Error');
+    expect(resolvePlatformStatusForProject('project-error-b')).toBe('Ready');
+  });
+
+  it('does not retain project errors across account switches', () => {
+    setPreviewStatus('shared-project', 'Error');
+    expect(resolvePlatformStatusForProject('shared-project')).toBe('Error');
+    setProjectAccount('another-account');
+    expect(resolvePlatformStatusForProject('shared-project')).toBe('Ready');
+  });
+
+  it('reports a fresh-project preview error without requiring chat history', () => {
+    setPreviewStatus('fresh-preview-error', 'Error');
+    expect(resolvePlatformStatusForProject('fresh-preview-error')).toBe('Error');
+    expect(resolvePlatformStatusForProject('another-fresh-project')).toBe('Ready');
+  });
+
+  it('does not erase a generation failure when preview rendering succeeds', () => {
+    setPlatformStatus('Error', 'Generation failed', 'separate-errors');
+    setPreviewStatus('separate-errors', 'Ready');
+    expect(resolvePlatformStatusForProject('separate-errors')).toBe('Error');
   });
 
   describe('Rule 1: Fresh / Empty Project with No Prompt Sent', () => {
@@ -97,10 +138,10 @@ describe('Status Store & Platform Status Single Source of Truth', () => {
   });
 
   describe('Rule 3: Top-Bar and Model-Panel Status Synchronization & Single Source of Truth', () => {
-    it('verifies visuals for "Ready" state: Top-bar reads "Ready", Model-panel reads "Active", both green dot', () => {
+    it('uses the same Ready label for the top bar and agent panel', () => {
       const visuals = getStatusVisuals('Ready');
       expect(visuals.topBarLabel).toBe('Ready');
-      expect(visuals.modelPanelLabel).toBe('Active');
+      expect(visuals.modelPanelLabel).toBe('Ready');
       expect(visuals.dotColor).toBe('var(--color-success)');
       expect(visuals.isBuilding).toBe(false);
     });
@@ -114,11 +155,11 @@ describe('Status Store & Platform Status Single Source of Truth', () => {
       expect(visuals.isBuilding).toBe(true);
     });
 
-    it('verifies visuals for "Stopped" state: Both read "Stopped", both amber dot', () => {
+    it('verifies visuals for "Stopped" state: both labels read "Stopped" with a green dot', () => {
       const visuals = getStatusVisuals('Stopped');
       expect(visuals.topBarLabel).toBe('Stopped');
       expect(visuals.modelPanelLabel).toBe('Stopped');
-      expect(visuals.dotColor).toBe('#f59e0b');
+      expect(visuals.dotColor).toBe('#10b981');
       expect(visuals.isBuilding).toBe(false);
     });
 
@@ -130,11 +171,11 @@ describe('Status Store & Platform Status Single Source of Truth', () => {
       expect(visuals.isBuilding).toBe(false);
     });
 
-    it('verifies visuals for "Connecting" state: Both read "Connecting", both amber dot', () => {
+    it('verifies visuals for "Connecting" state: both labels read "Connecting" with a blue dot', () => {
       const visuals = getStatusVisuals('Connecting');
       expect(visuals.topBarLabel).toBe('Connecting');
       expect(visuals.modelPanelLabel).toBe('Connecting');
-      expect(visuals.dotColor).toBe('#f59e0b');
+      expect(visuals.dotColor).toBe('#3b82f6');
       expect(visuals.isBuilding).toBe(false);
     });
   });

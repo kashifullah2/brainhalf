@@ -1,0 +1,19 @@
+{
+  "sourceDigest": "407dc7a09cb5fc2d434cb26010bce7f5b93d1e658d2b5cb37e76161a3d22cedd",
+  "verifiedAt": "2026-09-24T19:43:23.030Z",
+  "checks": [
+    "npm run verify",
+    "npx --no-install playwright test",
+    "npx --no-install playwright test --config playwright.seo.config.ts",
+    "npm run runtime:check",
+    "npm run runtime:smoke",
+    "node scripts/wrangler.mjs deploy --dry-run --outdir /tmp/brainhalf-main-build --config /home/kashifullah/brainhalf/wrangler.toml",
+    "node scripts/check-agent-local.mjs"
+  ],
+  "target": [
+    "--config",
+    "/home/kashifullah/brainhalf/wrangler.toml"
+  ],
+  "artifactDigest": "2f94746ea2b442796d146a6bd4a81137f4110ac46e492636d7b9d4f68eddf726",
+  "sourceArchive": ".release/source-407dc7a09cb5fc2d434cb26010bce7f5b93d1e658d2b5cb37e76161a3d22cedd.tar.gz"
+}

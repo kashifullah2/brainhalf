@@ -5,6 +5,8 @@ import {
   extractToken,
   forbidden,
   getSessionSecret,
+  handleLogin,
+  handleSignup,
   injectUserId,
   isAllowedOrigin,
   unauthorized,
@@ -174,17 +176,27 @@ describe('P1 Auth — session secret resolution', () => {
     expect(getSessionSecret(env)).toBe(SECRET);
   });
 
-  it('ignores a too-short configured secret and warns', () => {
-    const env = { SESSION_SECRET: 'short' };
-    expect(getSessionSecret(env)).not.toBe('short');
-    expect(getSessionSecret(env).length).toBeGreaterThanOrEqual(32);
+  it.each([undefined, null, '', 'short', ' '.repeat(40), 123, {}])('rejects an invalid secret (%j) without a fallback', value => {
+    expect(() => getSessionSecret({ SESSION_SECRET: value })).toThrow('SESSION_SECRET must contain');
   });
 
-  it('falls back to a random per-isolate key when unconfigured (never a hardcoded one)', () => {
-    const a = getSessionSecret({});
-    const b = getSessionSecret({ SESSION_SECRET: undefined });
-    expect(a).toEqual(b); // memoised per isolate
-    expect(a.length).toBeGreaterThanOrEqual(32);
+  it('denies verification without consulting the registry when misconfigured', async () => {
+    const registry = await registryFor(null);
+    expect(await verifySession(new Request('https://brainhalf.com/api/projects'), {
+      REGISTRY: registry as any,
+    })).toBeNull();
+    expect(registry.get).not.toHaveBeenCalled();
+  });
+
+  it.each([handleSignup, handleLogin])('rejects auth before parsing credentials or creating accounts', async handler => {
+    const registry = await registryFor(null);
+    const request = new Request('https://brainhalf.com/api/auth/signup', { method: 'POST', body: 'invalid-json' });
+    const response = await handler(request, { REGISTRY: registry as any });
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual({ error: 'Authentication service unavailable' });
+    expect(request.bodyUsed).toBe(false);
+    expect(registry.get).not.toHaveBeenCalled();
   });
 });
 

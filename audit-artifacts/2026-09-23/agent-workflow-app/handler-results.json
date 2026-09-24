@@ -1,0 +1,511 @@
+{
+  "app": "Harbor Notes",
+  "checkedAt": "2026-09-23T12:03:59.794Z",
+  "scope": "In-process real Node request handlers and SQLite; no HTTP listener, browser or live model",
+  "passed": 22,
+  "failed": 0,
+  "requests": 77,
+  "runtimeWarnings": [
+    "ExperimentalWarning: SQLite is an experimental feature and might change at any time"
+  ],
+  "unexpectedServerErrors": [],
+  "checks": [
+    {
+      "name": "Database migrations are idempotent",
+      "status": "passed",
+      "milliseconds": 2
+    },
+    {
+      "name": "Health uses the real database and disables caching",
+      "status": "passed",
+      "milliseconds": 11
+    },
+    {
+      "name": "Anonymous requests cannot read private data",
+      "status": "passed",
+      "milliseconds": 4
+    },
+    {
+      "name": "Registration rejects invalid input and normalizes email",
+      "status": "passed",
+      "milliseconds": 76
+    },
+    {
+      "name": "Passwords and session tokens are stored as hashes",
+      "status": "passed",
+      "milliseconds": 0
+    },
+    {
+      "name": "Duplicate accounts and wrong passwords produce handled errors",
+      "status": "passed",
+      "milliseconds": 165
+    },
+    {
+      "name": "New accounts start with an empty list",
+      "status": "passed",
+      "milliseconds": 1
+    },
+    {
+      "name": "Create, list and get return the saved note",
+      "status": "passed",
+      "milliseconds": 2
+    },
+    {
+      "name": "Update persists and keeps the same ID",
+      "status": "passed",
+      "milliseconds": 1
+    },
+    {
+      "name": "A separate SQLite connection can reopen the saved data",
+      "status": "passed",
+      "milliseconds": 0
+    },
+    {
+      "name": "Another account cannot list, read, change or delete the owner note",
+      "status": "passed",
+      "milliseconds": 56
+    },
+    {
+      "name": "Empty, overlong and invalid titles are rejected",
+      "status": "passed",
+      "milliseconds": 3
+    },
+    {
+      "name": "Malformed, non-object, oversized and non-JSON payloads are rejected",
+      "status": "passed",
+      "milliseconds": 3
+    },
+    {
+      "name": "Missing or foreign origins cannot write; allowed preflight works",
+      "status": "passed",
+      "milliseconds": 1
+    },
+    {
+      "name": "SQL-shaped content stays data and remains editable",
+      "status": "passed",
+      "milliseconds": 1
+    },
+    {
+      "name": "Deletion is persistent and a missing note returns 404",
+      "status": "passed",
+      "milliseconds": 1
+    },
+    {
+      "name": "Frontend API client interoperates with real handlers",
+      "status": "passed",
+      "milliseconds": 57
+    },
+    {
+      "name": "Logout revokes the session and clears the cookie",
+      "status": "passed",
+      "milliseconds": 1
+    },
+    {
+      "name": "Expired or invented sessions cannot access notes",
+      "status": "passed",
+      "milliseconds": 1
+    },
+    {
+      "name": "Repeated authentication attempts are rate limited",
+      "status": "passed",
+      "milliseconds": 9
+    },
+    {
+      "name": "Uploaded image reconstructs its original bytes",
+      "status": "passed",
+      "milliseconds": 2
+    },
+    {
+      "name": "No unexpected server errors were logged",
+      "status": "passed",
+      "milliseconds": 0
+    }
+  ],
+  "requestResults": [
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "status": 409
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 404
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 404
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 413
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 415
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 403
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 403
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/items",
+      "status": 204
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/items",
+      "status": 403
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 201
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/items/0f81538f-fdc7-4d12-b757-55e513a97c7f",
+      "status": 204
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 404
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/items/e9ece81d-e938-4468-94d7-b85c7f7c295e",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/items/a418d3a2-0679-40da-9cfa-2de472ba62c1",
+      "status": 200
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/items/a418d3a2-0679-40da-9cfa-2de472ba62c1",
+      "status": 204
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/items",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/items",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 429
+    }
+  ]
+}

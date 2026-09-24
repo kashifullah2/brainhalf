@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /agents/
+Disallow: /preview/
+Disallow: /p/
+Disallow: /preview-runtime.js
+
+Sitemap: https://brainhalf.com/sitemap.xml

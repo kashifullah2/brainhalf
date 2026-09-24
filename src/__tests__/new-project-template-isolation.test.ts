@@ -7,6 +7,7 @@ vi.mock('agents', () => ({ Agent: class Agent {} }));
 
 import { ChatAgent } from '../agent';
 import {
+  setProjectAccount,
   createProject,
   getProjects,
   saveProjects,
@@ -24,6 +25,7 @@ describe('New Project and Template Selection Isolation', () => {
   let mockStorage: Record<string, string> = {};
 
   beforeEach(() => {
+    setProjectAccount(null);
     mockStorage = {};
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => mockStorage[key] ?? null,
@@ -31,6 +33,7 @@ describe('New Project and Template Selection Isolation', () => {
       removeItem: (key: string) => { delete mockStorage[key]; },
       clear: () => { mockStorage = {}; },
     });
+    setProjectAccount('test-account');
   });
 
   it('keeps new project active and prevents switching to previous project when selecting a template', () => {

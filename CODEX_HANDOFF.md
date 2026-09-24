@@ -177,9 +177,56 @@ WebSocket auth:
 
 Project ownership:
   AuthRegistry DO: projectId → userId mapping
-  authorizeOrClaim(): if project has no owner, claim it; else verify
+  authorizeOrClaim(): agent connections/requests claim unowned ids; preview reads never claim
   isReadOnlyProject set to true if ownership denied → shows "Clone to My Projects" banner
 ```
+
+#### Local access-control remediation — September 20, 2026
+
+The working tree now uses an explicit `project_owners.published` flag. `AuthRegistry.ensureSchema()` adds it with default `0`, so existing projects, including showcase/demo/template names, remain private until their owner publishes them. Existing ownership and deletion tombstones are preserved. This change has not been deployed.
+
+- The Publish dialog reads server status; **Publish app publicly** and **Make private** explicitly update it through owner-only `GET`/`PUT /api/projects/:id/publication`. Opening the dialog does not publish or deploy code.
+- `/preview/:id`, `/p/:id` and same-origin Referer API fallbacks check registry access before forwarding. Missing/deleted projects return 404; registry failures deny access. Mutations still require the owner, even when published.
+- Published edge previews expose frontend files under `src/`, `public/`, `assets/` and selected root entry/style files. Workspace snapshots, backend/configuration source, hidden files and credential files are not public preview resources. Resolved file aliases are checked too. A deployed tenant Worker serves its own application routes; a dispatch miss cannot expose a workspace snapshot through the fallback.
+- Preview/dispatch responses are `no-store`; unpublishing or tombstoning blocks subsequent public requests, not already downloaded copies. Publishing exposes subsequent saved frontend edits as well as the current ones.
+- The Vite development fixtures do not provide a real publication registry. Use the configured local Worker backend to exercise persistence; the browser regression suite mocks publication responses and the unit suite exercises the actual Worker/Registry handlers with SQLite.
+- **C02 remains open:** generated code still runs on the platform origin. These ACLs are not preview-origin isolation. H14 account caches are addressed by the September 21 local remediation below. Do not treat these changes as release clearance.
+
+#### Local account-cache remediation — September 21, 2026
+
+- Account scopes start detached and activate only from a successful login/signup or verified session response. Cached `bh_session_user` does not select a storage namespace. Session verification accepts the Worker's `userId` response and the development fixture's `user` response.
+- localStorage uses `brainhalf_account:<encoded-account-id>:<original-key>`. IndexedDB keeps `BrainHalfStorage` version 1 and its existing `files`/`messages` stores, with account-prefixed record keys instead of bare project ids. No remote schema change is involved.
+- Logout immediately detaches caches and clears the session-only GitHub token. Cross-tab token/user changes close the old account view and verify the new session. Project components use account-bound storage functions; pending debounce writes stay in the departing account, and late reads/cleanup writes cannot enter the new account. In-memory project status is account-scoped too.
+- The authenticated `/api/projects` listing enables recovery of legacy records only for confirmed owned ids. Recovery prefers IndexedDB, respects newer scoped data and records deletion markers. Unknown legacy data is preserved, not exposed or reassigned to the next person signing in. Legacy drafts that were never claimed on the server require a separately designed ownership-safe recovery flow; do not bulk-adopt them.
+- This is application-level isolation, not encryption against someone with browser-profile/devtools access or malicious same-origin scripts. C02 remains a release blocker.
+- Local verification: 464 unit tests across 46 files, plus 30 browser regressions including `tests/account-isolation.spec.ts`. Browser identity endpoints are controlled fixtures; no deployment or production account was used.
+
+#### Local configuration remediation — September 21, 2026
+
+- M17 and M19 are fixed locally. The audit now records 35 fixed findings and 13 remaining, including C02. Do not infer production release clearance.
+- Invalid session secrets no longer create ephemeral signing keys. API/agent/preview requests return uncached 503s; signup/login perform no registry writes when configuration is invalid. Static shell and CORS preflight remain available.
+- `src/lib/runtime-config.ts` shares the explicit required-provider policy and credential alternatives with the deploy checker and generation paths. `REQUIRED_MODEL_PROVIDERS = "cloudflare"` is set in Wrangler vars. Bedrock bearer aliases no longer accidentally select native Anthropic in model tests. Misfiled Atria URL/key configuration must be corrected before release.
+- Wrangler is pinned to 4.135.0 and invoked through one checked project-local wrapper. The deploy gate checks exactly the same environment/config it deploys. Node >=22.18.0 is required; install the lockfile with `npm ci` and use `.node-version` (22.23.2). See section 9 and README for commands and secret-value validation limits.
+- Latest verification: `npm run verify` passes 499 Vitest tests in 48 files, 9 Node deployment regressions, typecheck, lint with existing warnings, and frontend build. Local `npm run wrangler -- deploy --dry-run` succeeds. Logs are `/tmp/brainhalf-config-verify.log` and `/tmp/brainhalf-config-dry-run.log`. The preceding batch's 30 passing browser regressions were not rerun here. No live inference, production secrets, deployment or remote migration was used.
+
+#### Local test-integrity remediation — September 21, 2026
+
+- M18 is fixed locally. The original lifecycle and platform-check files now contain behavioral assertions rather than swallowed expectations, conditionally skipped steps or tautologies. The lifecycle seeds once, waits for actual storage completion, verifies mocked streaming/stop messages, switches distinct project views, and tests mobile sending after a controlled socket restart.
+- Platform checks require explicit two-project/account evidence for persistence/isolation, fail when evidence is absent, and capture browser errors during their own measurement interval. Negative-control browser tests prove detection of history leakage, corrupt persisted files, missing evidence and console/page errors. The helper does not claim unmeasured deployment or backend capabilities.
+- Default Playwright discovery is local-only: five reviewed specs, 36 tests. Legacy/live/model/benchmark commands use the opt-in config described in section 10. Those older suites are not represented as verified or passing.
+- Verification: 506 Vitest tests in 49 files, 9 Node CLI tests, all 36 local browser tests, strict checking of changed browser files, and `npm run verify` pass. Existing lint warnings remain. Logs: `/tmp/brainhalf-legacy-verify.log`, `/tmp/brainhalf-legacy-all-browser.log`, `/tmp/brainhalf-legacy-types.log`, `/tmp/brainhalf-live-gate.log`. No production or paid-provider tests ran.
+- **New High-priority follow-up F01:** the landing Delete UI does not call the authenticated server deletion API, so cache deletion does not revoke publication or permanently remove the server project. See the audit for the exact call path and recommended fix; do not conceal this gap by treating local storage cleanup as remote deletion. The original 48 now have 36 fixed and 12 open; F01 brings the current audit to 49 findings with 13 open. C02 remains the Critical release blocker.
+
+#### Critical/High remediation — September 21, 2026 (latest)
+
+- **C02 and F01 are now fixed locally.** This supersedes the earlier open-status notes above. The audit has **38 fixed findings and 11 open: 8 Medium and 3 Low. All 2 Critical and 20 High findings are locally closed.** Nothing has been committed or deployed; this is not production release clearance.
+- Preview isolation is enforced by response CSP `sandbox allow-scripts`, not merely an iframe flag. The browser gives each document an opaque execution origin despite its platform-hosted URL. `src/preview-main.tsx` and `vite.preview.config.ts` produce a standalone `dist/preview-runtime.js`; `main.tsx` no longer evaluates generated code or selects the runner for arbitrary iframes. Both `npm run dev` and `npm run build` include the runtime build.
+- Authorized Worker navigation embeds only filtered project files. The renderer has no platform auth/project-store imports, uses memory routing and per-document app-only localStorage/sessionStorage, and retains project-relative/alias/JSON imports and external packages through the existing import-map policy and a shared React instance. The application storage and backend simulation reset with the preview document; they are not durable deployed storage. Native platform cookies, IndexedDB, account caches and privileged API credentials remain inaccessible.
+- All preview/tenant responses and alternate agent HTTP responses receive the execution boundary; tenant `Set-Cookie`, `Clear-Site-Data`, credential-CORS and other dangerous header overrides are removed. Untrusted/opaque origins are rejected before platform auth or agent routing and cannot inherit the owner's identity on preview reads. Keep `wrangler.toml` Worker-first routes and the runtime asset together. Do not add `allow-same-origin`, bypass the headers, or restore platform storage to fix a generated application's integration.
+- Child messages are scoped to the active frame; malformed errors are bounded. An AI-fix request now opens a trusted confirmation dialog and does not consume generation credits until approved. Browser tests exercise malicious parent/storage/network probes, canceled and approved fix requests, standalone opaque navigation, blocked fallback entry, relative modules and shared-React external imports.
+- Landing deletion now awaits authenticated DELETE and validates success before clearing recovery files. Registry deletion checks the actual owner, clears publication and is idempotent for that owner; unclaimed drafts are tombstoned. Local cleanup waits for the files/messages IndexedDB transaction. Separate whole-project markers prevent late writes/reconciliation from reviving deleted data without blocking ordinary file/history reset writes. Failure/retry, duplicate prevention, account-switch guards and post-reload behavior are covered. The dialog accurately promises access revocation/local removal, not immediate physical erasure of retained server storage.
+- Final verification: **523 Vitest tests in 50 files; 9 Node CLI tests; 42/42 browser tests in six reviewed local suites; strict checking of changed browser/config files; typecheck, lint and both builds; local Worker deployment dry-run; `git diff --check`**. Warnings remain, including Vite's future native-config-loader compatibility notice. Logs: `/tmp/brainhalf-critical-verify.log`, `/tmp/brainhalf-critical-all-browser.log`, `/tmp/brainhalf-critical-browser-types.log`, `/tmp/brainhalf-critical-dry-run.log`. The built runtime also contains no platform session/cache identifiers. No live inference, production deletion, remote migration, secret operation or deployment was performed.
+- Next work is the remaining Medium/Low audit entries. Before any release, obtain permission for controlled production-equivalent checks of these security headers, private/public deployment integrations, account isolation and deletion. Local browser fixtures and a dry-run do not prove the currently deployed service is fixed.
 
 ### 3.4 Generation Engine (agent.ts)
 
@@ -392,10 +439,10 @@ localStorage.setItem('bh_session_user', JSON.stringify({ id: 'dev-user-1', email
 ```bash
 npm run dev         # Vite dev server
 npm run build       # Production build → dist/
-npm run test        # Vitest unit tests
+npm run test        # Vitest unit tests + Node deployment-tool regressions
 npm run test:e2e    # Playwright E2E (needs dev server running)
 npm run lint        # Oxlint
-npm run deploy      # build + wrangler deploy (needs secrets set)
+npm run deploy      # full verification + target secret checks + pinned local Wrangler
 npm run r2:lifecycle  # Set R2 expiry policy (run once per bucket)
 ```
 
@@ -407,19 +454,25 @@ npm run r2:lifecycle  # Set R2 expiry policy (run once per bucket)
 ```bash
 npm run deploy
 ```
-This runs: `scripts/check-secrets.mjs` → `vite build` → `wrangler deploy`
+This runs: `npm run verify` (typecheck, both test suites, lint, build) → `scripts/deploy.mjs` (target-specific secret/provider checks, then the pinned local Wrangler). Node.js >=22.18.0 is enforced by `.npmrc`/package engines; `.node-version` records 22.23.2. Install with `npm ci`. Never replace the guarded release command with direct `npx wrangler deploy`.
+
+`npm run deploy -- --env staging` forwards the same environment/config flags to checks and deployment. `CLOUDFLARE_ENV` is also honored consistently. Only `--env`/`-e` and `--config`/`-c` are supported by the gate; extra deployment flags are rejected. `npm run wrangler -- deploy --dry-run` verifies Worker bundling locally without deploying. `npm run check:secrets -- --env staging` checks remote secret names without deployment; listing cannot verify remote values or provider account validity.
 
 **Deployed to:** brainhalf.com and www.brainhalf.com
 
-### Required Secrets (set once via `wrangler secret put <NAME>`)
+### Secrets (set interactively via `npm run wrangler -- secret put <NAME>`)
 ```
-SESSION_SECRET          # Used for signing session tokens
-ATRIA_API_KEY           # Atria model provider
-ATRIA_BASE_URL          # Atria base URL
-XKIRO_API_KEY           # Xkiro model provider
+SESSION_SECRET          # Required; persistent random value, >=32 non-padding characters
+ATRIA_API_KEY           # Optional; required if Atria is selected, unless XKIRO_API_KEY exists
+ATRIA_BASE_URL          # Optional HTTPS endpoint; defaults to https://api.atria-asi.ai/v1
+XKIRO_API_KEY           # Optional alias for ATRIA_API_KEY
 ANTHROPIC_API_KEY       # Optional — for direct Anthropic models
 BEDROCK_API_KEY         # Optional — for AWS Bedrock models
 ```
+
+`REQUIRED_MODEL_PROVIDERS` in Wrangler vars is the explicit comma-separated deployment/runtime policy. The default is `cloudflare`, requiring binding `AI`; optional providers are not unconditionally required. Each named environment must declare its policy and bindings. Bedrock accepts the shared bearer aliases or the complete AWS key pair; see `src/lib/runtime-config.ts` and README. A value stored in `ATRIA_BASE_URL` is no longer interpreted as an API key: migrate it to the correct secret before releasing. URLs must use HTTPS without embedded credentials, query or fragment.
+
+Invalid signing configuration yields an uncached 503 for API/agent/preview routes, while shell assets and CORS preflight remain available. Signup/login fail before account/session writes, and verification fails closed. There is no ephemeral signing fallback. Runtime generation validates provider policy and actual nonblank credential values; deploy checks can only validate listed secret names and configured bindings. No production secrets were inspected or changed during the remediation.
 
 ### Cloudflare Resources (all configured in wrangler.toml)
 | Resource | Type | Name/Binding |
@@ -441,16 +494,19 @@ BEDROCK_API_KEY         # Optional — for AWS Bedrock models
 ### Test Suites
 | Suite | File | Coverage | Backend needed? |
 |---|---|---|---|
-| Platform security | `tests/platform/security.spec.ts` | Auth gates, XSS, CORS | No |
-| Project lifecycle | `tests/e2e-projects-lifecycle.spec.ts` | Create/open/delete | No |
-| Agent scenarios | `tests/playwright-agent.spec.ts` | T01–T20 generation | Yes (prod) |
-| QA master suite | `tests/qa-master-suite.spec.ts` | Tier 1–4 apps | Yes (prod) |
-| Chaos suites | `tests/chaos-*.spec.ts` | Race conditions, mutations | Yes (prod) |
-| Production breaker | `tests/production-breaker-deep-stress.spec.ts` | Full stress | Yes (prod) |
+| Account isolation | `tests/account-isolation.spec.ts` | Cross-account storage, cross-tab logout | Controlled fixtures |
+| Audit remediation | `tests/audit-remediation.spec.ts` | Chat, preview, publication UI, accessibility | Controlled fixtures |
+| Edge preview | `tests/edge-preview-remediation.spec.ts` | Actual emitted preview renderer | Local modules/HTTP fixtures |
+| Local lifecycle | `tests/ai-ide-e2e-001-lifecycle.spec.ts` | Stop, project switching, completed local cache deletion, mobile, socket reconnect | Controlled fixtures |
+| Platform checks | `tests/platform-checks-regression.spec.ts` | Actual helper checks, missing evidence, injected history/storage/browser errors | Controlled fixtures |
+| Legacy/live suites | Other `tests/**/*.spec.ts` | Historical model, benchmark, chaos and production scenarios; not locally certified | Explicit opt-in and reviewed targets |
 
 ### Test Status
-- **~222/264 passing locally** (dev server only, no Durable Objects)
-- **~42 tests require production backend** (Cloudflare Workers AI / DO)
+- `npm run test:e2e` selects only the five reviewed local suites in `tests/browser-policy.ts`. Historical passing estimates for the larger legacy collection are not current validation evidence.
+- `npm run test:e2e:live`, `npm run test:all-models` and `npm run benchmark` use `playwright.live.config.ts`, which refuses to load without `BRAINHALF_ALLOW_LIVE_TESTS=1`. Some legacy specs hardcode production URLs; review and obtain permission before selecting a suite. Opt-in is not a claim that those tests are correct or passing.
+- `runPlatformLevelChecks` now reports eight measured checks, not twelve assumed capabilities. Its fourth argument supplies the verified account id and two distinct project fixtures. Missing evidence fails persistence/isolation checks. It captures console/page errors only during its measured interval and removes its listeners afterward. It does not claim model attribution, backend auto-fix, remote deployment, or full-session console cleanliness.
+- Local lifecycle fixtures seed once, retain mocked per-project history, serve Monaco assets from disk and hold generation open until explicitly stopped. Cache deletion is awaited before reloading. A controlled socket restart is not a real network-outage test.
+- **Deletion follow-up:** the landing Delete action invokes synchronous browser-store deletion, not the authenticated server DELETE API. Registry reconciliation can reintroduce server-listed project metadata; publication is not revoked by that UI flow. This is separate from the tested server tombstone/access checks and needs its own UI/API integration fix. Immediate unload before asynchronous IndexedDB deletion finishes is not covered by the completed-write lifecycle assertion.
 
 ### Key Playwright Selectors
 ```

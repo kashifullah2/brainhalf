@@ -56,6 +56,12 @@ describe('deploy config drift (public/_headers vs worker)', () => {
     expect(parsed['/*']['Content-Security-Policy']).toBeDefined();
   });
 
+  it('allows the GitHub export API without allowing arbitrary HTTPS connections', () => {
+    const policy = parseHeaders(raw)['/*']['Content-Security-Policy'];
+    const connect = policy.split(';').find(directive => directive.trim().startsWith('connect-src'))!;
+    expect(connect.trim().split(/\s+/)).toEqual(['connect-src', "'self'", 'https://cloudflareinsights.com', 'https://api.github.com', 'https://cdn.jsdelivr.net', 'https://www.googletagmanager.com', 'https://*.google-analytics.com', 'https://*.google.com']);
+  });
+
   it('matches shellSecurityHeaders() directive-for-directive', () => {
     const workerCsp = shellSecurityHeaders()['Content-Security-Policy'];
     const fileCsp = parseHeaders(raw)['/*']['Content-Security-Policy'];

@@ -1,0 +1,46 @@
+{
+  "projectId": "proj-2871be52-6390-441c-9089-1648408f7978",
+  "checks": [
+    "Empty form shows validation",
+    "Valid appointment shows confirmation",
+    "Mobile preview fits",
+    "Saved app survives workspace reload"
+  ],
+  "errors": [],
+  "frameUrl": "https://brainhalf.com/preview/proj-2871be52-6390-441c-9089-1648408f7978/index.html",
+  "body": "Cedar Cuts\n\nBook your next appointment with us.\n\nChoose a service\nClassic Cut\nScissor and clipper cut with a clean finish.\n$28\nBeard Trim\nShape, line-up, and hot towel treatment.\n$15\nCut + Beard\nThe full service — haircut and beard detail.\n$40\nYour name\nPreferred date\nRequest appointment\n\nThis is a frontend demo — requests are not sent or saved online.",
+  "fields": [
+    {
+      "type": "radio",
+      "name": "service",
+      "id": "",
+      "placeholder": ""
+    },
+    {
+      "type": "radio",
+      "name": "service",
+      "id": "",
+      "placeholder": ""
+    },
+    {
+      "type": "radio",
+      "name": "service",
+      "id": "",
+      "placeholder": ""
+    },
+    {
+      "type": "text",
+      "name": "",
+      "id": "",
+      "placeholder": "e.g. Sam Rivera"
+    },
+    {
+      "type": "date",
+      "name": "",
+      "id": "",
+      "placeholder": ""
+    }
+  ],
+  "confirmation": "Cedar Cuts\n\nBook your next appointment with us.\n\nChoose a service\nClassic Cut\nScissor and clipper cut with a clean finish.\n$28\nBeard Trim\nShape, line-up, and hot towel treatment.\n$15\nCut + Beard\nThe full service — haircut and beard detail.\n$40\nYour name\nPreferred date\nRequest appointment\nThanks, Brainhalf Test! Your Classic Cut request for Saturday, October 10, 2026 has been noted.\n\nThis is a frontend demo — requests are not sent or saved online.",
+  "passed": true
+}

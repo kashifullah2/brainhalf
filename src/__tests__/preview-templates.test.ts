@@ -22,7 +22,8 @@ describe('7.3 extracted preview templates', () => {
     // A partially seeded workspace renders a broken preview; each file is
     // asserted on its own because the three are written in one transaction.
     expect(STARTER_APP_JSX).toMatch(/export default function App\(\)/);
-    expect(STARTER_APP_JSX).toContain('lucide-react');
+    expect(STARTER_APP_JSX.includes('src="data:image/png;base64,')).toBe(true);
+    expect(STARTER_APP_JSX).toContain('alt="BrainHalf"');
     expect(STARTER_MAIN_JSX).toMatch(/ReactDOM\.createRoot/);
     expect(STARTER_STYLES_CSS).toContain('box-sizing: border-box');
   });

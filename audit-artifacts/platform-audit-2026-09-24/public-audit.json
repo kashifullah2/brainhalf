@@ -1,0 +1,395 @@
+{
+  "measuredAt": "2026-09-24T15:50:55.828Z",
+  "endpoints": [
+    {
+      "path": "/",
+      "expected": 200,
+      "samples": [
+        {
+          "status": 200,
+          "headersMs": 1310,
+          "totalMs": 1336
+        },
+        {
+          "status": 200,
+          "headersMs": 147,
+          "totalMs": 151
+        },
+        {
+          "status": 200,
+          "headersMs": 138,
+          "totalMs": 145
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/dashboard",
+      "expected": 200,
+      "samples": [
+        {
+          "status": 200,
+          "headersMs": 138,
+          "totalMs": 146
+        },
+        {
+          "status": 200,
+          "headersMs": 170,
+          "totalMs": 176
+        },
+        {
+          "status": 200,
+          "headersMs": 144,
+          "totalMs": 149
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/robots.txt",
+      "expected": 200,
+      "samples": [
+        {
+          "status": 200,
+          "headersMs": 200,
+          "totalMs": 202
+        },
+        {
+          "status": 200,
+          "headersMs": 203,
+          "totalMs": 205
+        },
+        {
+          "status": 200,
+          "headersMs": 205,
+          "totalMs": 209
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/sitemap.xml",
+      "expected": 200,
+      "samples": [
+        {
+          "status": 200,
+          "headersMs": 198,
+          "totalMs": 201
+        },
+        {
+          "status": 200,
+          "headersMs": 201,
+          "totalMs": 203
+        },
+        {
+          "status": 200,
+          "headersMs": 203,
+          "totalMs": 204
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/preview-rules.json",
+      "expected": 200,
+      "samples": [
+        {
+          "status": 200,
+          "headersMs": 203,
+          "totalMs": 203
+        },
+        {
+          "status": 200,
+          "headersMs": 717,
+          "totalMs": 717
+        },
+        {
+          "status": 200,
+          "headersMs": 129,
+          "totalMs": 130
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/api/auth/session",
+      "expected": 401,
+      "samples": [
+        {
+          "status": 401,
+          "headersMs": 168,
+          "totalMs": 169
+        },
+        {
+          "status": 401,
+          "headersMs": 130,
+          "totalMs": 131
+        },
+        {
+          "status": 401,
+          "headersMs": 184,
+          "totalMs": 184
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/api/projects",
+      "expected": 401,
+      "samples": [
+        {
+          "status": 401,
+          "headersMs": 205,
+          "totalMs": 205
+        },
+        {
+          "status": 401,
+          "headersMs": 204,
+          "totalMs": 205
+        },
+        {
+          "status": 401,
+          "headersMs": 204,
+          "totalMs": 204
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/api/account/ai-usage",
+      "expected": 401,
+      "samples": [
+        {
+          "status": 401,
+          "headersMs": 207,
+          "totalMs": 208
+        },
+        {
+          "status": 401,
+          "headersMs": 129,
+          "totalMs": 130
+        },
+        {
+          "status": 401,
+          "headersMs": 146,
+          "totalMs": 146
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/api/account/deletions",
+      "expected": 401,
+      "samples": [
+        {
+          "status": 401,
+          "headersMs": 131,
+          "totalMs": 132
+        },
+        {
+          "status": 401,
+          "headersMs": 145,
+          "totalMs": 146
+        },
+        {
+          "status": 401,
+          "headersMs": 130,
+          "totalMs": 131
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/api/account/outcomes",
+      "expected": 401,
+      "samples": [
+        {
+          "status": 401,
+          "headersMs": 235,
+          "totalMs": 235
+        },
+        {
+          "status": 401,
+          "headersMs": 128,
+          "totalMs": 129
+        },
+        {
+          "status": 401,
+          "headersMs": 148,
+          "totalMs": 148
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/api/admin/outcomes",
+      "expected": 401,
+      "samples": [
+        {
+          "status": 401,
+          "headersMs": 234,
+          "totalMs": 235
+        },
+        {
+          "status": 401,
+          "headersMs": 204,
+          "totalMs": 204
+        },
+        {
+          "status": 401,
+          "headersMs": 131,
+          "totalMs": 132
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/api/projects/audit-not-owned/runtime/status?environment=production",
+      "expected": 401,
+      "samples": [
+        {
+          "status": 401,
+          "headersMs": 176,
+          "totalMs": 177
+        },
+        {
+          "status": 401,
+          "headersMs": 135,
+          "totalMs": 136
+        },
+        {
+          "status": 401,
+          "headersMs": 146,
+          "totalMs": 147
+        }
+      ],
+      "passed": true
+    },
+    {
+      "path": "/api/not-a-route",
+      "expected": 404,
+      "samples": [
+        {
+          "status": 404,
+          "headersMs": 131,
+          "totalMs": 132
+        },
+        {
+          "status": 404,
+          "headersMs": 152,
+          "totalMs": 153
+        },
+        {
+          "status": 404,
+          "headersMs": 161,
+          "totalMs": 161
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "pages": [
+    {
+      "width": 1440,
+      "metrics": {
+        "lcp": 1392,
+        "layoutShiftSum": 0,
+        "ttfbMs": 848.6000000014901,
+        "loadMs": 3203.89999999851,
+        "fcpMs": 1392,
+        "overflow": false
+      },
+      "errors": [],
+      "links": [
+        {
+          "path": "/guides/build-an-app-with-ai",
+          "status": 200
+        },
+        {
+          "path": "/use-cases/ai-dashboard-builder",
+          "status": 200
+        },
+        {
+          "path": "/use-cases/ai-website-builder",
+          "status": 200
+        },
+        {
+          "path": "/about",
+          "status": 200
+        },
+        {
+          "path": "/contact",
+          "status": 200
+        },
+        {
+          "path": "/guides/full-stack-apps",
+          "status": 200
+        },
+        {
+          "path": "/free-ai-app-builder",
+          "status": 200
+        },
+        {
+          "path": "/privacy",
+          "status": 200
+        },
+        {
+          "path": "/terms",
+          "status": 200
+        }
+      ],
+      "loginVisible": true
+    },
+    {
+      "width": 390,
+      "metrics": {
+        "lcp": 1204,
+        "layoutShiftSum": 0,
+        "ttfbMs": 596.9000000022352,
+        "loadMs": 3188,
+        "fcpMs": 1204,
+        "overflow": false
+      },
+      "errors": [],
+      "links": [
+        {
+          "path": "/guides/build-an-app-with-ai",
+          "status": 200
+        },
+        {
+          "path": "/use-cases/ai-dashboard-builder",
+          "status": 200
+        },
+        {
+          "path": "/use-cases/ai-website-builder",
+          "status": 200
+        },
+        {
+          "path": "/about",
+          "status": 200
+        },
+        {
+          "path": "/contact",
+          "status": 200
+        },
+        {
+          "path": "/guides/full-stack-apps",
+          "status": 200
+        },
+        {
+          "path": "/free-ai-app-builder",
+          "status": 200
+        },
+        {
+          "path": "/privacy",
+          "status": 200
+        },
+        {
+          "path": "/terms",
+          "status": 200
+        }
+      ],
+      "loginVisible": true
+    }
+  ]
+}

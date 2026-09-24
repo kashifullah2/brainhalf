@@ -55,6 +55,75 @@ function makeAgent(files: Map<string, string>) {
 }
 
 describe('P4 file extraction commits deletes and writes as one batch', () => {
+  it('applies file creation and edits in the order generated', () => {
+    const files = new Map<string, string>();
+    const { agent } = makeAgent(files);
+    agent.extractAndSaveFiles('<file path="/src/data.txt">original</file><edit path="/src/data.txt"><search>original</search><replace>updated</replace></edit>', { id: 'connection' });
+    expect(files.get('/src/data.txt')).toBe('updated');
+    agent.extractAndSaveFiles('<edit path="/src/data.txt"><search>updated</search><replace>intermediate</replace></edit><file path="/src/data.txt">final</file>', { id: 'connection' });
+    expect(files.get('/src/data.txt')).toBe('final');
+  });
+
+  it('honors a deletion after a write and a write after a deletion', () => {
+    const files = new Map<string, string>();
+    const { agent } = makeAgent(files);
+    agent.extractAndSaveFiles('<file path="/src/data.txt">new</file><delete path="/src/data.txt" />', { id: 'connection' });
+    expect(files.has('/src/data.txt')).toBe(false);
+    agent.extractAndSaveFiles('<delete path="/src/data.txt" /><file path="/src/data.txt">restored</file>', { id: 'connection' });
+    expect(files.get('/src/data.txt')).toBe('restored');
+  });
+
+  it('reports a mismatched edit without committing earlier pairs from that edit block', () => {
+    const files = new Map([['/src/data.txt', 'original']]);
+    const { agent } = makeAgent(files);
+    const send = vi.fn();
+    agent.extractAndSaveFiles('<edit path="/src/data.txt"><search>original</search><replace>updated</replace><search>missing</search><replace>new</replace></edit>', { id: 'connection', send });
+    expect(files.get('/src/data.txt')).toBe('original');
+    expect(send.mock.calls.map(([message]) => JSON.parse(message))).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'error', error: expect.stringContaining('did not match') })]));
+  });
+  it('saves fenced file contents without treating the opening fence as the end of the file', () => {
+    const files = new Map<string, string>();
+    const { agent } = makeAgent(files);
+    const source = 'export default function App() { return <h1>Ready</h1>; }';
+    agent.extractAndSaveFiles(`<file path="/src/App.jsx">\n\`\`\`jsx\n${source}\n\`\`\`\nThe app is ready.\n</file>`, { id: 'connection' });
+    expect(files.get('/src/App.jsx')).toBe(source);
+  });
+
+  it('keeps adjacent generated files separate when the first closing tag is missing', () => {
+    const files = new Map<string, string>();
+    const { agent } = makeAgent(files);
+    const source = 'export default function App() { return <h1>Ready</h1>; }';
+    agent.extractAndSaveFiles(`<file path="/src/App.jsx">${source}\n<file path="/src/styles.css">body { margin: 0; }</file>`, { id: 'connection' });
+    expect(files.get('/src/App.jsx')).toBe(source);
+    expect(files.get('/src/styles.css')).toBe('body { margin: 0; }');
+  });
+
+  it('preserves the existing file on truncation and asks for a complete replacement', () => {
+    const files = new Map([['/src/App.jsx', 'export default function App() { return <h1>Existing</h1>; }']]);
+    const original = files.get('/src/App.jsx');
+    const { agent } = makeAgent(files);
+    const send = vi.fn();
+    const result = agent.extractAndSaveFiles('<file path="/src/App.jsx">export default function App() { return <h1>Partial', { id: 'connection', send });
+    expect(files.get('/src/App.jsx')).toBe(original);
+    expect(result.wasTruncated).toBe(true);
+    expect(send.mock.calls.map(([message]) => JSON.parse(message))).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'trigger-auto-reply', message: expect.stringContaining('FULL FILE CONTENT') })]));
+  });
+
+  it('persists intentionally empty files and ignores incomplete edit pairs', () => {
+    const files = new Map([['/src/styles.css', 'body { color: red; }'], ['/src/data.txt', 'keep this']]);
+    const { agent } = makeAgent(files);
+    agent.extractAndSaveFiles('<file path="/src/styles.css"></file><edit path="/src/data.txt"><search>keep this</search></edit>', { id: 'connection' });
+    expect(files.get('/src/styles.css')).toBe('');
+    expect(files.get('/src/data.txt')).toBe('keep this');
+  });
+
+  it('stores explicitly named markdown files consistently with chat rendering', () => {
+    const files = new Map<string, string>();
+    const { agent } = makeAgent(files);
+    agent.extractAndSaveFiles('Here is `src/data.json`:\n```json\n{"name":"Tasks"}\n```', { id: 'connection' });
+    expect(files.get('/src/data.json')).toBe('{"name":"Tasks"}');
+    expect(files.has('/src/styles.css')).toBe(false);
+  });
   it('applies a <file> block and a <delete> block in a single transaction', () => {
     const files = new Map([['/src/old.tsx', 'old']]);
     const { agent, statements } = makeAgent(files);

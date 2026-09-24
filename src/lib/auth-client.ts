@@ -9,8 +9,83 @@
  * script at that URL, including model-generated preview code.
  */
 
+import { deleteProjectDurably, getProjectStorageScope, reconcileOwnedProjects, setProjectAccount, updateProjectPublication, type Project } from './project-store';
+
 const TOKEN_KEY = 'bh_session_token';
 const USER_KEY = 'bh_session_user';
+const GOOGLE_PROMPT_KEY = 'bh_google_pending_prompt';
+let sessionRevision = 0;
+
+export function saveGooglePrompt(prompt: { prompt: string } | null): void {
+  try {
+    if (prompt) sessionStorage.setItem(GOOGLE_PROMPT_KEY, JSON.stringify({ ...prompt, savedAt: Date.now() }));
+    else sessionStorage.removeItem(GOOGLE_PROMPT_KEY);
+  } catch {}
+}
+
+export function takeGooglePrompt(): { prompt: string } | null {
+  try {
+    const raw = sessionStorage.getItem(GOOGLE_PROMPT_KEY);
+    sessionStorage.removeItem(GOOGLE_PROMPT_KEY);
+    const value = raw && JSON.parse(raw);
+    return value && typeof value.prompt === 'string' && Date.now() - value.savedAt < 15 * 60_000
+      ? { prompt: value.prompt } : null;
+  } catch { return null; }
+}
+
+export async function startGoogleSignIn(): Promise<void> {
+  const response = await fetch(`${apiBase()}/api/auth/google/start`, {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: new URLSearchParams(window.location.search).get('project') }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || typeof body?.url !== 'string') throw new Error(body?.error || 'Google sign-in could not start. Please try again.');
+  const target = new URL(body.url);
+  if (target.origin !== 'https://accounts.google.com') throw new Error('Google sign-in could not start. Please try again.');
+  window.location.assign(target.toString());
+}
+
+const GOOGLE_ERRORS: Record<string, string> = {
+  cancelled: 'Google sign-in was cancelled. Try again or continue with email.',
+  expired: 'Google sign-in expired. Please try again.',
+  unavailable: 'Google sign-in is not available yet. Please continue with email.',
+  existing_account: 'This email already has a BrainHalf account. Sign in with your existing password.',
+  unverified: 'Google could not verify your email address. Try another account or continue with email.',
+};
+let googleCompletion: Promise<SessionUser> | null = null;
+
+/** Deduplicate the one-use exchange across React StrictMode's mount effects. */
+export function completeGoogleSignIn(): Promise<SessionUser> | null {
+  if (googleCompletion) return googleCompletion;
+  const url = new URL(window.location.href);
+  const result = url.searchParams.get('google');
+  if (!result) return null;
+  url.searchParams.delete('google');
+  window.history.replaceState({}, '', url.toString());
+  googleCompletion = (async () => {
+    if (result !== 'complete') throw new Error(GOOGLE_ERRORS[result] || 'Google sign-in could not finish. Please try again.');
+    const revision = ++sessionRevision;
+    const previousToken = getToken();
+    const response = await fetch(`${apiBase()}/api/auth/google/complete`, { method: 'POST', credentials: 'include', signal: AbortSignal.timeout(20_000) });
+    const body = await response.json().catch(() => null);
+    const user = sessionUser(body?.user);
+    if (revision !== sessionRevision || previousToken !== getToken()) throw new Error('Session changed. Sign in again.');
+    if (!response.ok || !user || typeof body?.token !== 'string') throw new Error(body?.error || 'Google sign-in could not finish. Please try again.');
+    persist(body.token, user);
+    await restoreOwnedProjects(body.token);
+    if (revision !== sessionRevision || body.token !== getToken()) throw new Error('Session changed. Sign in again.');
+    return user;
+  })();
+  return googleCompletion;
+}
+
+export function clearGoogleCompletion(): void { googleCompletion = null; }
+
+export function detachSession(): void {
+  sessionRevision += 1;
+  setProjectAccount(null);
+}
 
 export interface SessionUser {
   id: string;
@@ -45,6 +120,7 @@ export function getUser(): SessionUser | null {
 }
 
 function persist(token: string, user: SessionUser): void {
+  setProjectAccount(user.id);
   try {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -54,15 +130,37 @@ function persist(token: string, user: SessionUser): void {
 }
 
 function clear(): void {
+  detachSession();
   try {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
   } catch {
     /* ignore */
   }
+  try { window.dispatchEvent(new Event('bh-session-expired')); } catch {}
 }
 
-export async function signup(email: string, password: string): Promise<SessionUser> {
+function sessionUser(value: unknown): SessionUser | null {
+  if (!value || typeof value !== 'object' || !('id' in value) || typeof value.id !== 'string' || !value.id) return null;
+  return { id: value.id, email: 'email' in value && typeof value.email === 'string' ? value.email : '' };
+}
+
+async function restoreOwnedProjects(token: string): Promise<void> {
+  const scope = getProjectStorageScope();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${apiBase()}/api/projects`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include', signal: controller.signal });
+    const body = await response.json();
+    if (!response.ok || getToken() !== token || scope !== getProjectStorageScope() || !Array.isArray(body?.projects)) return;
+    const projects = body.projects.filter((project: Project) => project && typeof project.id === 'string' && typeof project.name === 'string' && typeof project.createdAt === 'number' && typeof project.updatedAt === 'number');
+    reconcileOwnedProjects(projects);
+  } catch {} finally { clearTimeout(timeout); }
+}
+
+export async function signup(email: string, password: string): Promise<SessionUser | { verificationRequired: true; message: string }> {
+  const revision = ++sessionRevision;
+  const previousToken = getToken();
   const res = await fetch(`${apiBase()}/api/auth/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -70,12 +168,19 @@ export async function signup(email: string, password: string): Promise<SessionUs
     body: JSON.stringify({ email, password }),
   });
   const body = await res.json().catch(() => ({ error: 'Signup failed' }));
-  if (!res.ok || !body?.token) throw new Error(body?.error || 'Signup failed');
-  persist(body.token, body.user);
-  return body.user as SessionUser;
+  if (res.ok && body?.verificationRequired === true) return { verificationRequired: true, message: body.message || 'Check your email to verify your account, then sign in.' };
+  const user = sessionUser(body?.user);
+  if (revision !== sessionRevision || previousToken !== getToken()) throw new Error('Session changed. Sign in again.');
+  if (!res.ok || typeof body?.token !== 'string' || !user) throw new Error(body?.error || 'Signup failed');
+  persist(body.token, user);
+  await restoreOwnedProjects(body.token);
+  if (revision !== sessionRevision || body.token !== getToken()) throw new Error('Session changed. Sign in again.');
+  return user;
 }
 
 export async function login(email: string, password: string): Promise<SessionUser> {
+  const revision = ++sessionRevision;
+  const previousToken = getToken();
   const res = await fetch(`${apiBase()}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -83,13 +188,18 @@ export async function login(email: string, password: string): Promise<SessionUse
     body: JSON.stringify({ email, password }),
   });
   const body = await res.json().catch(() => ({ error: 'Login failed' }));
-  if (!res.ok || !body?.token) throw new Error(body?.error || 'Login failed');
-  persist(body.token, body.user);
-  return body.user as SessionUser;
+  const user = sessionUser(body?.user);
+  if (revision !== sessionRevision || previousToken !== getToken()) throw new Error('Session changed. Sign in again.');
+  if (!res.ok || typeof body?.token !== 'string' || !user) throw new Error(body?.error || 'Login failed');
+  persist(body.token, user);
+  await restoreOwnedProjects(body.token);
+  if (revision !== sessionRevision || body.token !== getToken()) throw new Error('Session changed. Sign in again.');
+  return user;
 }
 
 export async function logout(): Promise<void> {
   const token = getToken();
+  clear();
   try {
     await fetch(`${apiBase()}/api/auth/logout`, {
       method: 'POST',
@@ -99,7 +209,6 @@ export async function logout(): Promise<void> {
   } catch {
     /* still clear locally */
   }
-  clear();
 }
 
 /**
@@ -108,18 +217,26 @@ export async function logout(): Promise<void> {
  */
 export async function verifyStoredSession(): Promise<SessionUser | null> {
   const token = getToken();
-  if (!token) return null;
+  const revision = sessionRevision;
+  if (!token) { setProjectAccount(null); return null; }
   try {
     const res = await fetch(`${apiBase()}/api/auth/session`, {
       headers: { Authorization: `Bearer ${token}` },
       credentials: 'include',
     });
-    if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    if (revision !== sessionRevision || getToken() !== token) return null;
+    const cached = getUser();
+    const user = sessionUser(body?.user) || (typeof body?.userId === 'string' && body.userId ? { id: body.userId, email: cached?.id === body.userId && typeof cached?.email === 'string' ? cached.email : '' } : null);
+    if (!res.ok || !user) {
       clear();
       return null;
     }
-    return getUser();
+    persist(token, user);
+    await restoreOwnedProjects(token);
+    return revision === sessionRevision && getToken() === token ? user : null;
   } catch {
+    if (revision === sessionRevision && getToken() === token) setProjectAccount(null);
     return null;
   }
 }
@@ -129,19 +246,43 @@ export async function verifyStoredSession(): Promise<SessionUser | null> {
  * clearing the stale session and signalling the app to show the login screen.
  */
 export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const revision = sessionRevision;
   const token = getToken();
   const headers = new Headers(init.headers || {});
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const res = await fetch(input, { ...init, headers, credentials: 'include' });
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401 && revision === sessionRevision && token === getToken()) {
     clear();
-    try {
-      window.dispatchEvent(new CustomEvent('bh-session-expired'));
-    } catch {
-      /* not a browser context */
-    }
   }
   return res;
+}
+
+export async function removeProject(projectId: string): Promise<Project[]> {
+  const scope = getProjectStorageScope();
+  const token = getToken();
+  if (!scope.accountId || !token) throw new Error('Sign in before deleting a project.');
+  const response = await authFetch(`${apiBase()}/api/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE', signal: AbortSignal.timeout(20_000) });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || body?.ok !== true) throw new Error(body?.error || 'Deletion could not be confirmed. Your local files are retained; try again.');
+  if (scope !== getProjectStorageScope() || token !== getToken()) throw new Error('Account changed during deletion. Sign back in to finish cleanup.');
+  return deleteProjectDurably(projectId);
+}
+
+export async function projectPublication(projectId: string, signal: AbortSignal, published?: boolean): Promise<boolean> {
+  const token = getToken();
+  const scope = getProjectStorageScope();
+  const response = await fetch(`${apiBase()}/api/projects/${encodeURIComponent(projectId)}/publication`, {
+    method: published === undefined ? 'GET' : 'PUT',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    credentials: 'include',
+    signal,
+    body: published === undefined ? undefined : JSON.stringify({ published }),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || typeof body?.published !== 'boolean') throw new Error(body?.error || 'Could not confirm publication status. Try again.');
+  if (scope !== getProjectStorageScope() || token !== getToken()) throw new Error('Account changed while checking publication.');
+  updateProjectPublication(projectId, body.published);
+  return body.published;
 }
 
 /**
@@ -161,9 +302,12 @@ export async function authFetch(input: string, init: RequestInit = {}): Promise<
  * Returns the URL unmodified only when *no* credential is available at all.
  */
 export async function withWsAuthQuery(wsUrl: string): Promise<string> {
+  const revision = sessionRevision;
+  const originalToken = getToken();
   const separator = wsUrl.includes('?') ? '&' : '?';
   // Prefer a single-use ticket (short-lived, one-time, never in logs)
   const ticket = await getWsTicket();
+  if (revision !== sessionRevision || originalToken !== getToken()) throw new Error('Session changed while connecting');
   if (ticket) {
     return `${wsUrl}${separator}ticket=${encodeURIComponent(ticket)}`;
   }
@@ -177,14 +321,33 @@ export async function withWsAuthQuery(wsUrl: string): Promise<string> {
 }
 
 async function getWsTicket(): Promise<string | null> {
+  if (prefetchedTicket) {
+    const ticket = prefetchedTicket;
+    prefetchedTicket = null;
+    return ticket;
+  }
+  return fetchWsTicket();
+}
+
+async function fetchWsTicket(): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   try {
-    const res = await authFetch(`${apiBase()}/api/auth/ws-ticket`, { method: 'POST' });
+    const res = await authFetch(`${apiBase()}/api/auth/ws-ticket`, { method: 'POST', signal: controller.signal });
     if (!res.ok) return null;
     const body = await res.json().catch(() => null);
     const ticket = (body as { ticket?: string } | null)?.ticket;
     return typeof ticket === 'string' && ticket.startsWith('bhwt_') ? ticket : null;
   } catch {
+    if (controller.signal.aborted) throw new Error('The workspace sign-in check timed out. Retry or sign in again.');
     return null;
-  }
+  } finally { clearTimeout(timeout); }
 }
 
+let prefetchedTicket: Promise<string | null> | null = null;
+
+export function prefetchWsTicket(): void {
+  if (!getToken()) return;
+  prefetchedTicket = fetchWsTicket();
+  prefetchedTicket.catch(() => { prefetchedTicket = null; });
+}

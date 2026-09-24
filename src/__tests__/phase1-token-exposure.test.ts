@@ -126,7 +126,7 @@ describe('P1 — the long-lived token is absent from navigational URLs', () => {
     return () => delete (globalThis as any).localStorage;
   }
 
-  it('leaves the URL untouched when no ticket can be issued', async () => {
+  it('rejects a ticket request when authentication is refused', async () => {
     const url = 'wss://brainhalf.com/agents/chat-agent/proj-a';
     // No stored session token → nothing to authenticate with → no credential
     // in the URL, and the caller surfaces the failure.
@@ -136,7 +136,7 @@ describe('P1 — the long-lived token is absent from navigational URLs', () => {
       .mockResolvedValue(new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 }));
     try {
       const m = await mod_import();
-      expect(await m.withWsAuthQuery(url)).toBe(url);
+      await expect(m.withWsAuthQuery(url)).rejects.toThrow('Session changed');
     } finally {
       fetchSpy.mockRestore();
       restore();
@@ -153,9 +153,7 @@ describe('P1 — the long-lived token is absent from navigational URLs', () => {
       .mockResolvedValue(new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 }));
     try {
       const m = await mod_import();
-      const result = await m.withWsAuthQuery(url);
-      expect(result).toBe(url);
-      expect(result).not.toContain('bh_payload');
+      await expect(m.withWsAuthQuery(url)).rejects.toThrow('Session changed');
     } finally {
       fetchSpy.mockRestore();
       restore();
@@ -175,6 +173,24 @@ describe('P1 — the long-lived token is absent from navigational URLs', () => {
       fetchSpy.mockRestore();
       restore();
     }
+  });
+
+  it('bounds a stalled ticket request without leaking the session token or waiting forever', async () => {
+    vi.useFakeTimers();
+    const restore = installLocalStorage({ bh_session_token: 'bh_private_session.signature' });
+    let signal: AbortSignal | undefined;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+      signal = init?.signal as AbortSignal;
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+    }));
+    try {
+      const m = await mod_import();
+      const result = expect(m.withWsAuthQuery('wss://brainhalf.com/agents/chat-agent/proj-a')).rejects.toThrow('sign-in check timed out');
+      await vi.advanceTimersByTimeAsync(15_000);
+      await result;
+      expect(signal?.aborted).toBe(true); expect(fetchSpy).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { fetchSpy.mockRestore(); restore(); vi.useRealTimers(); }
   });
 });
 

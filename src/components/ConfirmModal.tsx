@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { useModalFocus } from '../lib/use-modal-focus';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -8,6 +9,8 @@ interface ConfirmModalProps {
   confirmLabel?: string;
   cancelLabel?: string;
   isDestructive?: boolean;
+  pending?: boolean;
+  error?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -19,10 +22,14 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   isDestructive = true,
+  pending = false,
+  error,
   onConfirm,
   onCancel,
 }) => {
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
+  const dismiss = () => { if (!pending) onCancel(); };
+  const dialogRef = useModalFocus(isOpen, dismiss);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -33,7 +40,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
     }, 50);
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !pending) {
         e.stopPropagation();
         onCancel();
       }
@@ -44,7 +51,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
       clearTimeout(timer);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onCancel]);
+  }, [isOpen, onCancel, pending]);
 
   if (!isOpen) return null;
 
@@ -53,7 +60,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        backgroundColor: 'var(--overlay)',
         backdropFilter: 'blur(4px)',
         zIndex: 99999,
         display: 'flex',
@@ -62,9 +69,12 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
         padding: '16px',
         animation: 'fadeIn 0.15s ease-out',
       }}
-      onClick={onCancel}
+      onClick={dismiss}
       role="dialog"
+      ref={dialogRef}
+      tabIndex={-1}
       aria-modal="true"
+      aria-busy={pending}
       aria-labelledby="confirm-modal-title"
     >
       <div
@@ -113,6 +123,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </div>
           <button
             onClick={onCancel}
+            disabled={pending}
             className="icon-btn"
             title="Close"
             aria-label="Close dialog"
@@ -128,14 +139,19 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
             fontSize: '13px',
             color: 'var(--text-secondary, #9ca3af)',
             lineHeight: 1.5,
+            maxHeight: '35vh',
+            overflowY: 'auto',
+            overflowWrap: 'anywhere',
           }}
         >
           {message}
         </p>
+        {error && <p role="alert">{error}</p>}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
           <button
             ref={cancelBtnRef}
+            disabled={pending}
             onClick={onCancel}
             style={{
               background: 'transparent',
@@ -154,11 +170,12 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </button>
           <button
             onClick={onConfirm}
+            disabled={pending}
             style={{
               background: isDestructive ? '#dc2626' : 'var(--accent-primary, #3b82f6)',
               border: 'none',
               borderRadius: '6px',
-              color: '#ffffff',
+              color: isDestructive ? '#ffffff' : 'var(--text-on-accent)',
               fontSize: '13px',
               fontWeight: 600,
               padding: '7px 16px',

@@ -1,0 +1,110 @@
+[
+  {
+    "text": "Database",
+    "url": "https://supabase.com/docs/guides/database/overview"
+  },
+  {
+    "text": "Securing your data",
+    "url": "https://supabase.com/docs/guides/database/secure-data"
+  },
+  {
+    "text": "Managing database functions",
+    "url": "https://supabase.com/docs/guides/database/functions"
+  },
+  {
+    "text": "Managing database triggers",
+    "url": "https://supabase.com/docs/guides/database/postgres/triggers"
+  },
+  {
+    "text": "Managing database webhooks",
+    "url": "https://supabase.com/docs/guides/database/webhooks"
+  },
+  {
+    "text": "Row Level Security",
+    "url": "https://supabase.com/docs/guides/database/postgres/row-level-security"
+  },
+  {
+    "text": "Row Level Security Performance",
+    "url": "https://supabase.com/docs/guides/database/postgres/row-level-security-performance"
+  },
+  {
+    "text": "Column Level Security",
+    "url": "https://supabase.com/docs/guides/database/postgres/column-level-security"
+  },
+  {
+    "text": "Database configuration",
+    "url": "https://supabase.com/docs/guides/database/postgres/configuration"
+  },
+  {
+    "text": "Database Advisors",
+    "url": "https://supabase.com/docs/guides/observability/advisors"
+  },
+  {
+    "text": "Testing your database",
+    "url": "https://supabase.com/docs/guides/database/testing"
+  },
+  {
+    "text": "Inspect the database",
+    "url": "https://supabase.com/docs/guides/observability/inspect"
+  },
+  {
+    "text": "Database",
+    "url": "https://supabase.com/docs/guides/database/overview"
+  },
+  {
+    "text": "Row Level Security",
+    "url": "https://supabase.com/docs/guides/database/postgres/row-level-security"
+  },
+  {
+    "text": "Row Level Security (RLS)",
+    "url": "https://www.postgresql.org/docs/current/ddl-rowsecurity.html"
+  },
+  {
+    "text": "Understand Row Level Security",
+    "url": "https://supabase.com/docs/guides/database/postgres/row-level-security#understand-row-level-security"
+  },
+  {
+    "text": "Secure a table with RLS",
+    "url": "https://supabase.com/docs/guides/database/postgres/row-level-security#secure-a-table-with-rls"
+  },
+  {
+    "text": "Supabase Auth",
+    "url": "https://supabase.com/docs/guides/auth"
+  },
+  {
+    "text": "Testing your database",
+    "url": "https://supabase.com/docs/guides/database/testing"
+  },
+  {
+    "text": "Row Level Security performance",
+    "url": "https://supabase.com/docs/guides/database/postgres/row-level-security-performance"
+  },
+  {
+    "text": "Multi-Factor Authentication",
+    "url": "https://supabase.com/docs/guides/auth/auth-mfa#enforce-rules-for-mfa-logins"
+  },
+  {
+    "text": "security definer function",
+    "url": "https://supabase.com/docs/guides/database/postgres/row-level-security#use-security-definer-functions"
+  },
+  {
+    "text": "Row Level Security performance",
+    "url": "https://supabase.com/docs/guides/database/postgres/row-level-security-performance"
+  },
+  {
+    "text": "Testing your database",
+    "url": "https://supabase.com/docs/guides/database/testing"
+  },
+  {
+    "text": "Securing your API",
+    "url": "https://supabase.com/docs/guides/api/securing-your-api"
+  },
+  {
+    "text": "Column Level Security",
+    "url": "https://supabase.com/docs/guides/database/postgres/column-level-security"
+  },
+  {
+    "text": "Author Styleguide",
+    "url": "https://github.com/supabase/supabase/blob/master/apps/docs/CONTRIBUTING.md"
+  }
+]

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
+  setProjectAccount,
+  projectStorageKey,
   getProjects,
   saveProjects,
   createProject,
@@ -23,6 +25,7 @@ describe('Project Store & LocalStorage State Management', () => {
   let mockStorage: Record<string, string> = {};
 
   beforeEach(() => {
+    setProjectAccount(null);
     mockStorage = {};
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => mockStorage[key] || null,
@@ -30,6 +33,7 @@ describe('Project Store & LocalStorage State Management', () => {
       removeItem: (key: string) => { delete mockStorage[key]; },
       clear: () => { mockStorage = {}; }
     });
+    setProjectAccount('test-account');
   });
 
   describe('getProjects', () => {
@@ -51,7 +55,7 @@ describe('Project Store & LocalStorage State Management', () => {
     });
 
     it('recovers gracefully from corrupted JSON in localStorage', () => {
-      mockStorage['brainhalf_projects'] = '{ invalid_json :::: ';
+      mockStorage[projectStorageKey('brainhalf_projects')] = '{ invalid_json :::: ';
       const projects = getProjects();
       expect(projects).toHaveLength(1);
       expect(projects[0].id).toMatch(/^proj-/);
@@ -196,7 +200,7 @@ describe('Project Store & LocalStorage State Management', () => {
   });
 
   describe('getProjectDisplayTitle', () => {
-    it('replaces generic Project N with first user prompt truncated to 30 chars with ellipsis', () => {
+    it('uses the full prompt for generic names so the layout can wrap it', () => {
       const proj = createProject('Project 1');
       saveProjectMessages(proj.id, [
         { role: 'ai', content: 'Hello! What would you like to build?' },
@@ -204,8 +208,7 @@ describe('Project Store & LocalStorage State Management', () => {
       ]);
 
       const title = getProjectDisplayTitle(proj);
-      expect(title).toBe('Build an interactive financial…');
-      expect(title.length).toBe(31); // 30 chars + ellipsis
+      expect(title).toBe('Build an interactive financial budget dashboard with charts and tables');
     });
 
     it('returns exact prompt without truncation if 30 chars or less', () => {
@@ -225,12 +228,24 @@ describe('Project Store & LocalStorage State Management', () => {
       ]);
 
       const title = getProjectDisplayTitle(proj);
-      expect(title).toBe('Build a calculator with histor…');
+      expect(title).toBe('Build a calculator with history feature');
     });
 
     it('falls back to custom project name when no user prompt exists', () => {
       const proj = createProject('Custom Mobile App');
       expect(getProjectDisplayTitle(proj)).toBe('Custom Mobile App');
+    });
+
+    it('honors a renamed project even when an earlier prompt exists', () => {
+      const proj = createProject('Weekly team planner');
+      saveProjectMessages(proj.id, [{ role: 'user', content: 'Build a kanban board' }]);
+      expect(getProjectDisplayTitle(proj)).toBe('Weekly team planner');
+    });
+
+    it('expands a legacy automatic prompt prefix', () => {
+      const proj = createProject('Build an app: Real-time Chat...');
+      saveProjectMessages(proj.id, [{ role: 'user', content: 'Build an app: Real-time Chat App with shared rooms' }]);
+      expect(getProjectDisplayTitle(proj)).toBe('Build an app: Real-time Chat App with shared rooms');
     });
 
     it('falls back to generic Project N if no user prompt exists yet', () => {
@@ -244,6 +259,7 @@ describe('Debounced file persistence (editor keystroke path)', () => {
   let mockStorage: Record<string, string> = {};
 
   beforeEach(() => {
+    setProjectAccount(null);
     mockStorage = {};
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => (key in mockStorage ? mockStorage[key] : null),
@@ -251,6 +267,7 @@ describe('Debounced file persistence (editor keystroke path)', () => {
       removeItem: (key: string) => { delete mockStorage[key]; },
       clear: () => { mockStorage = {}; }
     });
+    setProjectAccount('test-account');
     vi.useFakeTimers();
   });
 
@@ -259,7 +276,7 @@ describe('Debounced file persistence (editor keystroke path)', () => {
   });
 
   const read = (projectId: string) =>
-    mockStorage[`brainhalf_files_${projectId}`] ?? null;
+    mockStorage[projectStorageKey(`brainhalf_files_${projectId}`)] ?? null;
 
   it('does not touch localStorage synchronously, only the memory cache', () => {
     saveProjectFilesDebounced('proj-deb-1', { '/src/App.jsx': 'a' });

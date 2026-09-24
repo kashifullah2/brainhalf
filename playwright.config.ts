@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { LOCAL_BROWSER_SPECS } from './tests/browser-policy';
 
 /**
  * Read environment variables from file.
@@ -13,6 +14,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
+  testMatch: LOCAL_BROWSER_SPECS,
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -70,7 +72,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     port: 5173,
-    reuseExistingServer: true,
-    timeout: 15000,
+    reuseExistingServer: !process.env.CI,
+    timeout: 60000,
   },
 });

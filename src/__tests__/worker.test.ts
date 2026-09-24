@@ -20,18 +20,62 @@ import { issueToken, sha256Hex } from '../lib/crypto';
  */
 const SECRET = 'worker-test-secret-must-be-32-chars-or-more';
 
-function mockRegistry(opts: { userId?: string; ownerId?: string } = {}) {
+describe('Worker runtime configuration gate', () => {
+  it('serves only an empty public prefetch ruleset to opaque previews without authentication', async () => {
+    const response = await worker.fetch(new Request('https://brainhalf.com/preview-rules.json', { headers: { Origin: 'null' } }), {}, {} as any);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(response.headers.get('Content-Type')).toBe('application/speculationrules+json');
+    expect(await response.json()).toEqual({});
+  });
+  it.each(['/api/auth/signup', '/api/auth/login', '/api/auth/session', '/api/projects', '/agents/chat-agent/project', '/preview/project/index.html', '/p/project/'])('returns an explicit uncached 503 before accessing bindings: %s', async path => {
+    const response = await worker.fetch(new Request(`https://brainhalf.com${path}`, {
+      headers: { origin: 'https://brainhalf.com' },
+    }), { SESSION_SECRET: 'do-not-echo-this-value' }, {} as any);
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://brainhalf.com');
+    expect(await response.json()).toEqual({ error: 'Authentication service unavailable' });
+  });
+
+  it('keeps preflight and the static shell available without valid auth configuration', async () => {
+    const preflight = await worker.fetch(new Request('https://brainhalf.com/api/projects', { method: 'OPTIONS' }), {}, {} as any);
+    expect(preflight.status).toBe(204);
+    const shell = await worker.fetch(new Request('https://brainhalf.com/'), {
+      ASSETS: { fetch: async () => new Response('shell') },
+    }, {} as any);
+    expect(shell.status).toBe(200);
+    expect(await shell.text()).toBe('shell');
+  });
+});
+
+function mockRegistry(opts: {
+  userId?: string;
+  ownerId?: string;
+  published?: boolean;
+  onRateLimitCheck?: (bucket: string, key: string) => { ok: boolean; retryAfter: number };
+} = {}) {
   const userId = opts.userId ?? 'user-1';
   const ownerId = opts.ownerId ?? userId;
   const stubId = { name: 'auth', toString: () => 'auth' };
-  const fetch = vi.fn(async (input: string | Request) => {
+  const fetch = vi.fn(async (input: string | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? new URL(input) : new URL(input.url);
+    if (url.pathname === '/rate-limit/check') {
+      const body = input instanceof Request
+        ? await input.clone().json() as { bucket?: string; key?: string }
+        : (typeof init?.body === 'string' ? JSON.parse(init.body) as { bucket?: string; key?: string } : {});
+      const result = opts.onRateLimitCheck?.(String(body.bucket || ''), String(body.key || '')) ?? { ok: true, retryAfter: 0 };
+      return Response.json(result);
+    }
     if (url.pathname.startsWith('/sessions/')) {
       // Revocation lookup keyed by the token hash.
       return new Response(JSON.stringify({ userId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.pathname === '/projects/owner-check') {
       return new Response(JSON.stringify({ ownerId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.pathname === '/projects/access') {
+      return Response.json({ owner: url.searchParams.get('userId') === ownerId, published: opts.published === true });
     }
     if (url.pathname === '/projects/claim') {
       if (ownerId !== userId) {
@@ -57,8 +101,101 @@ function envWith(registry: any, extra: Record<string, any> = {}) {
 }
 
 describe('Cloudflare Worker Gateway & Routing', () => {
+  it('fails closed when the inference rate-limit store is unavailable', async () => {
+    const registry = mockRegistry();
+    const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/rate-limit/check') return new Response('unavailable', { status: 503 });
+      return original(input, init);
+    });
+    const inference = vi.fn();
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/test/simple?model=@cf/openai/gpt-oss-120b');
+    const response = await worker.fetch(request, envWith(registry, { AI: { run: inference } }), {} as any);
+    expect(response.status).toBe(503); expect(inference).not.toHaveBeenCalled();
+  });
+  it('still requests runtime shutdown when the agent stop request fails', async () => {
+    const runtime = vi.fn(async () => Response.json({ ok: true }));
+    const agent = vi.fn(async () => { throw new Error('Agent temporarily unavailable'); });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/proj-alpha/stop', { method: 'POST' });
+    const response = await worker.fetch(request, envWith(mockRegistry(), { ChatAgent: { idFromName: () => 'project', get: () => ({ fetch: agent }) }, RUNTIME: { fetch: runtime } }), {} as any);
+    expect(response.status).toBe(503);
+    expect(agent).toHaveBeenCalledOnce(); expect(runtime).toHaveBeenCalledOnce();
+  });
+  it('does not acknowledge shutdown when runtime termination fails', async () => {
+    const runtime = vi.fn(async () => Response.json({ error: 'Still stopping' }, { status: 503 }));
+    const agent = vi.fn(async () => Response.json({ ok: true }));
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/proj-alpha/stop', { method: 'POST' });
+    const response = await worker.fetch(request, envWith(mockRegistry(), { ChatAgent: { idFromName: () => 'project', get: () => ({ fetch: agent }) }, RUNTIME: { fetch: runtime } }), {} as any);
+    expect(response.status).toBe(502); expect(agent).toHaveBeenCalledOnce();
+  });
+  it('serves dashboard navigation with the app shell and private indexing headers', async () => {
+    const assets = vi.fn(async (request: Request) => new URL(request.url).pathname === '/index.html' ? Response.redirect('https://brainhalf.com/', 307) : new Response(new URL(request.url).pathname));
+    const response = await worker.fetch(new Request('https://brainhalf.com/dashboard?project=abc'), { ASSETS: { fetch: assets } }, {} as any);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('/');
+    expect(response.headers.get('X-Robots-Tag')).toContain('noindex');
+  });
+  it('checks runtime ownership and constructs the trusted service identity itself', async () => {
+    const runtime = vi.fn(async (request: Request) => {
+      expect(request.headers.get('x-bh-project')).toBe('proj-alpha');
+      expect(request.headers.get('x-bh-owner')).toBe('user-1');
+      expect(request.headers.get('authorization')).toBeNull();
+      return Response.json({ ok: true });
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/proj-alpha/runtime/status', { headers: { 'x-bh-owner': 'forged' } });
+    expect((await worker.fetch(request, envWith(mockRegistry(), { RUNTIME: { fetch: runtime } }), {} as any)).status).toBe(200);
+    const { request: denied } = await authenticatedRequest('https://brainhalf.com/api/projects/proj-alpha/runtime/status');
+    expect((await worker.fetch(denied, envWith(mockRegistry({ ownerId: 'other-user' }), { RUNTIME: { fetch: runtime } }), {} as any)).status).toBe(403);
+    expect(runtime).toHaveBeenCalledOnce();
+  });
+  it('authenticates the platform cookie without replacing an app bearer or consuming its request body', async () => {
+    const { token } = await issueToken(SECRET, 'user-1');
+    const doFetch = vi.fn(async (request: Request) => {
+      expect(request.headers.get('authorization')).toBe('Bearer bh_token_application_session');
+      expect(request.headers.get('x-auth-user-id')).toBe('user-1');
+      expect(await request.json()).toEqual({ action: 'application action' });
+      return new Response('app response');
+    });
+    const env = envWith(mockRegistry(), { ChatAgent: { idFromName: vi.fn(), get: () => ({ fetch: doFetch }) } });
+    const request = new Request('https://brainhalf.com/preview/proj-alpha/api/tasks', {
+      method: 'POST',
+      headers: { cookie: `bh_session=${token}`, authorization: 'Bearer bh_token_application_session', 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'application action' }),
+    });
+    expect((await worker.fetch(request, env, {} as any)).status).toBe(200);
+    expect(doFetch).toHaveBeenCalledOnce();
+  });
+
+  it('does not treat an application token as a platform session', async () => {
+    const doFetch = vi.fn();
+    const env = envWith(mockRegistry(), { ChatAgent: { idFromName: vi.fn(), get: () => ({ fetch: doFetch }) } });
+    const response = await worker.fetch(new Request('https://brainhalf.com/preview/proj-alpha/api/auth/me', { headers: { authorization: 'Bearer bh_token_application_session' } }), env, {} as any);
+    expect(response.status).toBe(401);
+    expect(doFetch).not.toHaveBeenCalled();
+  });
+
+  it('never forwards platform identity or credentials to a dispatched tenant', async () => {
+    const tenantFetch = vi.fn().mockResolvedValue(new Response('tenant response'));
+    const env = envWith(mockRegistry(), {
+      DISPATCHER: { get: vi.fn().mockReturnValue({ fetch: tenantFetch }) },
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/p/proj-alpha/api/tasks?ticket=temporary&_uid=forged&page=2', {
+      headers: { cookie: 'bh_session=platform-secret', 'x-auth-user-id': 'forged' },
+    });
+
+    const response = await worker.fetch(request, env, {} as any);
+
+    expect(response.status).toBe(200);
+    const forwarded = tenantFetch.mock.calls[0][0] as Request;
+    expect(forwarded.url).toBe('https://brainhalf.com/api/tasks?page=2');
+    for (const header of ['authorization', 'cookie', 'x-auth-user-id']) {
+      expect(forwarded.headers.has(header)).toBe(false);
+    }
+  });
+
   it('routes /preview/:id requests to the designated ChatAgent Durable Object', async () => {
-    const mockDoFetch = vi.fn().mockResolvedValue(new Response('Preview Content', { status: 200 }));
+    const mockDoFetch = vi.fn().mockResolvedValue(Response.json({ '/src/App.jsx': 'Preview Content' }));
     const mockDoObj = { fetch: mockDoFetch };
     const mockIdFromName = vi.fn().mockReturnValue('mock-id-123');
     const mockGet = vi.fn().mockReturnValue(mockDoObj);
@@ -77,7 +214,8 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     // The verified user id is forwarded to the Durable Object.
     const forwarded = mockDoFetch.mock.calls[0][0];
     expect(forwarded.headers.get('x-auth-user-id')).toBe('user-1');
-    expect(await res.text()).toBe('Preview Content');
+    expect(await res.text()).toContain('Preview Content');
+    expect(res.headers.get('Content-Security-Policy')).toContain('sandbox allow-scripts allow-forms;');
   });
 
   it('routes agent API and websocket requests via routeAgentRequest', async () => {
@@ -218,16 +356,15 @@ describe('P1 Worker auth gate (fail-closed)', () => {
     expect((rewritten as Request).headers.get('x-auth-user-id')).toBe('user-1');
   });
 
-  it('allows public preview read for any project while denying mutations without ownership', async () => {
+  it('denies private preview reads and mutations without ownership', async () => {
     const mockDoObj = { fetch: vi.fn().mockResolvedValue(new Response('Preview HTML', { status: 200 })) };
     const registry = mockRegistry({ ownerId: 'someone-else' });
     const env = envWith(registry, {
       ChatAgent: { idFromName: vi.fn().mockReturnValue('mock-id'), get: vi.fn().mockReturnValue(mockDoObj) },
     });
-    // GET preview read is public
     const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-alpha/index.html');
     const res = await worker.fetch(request, env, {} as any);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
 
     // Mutating write operation without ownership is strictly forbidden (403)
     const { request: syncReq } = await authenticatedRequest('https://brainhalf.com/preview/proj-alpha/api/sync', {
@@ -238,21 +375,21 @@ describe('P1 Worker auth gate (fail-closed)', () => {
     expect(syncRes.status).toBe(403);
   });
 
-  it('allows public showcase preview for all-models-studio even for other users', async () => {
-    const mockDoObj = { fetch: vi.fn().mockResolvedValue(new Response('Studio App', { status: 200 })) };
-    const registry = mockRegistry({ ownerId: 'different-owner' });
+  it('allows an explicitly published showcase preview for other users', async () => {
+    const mockDoObj = { fetch: vi.fn().mockResolvedValue(Response.json({ '/src/App.jsx': 'Studio App' })) };
+    const registry = mockRegistry({ ownerId: 'different-owner', published: true });
     const env = envWith(registry, {
       ChatAgent: { idFromName: vi.fn().mockReturnValue('mock-id'), get: vi.fn().mockReturnValue(mockDoObj) },
     });
     const { request } = await authenticatedRequest('https://brainhalf.com/preview/all-models-studio/index.html');
     const res = await worker.fetch(request, env, {} as any);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe('Studio App');
+    expect(await res.text()).toContain('Studio App');
   });
 
   it('allows unauthenticated visitors to preview public showcase projects', async () => {
-    const mockDoObj = { fetch: vi.fn().mockResolvedValue(new Response('Studio App', { status: 200 })) };
-    const registry = mockRegistry();
+    const mockDoObj = { fetch: vi.fn().mockResolvedValue(Response.json({ '/src/App.jsx': 'Studio App' })) };
+    const registry = mockRegistry({ published: true });
     const env = envWith(registry, {
       ChatAgent: { idFromName: vi.fn().mockReturnValue('mock-id'), get: vi.fn().mockReturnValue(mockDoObj) },
     });
@@ -273,9 +410,9 @@ describe('P1 Worker auth gate (fail-closed)', () => {
   });
 
   it('denies a token whose session the Registry has revoked', async () => {
-    const revoked = vi.fn(async () =>
-      new Response(JSON.stringify({ error: 'no session' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
-    );
+    const revoked = vi.fn(async (input: string) => new URL(input).pathname === '/projects/access'
+      ? Response.json({ owner: false, published: false })
+      : Response.json({ error: 'no session' }, { status: 401 }));
     const registry = { idFromName: vi.fn(() => ({})), get: vi.fn(() => ({ fetch: revoked })) };
     const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
     const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-alpha/index.html');
@@ -311,5 +448,66 @@ describe('P1 Worker auth gate (fail-closed)', () => {
     const res = await worker.fetch(req, env, {} as any);
     expect(res.status).toBe(204);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+  });
+
+  it('enforces auth rate limits through the registry', async () => {
+    const registry = mockRegistry({
+      onRateLimitCheck: (bucket) => bucket === 'auth'
+        ? { ok: false, retryAfter: 12 }
+        : { ok: true, retryAfter: 0 },
+    });
+    const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    const response = await worker.fetch(new Request('https://brainhalf.com/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'user@example.com', password: 'not-the-real-pass' }),
+    }), env, {} as any);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('12');
+  });
+
+  it('enforces model-test rate limits through the registry', async () => {
+    const registry = mockRegistry({
+      onRateLimitCheck: (bucket) => bucket === 'modelTest'
+        ? { ok: false, retryAfter: 9 }
+        : { ok: true, retryAfter: 0 },
+    });
+    const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/test/simple', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: '@cf/meta/llama-3.1-8b-instruct' }),
+    });
+    const response = await worker.fetch(request, env, {} as any);
+    expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('9');
+  });
+});
+
+describe('product outcome access', () => {
+  it('scopes reports to the signed-in account and ignores caller-supplied account IDs', async () => {
+    const registry = mockRegistry(); const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/outcomes') return Response.json({ owner: url.searchParams.get('userId'), generations: 3 });
+      return original(input, init);
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/account/outcomes?userId=someone-else');
+    const response = await worker.fetch(request, envWith(registry), {} as any);
+    expect(await response.json()).toEqual({ owner: 'user-1', generations: 3 });
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+  });
+  it('requires authentication and an explicit operator allowlist for aggregate reports', async () => {
+    const registry = mockRegistry();
+    expect((await worker.fetch(new Request('https://brainhalf.com/api/account/outcomes'), envWith(registry), {} as any)).status).toBe(401);
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/admin/outcomes');
+    expect((await worker.fetch(request, envWith(registry), {} as any)).status).toBe(403);
+    const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/outcomes') { expect(url.search).toBe(''); return Response.json({ generations: 5 }); }
+      return original(input, init);
+    });
+    expect((await worker.fetch(request, envWith(registry, { PRODUCT_METRICS_OWNER_IDS: 'user-1' }), {} as any)).status).toBe(200);
   });
 });

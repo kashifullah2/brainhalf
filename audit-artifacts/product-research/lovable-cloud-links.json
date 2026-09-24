@@ -1,0 +1,54 @@
+[
+  {
+    "text": "Database",
+    "url": "https://docs.lovable.dev/features/database"
+  },
+  {
+    "text": "Publish",
+    "url": "https://docs.lovable.dev/features/publish"
+  },
+  {
+    "text": "Emails",
+    "url": "https://docs.lovable.dev/features/custom-emails"
+  },
+  {
+    "text": "Enabling the built-in backend (Cloud)",
+    "url": "https://docs.lovable.dev/features/cloud#enabling-the-built-in-backend-cloud"
+  },
+  {
+    "text": "Cloud permissions",
+    "url": "https://docs.lovable.dev/features/cloud#cloud-permissions"
+  },
+  {
+    "text": "Step 1: Organize the data (Database)",
+    "url": "https://docs.lovable.dev/features/cloud#step-1-organize-the-data-database"
+  },
+  {
+    "text": "Step 2: Make it secure (Users & Auth)",
+    "url": "https://docs.lovable.dev/features/cloud#step-2-make-it-secure-users-%26-auth"
+  },
+  {
+    "text": "Cloud and AI gateway usage costs",
+    "url": "https://docs.lovable.dev/features/cloud#cloud-and-ai-gateway-usage-costs"
+  },
+  {
+    "text": "Emails",
+    "url": "https://docs.lovable.dev/features/custom-emails"
+  },
+  {
+    "text": "Database",
+    "url": "https://docs.lovable.dev/features/database"
+  },
+  {
+    "text": "Privacy & security",
+    "url": "https://lovable.dev/settings/privacy-security"
+  },
+  {
+    "text": "Custom emails",
+    "url": "https://docs.lovable.dev/features/custom-emails"
+  },
+  {
+    "text": "Database",
+    "url": "https://docs.lovable.dev/features/database"
+  }
+]

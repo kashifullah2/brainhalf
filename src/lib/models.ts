@@ -11,7 +11,7 @@
  * model to the UI means adding it here too — the two are a contract.
  */
 
-export type ModelProvider = 'cloudflare' | 'anthropic' | 'aws' | 'atria';
+export type ModelProvider = 'cloudflare' | 'anthropic' | 'aws' | 'atria' | 'dahl';
 
 export interface AllowedModel {
   /** Client-visible model name, matched exactly (case-sensitive). */
@@ -46,60 +46,33 @@ export const MAX_OUTPUT_TOKENS = 65536;
  */
 export const AI_TIMEOUT_MS = 10 * 60 * 1000;
 export const MODEL_TEST_TIMEOUT_MS = 5 * 60 * 1000;
+export const DEFAULT_MODEL_ID = '@cf/deepseek-ai/deepseek-v4-pro-0813';
 
-const ANTHROPIC_DEFAULT_MAX = 8192;
 const BEDROCK_DEFAULT_MAX = 8192;
 const ATRIA_DEFAULT_MAX = 64000;
 const CF_DEFAULT_MAX = 65536;
 
 const CF_MODELS: AllowedModel[] = [
-  { name: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', provider: 'cloudflare', id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', maxTokens: CF_DEFAULT_MAX },
-  { name: '@cf/openai/gpt-oss-20b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-20b', maxTokens: CF_DEFAULT_MAX },
-  { name: '@cf/meta/llama-4-scout-17b-16e-instruct', provider: 'cloudflare', id: '@cf/meta/llama-4-scout-17b-16e-instruct', maxTokens: CF_DEFAULT_MAX },
+  { name: DEFAULT_MODEL_ID, provider: 'cloudflare', id: DEFAULT_MODEL_ID, maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
-  { name: '@cf/qwen/qwen2.5-coder-32b-instruct', provider: 'cloudflare', id: '@cf/qwen/qwen2.5-coder-32b-instruct', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: CF_DEFAULT_MAX },
-  { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: CF_DEFAULT_MAX },
-  // Image-synthesis model invoked by the generate_image tool. Not client-selectable,
-  // but listed so the allowlist remains the single source of truth for AI bindings.
-  { name: '@cf/black-forest-labs/flux-1-schnell', provider: 'cloudflare', id: '@cf/black-forest-labs/flux-1-schnell', maxTokens: CF_DEFAULT_MAX, clientSelectable: false },
+  // Official Workers types identify this variant as GLM 5.3 Flash.
+  { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: 8192 },
 ];
 
 const ANTHROPIC_MODELS: AllowedModel[] = [
-  // Legacy ids kept resolvable for existing API clients. The picker routes the
-  // 4.6 models through Bedrock, so these are not offered in the UI.
-  { name: 'claude-3-7-sonnet', provider: 'anthropic', id: 'claude-3-7-sonnet-20250219', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-3-5-sonnet', provider: 'anthropic', id: 'claude-3-5-sonnet-20241022', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-3-opus', provider: 'anthropic', id: 'claude-3-opus-20240229', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-3-5-haiku', provider: 'anthropic', id: 'claude-3-5-haiku-20241022', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
-  // Resolvable for a client that asks for the native Anthropic backend; the
-  // picker offers the Bedrock route below instead.
-  { name: 'claude-sonnet-4.6', provider: 'anthropic', id: 'claude-sonnet-4-6', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-opus-4.6', provider: 'anthropic', id: 'claude-opus-4-6', maxTokens: ANTHROPIC_DEFAULT_MAX, clientSelectable: false },
+  // Intentionally empty: current catalog uses Cloudflare/AWS/Atria only.
 ];
 
 const BEDROCK_MODELS: AllowedModel[] = [
-  { name: 'claude-opus-4.6', provider: 'aws', id: 'us.anthropic.claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-sonnet-4.6', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'claude-sonnet', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-3-7-sonnet', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-3-5-sonnet', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-3-opus', provider: 'aws', id: 'us.anthropic.claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'minimax-m2.5', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'minimax', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  // Preserve this historical client key for saved sessions; the UI displays the actual Sonnet 4.6 identity.
+  { name: 'claude-sonnet-6', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX },
   { name: 'kimi-k3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'us.moonshotai.kimi-k3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'moonshotai.kimi-k3', provider: 'aws', id: 'moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'global.moonshotai.kimi-k3', provider: 'aws', id: 'global.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'Kimi-K3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'us.moonshot.kimi-k3-v1:0', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
 ];
 
 const ATRIA_MODELS: AllowedModel[] = [
   { name: 'Atria-Dawn-Preview', provider: 'atria', id: 'Atria-Dawn-Preview', maxTokens: ATRIA_DEFAULT_MAX },
-  // Case variant of the row above; offering both would be the same model twice.
-  { name: 'atria-dawn-preview', provider: 'atria', id: 'Atria-Dawn-Preview', maxTokens: ATRIA_DEFAULT_MAX, clientSelectable: false },
 ];
 
 export const MODEL_ALLOWLIST: readonly AllowedModel[] = [
@@ -133,8 +106,7 @@ export function resolveModel(name: string | undefined | null, provider?: string 
   if (typeof name !== 'string' || !name) return null;
   const want = provider as ModelProvider | undefined;
   if (want) {
-    const exact = MODEL_ALLOWLIST.find((m) => m.name === name && m.provider === want);
-    if (exact) return exact;
+    return MODEL_ALLOWLIST.find((m) => m.name === name && m.provider === want) ?? null;
   }
   return MODEL_ALLOWLIST.find((m) => m.name === name) ?? null;
 }
@@ -149,9 +121,23 @@ export function capTokenLimit(requested: number | undefined | null, model: Allow
     return ceiling;
   }
   if (typeof requested !== 'number' || Number.isNaN(requested) || requested <= 0) {
-    return model.maxTokens;
+    return ceiling;
   }
-  return Math.min(requested, ceiling);
+  return Math.max(1, Math.floor(Math.min(requested, ceiling)));
+}
+
+export async function withAbortSignal<T>(promise: PromiseLike<T>, signal: AbortSignal): Promise<T> {
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason ?? new DOMException('Generation stopped', 'AbortError'));
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([promise, aborted]);
+  } finally {
+    if (onAbort) signal.removeEventListener('abort', onAbort);
+  }
 }
 
 /**
@@ -168,4 +154,9 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, label: str
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/** Models whose image inputs are verified against their provider interface. */
+export function acceptsImageInput(model: string): boolean {
+  return ['@cf/moonshotai/kimi-k2.7-code', 'claude-sonnet-6'].includes(model);
 }

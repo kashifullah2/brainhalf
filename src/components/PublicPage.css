@@ -1,0 +1,72 @@
+.public-breadcrumb { display: flex; align-items: center; gap: 9px; padding-top: 34px; font-size: 12px; color: var(--studio-muted); }
+.public-breadcrumb a:hover { color: var(--studio-blue); }
+.public-intro { max-width: 850px; padding: 48px 0 52px; }
+.public-intro h1, .public-not-found h1 { font-family: var(--font-brand); font-size: clamp(36px, 4.5vw, 58px); line-height: 1.12; letter-spacing: -2px; font-weight: 400; margin: 15px 0 24px; text-wrap: balance; }
+.public-intro .public-summary { max-width: 730px; margin: 0; font-size: 18px; line-height: 1.8; color: var(--studio-muted); }
+.public-content-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 22px; color: var(--studio-muted); font-size: 12px; line-height: 1.8; }
+.public-content-meta a { text-decoration: underline; text-underline-offset: 3px; }
+.public-body { display: grid; grid-template-columns: 240px minmax(0, 720px); justify-content: space-between; gap: 64px; padding-top: 38px; border-top: 1px solid var(--studio-line); }
+.public-contents { align-self: start; position: sticky; top: 28px; }
+.public-contents nav { display: grid; gap: 3px; }
+.public-contents nav > p { margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--studio-ink); }
+.public-contents nav > a { display: block; padding: 9px 0; font-size: 13px; line-height: 1.6; color: var(--studio-muted); }
+.public-contents nav > a:hover { color: var(--studio-blue); }
+.public-start { display: inline-flex; align-items: center; gap: 12px; padding: 12px 0; margin-top: 20px; color: var(--studio-blue) !important; font-size: 13px; font-weight: 600; }
+.public-article section { padding-bottom: 42px; scroll-margin-top: 30px; }
+.public-page .public-article h2 { font-family: var(--font-sans); font-size: 25px; font-weight: 600; line-height: 1.35; letter-spacing: -.6px; margin: 0 0 18px; text-wrap: pretty; }
+.public-article p, .public-article li { font-size: 16px; line-height: 1.85; color: var(--text-secondary); }
+.public-article p { margin: 0 0 16px; }
+.public-article ul { margin: 20px 0 0; padding-left: 21px; }
+.public-article li { padding-left: 5px; margin-bottom: 10px; }
+.public-example-figure { margin: 28px 0; }
+.public-example-figure img { display: block; width: 100%; max-width: 390px; height: auto; border: 1px solid var(--studio-line); border-radius: 14px; }
+.public-example-figure figcaption { max-width: 540px; margin-top: 12px; color: var(--studio-muted); font-size: 13px; line-height: 1.7; }
+.public-references { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--studio-line); }
+.public-references > p { margin: 0; font-size: 12px; font-weight: 600; color: var(--studio-muted); }
+.public-references ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.public-references li { margin: 0; padding: 0; }
+.public-references a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--studio-blue); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+.public-references svg { flex: none; }
+.public-prompt-example { margin-top: 25px; padding: 25px; background: var(--studio-white); border: 1px solid var(--border-medium); border-radius: 14px; }
+.public-prompt-example > span { color: var(--studio-blue); font: 11px var(--font-mono); }
+.public-prompt-example blockquote { margin: 16px 0; color: var(--text-primary); font-size: 15px; line-height: 1.85; }
+.public-prompt-example a { display: inline-flex; align-items: center; gap: 12px; color: var(--studio-blue); font-size: 13px; font-weight: 600; min-height: 40px; }
+.public-related { padding: 36px 0 60px; border-top: 1px solid var(--studio-line); }
+.public-related > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 28px; }
+.public-related a { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 23px; background: var(--studio-white); border: 1px solid var(--studio-line); border-radius: 12px; transition: border-color 150ms; }
+.public-related a:hover { border-color: var(--studio-blue); }
+.public-related a > span { color: var(--studio-muted); font-size: 11px; padding-right: 22px; }
+.public-related a > strong { font-size: 16px; font-weight: 500; line-height: 1.6; }
+.public-related a > svg { position: absolute; right: 20px; top: 22px; color: var(--studio-blue); }
+.public-not-found { min-height: 65vh; max-width: 700px; padding: 80px 0; }
+.public-not-found > p:not(.studio-section-label) { color: var(--studio-muted); font-size: 16px; line-height: 1.8; margin-bottom: 25px; }
+.public-not-found > a:last-child { display: block; margin-top: 20px; color: var(--studio-blue); font-size: 14px; }
+.studio-resource-section { border-top: 1px solid var(--studio-line); padding: 52px 0 65px; }
+.studio-resource-links { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 26px; }
+.studio-resource-links > a { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 90px; padding: 20px; background: var(--studio-white); border: 1px solid var(--studio-line); border-radius: 12px; font-size: 14px; line-height: 1.6; }
+.studio-resource-links > a:hover { border-color: var(--studio-blue); }
+.studio-resource-links svg { flex: none; color: var(--studio-blue); }
+.landing-footer { flex-wrap: wrap; }
+.landing-footer-nav { flex-wrap: wrap; }
+@media(max-width:900px) {
+ .public-body { grid-template-columns: 190px minmax(0, 1fr); gap: 32px; }
+ .public-related > div, .studio-resource-links { gap: 12px; }
+}
+@media(max-width:640px) {
+ .public-breadcrumb { padding-top: 24px; }
+ .public-intro { padding: 34px 0; }
+ .public-intro h1 { letter-spacing: -1.3px; }
+ .public-intro .public-summary { font-size: 16px; }
+ .public-body { grid-template-columns: 1fr; gap: 32px; padding-top: 26px; }
+ .public-contents { position: static; padding-bottom: 18px; border-bottom: 1px solid var(--studio-line); }
+ .public-contents nav > a { min-height: 44px; }
+ .public-start { margin-top: 8px; }
+ .public-page .public-article h2 { font-size: 24px; }
+ .public-article p, .public-article li { font-size: 15px; }
+ .public-prompt-example { padding: 20px; }
+ .public-related > div, .studio-resource-links { grid-template-columns: 1fr; }
+ .public-related { padding-bottom: 40px; }
+ .public-not-found { padding: 50px 0; }
+ .studio-resource-section { padding: 34px 0 45px; }
+ .studio-resource-links > a { min-height: 76px; }
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "attempt": 1,
+    "model": "@cf/deepseek-ai/deepseek-v4-pro-0813",
+    "transport": "Cloudflare Workers AI REST, non-streaming",
+    "result": "failed",
+    "httpStatus": 408,
+    "providerCode": 3046,
+    "message": "AiError: Request timeout",
+    "usableAppReturned": false
+  },
+  {
+    "attempt": 2,
+    "model": "@cf/deepseek-ai/deepseek-v4-pro-0813",
+    "transport": "Cloudflare Workers AI REST, streaming, default reasoning",
+    "result": "cancelled after more than five minutes without app content",
+    "usableAppReturned": false
+  },
+  {
+    "attempt": 3,
+    "model": "@cf/deepseek-ai/deepseek-v4-pro-0813",
+    "transport": "Cloudflare Workers AI REST, streaming, extended reasoning disabled",
+    "result": "complete source returned",
+    "seconds": 441,
+    "promptTokens": 3789,
+    "completionTokens": 16023,
+    "usableAppReturned": true,
+    "note": "Required subsequent repairs. The first two attempts used harness settings different from BrainHalf's existing generation path, which already disables extended reasoning. They do not establish a hosted BrainHalf regression."
+  }
+]

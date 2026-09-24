@@ -1,0 +1,73 @@
+import { chromium, expect } from '@playwright/test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { waitForPlatformSignIn } from './live-auth.mjs';
+import { createEvidence, recordFrame, waitForGeneration } from './test-live-model-apps.mjs';
+import { CLIENT_SELECTABLE_MODELS, DEFAULT_MODEL_ID } from '../src/lib/models.ts';
+import { BUSINESS_APPS, businessValidationPrompt } from '../src/lib/business-apps.ts';
+
+if (process.argv[2] !== '--run') throw new Error('Use --run to create and publish one live test app.');
+const origin = 'https://brainhalf.com';
+const directory = resolve('audit-artifacts/platform-audit-2026-09-24');
+mkdirSync(directory, { recursive: true });
+const result = { startedAt: new Date().toISOString(), status: 'awaiting-sign-in' };
+const save = () => writeFileSync(resolve(directory, 'fullstack-live.json'), JSON.stringify(result, null, 2) + '\n');
+save();
+const browser = await chromium.launch({ channel: 'chrome', headless: false });
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const login = await context.newPage();
+  await login.goto(origin);
+  console.log('Please sign in to BrainHalf in the opened Chrome window.');
+  const page = await waitForPlatformSignIn(context, { origin, directory });
+  result.status = 'creating'; save();
+  const model = CLIENT_SELECTABLE_MODELS.find(item => item.name === DEFAULT_MODEL_ID);
+  let evidence;
+  page.on('websocket', socket => {
+    if (!new URL(socket.url()).pathname.startsWith('/agents/')) return;
+    socket.on('framesent', frame => { if (evidence) recordFrame(evidence, 'sent', frame.payload); });
+    socket.on('framereceived', frame => { if (evidence) recordFrame(evidence, 'received', frame.payload); });
+  });
+  await page.goto(origin + '/dashboard');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await expect(page.getByLabel('Message to the app builder')).toBeVisible();
+  const projectId = new URL(page.url()).searchParams.get('project');
+  if (!projectId) throw new Error('No new project ID');
+  result.projectId = projectId;
+  evidence = createEvidence(model, projectId);
+  const title = 'BrainHalf Tasks Acceptance ' + Date.now();
+  const started = Date.now();
+  await page.getByLabel('Message to the app builder').fill('/build ' + businessValidationPrompt(BUSINESS_APPS.find(app => app.id === 'tasks'), title));
+  await page.getByTestId('send-prompt-btn').click();
+  await waitForGeneration(page, evidence);
+  result.generationMs = Date.now() - started;
+  result.generation = evidence;
+  result.status = 'publishing'; save();
+  await page.getByRole('button', { name: 'Project actions', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('menuitem', { name: 'Download source ZIP', exact: true }).click();
+  await (await download).saveAs(resolve(directory, 'fullstack-source.zip'));
+  const publishStarted = Date.now();
+  await page.getByRole('button', { name: 'Publish application', exact: true }).click();
+  let status;
+  await expect.poll(async () => {
+    const response = await context.request.get(`${origin}/api/projects/${projectId}/runtime/status?environment=production`);
+    if (!response.ok()) throw new Error(`Runtime status HTTP ${response.status()}`);
+    status = await response.json();
+    const job = status.jobs?.find(item => item.kind === 'publish');
+    if (job && ['failed', 'stopped'].includes(job.status)) throw new Error(job.message || 'Publication failed');
+    return job?.status;
+  }, { timeout: 12 * 60_000, intervals: [2000] }).toBe('passed');
+  result.publishMs = Date.now() - publishStarted;
+  result.productionUrl = status.productionUrl;
+  result.release = status.activeRelease;
+  const app = await context.newPage();
+  const response = await app.goto(result.productionUrl);
+  expect(response.status()).toBe(200);
+  await app.screenshot({ path: resolve(directory, 'published-app.png'), fullPage: true });
+  result.status = 'published'; save();
+  console.log(JSON.stringify({ status: result.status, url: result.productionUrl, generationMs: result.generationMs, publishMs: result.publishMs }));
+} catch (error) {
+  result.status = result.status === 'awaiting-sign-in' ? 'authentication-blocked' : 'failed';
+  result.error = error.message; save(); console.error(error.message); process.exitCode = 1;
+} finally { await browser.close(); }

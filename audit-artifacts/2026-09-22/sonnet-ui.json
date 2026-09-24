@@ -1,0 +1,8 @@
+{
+  "create": true,
+  "complete": true,
+  "activeFilter": true,
+  "completedFilter": true,
+  "delete": true,
+  "accessibility": "Completion and delete buttons have no accessible names; delete is hover-only"
+}

@@ -1,0 +1,112 @@
+{
+  "checkedAt": "2026-09-23T06:08:35.955Z",
+  "projectId": "pilot-validation-20260923-auth1",
+  "evidence": [
+    {
+      "name": "Hosted auth page loads",
+      "passed": true
+    },
+    {
+      "name": "Signup accepted in development",
+      "passed": true
+    },
+    {
+      "name": "Verification email captured",
+      "passed": true
+    },
+    {
+      "name": "Unverified user cannot sign in",
+      "passed": true
+    },
+    {
+      "name": "Inbox action opens private auth page",
+      "passed": true
+    },
+    {
+      "name": "Verification confirms email",
+      "passed": true
+    },
+    {
+      "name": "Verification replay rejected",
+      "passed": true
+    },
+    {
+      "name": "Password sign-in works",
+      "passed": true
+    },
+    {
+      "name": "Real generated Worker service binding captures receipt",
+      "passed": true
+    },
+    {
+      "name": "Repeated backend event is idempotent",
+      "passed": true
+    },
+    {
+      "name": "Anonymous backend receipt denied",
+      "passed": true
+    },
+    {
+      "name": "Managed identity can write isolated D1 record",
+      "passed": true
+    },
+    {
+      "name": "Managed identity can remove own D1 record",
+      "passed": true
+    },
+    {
+      "name": "Password-reset request captured",
+      "passed": true
+    },
+    {
+      "name": "Password reset succeeds",
+      "passed": true
+    },
+    {
+      "name": "Reset revokes prior sessions",
+      "passed": true
+    },
+    {
+      "name": "New password works",
+      "passed": true
+    },
+    {
+      "name": "Production has a separate user list",
+      "passed": true
+    },
+    {
+      "name": "Another project has no copied users",
+      "passed": true
+    },
+    {
+      "name": "Owner can disable app account",
+      "passed": true
+    },
+    {
+      "name": "Disabling account revokes session",
+      "passed": true
+    },
+    {
+      "name": "Magic-link request captured",
+      "passed": true
+    },
+    {
+      "name": "Magic-link confirms a session",
+      "passed": true
+    },
+    {
+      "name": "Managed Google launch is available",
+      "passed": true
+    },
+    {
+      "name": "Central broker redirects to Google with registered callback",
+      "passed": true
+    },
+    {
+      "name": "Google uses PKCE and managed state",
+      "passed": true
+    }
+  ],
+  "liveEmailSent": false,
+  "googleConsentCompleted": false
+}

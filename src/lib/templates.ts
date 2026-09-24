@@ -1,3 +1,4 @@
+import { BRAND_IMAGE_BASE64 } from './brand-image';
 export const basicReactTemplate = {
   'package.json': {
     file: {
@@ -16,7 +17,7 @@ export const basicReactTemplate = {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "lucide-react": "^1.43.0",
-    "react-router-dom": "^6.22.3"
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
@@ -180,7 +181,6 @@ body {
         file: {
           contents: `
 import React from 'react';
-import { BrainCircuit } from 'lucide-react';
 
 export default function App() {
   return (
@@ -230,12 +230,7 @@ export default function App() {
           position: 'relative',
           zIndex: 1
         }}>
-          <BrainCircuit 
-            size={36} 
-            strokeWidth={1.75} 
-            color="#e2e8f0" 
-            style={{ filter: 'drop-shadow(0 0 12px rgba(99, 102, 241, 0.4))' }}
-          />
+          <img src="data:image/png;base64,${BRAND_IMAGE_BASE64}" width="36" height="36" alt="BrainHalf" />
         </div>
 
         <h1 style={{
@@ -329,7 +324,7 @@ export const fullStackReactTemplate = {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "lucide-react": "^1.43.0",
-    "react-router-dom": "^6.22.3",
+    "react-router-dom": "^7.18.4",
     "express": "^4.19.2",
     "cors": "^2.8.5"
   },

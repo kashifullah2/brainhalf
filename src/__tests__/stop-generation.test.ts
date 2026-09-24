@@ -8,13 +8,16 @@ vi.mock('agents', () => ({ Agent: class Agent {} }));
 import { ChatAgent } from '../agent';
 import { WriteEpoch } from '../lib/concurrency';
 import { resolvePlatformStatusForProject, setPlatformStatus, getStatusVisuals } from '../lib/status-store';
-import { saveProjectMessages } from '../lib/project-store';
+import { saveProjectMessages, setProjectAccount } from '../lib/project-store';
 
 function createMockAgent() {
   const agent: any = Object.create(ChatAgent.prototype);
   agent.writeEpoch = new WriteEpoch();
   agent.currentAbortController = null;
   agent.connectionUserIds = new Map([['conn-1', 'user-1']]);
+  agent.authCache = new Map();
+  agent.authorizeConnection = vi.fn(async () => true);
+  agent.getConnections = () => [];
   agent.ctx = { storage: { transactionSync: <R,>(closure: () => R): R => closure() } };
 
   const files = new Map<string, string>();
@@ -99,6 +102,7 @@ describe('Stop generation handling', () => {
 
   it('updates platform status store to Stopped and provides correct visual badges', () => {
     const projectId = 'test-proj-stop';
+    setProjectAccount('test-account');
     saveProjectMessages(projectId, [{ role: 'user', content: 'Create a game' }]);
     setPlatformStatus('Building', 'Generating...', projectId);
     expect(resolvePlatformStatusForProject(projectId)).toBe('Building');

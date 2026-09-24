@@ -30,10 +30,8 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
 
     expect(html).toContain('Get Started');
     expect(html).toContain('Sign in');
-    expect(html).toContain('Explore Starter Templates');
-    expect(html).toContain('Engineered for Autonomous Development');
-    expect(html).toContain('Next-Gen Autonomous AI Studio');
-    expect(html).toContain('Claude 3.7 • Kimi K3 • DeepSeek');
+    expect(html).toContain('Build the tools your business needs.');
+    expect(html).toContain('Create app from prompt');
   });
 
   it('renders user avatar and email when currentUser is logged in', () => {
@@ -47,11 +45,13 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
 
     expect(html).toContain('landing-user-avatar');
     expect(html).toContain('A');
+    expect(html).toContain('Dashboard');
+    expect(html).not.toContain('Recent projects');
     // Top-bar auth buttons are replaced with user avatar
-    expect(html).not.toContain('landing-auth-buttons');
+    expect(html).not.toContain('class="landing-auth-buttons"');
   });
 
-  it('renders prompt idea suggestions and starter templates in the landing page', () => {
+  it('renders the current prompt idea suggestions', () => {
     const html = renderToString(
       React.createElement(LandingPage, {
         onOpenProject: vi.fn(),
@@ -60,11 +60,23 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
       })
     );
 
-    expect(html).toContain('📊 SaaS Analytics Dashboard');
-    expect(html).toContain('🪙 Crypto &amp; DeFi Tracker');
-    expect(html).toContain('📋 Kanban Workspace');
-    expect(html).toContain('Crypto Portfolio &amp; DeFi Tracker');
-    expect(html).toContain('Modern SaaS Analytics Platform');
+    expect(html).toContain('Inventory tool');
+    expect(html).toContain('Booking app');
+    expect(html).toContain('Customer portal');
+    expect(html).toContain('Simple CRM');
+  });
+
+  it('allows landing page content to scroll so the footer remains visible', () => {
+    const html = renderToString(
+      React.createElement(LandingPage, {
+        onOpenProject: vi.fn(),
+        onSubmitInitialPrompt: vi.fn(),
+        currentUser: null,
+      })
+    );
+
+    expect(html).toContain('class="landing-container"');
+    expect(html).toContain('landing-footer');
   });
 
   it('renders LoginScreen in modal mode with signup mode for Get Started', () => {
@@ -94,4 +106,3 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
     expect(html).toContain('Sign in');
   });
 });
-

@@ -1,3 +1,4 @@
+import { BRAND_IMAGE_BASE64 } from './brand-image';
 /**
  * Source text for the edge preview runtime and the fresh-workspace starter.
  *
@@ -37,7 +38,6 @@ export const PREVIEW_ERROR_CARD_SRC = `<div style={{ padding: '24px', fontFamily
             </div>`;
 
 export const STARTER_APP_JSX = `import React from 'react';
-import { BrainCircuit } from 'lucide-react';
 
 export default function App() {
   return (
@@ -86,12 +86,7 @@ export default function App() {
           position: 'relative',
           zIndex: 1
         }}>
-          <BrainCircuit 
-            size={36} 
-            strokeWidth={1.75} 
-            color="#e2e8f0" 
-            style={{ filter: 'drop-shadow(0 0 12px rgba(99, 102, 241, 0.4))' }}
-          />
+          <img src="data:image/png;base64,${BRAND_IMAGE_BASE64}" width="36" height="36" alt="BrainHalf" />
         </div>
 
         <h1 style={{
@@ -244,7 +239,8 @@ body {
   }
 }`;
 
-export function buildPreviewIndexHtml(dynamicImportMapJson: string): string {
+export function buildPreviewIndexHtml(dynamicImportMapJson: string, appEntry = '/src/App.jsx', revision = 0): string {
+  const appImport = JSON.stringify(`./${appEntry.replace(/^\//, '')}`).replace(/</g, '\\u003c');
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -270,6 +266,19 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string): string {
     <script>
       window.process = window.process || { env: { NODE_ENV: 'development' } };
       window.__BH_ENV__ = { MODE: 'development', DEV: true, PROD: false, BASE_URL: '/' };
+      {
+        const loadedRevision = ${Number.isSafeInteger(revision) && revision >= 0 ? revision : 0};
+        let reloadTimer;
+        window.addEventListener('message', event => {
+          if (event.origin !== window.location.origin || event.source !== window.parent) return;
+          const message = event.data;
+          if (message?.type !== 'preview-revision' || !Number.isSafeInteger(message.revision) || message.revision <= loadedRevision) return;
+          clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(() => window.location.reload(), 350);
+        });
+        window.addEventListener('pagehide', () => clearTimeout(reloadTimer), { once: true });
+        if (window.parent !== window) window.parent.postMessage({ type: 'request-preview-revision' }, window.location.origin);
+      }
     </script>
     <script type="importmap">
       ${dynamicImportMapJson}
@@ -364,6 +373,11 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string): string {
         } catch (_) {}
       };
 
+      function PreviewReadySignal({ children }) {
+        React.useEffect(() => { post({ type: 'preview-success' }); }, []);
+        return children;
+      }
+
       window.addEventListener('error', (event) => {
         post({
           type: 'preview-error',
@@ -413,22 +427,12 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string): string {
           // always resolves. Import it and let it own rendering.
           try {
             await import('./src/main.jsx');
-            post({ type: 'preview-success' });
             return;
           } catch (harnessErr) {
             console.warn('Harness entry failed, falling back to direct App mount:', harnessErr);
           }
 
-          let mod = null;
-          try {
-            mod = await import('./src/App.jsx');
-          } catch (e1) {
-            try {
-              mod = await import('./src/App.tsx');
-            } catch (e2) {
-              throw new Error('Could not load App.jsx or App.tsx: ' + (e1?.message || e2?.message));
-            }
-          }
+          const mod = await import(${appImport});
 
           const AppComp = mod.default || mod.App || Object.values(mod).find(v => typeof v === 'function');
           if (!AppComp) throw new Error('No default or named React component found in App.jsx');
@@ -445,8 +449,7 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string): string {
           const appNode = Router
             ? React.createElement(Router, null, React.createElement(AppComp))
             : React.createElement(AppComp);
-          createRoot(rootEl).render(appNode);
-          post({ type: 'preview-success' });
+          createRoot(rootEl).render(React.createElement(PreviewReadySignal, null, appNode));
         } catch (err) {
           console.error('Edge Preview Mount Error:', err);
           post({ type: 'preview-error', file: 'src/App.jsx', error: err?.message || String(err) });
@@ -460,11 +463,18 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string): string {
 </html>`;
 }
 
-export function buildHarnessModuleSrc(): string {
+export function buildHarnessModuleSrc(appImport = './App.jsx'): string {
   return `import React from 'react';
 import ReactDOM from 'react-dom/client';
 import * as RouterDom from 'react-router-dom';
-import * as AppModule from './App.jsx';
+import * as AppModule from ${JSON.stringify(appImport)};
+
+function PreviewReadySignal() {
+  React.useEffect(() => {
+    if (window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
+  }, []);
+  return null;
+}
 
 if (typeof window !== 'undefined' && window.fetch) {
   const origFetch = window.fetch;
@@ -559,6 +569,7 @@ if (rootEl) {
     <React.StrictMode>
       <ErrorBoundary>
         <SafeRouterApp />
+        <PreviewReadySignal />
       </ErrorBoundary>
     </React.StrictMode>
   );

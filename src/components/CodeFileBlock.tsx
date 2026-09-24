@@ -12,6 +12,7 @@ interface CodeFileBlockProps {
 
 const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStreaming }) => {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [viewDropdownOpen, setViewDropdownOpen] = useState(false);
 
@@ -26,10 +27,16 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
     return highlightCodeToLines(content || '', language);
   }, [content, language, isExpanded, isStreaming]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    setCopyError(false);
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setCopyError(true);
+    }
   };
 
   const handleOpenInEditor = () => {
@@ -41,23 +48,24 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
     <div className="code-artifact-card" style={{
       borderRadius: 'var(--radius-asym-sm, 10px 4px 10px 4px)',
       border: isStreaming ? '1px solid var(--border-accent)' : '1px solid var(--border-subtle)',
-      background: 'rgba(255, 255, 255, 0.025)',
+      background: 'rgba(36, 60, 75, 0.025)',
       overflow: 'hidden',
       margin: '6px 0',
       transition: 'all 0.15s ease'
     }}>
+      {copyError && <p className="studio-copy-error" role="status">Couldn’t copy. Select the code and copy it manually.</p>}
       {/* File Card Header Bar */}
-      <div style={{
+      <div className="studio-artifact-header" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '8px 12px',
-        background: isStreaming ? 'var(--color-ai-bg)' : 'rgba(255, 255, 255, 0.02)',
+        background: isStreaming ? 'var(--color-ai-bg)' : 'rgba(36, 60, 75, 0.02)',
         fontSize: '12px',
         gap: '8px'
       }}>
         {/* Left: Icon & File Path */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+        <div className="studio-artifact-identity" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
           <div style={{
             width: '24px',
             height: '24px',
@@ -72,7 +80,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <span style={{
+            <span title={filePath} className="studio-artifact-path" style={{
               fontFamily: 'var(--font-mono)',
               fontWeight: 600,
               color: 'var(--text-primary)',
@@ -90,7 +98,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
         </div>
 
         {/* Right: Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        <div className="studio-artifact-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {isStreaming ? (
             <span style={{
               display: 'inline-flex',
@@ -115,7 +123,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: copied ? '#34d399' : 'var(--text-secondary)',
+                  color: copied ? 'var(--color-success)' : 'var(--text-secondary)',
                   cursor: 'pointer',
                   padding: '4px 6px',
                   borderRadius: '4px',
@@ -126,7 +134,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                 className="hover-bright"
               >
                 {copied
-                  ? <Check size={15} strokeWidth={1.75} color="#34d399" />
+                  ? <Check size={15} strokeWidth={1.75} color="var(--color-success)" />
                   : <Copy size={15} strokeWidth={1.75} />
                 }
               </button>
@@ -138,11 +146,11 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                   onClick={handleOpenInEditor}
                   title="Open and edit this file in the full editor"
                   style={{
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    background: 'rgba(36, 60, 75, 0.08)',
+                    border: '1px solid rgba(36, 60, 75, 0.12)',
                     borderRight: 'none',
                     borderRadius: '4px 0 0 4px',
-                    color: '#ffffff',
+                    color: 'var(--text-primary)',
                     cursor: 'pointer',
                     padding: '4px 8px',
                     display: 'flex',
@@ -165,9 +173,9 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                   title="View options"
                   aria-expanded={viewDropdownOpen}
                   style={{
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderLeft: '1px solid rgba(255, 255, 255, 0.18)',
+                    background: 'rgba(36, 60, 75, 0.08)',
+                    border: '1px solid rgba(36, 60, 75, 0.12)',
+                    borderLeft: '1px solid rgba(36, 60, 75, 0.18)',
                     borderRadius: '0 4px 4px 0',
                     color: 'var(--text-secondary)',
                     cursor: 'pointer',
@@ -176,7 +184,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                     alignItems: 'center',
                     transition: 'all 0.15s'
                   }}
-                  className="hover-bright"
+                  className="hover-bright minimum-hit-target"
                 >
                   <ChevronDown
                     size={13}
@@ -201,7 +209,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                       right: 0,
                       zIndex: 100,
                       background: 'var(--bg-surface, #1a1d27)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      border: '1px solid rgba(36, 60, 75, 0.1)',
                       borderRadius: '6px',
                       padding: '3px',
                       minWidth: '140px',
@@ -221,7 +229,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                           background: 'transparent',
                           border: 'none',
                           borderRadius: '4px',
-                          color: 'rgba(255,255,255,0.8)',
+                          color: 'var(--text-primary)',
                           fontSize: '11.5px',
                           fontWeight: 500,
                           cursor: 'pointer',
@@ -229,7 +237,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                           transition: 'background 0.1s',
                           whiteSpace: 'nowrap'
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(36, 60, 75, 0.07)'; }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                       >
                         <ChevronDown
@@ -261,7 +269,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
           fontSize: '11.5px',
           lineHeight: 1.5,
           padding: '8px 0',
-          background: '#090b10',
+          background: 'var(--bg-surface)',
           borderTop: '1px solid var(--border-subtle)'
         }}>
           <div style={{ display: 'table', width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -276,7 +284,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                   textAlign: 'right',
                   paddingRight: '10px',
                   paddingLeft: '8px',
-                  color: '#4b5563',
+                  color: 'var(--text-muted)',
                   userSelect: 'none',
                   width: '32px',
                   verticalAlign: 'top',
@@ -291,7 +299,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word',
                     verticalAlign: 'top',
-                    color: '#e2e8f0'
+                    color: 'var(--text-primary)'
                   }}
                   dangerouslySetInnerHTML={{ __html: lineHtml || '&nbsp;' }}
                 />

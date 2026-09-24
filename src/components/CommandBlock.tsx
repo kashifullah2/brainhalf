@@ -33,7 +33,7 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, isStreaming }) => 
 
   return (
     <div style={{
-      background: 'rgba(0, 0, 0, 0.25)',
+      background: 'var(--bg-surface)',
       border: 'none',
       borderLeft: '2px solid var(--accent-primary)',
       borderRadius: '4px',
@@ -46,15 +46,16 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, isStreaming }) => 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
         <Terminal size={16} strokeWidth={1.75} color="var(--accent-primary)" />
         <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Terminal</span>
-        <div style={{ marginLeft: 'auto' }}>
+        <div role="status" aria-live="polite" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>{status === 'completed' ? 'Completed' : status === 'running' ? 'Running' : 'Pending'}</span>
           {status === 'running' ? (
             <Loader2 size={16} strokeWidth={1.75} className="lucide-spin" style={{ color: 'var(--accent-secondary)' }} />
           ) : status === 'completed' ? (
-            <CheckCircle2 size={16} strokeWidth={1.75} color="#22c55e" />
+            <CheckCircle2 size={16} strokeWidth={1.75} color="var(--color-success)" />
           ) : null}
         </div>
       </div>
-      <div style={{ color: '#a855f7' }}>
+      <div style={{ color: 'var(--color-code-violet)' }}>
         $ {command}
       </div>
     </div>

@@ -1,0 +1,6 @@
+{
+  "managedRuntime": "workers",
+  "buildScript": "node build.js",
+  "migrationCompatible": false,
+  "migrationError": "This migration changes existing data or schema. Export a backup and use a reviewed migration workflow."
+}

@@ -1,25 +1,53 @@
+import { useAutomaticBackend } from '../lib/automatic-backend';
+import { useTheme } from '../lib/theme';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  Code2, Monitor, ExternalLink, Loader2,
+  Code2, Monitor, Loader2,
   Terminal, Copy, Check, FolderCode, Download,
-  Tablet, Smartphone, WrapText, ListFilter,
-  X, Server, Eye, MoreHorizontal,
-  Share2, Cloud, GitBranch, HelpCircle
+  WrapText, ListFilter,
+  Server, Eye, MoreHorizontal, RotateCcw,
+  Share2, Cloud, GitBranch, HelpCircle, ArrowUpRight, PanelLeft, AlertCircle, MessageSquare
 } from 'lucide-react';
-import Editor from '@monaco-editor/react';
+import Editor, { loader } from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
 import { appEvents } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
 import { exportToGitHub } from '../lib/github-export';
 import { normalizePath } from '../lib/utils';
-import { getProjectFiles, saveProjectFiles, saveProjectFilesDebounced, flushProjectFileWrites, forkProject, createProject, setActiveProjectId } from '../lib/project-store';
+import { selectAppEntry, isStarterApp } from '../lib/preview-entry';
+import { previewFiles, PREVIEW_SANDBOX } from '../lib/preview-isolation';
+import { setPreviewStatus } from '../lib/status-store';
+import { bindProjectStore } from '../lib/project-store';
 import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
+import { diagnosePreviewError } from '../lib/preview-diagnostics';
+import { createTypeScriptStarter } from '../lib/project-starters';
+import { useProjectRuntime } from '../lib/project-runtime-client';
+import PreviewCanvas from './PreviewCanvas';
+import ActionMenu from './ActionMenu';
 import FileExplorer from './FileExplorer';
+import ConfirmModal from './ConfirmModal';
+import BuildProgress, { type FileProgress } from './BuildProgress';
+import ProjectConsole from './ProjectConsole';
+import PublishDialog from './PublishDialog';
 
-type GenerationStatus = 'Idle' | 'Generating' | 'Ready' | 'Error' | 'Stopped';
+type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 type FileMap = Record<string, string>;
+
+function computeFileDelta(previous: FileMap, next: FileMap): { changed: FileMap; removed: string[] } {
+  const changed: FileMap = {};
+  const removed: string[] = [];
+
+  for (const [path, content] of Object.entries(next)) {
+    if (previous[path] !== content) changed[path] = content;
+  }
+  for (const path of Object.keys(previous)) {
+    if (!(path in next)) removed.push(path);
+  }
+
+  return { changed, removed };
+}
 
 interface BuildLogItem {
   id: string;
@@ -30,10 +58,27 @@ interface BuildLogItem {
 
 interface WorkspaceProps {
   activeProjectId: string;
-  mobileTab?: 'chat' | 'code' | 'preview';
+  mobileTab?: 'chat' | WorkspaceTab;
+  onSelectMobileTab?: (tab: WorkspaceTab | 'chat') => void;
 }
 
 const MAX_LOG_ENTRIES = 250;
+
+let monacoFallbackWorkerUrl: string | null = null;
+
+function configureMonacoWorkerFallback() {
+  if (typeof window === 'undefined') return;
+  if (!monacoFallbackWorkerUrl) {
+    monacoFallbackWorkerUrl = URL.createObjectURL(new Blob([
+      'self.onmessage = () => { /* Monaco worker fallback: no-op */ };',
+    ], { type: 'text/javascript' }));
+  }
+  (window as any).MonacoEnvironment = {
+    getWorker() {
+      return new Worker(monacoFallbackWorkerUrl as string, { type: 'classic' });
+    },
+  };
+}
 
 /* ------------------------------------------------------------------ *
  * Helpers hoisted out of the component
@@ -51,11 +96,7 @@ const LEGACY_STARTER_MARKERS = [
 ];
 
 function baselineFiles(): FileMap {
-  return {
-    '/src/App.jsx': basicReactTemplate['src'].directory['App.jsx'].file.contents,
-    '/src/main.jsx': basicReactTemplate['src'].directory['main.jsx'].file.contents,
-    '/src/styles.css': basicReactTemplate['src'].directory['styles.css'].file.contents,
-  };
+  return createTypeScriptStarter();
 }
 
 /**
@@ -85,23 +126,12 @@ function migrateStarter(files: FileMap): FileMap {
 
 function hasGeneratedAppCode(files: FileMap): boolean {
   if (!files) return false;
-  const app = files['/src/App.jsx'] || files['/src/App.tsx'];
+  const entry = selectAppEntry(files);
+  const app = entry ? files[entry] : null;
   if (!app) return false;
 
-  const isStarter =
-    app.includes('Architect your idea into living software') ||
-    app.includes('What do you want to build?') ||
-    LEGACY_STARTER_MARKERS.some(marker => app.includes(marker));
-
-  if (isStarter) {
-    const customFiles = Object.keys(files).filter(k =>
-      k.startsWith('/src/') &&
-      !['/src/App.jsx', '/src/App.tsx', '/src/main.jsx', '/src/main.tsx', '/src/styles.css', '/src/index.css'].includes(k)
-    );
-    return customFiles.length > 0;
-  }
-
-  return true;
+  // Utility files alone do not replace the starter screen with a generated app.
+  return !isStarterApp(app);
 }
 
 function timestamp(): string {
@@ -109,7 +139,16 @@ function timestamp(): string {
 }
 
 function isServerPath(path: string): boolean {
+  if (/^\/?(?:worker|migrations)\//.test(path)) return true;
   return path.startsWith('/server/') || path.startsWith('server/') || path.includes('.env');
+}
+
+function previewMessageTargetOrigin(): string {
+  if (typeof window === 'undefined') return '*';
+  // Sandbox previews currently use an opaque origin (`null`) because
+  // PREVIEW_SANDBOX omits allow-same-origin. Opaque frames cannot be targeted
+  // with a concrete origin string, so `*` is required for delivery.
+  return PREVIEW_SANDBOX.includes('allow-same-origin') ? window.location.origin : '*';
 }
 
 /** Copies text with a documented fallback for non-secure contexts. */
@@ -122,19 +161,21 @@ async function copyText(text: string): Promise<boolean> {
   } catch {
     /* fall through to the textarea path */
   }
+  const previousFocus = document.activeElement as HTMLElement | null;
+  const ta = document.createElement('textarea');
   try {
-    const ta = document.createElement('textarea');
     ta.value = text;
     ta.setAttribute('readonly', '');
     ta.style.position = 'fixed';
     ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return ok;
+    return document.execCommand('copy');
   } catch {
     return false;
+  } finally {
+    ta.remove();
+    previousFocus?.focus({ preventScroll: true });
   }
 }
 
@@ -156,111 +197,48 @@ function useViewportWidth(): number {
   return width;
 }
 
-const STARTER_BACKEND: FileMap = {
-  '/server/index.js': `import express from 'express';
-import cors from 'cors';
-import { router as apiRoutes } from './routes/api.js';
-
-const app = express();
-const port = process.env.PORT || 3001;
-
-app.use(cors());
-app.use(express.json());
-app.use('/api', apiRoutes);
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'brainhalf-backend', timestamp: new Date().toISOString() });
-});
-
-app.listen(port, () => {
-  console.log(\`Backend server running on port \${port}\`);
-});
-`,
-  '/server/routes/api.js': `import { Router } from 'express';
-import { getItems, createItem, getItemById, deleteItem } from '../controllers/items.js';
-
-export const router = Router();
-
-router.get('/items', getItems);
-router.post('/items', createItem);
-router.get('/items/:id', getItemById);
-router.delete('/items/:id', deleteItem);
-`,
-  '/server/controllers/items.js': `import { db } from '../db.js';
-
-export const getItems = (req, res) => {
-  res.json(db.findAll('items'));
-};
-
-export const createItem = (req, res) => {
-  if (!req.body || typeof req.body !== 'object') {
-    return res.status(400).json({ error: 'Expected a JSON body' });
-  }
-  res.status(201).json(db.create('items', req.body));
-};
-
-export const getItemById = (req, res) => {
-  const item = db.findById('items', req.params.id);
-  if (!item) return res.status(404).json({ error: 'Item not found' });
-  res.json(item);
-};
-
-export const deleteItem = (req, res) => {
-  const success = db.delete('items', req.params.id);
-  if (!success) return res.status(404).json({ error: 'Item not found' });
-  res.json({ success: true });
-};
-`,
-  '/server/db.js': `// In-memory data layer for the BrainHalf preview.
-// Swap for Postgres or Mongo by reading process.env.DATABASE_URL / MONGODB_URI.
-export class LocalDatabase {
-  constructor() {
-    this.collections = new Map();
-  }
-  findAll(name) { return Array.from(this.collections.get(name)?.values() || []); }
-  findById(name, id) { return this.collections.get(name)?.get(String(id)) || null; }
-  create(name, data) {
-    if (!this.collections.has(name)) this.collections.set(name, new Map());
-    const id = data.id || crypto.randomUUID();
-    const record = { ...data, id, createdAt: new Date().toISOString() };
-    this.collections.get(name).set(String(id), record);
-    return record;
-  }
-  delete(name, id) { return this.collections.get(name)?.delete(String(id)) || false; }
-}
-
-export const db = new LocalDatabase();
-`,
-  // NOTE: no default secret value here. A shipped placeholder like
-  // "brainhalf_development_secret_key_12345" is the kind of thing that survives
-  // all the way into a deployed app and becomes a real JWT forgery vector.
-  '/server/.env': `PORT=3001
-NODE_ENV=development
-# Generate a strong value before deploying, e.g. openssl rand -hex 32
-JWT_SECRET=
-# DATABASE_URL=postgresql://user:pass@localhost:5432/mydb
-`,
-};
-
-const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => {
+const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSelectMobileTab }) => {
+  const { isCurrent, getProjectFiles, getProjectFilesAsync, saveProjectFiles, saveProjectFilesDebounced, flushProjectFileWrites, forkProject, setActiveProjectId } = useMemo(bindProjectStore, []);
   const [files, setFiles] = useState<FileMap>(() => migrateStarter(getProjectFiles(activeProjectId) || baselineFiles()));
+  const runtime = useProjectRuntime(activeProjectId, 'development', true);
+  const [publishDialog, setPublishDialog] = useState<{ projectId: string; files?: Record<string, string> } | null>(null);
+  useEffect(() => { setPublishDialog(null); }, [activeProjectId]);
+  useEffect(() => appEvents.on('open-deploy-modal', () => setPublishDialog({ projectId: activeProjectId })), [activeProjectId]);
+  const backend = useAutomaticBackend(activeProjectId, runtime);
+  const startBackend = backend.start;
   
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
+  const selectTab = useCallback((tab: WorkspaceTab) => {
+    setActiveTab(tab);
+    onSelectMobileTab?.(tab);
+  }, [onSelectMobileTab]);
+  useEffect(() => appEvents.on('open-project-console', () => selectTab('console')), [selectTab]);
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
+  const [previewSessionReady, setPreviewSessionReady] = useState(false);
+  const previewTargetOrigin = useMemo(() => previewMessageTargetOrigin(), []);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
-  const isWaitingForFirstApp = !hasGeneratedApp && (status === 'Generating' || status === 'Idle');
 
   const viewportWidth = useViewportWidth();
   const compactToolbar = viewportWidth < 1100;
+  const [fileExplorerOverride, setFileExplorerOverride] = useState<boolean | null>(null);
+  const showFileExplorer = fileExplorerOverride ?? viewportWidth > 768;
 
   // FIX: the initialiser used to run the starter migration and call
   // saveProjectFiles() as a side effect. A useState initialiser can run more
   // than once (StrictMode, a re-mount), so that wrote to storage during render.
   // It now only computes; the effect below owns persistence.
   const [status, setStatus] = useState<GenerationStatus>(() => (getProjectFiles(activeProjectId) ? 'Ready' : 'Idle'));
-  const [activeFile, setActiveFile] = useState('/src/App.jsx');
+  const [fileProgress, setFileProgress] = useState<FileProgress>({});
+  const generationActiveRef = useRef(false);
+  const isWaitingForFirstApp = !hasGeneratedApp;
+  const openChat = () => {
+    onSelectMobileTab?.('chat');
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[aria-label="Message to the app builder"]')?.focus());
+  };
+  const [activeFile, setActiveFile] = useState(() => selectAppEntry(files) || Object.keys(files)[0] || '/src/App.tsx');
+  const [monacoReady, setMonacoReady] = useState(false);
 
   const [consoleLogs, setConsoleLogs] = useState<string[]>(['Preview ready.', 'Waiting for changes...']);
   const [buildLogs, setBuildLogs] = useState<BuildLogItem[]>([
@@ -272,19 +250,74 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   const [showGithubModal, setShowGithubModal] = useState(false);
   const [githubRepo, setGithubRepo] = useState('');
   const [githubToken, setGithubToken] = useState('');
-  const [rememberToken, setRememberToken] = useState(false);
+  useEffect(() => { try { sessionStorage.removeItem('brainhalf_github_pat'); localStorage.removeItem('brainhalf_github_pat'); } catch {} }, []);
+  useEffect(() => { if (!showGithubModal) setGithubToken(''); }, [showGithubModal]);
   const [githubStatus, setGithubStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
 
-  const [showDiagnosticMenu, setShowDiagnosticMenu] = useState(false);
-  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
-  const [isReadOnlyProject, setIsReadOnlyProject] = useState(false);
+  const theme = useTheme();
+  const [readOnlyProjectId, setReadOnlyProjectId] = useState<string | null>(null);
+  const isReadOnlyProject = readOnlyProjectId === activeProjectId;
 
   useEffect(() => {
-    setIsReadOnlyProject(false);
-    const handleOwnershipDenied = (data: { projectId?: string }) => {
-      if (!data?.projectId || data.projectId === activeProjectId) {
-        setIsReadOnlyProject(true);
-      }
+    let active = true;
+    if (typeof window === 'undefined') return;
+    void import('monaco-editor').then(monaco => {
+      configureMonacoWorkerFallback();
+      monaco.editor.defineTheme('brainhalf-studio', {
+        base: 'vs',
+        inherit: true,
+        rules: [
+          { token: 'comment', foreground: '626D80', fontStyle: 'italic' },
+          { token: 'keyword', foreground: '7954A2' },
+          { token: 'string', foreground: '28704D' },
+          { token: 'number', foreground: '876015' },
+          { token: 'type', foreground: '3659D9' },
+          { token: 'tag', foreground: '3659D9' },
+        ],
+        colors: {
+          'editor.background': '#FFFFFF', 'editor.foreground': '#202631',
+          'editorLineNumber.foreground': '#626D80', 'editorLineNumber.activeForeground': '#3659D9',
+          'editor.lineHighlightBackground': '#F4F5F9', 'editor.selectionBackground': '#DDE5FF',
+          'editor.inactiveSelectionBackground': '#EDF0F8', 'editorCursor.foreground': '#3659D9',
+          'editorIndentGuide.background1': '#E7EAF1', 'editorIndentGuide.activeBackground1': '#B4BDCE',
+          'editorWidget.background': '#FAFBFE', 'editorWidget.border': '#E0E4ED',
+          'editorSuggestWidget.background': '#FFFFFF', 'editorSuggestWidget.border': '#E0E4ED',
+          'editorSuggestWidget.selectedBackground': '#EDF0F8',
+          'scrollbarSlider.background': '#C7CDDB66', 'scrollbarSlider.hoverBackground': '#AAB4C688',
+        },
+      });
+      monaco.editor.defineTheme('brainhalf-studio-dark', {
+        base: 'vs-dark', inherit: true,
+        rules: [
+          { token: 'comment', foreground: 'A3AAA0', fontStyle: 'italic' },
+          { token: 'keyword', foreground: 'C8B8CA' },
+          { token: 'string', foreground: 'B1C9A4' },
+          { token: 'number', foreground: 'D7BF90' },
+          { token: 'type', foreground: 'BACBAD' },
+          { token: 'tag', foreground: 'BACBAD' },
+        ],
+        colors: {
+          'editor.background': '#222522', 'editor.foreground': '#ECEEE8',
+          'editorLineNumber.foreground': '#A3AAA0', 'editorLineNumber.activeForeground': '#ECEEE8',
+          'editor.lineHighlightBackground': '#2B3029', 'editor.selectionBackground': '#46523E',
+          'editor.inactiveSelectionBackground': '#343C30', 'editorCursor.foreground': '#BACBAD',
+          'editorIndentGuide.background1': '#373C35', 'editorIndentGuide.activeBackground1': '#626B5D',
+          'editorWidget.background': '#222522', 'editorWidget.border': '#4C5546',
+          'editorSuggestWidget.background': '#222522', 'editorSuggestWidget.border': '#4C5546',
+          'editorSuggestWidget.selectedBackground': '#343C30',
+        },
+      });
+      loader.config({ monaco });
+      if (active) setMonacoReady(true);
+    }).catch(() => {
+      if (active) setMonacoReady(true);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const handleOwnershipDenied = (data: { projectId: string; reason?: string } | undefined) => {
+      if (data?.projectId === activeProjectId) setReadOnlyProjectId(activeProjectId);
     };
     const unsub = appEvents.on('project-ownership-denied', handleOwnershipDenied);
     return () => { unsub(); };
@@ -296,30 +329,42 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     window.location.search = `?project=${forked.id}`;
   };
 
-  const diagnosticMenuRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const githubTriggerRef = useRef<HTMLElement | null>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  // When the first real app file lands, force a clean iframe reload so the
-  // preview renders immediately rather than waiting for the next user action.
-  const prevHasGeneratedRef = useRef(hasGeneratedApp);
+  const syncedPreviewFilesRef = useRef<FileMap>({});
+  const [previewIssue, setPreviewIssue] = useState<{ error: string; file: string; layer: 'backend' | 'frontend' } | null>(null);
+  const [previewLoadState, setPreviewLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [previewLoadError, setPreviewLoadError] = useState('');
+  const previewLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => setPreviewIssue(null), [activeProjectId]);
   useEffect(() => {
-    if (!prevHasGeneratedRef.current && hasGeneratedApp) {
-      handleRefreshRef.current?.();
+    setPreviewLoadState('idle');
+    setPreviewLoadError('');
+    if (previewLoadTimerRef.current) {
+      clearTimeout(previewLoadTimerRef.current);
+      previewLoadTimerRef.current = null;
     }
-    prevHasGeneratedRef.current = hasGeneratedApp;
-  }, [hasGeneratedApp]);
+  }, [activeProjectId]);
+  const [previewFixRequest, setPreviewFixRequest] = useState<{ projectId: string; error: string; file: string; layer: string } | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [shareFallback, setShareFallback] = useState<string | null>(null);
+  useEffect(() => {
+    if (!shareCopied) return;
+    const timer = setTimeout(() => setShareCopied(false), 2500);
+    return () => clearTimeout(timer);
+  }, [shareCopied]);
 
   const filesRef = useRef<FileMap>(files);
+  const hydrationRef = useRef<Promise<void>>(Promise.resolve());
+  const syncedRevisionRef = useRef(0);
   const activeFileRef = useRef(activeFile);
   const handleRefreshRef = useRef<() => void>(() => { });
 
-  useEffect(() => {
-    if (mobileTab === 'code' || mobileTab === 'preview') setActiveTab(mobileTab);
-  }, [mobileTab]);
+  const resolvedActiveTab: WorkspaceTab = mobileTab && mobileTab !== 'chat' ? mobileTab : activeTab;
 
   const addBuildLog = useCallback((text: string, type: BuildLogItem['type'] = 'info') => {
     setBuildLogs(prev => [
@@ -332,6 +377,58 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     setConsoleLogs(prev => [...prev.slice(-(MAX_LOG_ENTRIES - 1)), text]);
   }, []);
 
+  const markPreviewState = useCallback((state: 'loading' | 'ready' | 'error', error = '') => {
+    if (state === 'loading') {
+      setStatus(() => generationActiveRef.current ? 'Generating' : 'Connecting');
+      setPreviewLoadError('');
+      setPreviewLoadState('loading');
+      appEvents.emit('preview-state', { projectId: activeProjectId, state: 'loading' });
+      if (previewLoadTimerRef.current) clearTimeout(previewLoadTimerRef.current);
+      previewLoadTimerRef.current = setTimeout(() => {
+        const message = 'Preview could not be loaded. Refresh, then run Build app again.';
+        setPreviewLoadState('error');
+        setPreviewLoadError(message);
+        setStatus('Error');
+        setPreviewStatus(activeProjectId, 'Error');
+        appEvents.emit('preview-state', { projectId: activeProjectId, state: 'error', error: message });
+      }, 15_000);
+      return;
+    }
+
+    if (previewLoadTimerRef.current) {
+      clearTimeout(previewLoadTimerRef.current);
+      previewLoadTimerRef.current = null;
+    }
+
+    if (state === 'ready') {
+      setStatus(() => generationActiveRef.current ? 'Generating' : 'Ready');
+      setPreviewStatus(activeProjectId, 'Ready');
+      setPreviewLoadError('');
+      setPreviewLoadState('ready');
+      appEvents.emit('preview-state', { projectId: activeProjectId, state: 'ready' });
+      return;
+    }
+
+    const message = error || 'Preview could not be loaded. Refresh, then run Build app again.';
+    setStatus('Error');
+    setPreviewStatus(activeProjectId, 'Error');
+    setPreviewLoadState('error');
+    setPreviewLoadError(message);
+    appEvents.emit('preview-state', { projectId: activeProjectId, state: 'error', error: message });
+  }, [activeProjectId]);
+
+  // When the first real app file lands, force a clean iframe reload so the
+  // preview renders immediately rather than waiting for the next user action.
+  const prevHasGeneratedRef = useRef(hasGeneratedApp);
+  useEffect(() => {
+    if (!prevHasGeneratedRef.current && hasGeneratedApp) {
+      setStatus(current => (current === 'Generating' ? 'Connecting' : current));
+      markPreviewState('loading');
+      setEdgeRefreshCounter(current => current + 1);
+    }
+    prevHasGeneratedRef.current = hasGeneratedApp;
+  }, [hasGeneratedApp, markPreviewState]);
+
   /**
    * The single mutation point for the file map.
    *
@@ -342,8 +439,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
    * Every write now produces a new object, updates the ref, persists, and
    * syncs — in that order, once.
    */
-  const commitFiles = useCallback((next: FileMap, opts: { replaceAll?: boolean; persist?: boolean; debounce?: boolean } = {}) => {
-    const { replaceAll = false, persist = true, debounce = false } = opts;
+  const commitFiles = useCallback((next: FileMap, opts: { replaceAll?: boolean; persist?: boolean; debounce?: boolean; sync?: boolean } = {}) => {
+    if (!isCurrent()) return;
+    const { replaceAll = false, persist = true, debounce = false, sync = true } = opts;
     filesRef.current = next;
     setFiles(next);
     if (persist) {
@@ -353,28 +451,47 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
       if (debounce) saveProjectFilesDebounced(activeProjectId, next);
       else saveProjectFiles(activeProjectId, next);
     }
-    appEvents.emit('sync-files', { files: next, replaceAll });
+    if (sync) appEvents.emit('sync-files', { files: next, replaceAll });
   }, [activeProjectId]);
 
   useEffect(() => { activeFileRef.current = activeFile; }, [activeFile]);
 
+  useEffect(() => {
+    syncedPreviewFilesRef.current = {};
+  }, [activeProjectId]);
+
   // Keep filesRef in step with any state update that did not go through
-  // commitFiles, and push the current map into the preview iframe.
+  // commitFiles, and stream only the changed preview files to the iframe.
   useEffect(() => {
     filesRef.current = files;
-    iframeRef.current?.contentWindow?.postMessage({ type: 'sync-files', files }, window.location.origin);
-  }, [files]);
+    const frameWindow = iframeRef.current?.contentWindow;
+    if (!frameWindow) return;
+
+    const nextPreviewFiles = previewFiles(files, true);
+    const previousPreviewFiles = syncedPreviewFilesRef.current;
+    if (Object.keys(previousPreviewFiles).length === 0) {
+      frameWindow.postMessage({ type: 'sync-files', projectId: activeProjectId, files: nextPreviewFiles }, previewTargetOrigin);
+      syncedPreviewFilesRef.current = nextPreviewFiles;
+      return;
+    }
+
+    const { changed, removed } = computeFileDelta(previousPreviewFiles, nextPreviewFiles);
+    if (Object.keys(changed).length > 0 || removed.length > 0) {
+      frameWindow.postMessage({ type: 'sync-files-delta', projectId: activeProjectId, changed, removed }, previewTargetOrigin);
+      syncedPreviewFilesRef.current = nextPreviewFiles;
+    }
+  }, [activeProjectId, files]);
 
   // FIX: consoleEndRef and a logs anchor were rendered but nothing ever scrolled
   // to them, so both panes silently stopped following new output once the list
   // exceeded the visible height.
   useEffect(() => {
-    if (activeTab === 'console') consoleEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [consoleLogs, activeTab]);
+    if (resolvedActiveTab === 'console') consoleEndRef.current?.scrollIntoView({ block: 'end' });
+  }, [consoleLogs, resolvedActiveTab]);
 
   useEffect(() => {
-    if (activeTab === 'logs') logsEndRef.current?.scrollIntoView({ block: 'end' });
-  }, [buildLogs, activeTab]);
+    if (resolvedActiveTab === 'logs') logsEndRef.current?.scrollIntoView({ block: 'end' });
+  }, [buildLogs, resolvedActiveTab]);
 
   useEffect(() => {
     const unsub = appEvents.on('open-github-modal', () => {
@@ -387,26 +504,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
   // Dropdown dismissal. Escape closes the innermost layer only, so it does not
   // tear down the whole UI in one keystroke. Window blur handles clicks into iframes.
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (diagnosticMenuRef.current && !diagnosticMenuRef.current.contains(e.target as Node)) setShowDiagnosticMenu(false);
-    };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (showGithubModal) { setShowGithubModal(false); return; }
-      if (showDiagnosticMenu) setShowDiagnosticMenu(false);
     };
-    const handleWindowBlur = () => {
-      setShowDiagnosticMenu(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('blur', handleWindowBlur);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [showGithubModal, showDiagnosticMenu]);
+  }, [showGithubModal]);
 
   // Modal focus management: move focus in on open, restore it on close, and keep
   // Tab inside the dialog while it is up.
@@ -446,98 +552,171 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     if (!githubRepo.trim() || !githubToken.trim()) return;
     setGithubStatus({ loading: true });
     try {
-      // FIX: the PAT was written to localStorage unconditionally, where it
-      // persists indefinitely and is readable by any XSS on this origin. It is
-      // now kept in memory by default; persisting is an explicit opt-in, and
-      // sessionStorage clears when the tab closes.
-      if (rememberToken) {
-        try { sessionStorage.setItem('brainhalf_github_pat', githubToken); } catch { /* storage may be blocked */ }
-      } else {
-        try { sessionStorage.removeItem('brainhalf_github_pat'); } catch { /* ignore */ }
-      }
       await exportToGitHub(filesRef.current, githubRepo.trim(), githubToken.trim());
+      setGithubToken('');
       setGithubStatus({ loading: false, success: `Pushed to GitHub: ${githubRepo.trim()}` });
       addBuildLog(`Pushed codebase to GitHub: ${githubRepo.trim()}`, 'success');
     } catch (err: any) {
       setGithubStatus({ loading: false, error: err?.message || 'Failed to export to GitHub' });
       addBuildLog(`GitHub export failed: ${err?.message || err}`, 'error');
     }
-  }, [githubRepo, githubToken, rememberToken, addBuildLog]);
+  }, [githubRepo, githubToken, addBuildLog]);
 
-  // Restore an opted-in token for this tab only.
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem('brainhalf_github_pat');
-      if (saved) { setGithubToken(saved); setRememberToken(true); }
-    } catch { /* storage may be unavailable */ }
-  }, []);
+  const runReadinessAudit = useCallback(() => {
+    const files = filesRef.current;
+    const issues: Array<{ level: BuildLogItem['type']; text: string }> = [];
+
+    const serverPaths = Object.keys(files).filter(isServerPath);
+    const hasServer = serverPaths.length > 0;
+    if (hasServer) issues.push({ level: 'warn', text: 'Backend execution, database migrations and authentication must be tested in the configured runtime. Browser preview is not backend validation.' });
+
+    const appSource = files['/src/App.jsx'] || files['/src/App.tsx'] || '';
+    if (appSource && !/loading|error|empty/i.test(appSource)) {
+      issues.push({ level: 'warn', text: 'App likely missing explicit loading/error/empty UI states.' });
+    }
+
+    for (const [path, content] of Object.entries(files)) {
+      if (/cdn\.tailwindcss\.com/i.test(content)) {
+        issues.push({ level: 'warn', text: `${path} uses Tailwind CDN script; prefer bundled Tailwind for production.` });
+      }
+      if (/TODO|FIXME|lorem ipsum/i.test(content)) {
+        issues.push({ level: 'warn', text: `${path} still contains placeholder markers (TODO/FIXME/Lorem).` });
+      }
+      if (content.length > 200_000) {
+        issues.push({ level: 'warn', text: `${path} is large (${Math.round(content.length / 1024)}KB); consider splitting.` });
+      }
+    }
+
+    addBuildLog('Source review started. These advisory checks do not run your type checker, tests, build or database.', 'info');
+    if (issues.length === 0) {
+      addBuildLog('No source warnings found. Run the project typecheck, tests and build before deployment.', 'info');
+    } else {
+      const errorCount = issues.filter((i) => i.level === 'error').length;
+      const warnCount = issues.filter((i) => i.level === 'warn').length;
+      addBuildLog(`Readiness audit found ${errorCount} error(s) and ${warnCount} warning(s).`, errorCount > 0 ? 'error' : 'warn');
+      for (const issue of issues) addBuildLog(issue.text, issue.level);
+    }
+    selectTab('logs');
+  }, [addBuildLog, selectTab]);
 
   /* ---------------- Project lifecycle ---------------- */
   useEffect(() => {
-    const stored = getProjectFiles(activeProjectId);
-    const isNewProject = !stored || Object.keys(stored).length === 0;
-    const next = isNewProject ? baselineFiles() : migrateStarter(stored);
-
-    filesRef.current = next;
-    setFiles(next);
-    setStatus('Ready');
-    setActiveFile(prev => (next[prev] ? prev : '/src/App.jsx'));
-    saveProjectFiles(activeProjectId, next);
-    appEvents.emit('sync-files', { files: next, replaceAll: isNewProject });
+    generationActiveRef.current = false;
+    let cancelled = false;
+    hydrationRef.current = getProjectFilesAsync(activeProjectId).then(stored => {
+      if (cancelled || !isCurrent()) return;
+      const isNewProject = !stored || Object.keys(stored).length === 0;
+      const next = isNewProject ? baselineFiles() : migrateStarter(stored);
+      const generated = hasGeneratedAppCode(next);
+      filesRef.current = next;
+      setFiles(next);
+      setStatus(() => generationActiveRef.current ? 'Generating' : generated ? 'Connecting' : 'Idle');
+      setPreviewLoadState(generated ? 'loading' : 'idle');
+      setPreviewLoadError('');
+      if (generated) appEvents.emit('preview-state', { projectId: activeProjectId, state: 'loading' });
+      setActiveFile(prev => (next[prev] !== undefined ? prev : selectAppEntry(next) || Object.keys(next)[0] || '/src/App.jsx'));
+      saveProjectFiles(activeProjectId, next);
+      appEvents.emit('sync-files', { files: next, replaceAll: isNewProject });
+    });
 
     const handleClearWorkspace = () => {
       const fresh = baselineFiles();
       filesRef.current = fresh;
       setFiles(fresh);
       setStatus('Idle');
+      setFileProgress({});
+      setPreviewLoadState('idle');
+      setPreviewLoadError('');
+      if (previewLoadTimerRef.current) {
+        clearTimeout(previewLoadTimerRef.current);
+        previewLoadTimerRef.current = null;
+      }
       setActiveFile('/src/App.jsx');
       saveProjectFiles(activeProjectId, fresh);
       appEvents.emit('sync-files', { files: fresh, replaceAll: true });
-      addBuildLog('Workspace reset to the baseline React 18 template', 'warn');
+      addBuildLog('Workspace reset to the TypeScript React starter', 'warn');
     };
 
     const unsubClear = appEvents.on('clear-workspace', handleClearWorkspace);
-    return () => unsubClear();
+    return () => {
+      cancelled = true;
+      unsubClear();
+    };
   }, [activeProjectId, addBuildLog]);
 
   /* ---------------- Generation events ---------------- */
   useEffect(() => {
-    const handleGenerationStatus = ({ status: newStatus, detail, file, error }: any) => {
+    let active = true;
+    const handleGenerationStatus = ({ status: newStatus, detail, file, error, projectId }: any) => {
+      if (projectId && projectId !== activeProjectId) return;
       if (newStatus === 'Generating') {
+        generationActiveRef.current = true;
         setStatus('Generating');
         if (detail) {
           addBuildLog(detail, 'info');
           addConsoleLog(`[ai] ${detail}`);
         }
         if (file) {
+          setFileProgress(current => ({ ...current, [normalizePath(file)]: 'writing' }));
           addBuildLog(`Generating: ${file}`, 'info');
         }
         return;
       }
 
       if (newStatus === 'Ready') {
+        const completedGeneration = generationActiveRef.current;
+        generationActiveRef.current = false;
+        if (detail === 'Response received') {
+          setStatus('Ready');
+          return;
+        }
         const backendErr = validateBackendFiles(filesRef.current);
         if (backendErr) {
           setStatus('Error');
           const msg = backendErr.error || '[Backend Error] Syntax or configuration error in server files';
+          markPreviewState('error', msg);
+          setPreviewStatus(activeProjectId, 'Error');
           addBuildLog(msg, 'error');
           addConsoleLog(`[backend-error] ${msg}`);
           return;
         }
-        setStatus('Ready');
+        if (!hasGeneratedAppCode(filesRef.current)) {
+          const expectedBuildOutput = typeof detail === 'string' && /app code updated|source saved/i.test(detail);
+          if (expectedBuildOutput) {
+            const missingPreviewMessage = 'Build finished but preview files were missing. Refresh and run Build app again.';
+            setStatus('Error');
+            setPreviewStatus(activeProjectId, 'Error');
+            markPreviewState('error', missingPreviewMessage);
+            addBuildLog(missingPreviewMessage, 'error');
+            addConsoleLog(`[preview] ${missingPreviewMessage}`);
+            return;
+          }
+          setStatus('Ready');
+          if (previewLoadTimerRef.current) {
+            clearTimeout(previewLoadTimerRef.current);
+            previewLoadTimerRef.current = null;
+          }
+          setPreviewLoadState('idle');
+          setPreviewLoadError('');
+          appEvents.emit('preview-state', { projectId: activeProjectId, state: 'ready' });
+          return;
+        }
+        setStatus('Connecting');
+        markPreviewState('loading');
+        if (completedGeneration) startBackend(filesRef.current);
         addBuildLog(
-          isFullStackProject(filesRef.current)
-            ? 'Full-stack application (frontend + backend) ready'
-            : 'All components generated successfully',
+          completedGeneration && isFullStackProject(filesRef.current)
+            ? 'Source saved. Starting the backend when managed development hosting is available.'
+            : 'Source saved. Review the browser preview and run project checks.',
           'success'
         );
-        addConsoleLog('[build] Client and server components compiled.');
-        appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-        handleRefreshRef.current?.();
+        if (completedGeneration) addConsoleLog('[validation] Generation complete; project typecheck, build and tests have not been run by this preview.');
         return;
       }
 
       if (newStatus === 'Stopped') {
+        generationActiveRef.current = false;
+        setFileProgress(current => Object.fromEntries(Object.entries(current).map(([path, state]) => [path, state === 'writing' ? 'partial' : state])));
         setStatus('Stopped');
         const detailMsg = detail || 'Generation stopped by user';
         addBuildLog(detailMsg, 'warn');
@@ -546,22 +725,28 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
       }
 
       if (newStatus === 'Error') {
+        generationActiveRef.current = false;
         setStatus('Error');
         const errMsg = error || 'Generation failed';
         const attributed = errMsg.startsWith('[') ? errMsg : `[Build Error] ${errMsg}`;
+        // An inference failure is not evidence that the existing preview failed.
+        // Keep the empty-app recovery screen and any working preview available.
         addBuildLog(attributed, 'error');
         addConsoleLog(`[error] ${attributed}`);
       }
     };
 
-    const handleFileGenerated = ({ path, content, isComplete }: { path: string; content: string; isComplete?: boolean }) => {
+    const handleFileGenerated = ({ path, content, isComplete, projectId }: { path: string; content: string; isComplete?: boolean; projectId?: string }) => {
+      if (!isCurrent() || (projectId && projectId !== activeProjectId) || typeof content !== 'string') return;
       const cleanPath = normalizePath(path);
+      setFileProgress(current => ({ ...current, [cleanPath]: isComplete ? 'saved' : 'writing' }));
+      if (filesRef.current[cleanPath] === content) return;
 
       // Streaming chunks arrive many times per file, so only the completed file
       // is persisted and synced; intermediate states just update the editor.
       const next = { ...filesRef.current, [cleanPath]: content };
       if (isComplete) {
-        commitFiles(next);
+        commitFiles(next, { sync: false });
         addBuildLog(`Compiled: ${cleanPath}`, 'success');
         addConsoleLog(`[transpiler] Compiled ${cleanPath}`);
       } else {
@@ -570,12 +755,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
       }
     };
 
-    const handleFileDeleted = ({ path }: { path: string }) => {
+    const handleFileDeleted = ({ path, projectId }: { path: string; projectId?: string }) => {
+      if (!isCurrent() || (projectId && projectId !== activeProjectId)) return;
       const cleanPath = normalizePath(path);
+      setFileProgress(current => { const next = { ...current }; delete next[cleanPath]; return next; });
       const next = { ...filesRef.current };
       delete next[cleanPath];
-      commitFiles(next);
-      if (activeFileRef.current === cleanPath) setActiveFile('/src/App.jsx');
+      commitFiles(next, { sync: false });
+      if (activeFileRef.current === cleanPath) setActiveFile(selectAppEntry(next) || Object.keys(next)[0] || '/src/App.jsx');
       addBuildLog(`Deleted: ${cleanPath}`, 'info');
       addConsoleLog(`[transpiler] Deleted ${cleanPath}`);
     };
@@ -583,7 +770,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     const handleOpenFile = ({ path }: { path: string }) => {
       const cleanPath = normalizePath(path);
       setActiveFile(cleanPath);
-      setActiveTab('code');
+      selectTab('code');
     };
 
     const handleExport = async ({ projectName }: { projectName?: string }) => {
@@ -595,7 +782,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
       }
     };
 
-    const handleRequestContext = ({ requestId }: { requestId: string }) => {
+    const handleRequestContext = async ({ requestId }: { requestId: string }) => {
+      await hydrationRef.current;
+      if (!active) return;
       appEvents.emit(`workspace-context-response-${requestId}`, { files: filesRef.current });
     };
 
@@ -612,12 +801,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     };
 
     const handleFilesRefreshed = (newFiles: FileMap) => {
-      if (!newFiles || Object.keys(newFiles).length === 0) return;
+      if (!newFiles) return;
+      const generated = hasGeneratedAppCode(newFiles);
       filesRef.current = newFiles;
       setFiles(newFiles);
       saveProjectFiles(activeProjectId, newFiles);
-      setStatus('Ready');
-      handleRefreshRef.current?.();
+      setStatus(generated ? 'Connecting' : 'Idle');
+      if (generated) markPreviewState('loading');
+      else {
+        setPreviewLoadState('idle');
+        setPreviewLoadError('');
+      }
+      setEdgeRefreshCounter(current => current + 1);
     };
 
     const handleWorkspaceFilesChanged = ({ projectId, files: changedFiles }: { projectId: string; files: FileMap }) => {
@@ -629,6 +824,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     };
 
     const unsubs = [
+      appEvents.on('workspace-session-ready', ({ projectId }: { projectId: string }) => {
+        if (projectId === activeProjectId) setPreviewSessionReady(true);
+      }),
       appEvents.on('generation-status', handleGenerationStatus),
       appEvents.on('file-generated', handleFileGenerated),
       appEvents.on('file-deleted', handleFileDeleted),
@@ -637,61 +835,93 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
       appEvents.on('request-workspace-context', handleRequestContext),
       appEvents.on('execute-command', handleExecuteCommand),
       appEvents.on('files-refreshed', handleFilesRefreshed),
+      appEvents.on('workspace-files-synced', ({ projectId, revision }: { projectId: string; revision: number }) => {
+        if (projectId !== activeProjectId) return;
+        syncedRevisionRef.current = Math.max(syncedRevisionRef.current, revision);
+        iframeRef.current?.contentWindow?.postMessage({ type: 'preview-revision', revision: syncedRevisionRef.current }, previewTargetOrigin);
+      }),
+      appEvents.on('workspace-sync-error', ({ projectId, error }: { projectId: string; error: string }) => {
+        if (projectId === activeProjectId) {
+          addBuildLog(error, 'error');
+          addConsoleLog(`[workspace-sync] ${error}`);
+        }
+      }),
       appEvents.on('workspace-files-changed', handleWorkspaceFilesChanged),
     ];
-    return () => unsubs.forEach(unsub => unsub());
-  }, [activeProjectId, addBuildLog, addConsoleLog, commitFiles]);
+    return () => {
+      active = false;
+      unsubs.forEach(unsub => unsub());
+    };
+  }, [startBackend, activeProjectId, addBuildLog, addConsoleLog, commitFiles, markPreviewState, selectTab]);
 
   /* ---------------- Preview iframe messages ---------------- */
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
-      // FIX: only the message source was checked. An origin check matters too —
-      // source identity alone does not tell you the frame still holds the
-      // document you served it.
-      if (event.origin !== window.location.origin) return;
-      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
+      if (!isCurrent()) return;
+      if (event.origin !== 'null') return;
+      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) return;
       if (!event.data || typeof event.data !== 'object') return;
 
       const { type } = event.data;
 
       if (type === 'preview-error') {
-        const errorMsg = event.data.error || 'Preview runtime error';
+        const errorMsg = typeof event.data.error === 'string' ? event.data.error.slice(0, 4000) : 'Preview runtime error';
         const file = event.data.file || activeFileRef.current;
         const layer = event.data.layer || (String(file).includes('server') ? 'backend' : 'frontend');
         const prefix = layer === 'backend' ? '[Backend Error]' : '[Frontend Error]';
+        const diagnostic = diagnosePreviewError(errorMsg);
         const cleanMsg = errorMsg.startsWith('[') ? errorMsg : `${prefix} ${errorMsg}`;
         const lineInfo = event.data.lineno ? ` (line ${event.data.lineno})` : '';
         const fullErr = `${cleanMsg}${lineInfo}`;
+        setPreviewIssue({ error: fullErr, file, layer });
         setStatus('Error');
+        setPreviewStatus(activeProjectId, 'Error');
+        markPreviewState('error', fullErr);
         addBuildLog(`${prefix} in ${file}: ${errorMsg}`, 'error');
+        addBuildLog(`Diagnosis (${diagnostic.category}): ${diagnostic.likelyCause}`, 'warn');
+        addBuildLog(`Suggested fix: ${diagnostic.suggestedFix}`, 'info');
         addConsoleLog(`[${layer}-error] ${fullErr}`);
+        addConsoleLog(`[diagnostic:${diagnostic.category}] ${diagnostic.likelyCause}`);
         return;
       }
 
       if (type === 'preview-auto-fix') {
-        const file = event.data.file || activeFileRef.current;
-        const layer = event.data.layer || (String(file).includes('server') ? 'backend' : 'frontend');
-        appEvents.emit('auto-fix-error', { error: event.data.error || 'Error occurred', file, layer });
+        if (typeof event.data.error !== 'string') return;
+        const request = {
+          projectId: activeProjectId,
+          error: event.data.error.slice(0, 4000),
+          file: typeof event.data.file === 'string' ? event.data.file.slice(0, 256) : activeFileRef.current,
+          layer: event.data.layer === 'backend' ? 'backend' : 'frontend',
+        };
+        setPreviewFixRequest(current => current || request);
         return;
       }
 
       if (type === 'preview-success') {
-        setStatus(prev => (prev === 'Error' ? 'Ready' : prev));
+        if (generationActiveRef.current) return;
+        if (previewLoadState === 'idle' && !hasGeneratedAppCode(filesRef.current)) return;
+        setPreviewIssue(null);
+        setPreviewStatus(activeProjectId, 'Ready');
+        setStatus('Ready');
+        markPreviewState('ready');
         appEvents.emit('preview-success', null);
         return;
       }
 
       if (type === 'request-preview-files') {
         iframeRef.current?.contentWindow?.postMessage(
-          { type: 'sync-files', files: filesRef.current },
-          window.location.origin
+          { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
+          previewTargetOrigin
         );
+      }
+      if (type === 'request-preview-revision') {
+        iframeRef.current?.contentWindow?.postMessage({ type: 'preview-revision', revision: syncedRevisionRef.current }, previewTargetOrigin);
       }
     };
 
     window.addEventListener('message', handleWindowMessage);
     return () => window.removeEventListener('message', handleWindowMessage);
-  }, [addBuildLog, addConsoleLog]);
+  }, [activeProjectId, addBuildLog, addConsoleLog, markPreviewState, previewLoadState, previewTargetOrigin, status]);
 
   const handleEditorChange = useCallback((value: string | undefined) => {
     if (value === undefined) return;
@@ -700,11 +930,28 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
 
   const handleRefresh = useCallback(() => {
     appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
+    if (hasGeneratedAppCode(filesRef.current)) {
+      setStatus('Connecting');
+      markPreviewState('loading');
+    }
     setEdgeRefreshCounter(c => c + 1);
     addBuildLog('Reloading Cloudflare Edge preview', 'info');
-  }, [addBuildLog]);
+  }, [addBuildLog, markPreviewState, selectTab]);
+
+  const handlePopoutPreview = useCallback(() => {
+    if (isFullStackProject(filesRef.current)) {
+      if (backend.ready) void backend.open();
+      return;
+    }
+    appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
+    window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
+  }, [activeProjectId, backend.ready, backend.open]);
 
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
+
+  useEffect(() => () => {
+    if (previewLoadTimerRef.current) clearTimeout(previewLoadTimerRef.current);
+  }, []);
 
   // Keystroke-saves are debounced, so an edit made inside the debounce window
   // would be lost on a tab close or navigation. Force the write out before the
@@ -732,18 +979,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     window.setTimeout(() => setCopiedCode(false), 2000);
   }, [files, activeFile, addBuildLog]);
 
-  const handleScaffoldBackend = useCallback(() => {
-    const serverFile = Object.keys(filesRef.current).find(isServerPath);
-    if (serverFile) {
-      setActiveFile(serverFile);
-      return;
-    }
-    const next = { ...filesRef.current, ...STARTER_BACKEND };
-    commitFiles(next);
-    setActiveFile('/server/index.js');
-    addBuildLog('Scaffolded Express backend in /server', 'success');
-  }, [commitFiles, addBuildLog]);
-
   const visibleFiles = useMemo(
     () => Object.keys(files).sort(),
     [files]
@@ -759,190 +994,73 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     return 'javascript';
   }, [activeFile]);
 
-  const isEditorTab = activeTab === 'code';
+  const isEditorTab = resolvedActiveTab === 'code';
 
   return (
     <div className="workspace-panel-container">
+      {previewFixRequest?.projectId === activeProjectId && <ConfirmModal
+        isOpen={true}
+        title="Review preview fix request"
+        message={`Untrusted preview code requested an AI change. Only approve if you want to send this error to the builder (starts a new generation): ${previewFixRequest.error}`}
+        confirmLabel="Approve AI fix"
+        isDestructive={false}
+        onCancel={() => setPreviewFixRequest(null)}
+        onConfirm={() => {
+          if (isCurrent() && previewFixRequest.projectId === activeProjectId) appEvents.emit('auto-fix-error', previewFixRequest);
+          setPreviewFixRequest(null);
+        }}
+      />}
+      <ConfirmModal
+        isOpen={showResetConfirm}
+        title="Reset workspace?"
+        message="This resets files to the starter template for this project."
+        confirmLabel="Reset workspace"
+        isDestructive={true}
+        onCancel={() => setShowResetConfirm(false)}
+        onConfirm={() => {
+          appEvents.emit('clear-workspace');
+          setShowResetConfirm(false);
+        }}
+      />
+      {shareFallback && <ConfirmModal isOpen title="Copy project link" message={`Copy this link: ${shareFallback}`} confirmLabel="Done" cancelLabel="Close" isDestructive={false} onConfirm={() => setShareFallback(null)} onCancel={() => setShareFallback(null)} />}
       {/* Header. minHeight rather than height, and the nav scrolls rather than
           overflowing, so the tabs never collide with the status area on narrow
           viewports. */}
-      <div style={{
-        minHeight: '48px',
-        padding: '0 16px',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '12px',
-        background: 'rgba(18, 20, 26, 0.95)',
-        flexShrink: 0,
-        position: 'relative',
-        zIndex: 50
-      }}>
-        {/* Left: Preview / Manage segmented control */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.04)',
-              borderRadius: '8px',
-              padding: '3px',
-              gap: '2px'
-            }}
-          >
-            <button
-              onClick={() => setActiveTab('preview')}
-              style={{
-                background: activeTab === 'preview' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
-                color: activeTab === 'preview' ? '#ffffff' : 'rgba(255, 255, 255, 0.6)',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '4px 14px',
-                fontSize: '12px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Preview
-            </button>
-            <button
-              onClick={() => setActiveTab('code')}
-              style={{
-                background: activeTab === 'code' ? 'rgba(255, 255, 255, 0.12)' : 'transparent',
-                color: activeTab === 'code' ? '#ffffff' : 'rgba(255, 255, 255, 0.6)',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '4px 14px',
-                fontSize: '12px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              Manage
-            </button>
-          </div>
+      <div className="workspace-toolbar">
+        <div className="studio-workspace-tabs" aria-label="Workspace view" data-mobile={mobileTab !== undefined || undefined}>
+          {mobileTab === undefined && <button type="button" onClick={() => selectTab('preview')} aria-pressed={resolvedActiveTab === 'preview'} className={resolvedActiveTab === 'preview' ? 'active' : ''}><Monitor size={15} />Preview</button>}
+          {mobileTab === undefined && <button type="button" onClick={() => selectTab('code')} aria-pressed={resolvedActiveTab === 'code'} className={resolvedActiveTab === 'code' ? 'active' : ''}><Code2 size={15} />Code</button>}
+          {mobileTab !== undefined && <span className="studio-mobile-workspace-label">{isEditorTab ? 'Project files' : resolvedActiveTab === 'console' ? 'Console' : resolvedActiveTab === 'logs' ? 'Activity' : 'Your app'}</span>}
+          {isEditorTab && <button type="button" className="studio-files-toggle" onClick={() => setFileExplorerOverride(!showFileExplorer)} aria-pressed={showFileExplorer} title={showFileExplorer ? 'Hide project files' : 'Show project files'} aria-label={showFileExplorer ? 'Hide project files' : 'Show project files'}><PanelLeft size={14} /></button>}
         </div>
 
-        {/* Right: ⋯ overflow (Help, Popout, Branch), Share, Publish, Close */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Overflow menu */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setOverflowMenuOpen(o => !o)}
-              style={{
-                background: overflowMenuOpen ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '8px',
-                padding: '5px 10px',
-                color: 'rgba(255, 255, 255, 0.85)',
-                fontSize: '12px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'all 0.15s ease'
-              }}
-              title="More options"
-              aria-label="More options"
-              aria-expanded={overflowMenuOpen}
-            >
-              <MoreHorizontal size={15} strokeWidth={1.8} />
-            </button>
-            {overflowMenuOpen && (
-              <>
-                <div
-                  style={{ position: 'fixed', inset: 0, zIndex: 99 }}
-                  onClick={() => setOverflowMenuOpen(false)}
-                />
-                <div style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 6px)',
-                  right: 0,
-                  zIndex: 100,
-                  background: 'var(--bg-surface, #1a1d27)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '10px',
-                  padding: '4px',
-                  minWidth: '160px',
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)'
-                }}>
-                  {[
-                    {
-                      label: 'Help',
-                      icon: <HelpCircle size={13} strokeWidth={1.8} />,
-                      onClick: () => {
-                        setOverflowMenuOpen(false);
-                        alert('BrainHalf Docs: Deploy edge applications globally to Cloudflare with one click.');
-                      }
-                    },
-                    {
-                      label: 'Popout',
-                      icon: <ExternalLink size={13} strokeWidth={1.8} />,
-                      onClick: () => {
-                        setOverflowMenuOpen(false);
-                        appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-                        window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
-                      }
-                    },
-                    {
-                      label: 'Branch',
-                      icon: <GitBranch size={13} strokeWidth={1.8} />,
-                      onClick: () => {
-                        setOverflowMenuOpen(false);
-                        setShowGithubModal(true);
-                      }
-                    }
-                  ].map(item => (
-                    <button
-                      key={item.label}
-                      onClick={item.onClick}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        width: '100%',
-                        padding: '7px 10px',
-                        background: 'transparent',
-                        border: 'none',
-                        borderRadius: '7px',
-                        color: 'rgba(255, 255, 255, 0.8)',
-                        fontSize: '12px',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'background 0.1s'
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.07)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                    >
-                      {item.icon}
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+        <div className="studio-workspace-actions">
+          <ActionMenu label="Project actions" className="studio-project-actions" items={[
+            { label: 'Project console', icon: <Server />, onSelect: () => selectTab('console') },
+            { label: 'Download source ZIP', icon: <Download />, onSelect: () => { void handleExportZip(); }, disabled: !Object.keys(files).length, separator: true },
+            { label: 'Export to GitHub', icon: <GitBranch />, onSelect: () => { githubTriggerRef.current = document.activeElement as HTMLElement; setShowGithubModal(true); }, disabled: !Object.keys(files).length },
+            { label: 'Run readiness audit', icon: <ListFilter />, onSelect: runReadinessAudit, separator: true },
+            { label: 'Build guide', icon: <HelpCircle />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
+            { label: 'Reset workspace', icon: <RotateCcw />, onSelect: () => setShowResetConfirm(true), danger: true, separator: true },
+          ]}><MoreHorizontal size={18} /></ActionMenu>
 
           <button
+            className="studio-share-button"
             onClick={async () => {
               const shareUrl = `${window.location.origin}${window.location.pathname}?project=${activeProjectId}`;
-              try {
-                await navigator.clipboard.writeText(shareUrl);
-                alert('Project link copied to clipboard!');
-              } catch {
-                prompt('Copy project URL:', shareUrl);
+              const ok = await copyText(shareUrl);
+              if (ok) {
+                setShareCopied(true);
+              } else {
+                setShareFallback(shareUrl);
               }
             }}
             style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(36, 60, 75, 0.05)',
+              border: '1px solid rgba(36, 60, 75, 0.08)',
               borderRadius: '8px',
               padding: '5px 12px',
-              color: 'rgba(255, 255, 255, 0.85)',
+              color: 'var(--text-primary)',
               fontSize: '12px',
               fontWeight: 500,
               cursor: 'pointer',
@@ -953,21 +1071,22 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
             title="Share project link"
             aria-label="Share project link"
           >
-            <Share2 size={13} strokeWidth={1.8} />
-            <span>Share</span>
+            <Share2 size={14} strokeWidth={1.8} />
+            <span aria-live="polite">{shareCopied ? 'Copied' : 'Share'}</span>
           </button>
 
           <button
             onClick={() => {
               if (hasGeneratedApp) {
-                appEvents.emit('open-deploy-modal');
+                setPublishDialog({ projectId: activeProjectId, files: { ...files } });
               }
             }}
+            className="studio-publish-button"
             disabled={!hasGeneratedApp}
             style={{
-              background: hasGeneratedApp ? '#0ea5e9' : 'rgba(255, 255, 255, 0.04)',
-              color: hasGeneratedApp ? '#ffffff' : 'rgba(255, 255, 255, 0.35)',
-              border: hasGeneratedApp ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
+              background: hasGeneratedApp ? 'var(--accent-secondary)' : 'rgba(36, 60, 75, 0.04)',
+              color: hasGeneratedApp ? 'var(--text-primary)' : 'var(--text-muted)',
+              border: hasGeneratedApp ? 'none' : '1px solid rgba(36, 60, 75, 0.08)',
               borderRadius: '8px',
               padding: '5px 14px',
               fontSize: '12px',
@@ -976,7 +1095,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: hasGeneratedApp ? '0 2px 8px rgba(14, 165, 233, 0.35)' : 'none',
+              boxShadow: 'none',
               transition: 'all 0.15s ease'
             }}
             title={hasGeneratedApp ? "Publish application" : "Generate an app in chat before publishing"}
@@ -986,62 +1105,25 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
             <span>Publish</span>
           </button>
 
-          {/* Subtle separator to isolate destructive reset action from primary CTA */}
-          <div style={{ width: '1px', height: '16px', background: 'rgba(255, 255, 255, 0.1)', margin: '0 4px 0 10px' }} />
-
-          <button
-            onClick={() => {
-              if (confirm('Reset workspace and return to default?')) {
-                appEvents.emit('clear-workspace');
-              }
-            }}
-            style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '6px',
-              background: 'transparent',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              color: 'rgba(255, 255, 255, 0.45)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--color-error, #f87171)';
-              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'rgba(255, 255, 255, 0.45)';
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-              e.currentTarget.style.background = 'transparent';
-            }}
-            title="Reset workspace to default"
-            aria-label="Reset workspace to default"
-          >
-            <X size={13} strokeWidth={2} />
-          </button>
         </div>
       </div>
 
       {/* Content */}
+      {publishDialog?.projectId === activeProjectId && <PublishDialog key={activeProjectId} projectId={activeProjectId} files={files} publishOnOpen={publishDialog.files} onClose={() => setPublishDialog(null)} onManage={() => { setPublishDialog(null); selectTab('console'); }} />}
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {isEditorTab ? (
           <div style={{ display: 'flex', width: '100%', height: '100%', minWidth: 0 }}>
-            <FileExplorer
+            {showFileExplorer && <FileExplorer
               files={files}
               activeFile={activeFile}
               onSelectFile={setActiveFile}
               headerTitle="Project files"
-              onAddBackend={handleScaffoldBackend}
-            />
+            />}
 
             <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden' }}>
               {/* File tabs */}
-              <div style={{
-                minHeight: '36px', background: 'rgba(0, 0, 0, 0.4)',
+              <div className="studio-file-tabs" style={{
+                minHeight: '36px', background: 'var(--bg-surface)',
                 borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center',
                 overflowX: 'auto', padding: '0 4px', gap: '2px', flexShrink: 0
               }}>
@@ -1058,9 +1140,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                       style={{
                         padding: '8px 12px',
                         background: isActive ? 'var(--bg-code-editor)' : 'transparent',
-                        borderBottom: isActive ? (isServer ? '2px solid #c084fc' : '2px solid var(--accent-primary)') : '2px solid transparent',
+                        borderBottom: isActive ? (isServer ? '2px solid var(--color-code-violet)' : '2px solid var(--accent-primary)') : '2px solid transparent',
                         borderTop: 'none', borderLeft: 'none', borderRight: 'none',
-                        color: isActive ? '#ffffff' : 'var(--text-muted)',
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
                         fontSize: '12px', fontFamily: 'var(--font-mono)',
                         display: 'flex', alignItems: 'center', gap: '6px',
                         cursor: 'pointer', borderRadius: '4px 4px 0 0',
@@ -1069,7 +1151,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                       className="hover-bright"
                     >
                       {isServer
-                        ? <Server size={13} color={isActive ? '#c084fc' : undefined} />
+                        ? <Server size={13} color={isActive ? 'var(--color-code-violet)' : undefined} />
                         : <Code2 size={13} color={isActive ? 'var(--accent-light)' : undefined} />}
                       <span>{filePath.split('/').pop()}</span>
                     </button>
@@ -1080,8 +1162,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
               {/* Breadcrumbs and actions. flexWrap so the action cluster drops
                   to a second line instead of overlapping the path on narrow
                   panes. */}
-              <div style={{
-                padding: '6px 12px', background: 'rgba(0, 0, 0, 0.25)',
+              <div className="studio-code-toolbar" style={{
+                padding: '6px 12px', background: 'var(--bg-surface)',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 flexWrap: 'wrap', gap: '8px',
                 fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', flexShrink: 0
@@ -1089,7 +1171,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                   <span style={{
                     background: isServerPath(activeFile) ? 'rgba(168, 85, 247, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                    color: isServerPath(activeFile) ? '#c084fc' : '#38bdf8',
+                    color: isServerPath(activeFile) ? 'var(--color-code-violet)' : 'var(--color-info)',
                     border: `1px solid ${isServerPath(activeFile) ? 'rgba(168, 85, 247, 0.3)' : 'rgba(56, 189, 248, 0.3)'}`,
                     padding: '2px 8px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 600,
                     display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
@@ -1113,8 +1195,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                     className="hover-bright"
                     title={`Word wrap is ${wordWrap}`}
                     style={{
-                      background: wordWrap === 'on' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-                      border: 'none', color: wordWrap === 'on' ? '#ffffff' : 'var(--text-muted)',
+                      background: wordWrap === 'on' ? 'rgba(36, 60, 75, 0.08)' : 'transparent',
+                      border: 'none', color: wordWrap === 'on' ? 'var(--text-primary)' : 'var(--text-muted)',
                       borderRadius: '4px', padding: '6px 8px', minHeight: '32px', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'inherit'
                     }}
@@ -1130,12 +1212,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                     aria-label="Copy this file"
                     style={{
                       background: 'transparent', border: 'none',
-                      color: copiedCode ? '#34d399' : 'var(--text-muted)',
+                      color: copiedCode ? 'var(--color-success)' : 'var(--text-muted)',
                       padding: '6px 8px', minHeight: '32px', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'inherit'
                     }}
                   >
-                    {copiedCode ? <Check size={16} strokeWidth={1.75} color="#34d399" /> : <Copy size={16} strokeWidth={1.75} />}
+                    {copiedCode ? <Check size={16} strokeWidth={1.75} color="var(--color-success)" /> : <Copy size={16} strokeWidth={1.75} />}
                     {!compactToolbar && <span>{copiedCode ? 'Copied' : 'Copy'}</span>}
                   </button>
 
@@ -1176,76 +1258,46 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                   panes, so the real chrome is taller than 66px and the editor
                   overflowed its container. flex:1 with minHeight:0 measures. */}
               <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
-                <Editor
-                  height="100%"
-                  language={editorLanguage}
-                  value={files[activeFile] ?? ''}
-                  onChange={handleEditorChange}
-                  theme="vs-dark"
-                  path={activeFile}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    lineNumbers: 'on',
-                    wordWrap,
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    tabSize: 2
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        ) : activeTab === 'console' ? (
-          <div style={{
-            width: '100%', height: '100%', background: '#090b10', color: '#e2e8f0',
-            display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-mono)', fontSize: '12px', minWidth: 0
-          }}>
-            <div style={{
-              padding: '8px 14px', background: 'rgba(255, 255, 255, 0.02)',
-              borderBottom: '1px solid var(--border-subtle)', display: 'flex',
-              alignItems: 'center', justifyContent: 'space-between', flexShrink: 0
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Terminal size={14} color="var(--accent-light)" />
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Console</span>
-              </div>
-              <button
-                onClick={() => setConsoleLogs([])}
-                className="hover-bright"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', borderRadius: '4px', padding: '6px 10px', minHeight: '32px', fontSize: '11px', cursor: 'pointer' }}
-              >
-                Clear
-              </button>
-            </div>
-            <div style={{ flex: 1, minHeight: 0, padding: '12px 16px', overflowY: 'auto', lineHeight: 1.6 }}>
-              {consoleLogs.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)' }}>
-                  No console output yet. Run a generation or open the preview to see runtime messages here.
-                </div>
-              ) : (
-                consoleLogs.map((log, lIdx) => (
-                  <div
-                    key={lIdx}
-                    style={{
-                      color: /error|ERR_/i.test(log) ? '#f87171' : /ready|VITE/i.test(log) ? '#34d399' : '#cbd5e1',
-                      whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+                {monacoReady ? (
+                  <Editor
+                    height="100%"
+                    language={editorLanguage}
+                    value={files[activeFile] ?? ''}
+                    onChange={handleEditorChange}
+                    theme={theme === 'dark' ? 'brainhalf-studio-dark' : 'brainhalf-studio'}
+                    path={activeFile}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      fontFamily: "'DM Studio Mono', Consolas, monospace",
+                      lineHeight: 22,
+                      padding: { top: 18, bottom: 18 },
+                      renderLineHighlight: 'all',
+                      overviewRulerBorder: false,
+                      lineNumbers: 'on',
+                      wordWrap,
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      tabSize: 2
                     }}
-                  >
-                    {log}
+                  />
+                ) : (
+                  <div style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%', color: 'var(--text-muted)' }}>
+                    Loading editor…
                   </div>
-                ))
-              )}
-              <div ref={consoleEndRef} />
+                )}
+              </div>
             </div>
           </div>
-        ) : activeTab === 'logs' ? (
+        ) : resolvedActiveTab === 'console' ? (
+          <ProjectConsole key={activeProjectId} projectId={activeProjectId} files={files} onClose={() => selectTab('preview')} />
+        ) : resolvedActiveTab === 'logs' ? (
           <div style={{
-            width: '100%', height: '100%', background: '#090b10', color: '#e2e8f0',
+            width: '100%', height: '100%', background: 'var(--bg-surface)', color: 'var(--text-primary)',
             display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-mono)', fontSize: '12px', minWidth: 0
           }}>
             <div style={{
-              padding: '8px 14px', background: 'rgba(255, 255, 255, 0.02)',
+              padding: '8px 14px', background: 'rgba(36, 60, 75, 0.02)',
               borderBottom: '1px solid var(--border-subtle)', display: 'flex',
               alignItems: 'center', justifyContent: 'space-between', flexShrink: 0
             }}>
@@ -1274,10 +1326,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                     </span>
                     <span style={{
                       width: '6px', height: '6px', borderRadius: '50%', marginTop: '6px', flexShrink: 0,
-                      background: item.type === 'success' ? '#10b981' : item.type === 'error' ? '#ef4444' : item.type === 'warn' ? '#f59e0b' : '#3b82f6'
+                      background: item.type === 'success' ? 'var(--color-success)' : item.type === 'error' ? 'var(--color-error)' : item.type === 'warn' ? 'var(--color-warning)' : 'var(--color-info)'
                     }} />
                     <span style={{
-                      color: item.type === 'error' ? '#fca5a5' : item.type === 'success' ? '#86efac' : item.type === 'warn' ? '#fde68a' : '#e2e8f0',
+                      color: item.type === 'error' ? 'var(--color-error)' : item.type === 'success' ? 'var(--color-success)' : item.type === 'warn' ? 'var(--color-warning)' : 'var(--text-primary)',
                       wordBreak: 'break-word', minWidth: 0
                     }}>
                       {item.text}
@@ -1304,128 +1356,43 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
             }}
           >
             {/* Browser Chrome Toolbar */}
-            <div
-              className="browser-chrome"
-              style={{
-                padding: '0 12px',
-                minHeight: '40px',
-                boxSizing: 'border-box',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              {/* Center: Clean URL Pill */}
-              <div
-                className="browser-chrome-center"
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: compactToolbar ? 'none' : 'flex',
-                  justifyContent: 'center'
-                }}
-              >
-                <div
-                  className="browser-url-pill"
-                  title={`/preview/${activeProjectId}/index.html`}
-                  style={{ cursor: 'default', maxWidth: '100%', overflow: 'hidden' }}
-                >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {`brainhalf.com/preview/${activeProjectId.slice(0, 8)}`}
-                  </span>
-                  {viewportMode !== 'desktop' && (
-                    <span className="browser-viewport-badge">
-                      {viewportMode === 'tablet' ? '768px' : '375px'}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Right: Viewport Mode & Engine Selector */}
-              <div className="browser-chrome-right" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: 'auto' }}>
-                <div className="viewport-segmented-control" role="group" aria-label="Viewport size and preview runtime">
-                  <button
-                    onClick={() => setViewportMode('desktop')}
-                    className={`viewport-pill-btn ${viewportMode === 'desktop' ? 'active' : ''}`}
-                    title="Desktop view"
-                    aria-label="Desktop view"
-                    aria-pressed={viewportMode === 'desktop'}
-                  >
-                    <Monitor size={15} strokeWidth={1.75} />
-                  </button>
-                  <button
-                    onClick={() => setViewportMode('tablet')}
-                    className={`viewport-pill-btn ${viewportMode === 'tablet' ? 'active' : ''}`}
-                    title="Tablet view (768px)"
-                    aria-label="Tablet view (768px)"
-                    aria-pressed={viewportMode === 'tablet'}
-                  >
-                    <Tablet size={15} strokeWidth={1.75} />
-                  </button>
-                  <button
-                    onClick={() => setViewportMode('mobile')}
-                    className={`viewport-pill-btn ${viewportMode === 'mobile' ? 'active' : ''}`}
-                    title="Mobile view (375px)"
-                    aria-label="Mobile view (375px)"
-                    aria-pressed={viewportMode === 'mobile'}
-                  >
-                    <Smartphone size={15} strokeWidth={1.75} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
             {/* Indeterminate progress bar when generating */}
             {status === 'Generating' && (
               <div
                 role="progressbar"
                 aria-label="Generating"
-                style={{ height: '2px', width: '100%', background: 'rgba(255, 255, 255, 0.05)', position: 'relative', overflow: 'hidden', flexShrink: 0 }}
+                style={{ height: '2px', width: '100%', background: 'rgba(36, 60, 75, 0.05)', position: 'relative', overflow: 'hidden', flexShrink: 0 }}
               >
                 <div className="bh-indeterminate-bar" style={{
-                  height: '100%', width: '35%', background: '#38bdf8',
-                  boxShadow: '0 0 8px rgba(56, 189, 248, 0.6)'
+                  height: '100%', width: '35%', background: 'var(--color-info)',
+                  boxShadow: 'none'
                 }} />
               </div>
             )}
 
             {/* Canvas Area with Responsive Viewport Chassis */}
+            {hasGeneratedApp && status === 'Generating' && <BuildProgress files={Object.keys(files)} progress={fileProgress} building compact />}
             <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
-              {/* Skeleton overlay — visible until the first real app file lands */}
-              {isWaitingForFirstApp && (
-                <div className="preview-skeleton-overlay" aria-hidden="true">
-                  {/* Simulated nav bar */}
-                  <div className="pso-nav">
-                    <div className="skeleton-block" style={{ width: 72, height: 9, borderRadius: 5 }} />
-                    <div style={{ display: 'flex', gap: 10, marginLeft: 24 }}>
-                      <div className="skeleton-block" style={{ width: 44, height: 9, borderRadius: 5 }} />
-                      <div className="skeleton-block" style={{ width: 44, height: 9, borderRadius: 5 }} />
-                      <div className="skeleton-block" style={{ width: 44, height: 9, borderRadius: 5 }} />
-                    </div>
-                    <div style={{ flex: 1 }} />
-                    <div className="skeleton-block" style={{ width: 60, height: 22, borderRadius: 6 }} />
-                  </div>
-
-                  {/* Simulated hero + content */}
-                  <div className="pso-body">
-                    <div className="skeleton-block" style={{ width: '58%', height: 13, borderRadius: 5, marginBottom: 10 }} />
-                    <div className="skeleton-block" style={{ width: '42%', height: 13, borderRadius: 5, marginBottom: 28 }} />
-                    <div className="skeleton-block" style={{ width: '72%', height: 9, borderRadius: 5, marginBottom: 8 }} />
-                    <div className="skeleton-block" style={{ width: '55%', height: 9, borderRadius: 5, marginBottom: 28 }} />
-                    <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-                      <div className="skeleton-block" style={{ flex: 1, height: 72, borderRadius: 8 }} />
-                      <div className="skeleton-block" style={{ flex: 1, height: 72, borderRadius: 8 }} />
-                      <div className="skeleton-block" style={{ flex: 1, height: 72, borderRadius: 8 }} />
-                    </div>
-                    <div className="skeleton-block" style={{ width: '65%', height: 9, borderRadius: 5, marginBottom: 8 }} />
-                    <div className="skeleton-block" style={{ width: '48%', height: 9, borderRadius: 5 }} />
-                  </div>
-
-                  {/* Status strip */}
-                  <div className="pso-status">
-                    <span className="status-dot generating" style={{ width: 6, height: 6 }} />
-                    <span>{status === 'Generating' ? 'Building your app…' : 'Connecting…'}</span>
-                  </div>
+              {/* Keep fresh, building and failed projects distinct without showing a fake app. */}
+              {isWaitingForFirstApp && previewLoadState !== 'error' && (
+                <div className={`studio-preview-empty${status === 'Error' ? ' has-error' : ''}`} role="status" aria-live="polite">
+                  <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
+                  <span className="studio-eyebrow-label">{status === 'Error' ? 'LET’S GET YOU BACK ON TRACK' : status === 'Stopped' ? 'BUILD PAUSED' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
+                  <h2>{status === 'Error' ? 'Your app hasn’t been built yet.' : status === 'Stopped' ? 'Continue when you’re ready.' : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : 'A place for your next idea.'}</h2>
+                  <p>{status === 'Error' ? 'The last request couldn’t finish. Open the conversation to retry or choose another model.' : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? 'Your agent is working on the first version. The preview will appear here as it’s built.' : status === 'Connecting' ? 'Your files are ready. We are loading the preview runtime now.' : 'Describe what you want to make in the chat. Build it together, then try it right here.'}</p>
+                  {(status === 'Generating' || status === 'Connecting')
+                    ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} /> Building your preview</div>
+                    : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />{status === 'Error' || status === 'Stopped' ? 'Open chat' : 'Describe your app'}<ArrowUpRight size={16} /></button>}
+                  {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} />}
+                </div>
+              )}
+              {previewLoadState === 'error' && (
+                <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
+                  <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
+                  <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
+                  <h2>We couldn’t open your latest preview.</h2>
+                  <p>{previewLoadError || previewIssue?.error || 'The build completed but the preview output could not be loaded.'}</p>
+                  <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
                 </div>
               )}
               {isReadOnlyProject && (
@@ -1437,11 +1404,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                   background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%)',
                   borderBottom: '1px solid rgba(56, 189, 248, 0.25)',
                   fontSize: '12px',
-                  color: '#e2e8f0',
+                  color: 'var(--text-primary)',
                   zIndex: 10
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Eye size={14} style={{ color: '#38bdf8' }} />
+                    <Eye size={14} style={{ color: 'var(--color-info)' }} />
                     <span><strong>Read-Only Preview</strong> — This project is owned by another account. Clone a copy to edit files and chat.</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1456,7 +1423,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                         fontSize: '12px',
                         fontWeight: 500,
                         background: '#0ea5e9',
-                        color: '#ffffff',
+                        color: 'var(--text-on-accent)',
                         border: 'none',
                         cursor: 'pointer'
                       }}
@@ -1467,35 +1434,50 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                   </div>
                 </div>
               )}
-              <div className={`viewport-frame-container ${viewportMode}`}>
-                <div className={`viewport-device-chassis ${viewportMode}`} style={{ height: '100%', overflow: 'hidden', background: '#090a0f' }}>
-                  <iframe
+              {isFullStackProject(files) && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Design preview</strong> · Use the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}{backend.ready && <button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button>}</div>}
+              <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && previewLoadState !== 'error'} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined}>
+                  {previewSessionReady ? <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
                     src={`/preview/${activeProjectId}/index.html`}
+                    sandbox={PREVIEW_SANDBOX}
                     onLoad={() => {
                       iframeRef.current?.contentWindow?.postMessage(
-                        { type: 'sync-files', files: filesRef.current },
-                        window.location.origin
+                        { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
+                        previewTargetOrigin
                       );
+                      markPreviewState('ready');
                     }}
-                    style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#090a0f' }}
+                    onError={() => {
+                      const message = 'Preview iframe failed to load. Refresh, then run Build app again.';
+                      setStatus('Error');
+                      setPreviewStatus(activeProjectId, 'Error');
+                      markPreviewState('error', message);
+                    }}
+                    style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'var(--bg-card)' }}
                     title="Application Preview"
-                    allow="fullscreen; clipboard-read; clipboard-write"
-                  />
-                </div>
-              </div>
+                  /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
+              </PreviewCanvas>
+              {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span>{previewIssue.error.slice(0, 180)}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask agent to fix</button></div>}
+
             </div>
           </div>
         )}
       </div>
+
+      <footer className="studio-workspace-footer">
+        <div className="studio-build-meta" aria-label="Build information">
+        <span><FolderCode size={12} />{Object.keys(files).length} files</span>
+        <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Terminal size={14} />Console</button><button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
+        </div>
+      </footer>
 
       {/* GitHub export modal */}
       {showGithubModal && (
         <div
           onMouseDown={(e) => { if (e.target === e.currentTarget) setShowGithubModal(false); }}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.75)',
+            position: 'fixed', inset: 0, background: 'var(--overlay)',
             backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
             justifyContent: 'center', zIndex: 100000, padding: '16px'
           }}
@@ -1521,7 +1503,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
             </h3>
 
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-              Create a new repository or push to an existing one.
+              New repositories are private. Existing repositories keep their default branch and newer commits are protected.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1536,8 +1518,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                 placeholder="brainhalf-app"
                 autoComplete="off"
                 style={{
-                  background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
-                  borderRadius: '6px', padding: '10px 12px', color: 'white',
+                  background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
+                  borderRadius: '6px', padding: '10px 12px', color: 'var(--text-primary)',
                   fontSize: '13px', outline: 'none', fontFamily: 'inherit', minHeight: '44px'
                 }}
               />
@@ -1555,33 +1537,25 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                 placeholder="ghp_..."
                 autoComplete="off"
                 style={{
-                  background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)',
-                  borderRadius: '6px', padding: '10px 12px', color: 'white',
+                  background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
+                  borderRadius: '6px', padding: '10px 12px', color: 'var(--text-primary)',
                   fontSize: '13px', outline: 'none', fontFamily: 'inherit', minHeight: '44px'
                 }}
               />
               <span style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                Needs the <code>repo</code> scope. The token is sent straight to GitHub and is not stored on our servers.
+                Use a fine-grained token with Contents read/write for the selected repository, or a classic token with repo scope. It is sent directly to GitHub and cleared when this dialog closes.
               </span>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer', minHeight: '32px' }}>
-                <input
-                  type="checkbox"
-                  checked={rememberToken}
-                  onChange={e => setRememberToken(e.target.checked)}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                />
-                Keep it for this browser tab only
-              </label>
+
             </div>
 
             {githubStatus.error && (
-              <div role="alert" style={{ padding: '10px', background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '12px', lineHeight: 1.5 }}>
+              <div role="alert" style={{ padding: '10px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-error)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '12px', lineHeight: 1.5 }}>
                 {githubStatus.error}
               </div>
             )}
 
             {githubStatus.success && (
-              <div role="status" style={{ padding: '10px', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '6px', fontSize: '12px', lineHeight: 1.5 }}>
+              <div role="status" style={{ padding: '10px', background: 'rgba(34, 197, 94, 0.1)', color: 'var(--color-success)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '6px', fontSize: '12px', lineHeight: 1.5 }}>
                 {githubStatus.success}
               </div>
             )}
@@ -1602,7 +1576,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
                 disabled={githubStatus.loading || !githubRepo.trim() || !githubToken.trim()}
                 style={{
                   padding: '10px 16px', minHeight: '44px', background: 'var(--brand-primary)',
-                  border: 'none', color: 'white', borderRadius: '6px',
+                  border: 'none', color: 'var(--text-on-accent)', borderRadius: '6px',
                   cursor: (githubStatus.loading || !githubRepo.trim() || !githubToken.trim()) ? 'not-allowed' : 'pointer',
                   opacity: (githubStatus.loading || !githubRepo.trim() || !githubToken.trim()) ? 0.6 : 1,
                   display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 500

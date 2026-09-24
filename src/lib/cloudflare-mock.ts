@@ -10,3 +10,6 @@ export const tracing = {
     });
   },
 };
+export class WorkerEntrypoint<Env = unknown> {
+  constructor(protected ctx: unknown, protected env: Env) {}
+}

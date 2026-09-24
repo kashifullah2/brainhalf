@@ -1,184 +1,108 @@
-import { Page, expect } from '@playwright/test';
+import { openAdvanced } from './advanced-controls';
+import { expect, type ConsoleMessage, type Page } from '@playwright/test';
+import { assertProjectIsolation, assertProjectView, readProjectFiles, type ProjectEvidence } from './project-evidence';
 
-/**
- * 12 Master Platform-Level Checks for BrainHalf IDE Shell.
- * Run on every task to ensure platform-level UI/UX stability.
- */
+export interface PlatformEvidence {
+  accountId: string;
+  projects: readonly [ProjectEvidence, ProjectEvidence];
+}
+
+export interface PlatformCheckResult {
+  checkName: string;
+  passed: boolean;
+  error?: string;
+}
+
 export async function runPlatformLevelChecks(
   page: Page,
   taskId: string,
-  expectedPromptPrefix?: string
-): Promise<{ checkName: string; passed: boolean; error?: string }[]> {
-  const results: { checkName: string; passed: boolean; error?: string }[] = [];
-
-  // Check 1: Status badge (Ready/Building/Error) always matches actual build state, never shows two contradictory statuses at once
-  try {
-    const statusBadges = await page.locator('[data-status], .status-indicator, header span:has-text("Ready"), header span:has-text("Building"), header span:has-text("Generating"), header span:has-text("Error")').allTextContents();
-    const joined = statusBadges.join(' ');
-    const hasReady = joined.includes('Ready');
-    const hasBuilding = joined.includes('Building') || joined.includes('Generating');
-    const hasError = joined.includes('Error');
-
-    // Should not simultaneously show conflicting states (e.g. Ready AND Building, or Ready AND Error)
-    const countActive = (hasReady ? 1 : 0) + (hasBuilding ? 1 : 0) + (hasError ? 1 : 0);
-    if (countActive > 1) {
-      throw new Error(`Contradictory status states detected simultaneously: "${joined}"`);
-    }
-    results.push({ checkName: 'Status badge consistency', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Status badge consistency', passed: false, error: e.message });
-  }
-
-  // Check 2 & 7: No stray layout artifacts / no duplicate headers at Desktop, Tablet, Mobile (1400px, 1000px, 700px, 400px)
-  const widths = [1400, 1000, 700, 400];
-  let responsiveError: string | null = null;
-  for (const w of widths) {
+  expectedPromptPrefix?: string,
+  evidence?: PlatformEvidence,
+): Promise<PlatformCheckResult[]> {
+  const results: PlatformCheckResult[] = [];
+  const errors: string[] = [];
+  const onConsole = (message: ConsoleMessage) => { if (message.type() === 'error') errors.push(message.text()); };
+  const onPageError = (error: Error) => errors.push(error.message);
+  const viewport = page.viewportSize();
+  page.on('console', onConsole);
+  page.on('pageerror', onPageError);
+  const check = async (checkName: string, assertion: () => Promise<void>) => {
     try {
-      await page.setViewportSize({ width: w, height: 800 });
-      // Check for duplicate platform headers
-      const headers = await page.locator('header, .app-header, banner, [role="banner"]').count();
-      if (headers > 2) {
-        responsiveError = `Detected duplicate headers (${headers}) at width ${w}px`;
-        break;
+      await assertion();
+      results.push({ checkName, passed: true });
+    } catch (error) {
+      results.push({ checkName, passed: false, error: `[${taskId}] ${error instanceof Error ? error.message : String(error)}` });
+    }
+  };
+
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await check('Workspace status is present and unambiguous', async () => {
+      await expect(page.getByLabel('Message to the app builder')).toBeVisible();
+      await expect(page.getByTestId('model-status-pill')).toHaveCount(1);
+      await expect(page.getByTestId('model-status-pill')).toHaveText(/^(Ready|Building|Generating|Stopped|Connecting|Error)$/);
+    });
+    await check('Responsive shell has no horizontal overflow', async () => {
+      for (const width of [1440, 768, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await expect(page.locator('.app-container')).toHaveCount(1);
+        await expect(page.locator('.app-container')).toBeVisible();
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
       }
-      // Check horizontal overflow on body
-      const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-      const clientWidth = await page.evaluate(() => document.documentElement.clientWidth);
-      if (scrollWidth > clientWidth + 10) {
-        responsiveError = `Horizontal layout overflow detected at width ${w}px: scrollWidth ${scrollWidth} > clientWidth ${clientWidth}`;
-        break;
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await check('Model picker exposes selectable models', async () => {
+      await openAdvanced(page);
+      const picker = page.getByRole('button', { name: 'Change AI model', exact: true });
+      await expect(picker).toBeVisible();
+      await picker.click();
+      try {
+        const options = page.getByRole('listbox', { name: 'Available models', exact: true }).getByRole('option');
+        await expect(options.first()).toBeVisible();
+        await expect(page.getByRole('option', { selected: true })).toHaveCount(1);
+      } finally {
+        await picker.click();
       }
-    } catch (e: any) {
-      responsiveError = `Responsive check failed at ${w}px: ${e.message}`;
-      break;
-    }
-  }
-  // Restore viewport to standard desktop
-  await page.setViewportSize({ width: 1280, height: 800 });
-  results.push({
-    checkName: 'Responsive layout and no duplicate headers',
-    passed: !responsiveError,
-    error: responsiveError || undefined
-  });
-
-  // Check 3: Model selector name never truncates mid-word and matches the model actually used
-  try {
-    const modelSelector = page.locator('select[aria-label*="Model"], select, button:has-text("Llama"), button:has-text("GPT")').first();
-    if (await modelSelector.isVisible()) {
-      const text = await modelSelector.textContent();
-      if (text && (text.endsWith('...') || text.includes('…') || text.includes('Llam ') || text.includes('GP '))) {
-        throw new Error(`Model selector truncated mid-word: "${text}"`);
-      }
-    }
-    results.push({ checkName: 'Model selector integrity', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Model selector integrity', passed: false, error: e.message });
-  }
-
-  // Check 4: Only one viewport toggle (Desktop/Tablet/Mobile) is visually active at a time
-  try {
-    const activeViewportButtons = page.locator('button[aria-pressed="true"], button.active:has-text("Desktop"), button.active:has-text("Tablet"), button.active:has-text("Mobile")');
-    const count = await activeViewportButtons.count();
-    if (count > 1) {
-      throw new Error(`Multiple viewport toggle buttons marked active simultaneously: count=${count}`);
-    }
-    results.push({ checkName: 'Viewport toggle mutual exclusion', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Viewport toggle mutual exclusion', passed: false, error: e.message });
-  }
-
-  // Check 5: Sidebar project name matches the actual first prompt, not a generic placeholder
-  try {
-    if (expectedPromptPrefix) {
-      const sidebarProjectTitle = await page.locator('h2, .project-title, [data-testid="project-name"]').first().textContent();
-      // Should not be generic placeholder once generation is complete
-      if (sidebarProjectTitle === 'New Project' || sidebarProjectTitle === 'Untitled') {
-        throw new Error(`Sidebar project name remained generic placeholder "${sidebarProjectTitle}"`);
-      }
-    }
-    results.push({ checkName: 'Sidebar project name sync', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Sidebar project name sync', passed: false, error: e.message });
-  }
-
-  // Check 6: Chat panel, Code panel, and Preview panel stay in sync
-  try {
-    const codeTab = page.locator('button[role="tab"]:has-text("Code")');
-    const previewTab = page.locator('button[role="tab"]:has-text("Preview")');
-    if (await codeTab.isVisible() && await previewTab.isVisible()) {
-      // Toggle between Code and Preview
-      await codeTab.click();
-      await page.waitForTimeout(200);
-      const editorVisible = await page.locator('.monaco-editor, textarea, [data-testid="code-editor"]').isVisible();
-      expect(editorVisible).toBe(true);
-
-      await previewTab.click();
-      await page.waitForTimeout(200);
-      const previewVisible = await page.locator('iframe, .preview-container').isVisible();
-      expect(previewVisible).toBe(true);
-    }
-    results.push({ checkName: 'Panels synchronization', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Panels synchronization', passed: false, error: e.message });
-  }
-
-  // Check 8: Auto-Fix correctly attributes errors to Frontend vs Backend
-  try {
-    const backendTab = page.locator('button[role="tab"]:has-text("Backend")');
-    const hasBackendTab = await backendTab.isVisible();
-    expect(hasBackendTab).toBe(true);
-    results.push({ checkName: 'Full-stack Backend tab presence', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Full-stack Backend tab presence', passed: false, error: e.message });
-  }
-
-  // Check 9: Deploy button produces working modal and live edge dispatch link
-  try {
-    const deployBtn = page.locator('button:has-text("Deploy")').first();
-    if (await deployBtn.isVisible()) {
-      await deployBtn.click();
-      await page.waitForTimeout(300);
-      const modalOrLink = await page.locator(':has-text("Deploy"), :has-text("https://brainhalf.com/p/"), :has-text("Workers for Platforms")').first().isVisible();
-      expect(modalOrLink).toBe(true);
-      // Close modal if open
-      const closeBtn = page.locator('button[aria-label*="Close"], button:has-text("✕"), button:has-text("Cancel")').first();
-      if (await closeBtn.isVisible()) {
-        await closeBtn.click();
-      } else {
+    });
+    await check('Manage and preview panels can be opened', async () => {
+      await page.getByRole('button', { name: 'Code', exact: true }).click();
+      await expect(page.getByRole('treeitem').first()).toBeVisible();
+      await page.getByRole('button', { name: 'Preview', exact: true }).last().click();
+      await expect(page.getByTitle('Application Preview')).toBeVisible();
+    });
+    await check('Publication management opens without publishing', async () => {
+      await page.getByRole('button', { name: 'Project actions', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Project console', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Project console', exact: true });
+      try {
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByRole('region', { name: 'Project publication' })).toBeVisible();
+        await expect(dialog.getByRole('button', { name: /Publish app|Publish changes|Up to date/ })).toBeVisible();
+      } finally {
         await page.keyboard.press('Escape');
       }
-    }
-    results.push({ checkName: 'Deploy action readiness', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Deploy action readiness', passed: false, error: e.message });
+      await expect(dialog).toHaveCount(0);
+    });
+    await check('Browser reload preserves actual files and history', async () => {
+      if (!evidence) throw new Error('Two project fixtures and a verified account are required; a URL alone is not persistence evidence.');
+      const current = evidence.projects.find(project => project.id === new URL(page.url()).searchParams.get('project'));
+      if (!current) throw new Error('Current project is not one of the supplied fixtures');
+      const other = evidence.projects.find(project => project.id !== current.id)!;
+      if (expectedPromptPrefix) expect(current.prompt.startsWith(expectedPromptPrefix)).toBe(true);
+      await expect.poll(() => readProjectFiles(page, evidence.accountId, current.id)).toEqual(current.files);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await assertProjectView(page, current, other);
+      await expect.poll(() => readProjectFiles(page, evidence.accountId, current.id)).toEqual(current.files);
+    });
+    await check('Project switching isolates files and history', async () => {
+      if (!evidence) throw new Error('Two distinguishable project fixtures are required; a New Project button is not isolation evidence.');
+      await assertProjectIsolation(page, evidence.accountId, evidence.projects);
+    });
+  } finally {
+    page.off('console', onConsole);
+    page.off('pageerror', onPageError);
+    if (viewport) await page.setViewportSize(viewport);
   }
-
-  // Check 10: Refreshing the browser does not lose project state
-  try {
-    const beforeUrl = page.url();
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(500);
-    expect(page.url()).toBe(beforeUrl);
-    results.push({ checkName: 'Browser reload state persistence', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Browser reload state persistence', passed: false, error: e.message });
-  }
-
-  // Check 11: Multi-project switching isolation
-  try {
-    const newProjectBtn = page.locator('button:has-text("New Project"), button[title*="New Project"], button[aria-label*="New Project"]').first();
-    if (await newProjectBtn.isVisible()) {
-      // Button exists and is functional
-      expect(true).toBe(true);
-    }
-    results.push({ checkName: 'Project isolation readiness', passed: true });
-  } catch (e: any) {
-    results.push({ checkName: 'Project isolation readiness', passed: false, error: e.message });
-  }
-
-  // Check 12: Console errors check
-  results.push({ checkName: 'Console cleanliness check', passed: true });
-
+  results.push({ checkName: 'No browser errors during platform checks', passed: errors.length === 0, ...(errors.length ? { error: errors.join('\n') } : {}) });
   return results;
 }

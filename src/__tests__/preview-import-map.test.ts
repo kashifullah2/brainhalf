@@ -28,10 +28,17 @@ describe('7.3 buildDynamicImportMap', () => {
       { path: '/package.json', content: JSON.stringify({ dependencies: { zustand: '^4.4.0' } }) },
       { path: '/src/App.jsx', content: "import { create } from 'zustand';" },
     ]));
-    // The caret is stripped; the resolved URL carries the pinned version. The
-    // ?external suffix is only added to packages whose name implies a React
-    // peer dependency, and zustand is not one of them.
-    expect(map.imports['zustand']).toBe('https://esm.sh/zustand@4.4.0');
+    expect(map.imports['zustand']).toBe('https://esm.sh/zustand@4.4.0?external=react,react-dom');
+  });
+
+  it('pins default packages and package subpaths from either stored manifest path', () => {
+    const map = JSON.parse(buildDynamicImportMap([
+      { path: 'package.json', content: JSON.stringify({ dependencies: { '@scope/library': '^2.1.0', 'react-icons': '^5.3.0', clsx: '^2.1.1' } }) },
+      { path: '/src/App.tsx', content: "import { FaHome } from 'react-icons/fa'; import { value } from '@scope/library/helpers'; import clsx from 'clsx';" },
+    ]));
+    expect(map.imports['react-icons/fa']).toBe('https://esm.sh/react-icons@5.3.0/fa?external=react,react-dom');
+    expect(map.imports['@scope/library/helpers']).toBe('https://esm.sh/@scope/library@2.1.0/helpers?external=react,react-dom');
+    expect(map.imports.clsx).toBe('https://esm.sh/clsx@2.1.1?external=react,react-dom');
   });
 
   it('never emits the characters that would terminate the enclosing script tag', () => {

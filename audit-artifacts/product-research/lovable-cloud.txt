@@ -1,0 +1,260 @@
+Documentation Index
+
+Fetch the complete documentation index at: /llms.txt
+
+Use this file to discover all available pages before exploring further.
+
+Skip to main content
+Lovable Documentation home page
+Search...
+⌘K
+Ask Assistant
+⌘I
+Support
+Blog
+Start building for free
+Documentation
+API Reference
+Changelog
+Getting started
+Welcome to Lovable
+Create an account
+Quick start
+Dashboard overview
+Enterprise
+Lovable platforms
+Use Lovable from other tools
+Build
+Projects
+Chats
+The agent
+Context & knowledge
+File generation
+Design
+Backend (Cloud)
+Database
+Users & authentication
+Storage
+Secrets
+Jobs
+Edge functions
+Logs
+Usage
+Advanced settings
+AI for your app
+Test your app
+Secure your app
+npm packages
+Build secrets
+ENT
+Managed registry (Beta)
+ENT
+Connect
+Connectors
+Connector catalog
+Connect any API
+Git sync
+Collaborate
+Collaboration
+Share a project
+Project comments
+Project access
+Deploy & host
+Hosting
+Publish
+Custom domains
+Transfer a domain
+Branded app URLs
+Ownership & portability
+Grow & optimize
+SEO and AEO
+Project analytics
+Payments
+Emails
+Agent integrations
+Project monitoring
+Workspace & account
+Workspace
+Access
+Security
+Your account
+Plans & billing
+Subscription plans
+Credits and usage
+Guides & reference
+Guides
+FAQ
+Glossary
+Videos and courses
+Support policy
+On this page
+Why use the built-in backend
+What’s included
+Enabling the built-in backend (Cloud)
+Cloud permissions
+Tool settings and defaults
+Region selection
+Workspace-level default hosting region
+Tutorial: build a CRM by prompting
+Step 1: Organize the data (Database)
+Step 2: Make it secure (Users & Auth)
+Step 3: Handle files (Storage)
+Step 4: Automate workflows (Edge Functions and Jobs)
+Step 5: Connect to other tools (Secrets)
+Step 6: Add AI superpowers (AI)
+Cloud and AI gateway usage costs
+FAQ
+Backend (Cloud)
+Lovable Cloud
+Copy page
+
+Lovable hosts your app and includes a built-in backend (Cloud) with database, authentication, storage, edge functions, and AI, no infrastructure setup required.
+
+Lovable hosts your app and includes a built-in backend (Cloud) with a database, storage, authentication, realtime, and functions. Describe what you want directly in Lovable, and Lovable generates both the frontend and backend, ready to run. Lovable manages the hosting and backend infrastructure for you. App hosting scales with traffic automatically, and you adjust your database’s instance size and storage in Advanced settings as your app grows.
+The built-in backend utilizes Supabase’s open-source foundation, which means you get a production-ready environment from day one, without needing to set up Supabase separately: a database, real-time updates, user authentication, and storage, with none of the manual setup steps. Across the docs, this is called the built-in backend (Cloud), as opposed to an external backend you connect yourself, such as Supabase.
+​
+Why use the built-in backend
+Three things make it the default choice for most projects:
+Scales as you grow: App hosting handles traffic changes automatically, and you can increase your database’s instance size and storage when your app needs more.
+Secure by default: Enterprise-grade authentication, fine-grained access controls, and compliance best practices protect your app and data.
+Cost-effective: Manage multiple projects in one workspace with credit-based usage. Lovable includes monthly Cloud grants on Free, Pro, and Business plans. For details, see Credits and usage.
+​
+What’s included
+You’ll find the Cloud tools inside any Lovable project by opening the More tab in the project toolbar and selecting Cloud.
+Each area has its own page with full details, in the order they appear in the Cloud view:
+Area	What you can do
+Emails	Send branded emails from your own domain
+Database	View tables, edit records, review security policies, and restore backups
+Users	Manage app users and configure sign-in methods
+Storage	Create buckets and manage the files your app stores
+Secrets	Store API keys and other sensitive values securely
+Jobs	Review scheduled background tasks and their run history
+Edge functions	Run serverless backend code and monitor how it performs
+SQL editor	Run SQL queries and commands against your database
+Logs	Debug errors and track backend activity
+Usage	See what drives the project’s run credit usage
+Advanced settings	Check resource health, resize the instance, increase database storage, export data, and pause or remove Cloud
+Your app’s AI features have their own AI section in the More menu, outside Cloud.
+​
+Enabling the built-in backend (Cloud)
+By default, the built-in backend (Cloud) is enabled for your workspace. When a feature you ask for requires backend functionality (for example, authentication or file storage), Lovable enables Cloud automatically or asks for your approval in the project chat first, depending on the Enable Cloud permission described below.
+Lovable can’t turn Cloud on from inside a draft. Ask in the main version of your project instead, then continue in the draft once Cloud is on.
+On some Enterprise workspaces, the built-in backend (Cloud) is disabled at the workspace level, and projects show “Lovable Cloud has been disabled by your workspace admin”. This setting is not self-serve; contact your Lovable account team to change it.
+​
+Cloud permissions
+Each Cloud tool has three permission options:
+Always allow: Lovable automatically performs the action, without asking for review or approval. This is the default for Cloud.
+Ask each time: Lovable asks for your approval whenever the action is needed.
+Never allow: Lovable blocks the action, informs you that Cloud access is required, and instructs you to enable Cloud.
+​
+Tool settings and defaults
+Setting	Description	Default behavior
+Enable Cloud	Create and connect a Cloud project to add backend features (database, auth, storage). Required to use Cloud tools.	Always allow
+Where project data is stored	Select the default region (Closest to me, Americas, Europe, or Asia Pacific) where new projects’ data is stored. If Cloud is auto-enabled using Always allow, this region is used automatically.	Region closest to your location
+Read database	Allow Lovable to read your database.	Always allow
+Read analytics	Query logs to investigate issues and behavior.	Always allow
+Run security checks	Run automated security checks on your database. Not a full audit.	Always allow
+Modify database	Make schema and policy changes via SQL migrations. Updates generated types.	Always allow
+Change data	Add, update, or delete data in your database tables.	Always allow
+Read project info	Read project configuration and environment details.	Always allow
+Configure auth	Allow Lovable to configure authentication settings (for example, signup policies).	Always allow
+Read backend logs	Read logs from backend services.	Always allow
+You can change your Cloud tool preferences anytime: open Connectors, select Cloud, and adjust the settings under Manage my agent’s permissions. You can also change them from Settings → Your account → Preferences → Agent permissions, which lists every connector’s permissions in one place.
+​
+Region selection
+Projects can be hosted in three regions:
+Americas
+Europe
+Asia Pacific
+You can set a preferred default region for new Cloud projects under Where project data is stored in the same permissions view. If no preferred region is set, Lovable automatically preselects the region closest to your current location, and you can change it before confirming.
+Choosing a region closer to your users results in:
+Lower latency
+Faster database responses
+Region-based data hosting
+Better overall backend performance
+After Cloud is enabled, you cannot change the selected region, and you cannot move existing projects between regions.
+To see which region an existing project is hosted in, go to More → Cloud → Overview → Advanced settings and check the Database location row.
+​
+Workspace-level default hosting region
+On Business and Enterprise workspaces, admins can set a required default region for every new project from Privacy & security (Settings → Security → Privacy & security → Default hosting region). When a default hosting region is set, workspace members cannot choose a different region when creating a project. The setting applies only to new projects. Existing projects keep the region they were created in.
+Country-specific regions (for example, Germany, Japan, or United States East) can be enabled for Enterprise workspaces on request, subject to available capacity in that region. Contact your Lovable account team to discuss your requirements.
+See Default hosting region for more information.
+​
+Tutorial: build a CRM by prompting
+This walkthrough builds a real app, a customer relationship manager (CRM), entirely by prompting. Each step introduces one backend capability and shows the kind of prompt that activates it.
+Build me a CRM tool to manage clients, track deals, handle invoices, and keep notes organized. Keep the design simple, modern, and business-friendly with a sidebar for navigation.
+
+​
+Step 1: Organize the data (Database)
+Tell Lovable what kind of information the tool should keep track of for you. Lovable will automatically create the tables for you, so you don’t need to touch databases yourself.
+I want a place to keep track of my clients with their name, email, phone number, and notes. I also need a way to track deals, including which client it's for, the value, the stage it's in, and when I expect it to close. And I need a section for invoices with the client it belongs to, the amount, the status, and the due date.
+
+​
+Step 2: Make it secure (Users & Auth)
+Add login so data is private and users can sign in easily.
+Add login to the app. Require login before accessing the CRM dashboard. Also, add a 'Sign in with Google' button so users can log in with their Google accounts.
+
+​
+Step 3: Handle files (Storage)
+You can let users upload and see files right inside the app. Lovable takes care of the storage and linking, so you just describe what files should go where.
+Add a contract upload field to each deal. Let clients have profile pictures and display them on the client detail page. Upload invoice PDFs and show a download link on the invoices table.
+
+​
+Step 4: Automate workflows (Edge Functions and Jobs)
+Set up automatic actions that save you time. Prompt one automation at a time so each one is set up and tested properly:
+When a new lead is added to the Clients table, send me an email notification.
+
+Analyze client meeting notes with Lovable AI and save a sentiment score in the Clients table.
+
+Schedule a daily job at 7 AM that emails me a summary of today's follow-ups.
+
+When a payment is marked 'paid' in Stripe, automatically update the related invoice's status to 'Paid'.
+
+Sending emails from your app requires an email domain you own. See Custom emails for setup.
+​
+Step 5: Connect to other tools (Secrets)
+Services like Stripe or Resend give you private API keys. Lovable prompts you to add them securely whenever they’re needed, and only your app can use them. Tools that sign in with an account instead of a key, such as Google services, connect through Connectors.
+Connect Stripe so clients can pay invoices online. Ask me for any API keys you need.
+
+​
+Step 6: Add AI superpowers (AI)
+Make the tool act like your assistant.
+Summarize each client's meeting notes and save them to their profile. Suggest next steps for every open deal. Generate personalized email drafts for following up with leads. Classify client messages into categories: sales, support, or billing.
+
+​
+Cloud and AI gateway usage costs
+Lovable uses one credit balance for building your app, hosting it and running its built-in backend (Cloud), and AI features in deployed apps. Cloud and AI gateway usage is measured as part of Run credits.
+See Project usage for the per-project usage breakdown and monthly grants, and Credits and usage for how credits work across your workspace.
+​
+FAQ
+
+I'm currently using the Supabase integration. What does this change mean for me?
+
+Can I change my mind after adding Cloud to my project?
+
+Can I remix Cloud projects?
+
+Can I migrate my project from Supabase to Cloud?
+
+Can I migrate my project from Cloud to my own Supabase?
+
+Can I set a default region for all new projects?
+
+How is the region selected when I enable Cloud?
+
+Can I change the region after enabling Cloud for a project?
+
+Was this page helpful?
+
+Yes
+No
+Figma
+Database
+x
+github
+linkedin
+youtube
+discord
+reddit
+Assistant
+Responses are generated using AI and may contain mistakes.

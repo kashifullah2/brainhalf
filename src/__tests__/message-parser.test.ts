@@ -65,6 +65,11 @@ function greet() {
   });
 
   describe('applyEditsToFile', () => {
+    it('preserves replacement metacharacters literally in generated code', () => {
+      const replacement = 'const value = "$& $$ $` $\'";';
+      expect(applyEditsToFile('before\nold\nafter', [{ search: 'old', replace: replacement }])).toBe(`before\n${replacement}\nafter`);
+      expect(applyEditsToFile('before\r\nold\r\nvalue\r\nafter', [{ search: 'old\nvalue', replace: replacement }])).toBe(`before\n${replacement}\nafter`);
+    });
     it('applies exact search and replace correctly', () => {
       const original = `import React from 'react';\n\nexport default function App() {\n  return <div>Old</div>;\n}`;
       const edits = [
@@ -125,6 +130,22 @@ function greet() {
   });
 
   describe('parseMessageSegments', () => {
+    it('shows entrypoint filenames without relabeling them as the application component', () => {
+      const { segments } = parseMessageSegments('<file path="src/main.jsx">createRoot(root).render(<App />);</FILE>', true);
+      expect(segments[0]).toMatchObject({ type: 'file', path: 'src/main.jsx', content: 'createRoot(root).render(<App />);' });
+    });
+
+    it('keeps JSON code fences out of stylesheet files', () => {
+      const { fileMap } = parseMessageSegments('```json\n{"dependencies":{"react":"^19.0.0"}}\n```', true);
+      expect(fileMap['package.json']).toContain('dependencies');
+      expect(fileMap['src/styles.css']).toBeUndefined();
+    });
+
+    it('can exclude unfinished edit pairs from server-side application', () => {
+      expect(parseEditPairs('<search>remove me</search>', false)).toEqual([]);
+      expect(parseEditPairs('<search>old</search><replace>new', false)).toEqual([]);
+      expect(parseEditPairs('<search>old</search><replace>new</replace>', false)).toEqual([{ search: 'old', replace: 'new' }]);
+    });
     it('parses <file> tags and populates fileMap', () => {
       const msg = `Here is the main component:\n<file path="src/App.jsx">\nexport default function App() { return <h1>Hello</h1>; }\n</file>\nDone!`;
       const { segments, fileMap } = parseMessageSegments(msg, true);

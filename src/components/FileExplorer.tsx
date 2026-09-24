@@ -7,34 +7,33 @@ interface FileExplorerProps {
   onSelectFile: (path: string) => void;
   headerTitle?: string;
   filter?: (path: string) => boolean;
-  onAddBackend?: () => void;
 }
 
 const isServerFile = (path: string) =>
   path.startsWith('/server/') || path.startsWith('server/') || path.includes('.env') || path.includes('db.js');
 
-const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelectFile, headerTitle, filter, onAddBackend }) => {
+const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelectFile, headerTitle, filter }) => {
   const getFileIcon = (path: string) => {
     if (path.includes('.env')) {
-      return <Key size={16} strokeWidth={1.75} color="#10b981" />;
+      return <Key size={16} strokeWidth={1.75} color="var(--color-success)" />;
     }
     if (path.includes('db.js') || path.includes('database')) {
-      return <Database size={16} strokeWidth={1.75} color="#f59e0b" />;
+      return <Database size={16} strokeWidth={1.75} color="var(--color-warning)" />;
     }
     if (isServerFile(path)) {
-      return <Server size={16} strokeWidth={1.75} color="#a855f7" />;
+      return <Server size={16} strokeWidth={1.75} color="var(--color-code-violet)" />;
     }
     if (path.endsWith('.jsx') || path.endsWith('.tsx')) {
-      return <FileCode size={16} strokeWidth={1.75} color="#38bdf8" />;
+      return <FileCode size={16} strokeWidth={1.75} color="var(--color-info)" />;
     }
     if (path.endsWith('.js') || path.endsWith('.ts')) {
-      return <FileCode size={16} strokeWidth={1.75} color="#60a5fa" />;
+      return <FileCode size={16} strokeWidth={1.75} color="var(--color-info)" />;
     }
     if (path.endsWith('.css')) {
       return <Palette size={16} strokeWidth={1.75} color="var(--accent-light)" />;
     }
     if (path.endsWith('.json')) {
-      return <FileJson size={16} strokeWidth={1.75} color="#facc15" />;
+      return <FileJson size={16} strokeWidth={1.75} color="var(--color-warning)" />;
     }
     return <FileText size={16} strokeWidth={1.75} color="var(--text-muted)" />;
   };
@@ -69,7 +68,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelect
           {fileName}
         </span>
         {isServer && (
-          <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#c084fc', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <span style={{ marginLeft: 'auto', fontSize: '9px', color: 'var(--color-code-violet)', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             API
           </span>
         )}
@@ -79,7 +78,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelect
 
   return (
     <div className="file-explorer-container" role="tree" aria-label="Project files">
-      <div style={{
+      <div className="studio-files-heading" style={{
         padding: '12px 16px',
         borderBottom: '1px solid var(--border-subtle)',
         fontSize: '11px',
@@ -90,7 +89,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelect
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: 'rgba(255, 255, 255, 0.015)'
+        background: 'rgba(36, 60, 75, 0.015)'
       }}>
         <span>{headerTitle || 'Project files'}</span>
         <span style={{ fontSize: '10px', color: 'var(--accent-light)', background: 'rgba(168, 85, 247, 0.1)', padding: '1px 6px', borderRadius: '4px' }}>
@@ -107,9 +106,9 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelect
             </div>
             {clientFiles.map(renderFileItem)}
 
-            <div style={{ padding: '12px 8px 4px', fontSize: '10px', fontWeight: 600, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '12px 8px 4px', fontSize: '10px', fontWeight: 600, color: 'var(--color-code-violet)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Server size={11} strokeWidth={2} /> Server (Express)
+                <Server size={11} strokeWidth={2} /> Backend
               </span>
               <span style={{ fontSize: '9px', opacity: 0.7 }}>{serverFiles.length}</span>
             </div>
@@ -118,33 +117,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ files, activeFile, onSelect
         ) : (
           <>
             {clientFiles.map(renderFileItem)}
-            {onAddBackend && (
-              <div style={{ marginTop: '16px', padding: '0 4px' }}>
-                <button
-                  type="button"
-                  onClick={onAddBackend}
-                  style={{
-                    width: '100%',
-                    padding: '6px 8px',
-                    fontSize: '11px',
-                    color: '#c084fc',
-                    background: 'rgba(168, 85, 247, 0.08)',
-                    border: '1px dashed rgba(168, 85, 247, 0.3)',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                  className="hover-bright"
-                  title="Scaffold an Express REST backend for this project"
-                >
-                  <Server size={12} strokeWidth={2} /> + Add Backend API
-                </button>
-              </div>
-            )}
+
           </>
         )}
       </div>

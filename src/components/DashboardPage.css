@@ -1,0 +1,27 @@
+.dashboard-page { min-height: 100dvh; }
+.dashboard-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 76px; max-width: 1280px; margin: 0 auto; padding: 0 40px; border-bottom: 1px solid var(--border-subtle); }
+.dashboard-header-actions { display: flex; align-items: center; gap: 12px; }
+.dashboard-user-dropdown-info { border-bottom: 1px solid var(--studio-line); margin-bottom: 4px; }
+.dashboard-account-usage { margin: 6px 0 2px; max-width: 300px; color: var(--studio-muted); font-size: 11px; line-height: 1.45; text-align: left; }
+.dashboard-account-usage-error { color: var(--status-error, #be3348); }
+.dashboard-main { max-width: 1120px; margin: 0 auto; padding: 38px 0 80px; }
+.dashboard-back { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0; border: 0; background: transparent; color: var(--studio-muted); font-size: 13px; }
+.dashboard-back:hover { color: var(--studio-blue); }
+.dashboard-welcome { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; padding: 45px 0 38px; border-bottom: 1px solid var(--studio-line); }
+.dashboard-welcome h1 { margin: 0; font-family: var(--font-brand); font-size: clamp(42px, 6vw, 64px); font-weight: 400; line-height: 1; letter-spacing: -2.6px; }
+.dashboard-welcome p:last-child { margin: 15px 0 0; color: var(--studio-muted); font-size: 15px; }
+.dashboard-new-project, .dashboard-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 46px; padding: 11px 18px; border: 0; border-radius: 10px; background: var(--brand-solid); color: var(--brand-on-solid); font-size: 13px; font-weight: 600; }
+.dashboard-new-project:hover, .dashboard-empty button:hover { background: var(--brand-solid-hover); }
+.dashboard-page .recent-projects { margin-top: 38px; padding-top: 0; }
+.dashboard-page .recent-projects-heading h2 { font-size: 25px; }
+.dashboard-empty { display: flex; flex-direction: column; align-items: center; margin-top: 38px; padding: 72px 24px; border: 1px dashed var(--control-border); border-radius: 16px; text-align: center; }
+.dashboard-empty > span { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: var(--studio-wash); color: var(--studio-blue); }
+.dashboard-empty h2 { margin: 20px 0 8px; font-size: 22px; }
+.dashboard-empty p { margin: 0 0 22px; color: var(--studio-muted); }
+.dashboard-rename { width: min(400px, calc(100vw - 32px)); }
+.dashboard-rename h2 { margin: 0 0 18px; font: 600 18px var(--font-sans); }
+.dashboard-rename label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; }
+.dashboard-rename input { width: 100%; margin-bottom: 18px; padding: 10px 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--studio-white); color: var(--studio-ink); font-size: 16px; }
+.dashboard-rename > div { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 1200px) { .dashboard-main { margin-inline: 40px; } }
+@media (max-width: 640px) { .dashboard-header { min-height: 68px; padding-inline: 20px; } .dashboard-main { margin-inline: 20px; padding-top: 24px; } .dashboard-welcome { align-items: stretch; flex-direction: column; padding: 32px 0 28px; } .dashboard-new-project { width: 100%; } .dashboard-page .recent-projects { margin-top: 28px; } .dashboard-account-usage { max-width: 220px; font-size: 10px; } }

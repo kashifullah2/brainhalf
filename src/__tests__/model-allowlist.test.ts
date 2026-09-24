@@ -19,6 +19,10 @@ import { handleModelTest } from '../lib/model-tester';
 const FRONTEND_CATALOG = CLIENT_SELECTABLE_MODELS.map((m) => m.name);
 
 describe('P2 Model allowlist — exact match, no substring dispatch', () => {
+  it('rejects a model whose provider differs from the requested provider', () => {
+    expect(resolveModel('claude-sonnet-6', 'cloudflare')).toBeNull();
+    expect(resolveModel('@cf/qwen/qwen3.8-27b', 'aws')).toBeNull();
+  });
   it('covers every model the frontend catalog offers', () => {
     for (const id of FRONTEND_CATALOG) {
       expect(resolveModel(id), `frontend model ${id} must be allowlisted`).not.toBeNull();
@@ -26,10 +30,10 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
   });
 
   it('resolves a cloudflare model to its binding id and ceiling', () => {
-    const m = resolveModel('@cf/openai/gpt-oss-20b', 'cloudflare');
+    const m = resolveModel('@cf/openai/gpt-oss-120b', 'cloudflare');
     expect(m).not.toBeNull();
     expect(m!.provider).toBe('cloudflare');
-    expect(m!.id).toBe('@cf/openai/gpt-oss-20b');
+    expect(m!.id).toBe('@cf/openai/gpt-oss-120b');
     expect(m!.maxTokens).toBeGreaterThan(0);
   });
 
@@ -39,24 +43,26 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
     expect(m!.provider).toBe('atria');
     expect(m!.id).toBe('Atria-Dawn-Preview');
     expect(m!.maxTokens).toBe(64000);
-    // Case-insensitive / alternate entry also resolves
-    const mLower = resolveModel('atria-dawn-preview');
-    expect(mLower).not.toBeNull();
-    expect(mLower!.id).toBe('Atria-Dawn-Preview');
   });
 
-  it('disambiguates an anthropic-family model by the provider hint', () => {
-    expect(resolveModel('claude-sonnet-4.6', 'anthropic')?.id).toBe('claude-sonnet-4-6');
-    expect(resolveModel('claude-sonnet-4.6', 'aws')?.id).toBe('us.anthropic.claude-sonnet-4-6');
-    // Without a hint the first declared match still resolves.
-    expect(resolveModel('claude-sonnet-4.6')).not.toBeNull();
+  it('offers GLM 5.3 Flash under its exact Cloudflare identity', () => {
+    const id = '@cf/zai-org/glm-5.3-flash';
+    expect(FRONTEND_CATALOG).toContain(id);
+    expect(resolveModel(id, 'cloudflare')).toMatchObject({ id, provider: 'cloudflare', maxTokens: 8192 });
+    expect(resolveModel(id, 'aws')).toBeNull();
+    expect(resolveModel('@cf/zai-org/glm-5.3')).toBeNull();
+  });
+
+  it('resolves claude-sonnet-6 to the configured AWS Bedrock model', () => {
+    expect(resolveModel('claude-sonnet-6', 'aws')?.id).toBe('us.anthropic.claude-sonnet-4-6');
+    expect(resolveModel('claude-sonnet-6')).not.toBeNull();
   });
 
   it('rejects unknown, prefix-extended and suffix-extended ids', () => {
-    expect(resolveModel('@cf/meta/llama-3.3-70b-instruct-fp8-fast.evil.example')).toBeNull();
-    expect(resolveModel('evil.example/@cf/meta/llama-3.3-70b-instruct-fp8-fast')).toBeNull();
+    expect(resolveModel('@cf/openai/gpt-oss-120b.evil.example')).toBeNull();
+    expect(resolveModel('evil.example/@cf/openai/gpt-oss-120b')).toBeNull();
     expect(resolveModel('@cf/anything-not-listed')).toBeNull();
-    expect(resolveModel('claude-sonnet-4.6-evil')).toBeNull();
+    expect(resolveModel('claude-sonnet-6-evil')).toBeNull();
     expect(resolveModel('not-a-model')).toBeNull();
     expect(resolveModel('')).toBeNull();
     expect(resolveModel(null)).toBeNull();
@@ -84,18 +90,13 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
     }
   });
 
-  it('keeps the image-synthesis and alias models out of the picker', () => {
+  it('offers Cloudflare DeepSeek V4 Pro and rejects the removed Dahl MiniMax model', () => {
     const offered = new Set(FRONTEND_CATALOG);
-    expect(offered.has('@cf/black-forest-labs/flux-1-schnell')).toBe(false);
-    // An alias would show the same model twice under two names.
-    expect(offered.has('minimax')).toBe(false);
-    expect(offered.has('claude-sonnet')).toBe(false);
-    expect(offered.has('atria-dawn-preview')).toBe(false);
-    expect(offered.has('us.moonshot.kimi-k3-v1:0')).toBe(false);
-    expect(offered.has('us.moonshotai.kimi-k3')).toBe(false);
-    expect(offered.has('moonshotai.kimi-k3')).toBe(false);
-    expect(offered.has('global.moonshotai.kimi-k3')).toBe(false);
-    expect(offered.has('Kimi-K3')).toBe(false);
+    expect(offered.has('claude-sonnet-4.6')).toBe(false);
+    expect(offered.has('@cf/deepseek-ai/deepseek-v4-pro-0813')).toBe(true);
+    expect(resolveModel('@cf/deepseek-ai/deepseek-v4-pro-0813', 'cloudflare')?.id).toBe('@cf/deepseek-ai/deepseek-v4-pro-0813');
+    expect(offered.has('MiniMaxAI/MiniMax-M2.7')).toBe(false);
+    expect(resolveModel('MiniMaxAI/MiniMax-M2.7')).toBeNull();
   });
 
   it('resolves kimi-k3 to the official AWS Bedrock cross-region model ID', () => {
@@ -107,19 +108,25 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
 });
 
 describe('P2 Token limits — server-side cap', () => {
+  it('returns whole positive token budgets and caps defaults at the global ceiling', () => {
+    const model = resolveModel('claude-sonnet-6', 'aws')!;
+    expect(capTokenLimit(42.9, model)).toBe(42);
+    expect(capTokenLimit(0.1, model)).toBe(1);
+    expect(capTokenLimit(undefined, { ...model, maxTokens: MAX_OUTPUT_TOKENS * 2 })).toBe(MAX_OUTPUT_TOKENS);
+  });
   it('clamps an oversized client request to the server ceiling', () => {
-    const m = resolveModel('@cf/openai/gpt-oss-20b', 'cloudflare')!;
+    const m = resolveModel('@cf/openai/gpt-oss-120b', 'cloudflare')!;
     expect(capTokenLimit(1_000_000, m)).toBe(MAX_OUTPUT_TOKENS);
     expect(capTokenLimit(Infinity, m)).toBe(MAX_OUTPUT_TOKENS);
   });
 
   it('honours a smaller client request and never the model ceiling', () => {
-    const m = resolveModel('@cf/openai/gpt-oss-20b', 'cloudflare')!;
+    const m = resolveModel('@cf/openai/gpt-oss-120b', 'cloudflare')!;
     expect(capTokenLimit(512, m)).toBe(512);
   });
 
   it('falls back to the model ceiling when the client sends nothing usable', () => {
-    const m = resolveModel('claude-sonnet-4.6', 'anthropic')!;
+    const m = resolveModel('claude-sonnet-6', 'aws')!;
     expect(capTokenLimit(undefined, m)).toBe(m.maxTokens);
     expect(capTokenLimit(null, m)).toBe(m.maxTokens);
     expect(capTokenLimit(0, m)).toBe(m.maxTokens);
@@ -177,7 +184,7 @@ describe('P2 /api/test/* endpoint hardening', () => {
   it('reports a model-side failure with 502, not a masked 200', async () => {
     // A binding that yields no content stands in for a failed/empty model run.
     const res = await handleModelTest(
-      new Request('https://brainhalf.com/api/test/simple?model=@cf/openai/gpt-oss-20b'),
+      new Request('https://brainhalf.com/api/test/simple?model=@cf/openai/gpt-oss-120b'),
       { AI: { run: async () => '' } },
       'simple'
     );

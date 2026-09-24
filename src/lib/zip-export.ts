@@ -1,11 +1,20 @@
 import JSZip from 'jszip';
+import { prepareProjectExport } from './project-export';
 import { basicReactTemplate } from './templates';
 import { normalizePath, isSafeFilePath } from './utils';
+import { relativeProjectImport, selectAppEntry } from './preview-entry';
 
 export async function generateProjectZipBlob(files: Record<string, string>, projectName: string = 'brainhalf-project') {
   const zip = new JSZip();
-
-  const isFullStack = Object.keys(files).some(p => p.startsWith('/server/') || p.startsWith('server/') || p.includes('.env'));
+  files = prepareProjectExport(files).files;
+  files = Object.fromEntries(Object.entries(files)
+    .filter(([path, content]) => isSafeFilePath(path) && typeof content === 'string')
+    .map(([path, content]) => [normalizePath(path), content]));
+  const isFullStack = Object.keys(files).some(path => /^\/server(?:\/|\.(?:js|ts|mjs|cjs)$)/.test(path));
+  const appEntry = selectAppEntry(files);
+  const existingMain = Object.keys(files).find(path => /^\/(?:src\/)?(?:main|index)\.[jt]sx?$/.test(path));
+  const mainEntry = existingMain || (appEntry ? '/src/main.jsx' : null);
+  const isReactProject = Boolean(appEntry || (existingMain && (/\.[jt]sx$/.test(existingMain) || /\bfrom\s*['"]react(?:-dom)?(?:\/[^'"]*)?['"]/.test(files[existingMain]))));
 
   // 1. Add base template files if not present in files
   if (!files['/package.json'] && !files['package.json']) {
@@ -36,11 +45,19 @@ export async function generateProjectZipBlob(files: Record<string, string>, proj
         }
       };
       zip.file('package.json', JSON.stringify(fullStackPackageJson, null, 2));
-    } else {
+    } else if (isReactProject) {
       zip.file('package.json', basicReactTemplate['package.json'].file.contents.trim());
+    } else {
+      zip.file('package.json', JSON.stringify({
+        name: projectName.toLowerCase().replace(/[^a-z0-9_-]/g, '-') || 'brainhalf-project',
+        private: true,
+        type: 'module',
+        scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' },
+        devDependencies: { vite: '^5.1.4' },
+      }, null, 2));
     }
   }
-  if (!files['/vite.config.js'] && !files['vite.config.js']) {
+  if (isReactProject && !Object.keys(files).some(path => /^\/vite\.config\.(?:js|ts|mjs|mts|cjs|cts)$/.test(path))) {
     const viteConfig = isFullStack 
       ? `import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -60,11 +77,18 @@ export default defineConfig({
       : basicReactTemplate['vite.config.js'].file.contents.trim();
     zip.file('vite.config.js', viteConfig);
   }
-  if (!files['/index.html'] && !files['index.html']) {
-    zip.file('index.html', basicReactTemplate['index.html'].file.contents.trim());
+  if (!files['/index.html'] && mainEntry) {
+    zip.file('index.html', basicReactTemplate['index.html'].file.contents.trim().replace('/src/main.jsx', mainEntry));
   }
-  if (!files['/src/main.jsx'] && !files['src/main.jsx']) {
-    zip.file('src/main.jsx', basicReactTemplate['src'].directory['main.jsx'].file.contents.trim());
+  if (!existingMain && appEntry && mainEntry) {
+    const stylesheet = Object.keys(files).find(path => /^\/(?:src\/)?(?:styles|index|App)\.css$/.test(path));
+    const cssImport = stylesheet ? `import ${JSON.stringify(relativeProjectImport(mainEntry, stylesheet))};\n` : '';
+    zip.file(mainEntry.slice(1), `import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from ${JSON.stringify(relativeProjectImport(mainEntry, appEntry))};
+${cssImport}
+createRoot(document.getElementById('root')).render(<App />);
+`);
   }
 
   // 2. Add all custom generated files (with Zip Slip validation)
@@ -84,8 +108,8 @@ Built with [BrainHalf AI Code Studio](https://brainhalf.com).
 ## Architecture
 - **Frontend**: React + Vite SPA (located in \`/src\`)
 - **Backend**: Node.js + Express REST API (located in \`/server\`)
-- **Database**: SQLite / In-Memory Preview Data Layer (located in \`/server/db.js\`)
-- **Configuration**: Environment variables in \`/server/.env\`
+- **Database**: See the project schema and backend configuration; hosted data is not included.
+- **Configuration**: Copy the empty environment template and supply your own server credentials. See BRAINHALF_EXPORT.md.
 
 ## Getting Started
 
@@ -128,7 +152,7 @@ npm run dev
 npm run build
 \`\`\`
 `;
-  zip.file('README.md', readmeContent);
+  if (!files['/README.md']) zip.file('README.md', files['/server/README.md'] || readmeContent);
 
   return await zip.generateAsync({ type: 'blob' });
 }

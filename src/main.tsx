@@ -1,39 +1,39 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App'
-import { PreviewRunner } from './components/PreviewRunner'
-import { ErrorBoundary } from './components/ErrorBoundary'
+import { StrictMode } from 'react';
+import { createRoot, hydrateRoot } from 'react-dom/client';
+import './index.css';
+import './styles/studio-fonts.css';
+import App from './App';
+import './styles/studio-theme.css';
+import PublicPage from './components/PublicPage';
+import { ACCOUNT_PAGES, findPublicPage } from './seo/content';
+import AccountPage from './components/AccountPage';
+import { pageMetadata, isPrivateSearch } from './seo/metadata';
+import { getToken } from './lib/auth-client';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { initializeAnalytics } from './lib/analytics';
 
-// Anti-Recursion & Preview Frame Detector:
-// If running inside an iframe (window.self !== window.top) or at a /preview route,
-// NEVER render the BrainHalf IDE! Render the isolated application preview runner instead.
-const isPreviewFrame = typeof window !== 'undefined' && (
-  window.self !== window.top ||
-  window.location.pathname.startsWith('/preview') ||
-  window.location.pathname === '/hero-preview.html'
-);
-
-if (isPreviewFrame) {
-  const pathMatch = window.location.pathname.match(/\/preview\/([^/]+)/);
-  // A bare /preview with no id is a malformed URL. Do NOT fall back to a
-  // hard-coded 'default' id here: that id is shared by every visitor, so this
-  // frame would render a stranger's project (or claim it). An empty id makes
-  // PreviewRunner ask the parent for files it will not get, which is the
-  // honest outcome for a URL that was never valid.
-  const projectId = pathMatch ? pathMatch[1] : (new URLSearchParams(window.location.search).get('project') || '');
-
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <PreviewRunner projectId={projectId} />
-    </StrictMode>
-  );
-} else {
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </StrictMode>
-  );
+const root = document.getElementById('root');
+if (root && window.self === window.top && !/^\/(preview|p)(\/|$)/.test(window.location.pathname)) {
+  const path = window.location.pathname.replace(/\/$/, '') || '/';
+  const home = path === '/' || path === '/index.html';
+  const appRoute = home || path === '/dashboard';
+  const content = appRoute ? <App /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
+  const tree = <StrictMode><ErrorBoundary>{content}</ErrorBoundary></StrictMode>;
+  const meta = pageMetadata(home ? '/' : path);
+  document.title = meta.title;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', meta.description);
+  document.querySelector('meta[name="robots"]')?.setAttribute('content', isPrivateSearch(window.location.search) ? 'noindex, nofollow' : meta.robots);
+  const canonical = document.querySelector('link[rel="canonical"]');
+  if (meta.canonical) canonical?.setAttribute('href', meta.canonical);
+  else canonical?.remove();
+  initializeAnalytics();
+  // Anonymous visitors hydrate the exact public markup generated at build time.
+  // Sessions and private URLs start fresh so no account state is prerendered.
+  if (root.dataset.prerendered === 'true' && (!appRoute || (home && !getToken() && !isPrivateSearch(window.location.search)))) {
+    hydrateRoot(root, tree);
+  } else {
+    createRoot(root).render(tree);
+  }
+} else if (root) {
+  root.textContent = 'This route requires the isolated preview service.';
 }

@@ -199,14 +199,13 @@ DATABASE_URL="postgres://user:password@localhost:5432/myapp"
         '/server/index.js': 'console.log("running");'
       };
 
-      // 1. Initial GET seeds sample items if collection empty
       const getRes = await executeBackendRequest(files, {
         method: 'GET',
         url: 'http://localhost/api/products'
       }, store);
       expect(getRes.status).toBe(200);
       expect(Array.isArray(getRes.body)).toBe(true);
-      expect(getRes.body.length).toBeGreaterThan(0);
+      expect(getRes.body).toEqual([]);
 
       // 2. POST create new product
       const postRes = await executeBackendRequest(files, {

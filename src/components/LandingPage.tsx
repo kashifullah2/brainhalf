@@ -1,154 +1,71 @@
+import { BUSINESS_APPS } from '../lib/business-apps';
+import ThemeToggle from './ThemeToggle';
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Plus,
-  Mic,
-  ArrowUp,
   ArrowRight,
-  Sparkles,
-  MoreHorizontal,
-  Trash2,
-  Edit2,
+  ChevronDown,
+  Code2,
+  Monitor,
+  MessageCircle,
+  Plus,
+  ArrowUpRight,
   LogOut,
-  FolderOpen,
+  BarChart3,
+  LayoutGrid,
+  ShoppingCart,
+  MessageSquare,
+  Check,
 } from 'lucide-react';
-import {
-  Project,
-  getProjects,
-  deleteProject,
-  updateProjectName,
-  formatRelativeTime,
-  getProjectMessages,
-  getProjectDisplayTitle,
-} from '../lib/project-store';
-
-// Accent palette — one per project, derived from ID hash
-const THUMB_ACCENTS = [
-  { bg: 'rgba(99,102,241,0.18)',  bar: '#6366f1' },
-  { bg: 'rgba(14,165,233,0.18)',  bar: '#0ea5e9' },
-  { bg: 'rgba(16,185,129,0.18)',  bar: '#10b981' },
-  { bg: 'rgba(245,158,11,0.18)',  bar: '#f59e0b' },
-  { bg: 'rgba(236,72,153,0.18)',  bar: '#ec4899' },
-  { bg: 'rgba(139,92,246,0.18)',  bar: '#8b5cf6' },
-];
-
-function accentForId(id: string) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return THUMB_ACCENTS[h % THUMB_ACCENTS.length];
-}
-
-function projectSnippet(id: string): string {
-  const msgs = getProjectMessages(id);
-  if (!msgs) return '';
-  const first = msgs.find(m => m?.role === 'user' && typeof m.content === 'string');
-  if (!first) return '';
-  const text = first.content.trim().replace(/\s+/g, ' ');
-  return text.length > 55 ? text.slice(0, 55) + '…' : text;
-}
-
-function dedupe(projects: Project[]): Project[] {
-  const seen = new Set<string>();
-  return projects.filter(p => {
-    if (seen.has(p.id)) return false;
-    seen.add(p.id);
-    return true;
-  });
-}
-
-function displayName(proj: Project): string {
-  const title = getProjectDisplayTitle(proj);
-  if (!title || title === 'Untitled Project' || title === 'New project') {
-    return 'Draft — continue building.';
-  }
-  return title;
-}
-
-interface ProjectThumbnailProps { project: Project }
-const ProjectThumbnail: React.FC<ProjectThumbnailProps> = ({ project }) => {
-  const accent = accentForId(project.id);
-  return (
-    <div className="landing-card-thumbnail">
-      <div className="thumbnail-window">
-        <div className="thumb-header">
-          <div className="thumb-dots">
-            <span /><span /><span />
-          </div>
-          <div className="thumb-url-bar" />
-        </div>
-        <div className="thumb-body" style={{ background: accent.bg }}>
-          <div className="thumb-sidebar" style={{ background: `${accent.bar}22` }} />
-          <div className="thumb-content">
-            <div className="thumb-box-1" style={{ background: `${accent.bar}44` }} />
-            <div style={{ display: 'flex', gap: 3, marginTop: 1 }}>
-              <div style={{ flex: 2, height: 5, borderRadius: 2, background: `${accent.bar}28` }} />
-              <div style={{ flex: 1, height: 5, borderRadius: 2, background: `${accent.bar}18` }} />
-            </div>
-            <div style={{ flex: 1, marginTop: 3, borderRadius: 3, background: `${accent.bar}14` }} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-import { appEvents } from '../lib/events';
-import ConfirmModal from './ConfirmModal';
 import { BrainHalfLogo } from './BrainHalfLogo';
+import LandingFooter from './LandingFooter';
+import LandingShowcase from './LandingShowcase';
+import { HOME_FAQS, HOME_MODIFIED, formatContentDate } from '../seo/content';
+import './LandingPage.css';
+import './PublicPage.css';
 
 interface LandingPageProps {
   onOpenProject: (projectId: string) => void;
-  onSubmitInitialPrompt: (prompt: string, appType: 'web' | 'mobile') => void;
-  activeProjectId?: string;
+  onSubmitInitialPrompt: (prompt: string) => void;
+  creatingProject?: boolean;
   currentUser?: { email?: string; name?: string } | null;
   onLogout?: () => void | Promise<void>;
   onLoginRequest?: (mode?: 'login' | 'signup') => void;
+  onOpenDashboard?: () => void;
 }
 
-const SUGGESTIONS = [
-  { label: 'SaaS analytics dashboard', prompt: 'Build a SaaS analytics dashboard with MRR cards, revenue charts, and user retention tables.' },
-  { label: 'Real-time kanban board', prompt: 'Create a kanban board with drag-and-drop task cards, priority labels, and search filters.' },
-  { label: 'Crypto portfolio tracker', prompt: 'Build a cryptocurrency portfolio tracker with live prices for BTC/ETH/SOL and an allocation chart.' },
-  { label: 'E-commerce storefront', prompt: 'Build a modern e-commerce storefront with a product grid, cart, and checkout flow.' },
+const SUGGESTIONS = BUSINESS_APPS;
+
+const HOW_IT_WORKS = [
+  { step: '01', title: 'Put your idea into words', detail: 'Describe one job: tracking stock, booking appointments, or following up with customers.' },
+  { step: '02', title: 'Watch it take shape', detail: 'Try adding a record and saving changes. Ask for anything that makes the job easier.' },
+  { step: '03', title: 'Publish when it works', detail: 'Click Publish to build, check and host your supported app. Your existing usage limits apply.' },
 ];
 
 export const LandingPage: React.FC<LandingPageProps> = ({
-  onOpenProject,
   onSubmitInitialPrompt,
-  activeProjectId,
+  creatingProject = false,
   currentUser,
   onLogout,
   onLoginRequest,
+  onOpenDashboard,
 }) => {
-  const [projects, setProjects] = useState<Project[]>(() => dedupe(getProjects()));
   const [promptText, setPromptText] = useState('');
-  const [activeMenuProjectId, setActiveMenuProjectId] = useState<string | null>(null);
-  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
-  const [projectToRename, setProjectToRename] = useState<Project | null>(null);
-  const [renamedName, setRenamedName] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  const menuRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuButtonRef = useRef<HTMLButtonElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const refreshProjects = () => {
-    setProjects(dedupe(getProjects()));
-  };
-
   useEffect(() => {
-    const unsub1 = appEvents.on('project-renamed', refreshProjects);
-    const unsub2 = appEvents.on('project-messages-updated', refreshProjects);
-    return () => {
-      unsub1();
-      unsub2();
-    };
-  }, []);
+    const input = textareaRef.current;
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
+  }, [promptText]);
 
   // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setActiveMenuProjectId(null);
-      }
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setShowUserMenu(false);
       }
@@ -157,39 +74,46 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (showUserMenu) {
+        setShowUserMenu(false);
+        userMenuButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [showUserMenu]);
+
   const handlePromptSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (creatingProject) return;
     const trimmed = promptText.trim();
     if (!trimmed) return;
-    onSubmitInitialPrompt(trimmed, 'web');
+    onSubmitInitialPrompt(trimmed);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       handlePromptSubmit();
     }
   };
 
-  const handleDeleteConfirm = () => {
-    if (!projectToDelete) return;
-    const remaining = deleteProject(projectToDelete);
-    setProjects(dedupe(remaining));
-    setProjectToDelete(null);
-    setActiveMenuProjectId(null);
+  const focusComposer = (event?: React.MouseEvent<HTMLAnchorElement>) => {
+    event?.preventDefault();
+    textareaRef.current?.focus({ preventScroll: true });
+    textareaRef.current?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      block: 'center',
+    });
   };
 
-  const handleRenameSave = () => {
-    if (!projectToRename) return;
-    const trimmed = renamedName.trim();
-    if (trimmed) {
-      updateProjectName(projectToRename.id, trimmed);
-      refreshProjects();
-    }
-    setProjectToRename(null);
+  const handleExamplePrompt = (prompt: string) => {
+    setPromptText(prompt);
+    focusComposer();
   };
-
-  const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
 
   const userInitial = (currentUser?.name || currentUser?.email || 'U')
     .trim()[0]
@@ -197,65 +121,66 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   return (
     <div className="landing-container">
-      <div className="landing-radial-glow" />
+      <a className="studio-skip-link" href="#main-content">Skip to content</a>
 
       {/* Nav */}
       <header className="landing-header">
         <div className="landing-header-left">
-          <div
+          <button
+            type="button"
             className="landing-brand-group"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            role="button"
-            tabIndex={0}
+            onClick={() => window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })}
+            aria-label="BrainHalf home"
           >
             <div className="landing-brand-logo">
-              <BrainHalfLogo size={20} strokeWidth={1.8} color="#2dd4bf" />
+              <BrainHalfLogo size={27} strokeWidth={1.6} color="currentColor" />
             </div>
             <span className="landing-brand-text">BrainHalf</span>
-          </div>
+            <span className="landing-brand-descriptor">Tools for your business</span>
+          </button>
 
-          {currentUser && activeProject && (
-            <div
-              className="landing-project-breadcrumb"
-              onClick={() => onOpenProject(activeProject.id)}
-              role="button"
-              tabIndex={0}
-              title={`Active Project: ${activeProject.name}`}
-            >
-              <span className="landing-breadcrumb-dot" />
-              <span className="landing-breadcrumb-name">{activeProject.name}</span>
-            </div>
-          )}
         </div>
 
+        <nav className="studio-navigation" aria-label="Main navigation"><a href="#examples">Examples</a><a href="#how-it-works">How it works</a><a href="#questions">FAQs</a></nav>
+
         <div className="landing-header-right">
+          {currentUser && <button className="landing-get-started-btn" onClick={onOpenDashboard}>Dashboard <ArrowRight size={14} /></button>}
+          <ThemeToggle />
           {currentUser ? (
-            <div style={{ position: 'relative' }} ref={userMenuRef}>
+            <div className="landing-user-menu-anchor" ref={userMenuRef}>
               <button
-                className="landing-user-avatar"
+                ref={userMenuButtonRef}
+                type="button"
+                className="landing-user-menu-trigger"
                 onClick={() => setShowUserMenu(prev => !prev)}
                 title={currentUser?.email || 'User Profile'}
-                aria-label="User Profile"
+                aria-label="User profile and menu"
+                aria-haspopup="menu"
+                aria-expanded={showUserMenu}
               >
-                <span>{userInitial}</span>
+                <span className="landing-user-avatar" aria-hidden="true">{userInitial}</span>
+                <span className="landing-user-menu-email">{currentUser?.email || 'user@brainhalf.com'}</span>
+                <ChevronDown size={13} className="landing-user-menu-chevron" aria-hidden="true" />
               </button>
 
               {showUserMenu && (
-                <div className="landing-user-dropdown">
-                  <div className="landing-user-dropdown-info">
+                <div className="landing-user-dropdown" role="menu" aria-label="User menu">
+                  <div className="landing-user-dropdown-info" role="presentation">
                     <p className="user-email">{currentUser?.email || 'user@brainhalf.com'}</p>
                   </div>
                   <hr className="landing-dropdown-divider" />
                   {onLogout && (
                     <button
+                      type="button"
                       className="landing-dropdown-item"
+                      role="menuitem"
                       onClick={() => {
                         setShowUserMenu(false);
                         onLogout();
                       }}
                     >
                       <LogOut size={14} />
-                      <span>Sign Out</span>
+                      <span>Sign out</span>
                     </button>
                   )}
                 </div>
@@ -275,7 +200,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 className="landing-get-started-btn"
                 onClick={() => onLoginRequest?.('signup')}
               >
-                <Sparkles size={14} className="landing-sparkle-icon" />
                 <span>Get Started</span>
                 <ArrowRight size={13} />
               </button>
@@ -285,224 +209,97 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </header>
 
       {/* Hero */}
-      <main className="landing-main-content">
-        <h1 className="landing-headline">
-          Turn any idea into a full-stack app.
-        </h1>
-        <p className="landing-subheadline">
-          BrainHalf generates working frontend and backend code, deploys it to Cloudflare's global edge, and hands you the source. Describe what you want — no boilerplate, no config.
-        </p>
-
-        {/* Prompt Box */}
-        <div className="landing-prompt-wrapper">
-          <form className="landing-prompt-box" onSubmit={handlePromptSubmit}>
-            <textarea
-              ref={textareaRef}
-              className="landing-prompt-textarea"
-              placeholder="Describe an app idea, e.g. 'Build a crypto portfolio tracker with real-time prices and charts'"
-              value={promptText}
-              onChange={e => setPromptText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={3}
-              style={{
-                outline: 'none',
-                border: 'none',
-                boxShadow: 'none',
-                WebkitTapHighlightColor: 'transparent',
-              }}
-            />
-
-            <div className="landing-prompt-toolbar">
-              <div className="landing-prompt-tools-left">
-                <button
-                  type="button"
-                  className="landing-tool-btn"
-                  title="Add files or context"
-                  aria-label="Add files or context"
-                  onClick={() => textareaRef.current?.focus()}
-                >
-                  <Plus size={16} strokeWidth={2} />
-                </button>
-              </div>
-
-              <div className="landing-prompt-tools-right">
-                <button
-                  type="button"
-                  className="landing-tool-btn"
-                  title="Voice input"
-                  aria-label="Voice input"
-                >
-                  <Mic size={15} strokeWidth={2} />
-                </button>
-
+      <main className="landing-main-content" id="main-content" tabIndex={-1}>
+        <section className="landing-hero-shell" aria-labelledby="hero-heading">
+          <div className="landing-hero-copy">
+            <p className="landing-hero-eyebrow"><span aria-hidden="true" /> AI app builder for small businesses</p>
+            <h1 id="hero-heading" aria-label="Build the tools your business needs.">Less busywork.<br /><span>Your own tools.</span></h1>
+            <p className="landing-hero-description">Track stock, manage bookings, or keep customers organised. Describe the tool your business needs, try it, and publish it from one workspace.</p>
+            <form className="landing-prompt-box" id="start-building" onSubmit={handlePromptSubmit}>
+              <label htmlFor="app-idea" className="landing-input-label">Describe your app</label>
+              <textarea
+                id="app-idea"
+                ref={textareaRef}
+                className="landing-prompt-textarea"
+                placeholder="I run a small business and need a tool to track…"
+                aria-describedby="prompt-help"
+                value={promptText}
+                onChange={event => setPromptText(event.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={3}
+              />
+              <div className="landing-prompt-actions">
+                <span><MessageCircle size={14} aria-hidden="true" /> Start with a simple idea</span>
                 <button
                   type="submit"
-                  className={`landing-submit-btn ${promptText.trim() ? 'active' : ''}`}
-                  disabled={!promptText.trim()}
+                  className="landing-submit-btn"
+                  disabled={!promptText.trim() || creatingProject}
                   title="Create app from prompt (Enter)"
                   aria-label="Create app from prompt"
                 >
-                  <ArrowUp size={16} strokeWidth={2.5} />
+                  <span>{creatingProject ? 'Creating project…' : 'Build my app'}</span><ArrowRight size={17} aria-hidden="true" />
                 </button>
               </div>
-            </div>
-          </form>
-
-          {/* Suggestion Chips */}
-          <div className="landing-chips-container">
-            <div className="landing-chips-scroll">
-              {SUGGESTIONS.map((s, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  className="landing-chip-btn"
-                  onClick={() => {
-                    setPromptText(s.prompt);
-                    textareaRef.current?.focus();
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            </form>
+            <p className="landing-prompt-help" id="prompt-help"><span><Check size={14} aria-hidden="true" /> Free to start</span><span><Check size={14} aria-hidden="true" /> No coding required</span></p>
+            <p className="landing-starter-link">Need a starting point? <a href="#possibilities">Explore app ideas <ArrowRight size={13} aria-hidden="true" /></a></p>
           </div>
+          <LandingShowcase onUsePrompt={handleExamplePrompt} />
+        </section>
+
+        <div className="studio-promise-strip" aria-label="What you can do with BrainHalf">
+          <span>YOUR IDEA, FROM<br />FIRST WORD TO FIRST VERSION.</span>
+          <div><MessageCircle size={16} /> Build by conversation</div>
+          <div><Monitor size={16} /> See every change</div>
+          <div><Code2 size={16} /> Keep your source code</div>
         </div>
 
-        {/* Recent Projects */}
-        {projects.length > 0 && (
-          <section className="landing-projects-section" style={{ marginTop: '40px' }}>
-            <h2 className="landing-section-title" style={{ fontSize: '14px', fontWeight: 500, color: 'rgba(255,255,255,0.45)', marginBottom: '12px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Recent projects</h2>
+        <section className="studio-ideas-section" id="possibilities" aria-labelledby="ideas-heading">
+          <div className="studio-section-intro">
+            <div><p className="studio-section-label">A LITTLE INSPIRATION</p><h2 id="ideas-heading">What will you make first?</h2></div>
+            <p>Pick an idea to fill in your first prompt.<br />Change anything before you build.</p>
+          </div>
+          <div className="studio-idea-list">
+            {SUGGESTIONS.map((suggestion, index) => {
+              const Icon = [ShoppingCart, LayoutGrid, BarChart3, Check, MessageSquare][index];
+              return <button key={suggestion.label} type="button" className={`studio-idea-card idea-tone-${index}`} onClick={() => handleExamplePrompt(suggestion.prompt)}>
+                <span className="studio-idea-icon"><Icon size={25} strokeWidth={1.5} /></span>
+                <strong>{suggestion.label}</strong><span>{suggestion.detail}</span><ArrowUpRight className="studio-idea-arrow" size={18} />
+              </button>;
+            })}
+          </div>
+        </section>
 
-            <div className="landing-projects-list">
-              {projects.map(proj => {
-                const snippet = projectSnippet(proj.id);
-                return (
-                <div
-                  key={proj.id}
-                  className="landing-project-card"
-                  onClick={() => onOpenProject(proj.id)}
-                >
-                  <ProjectThumbnail project={proj} />
-                  <div className="landing-card-info">
-                    <h3 className="landing-card-title">{displayName(proj)}</h3>
-                    {snippet && (
-                      <p className="landing-card-snippet">{snippet}</p>
-                    )}
-                    <p className="landing-card-time">{formatRelativeTime(proj.updatedAt)}</p>
-                  </div>
+        <section className="studio-workflow-section" id="how-it-works" aria-labelledby="workflow-heading">
+          <div className="studio-workflow-intro"><p className="studio-section-label">THE WAY FROM IDEA TO APP</p><h2 id="workflow-heading">Less setup.<br />More possibility.</h2><p>BrainHalf is your AI building partner. You set the direction, make the decisions, and stay close to what you’re creating.</p><a href="#start-building" onClick={focusComposer}>Let’s make something <ArrowRight size={16} /></a></div>
+          <ol className="landing-how-it-works" aria-label="How it works" role="list">
+            {HOW_IT_WORKS.map(item => <li key={item.step} className="landing-how-card"><span className="landing-how-step" aria-hidden="true">{item.step}</span><div><h3 className="landing-how-title">{item.title}</h3><p className="landing-how-detail">{item.detail}</p></div></li>)}
+          </ol>
+        </section>
 
-                  <div
-                    className="landing-card-actions"
-                    onClick={e => e.stopPropagation()}
-                    ref={activeMenuProjectId === proj.id ? menuRef : undefined}
-                  >
-                    <button
-                      className="landing-card-menu-btn"
-                      onClick={e => {
-                        e.stopPropagation();
-                        setActiveMenuProjectId(prev => (prev === proj.id ? null : proj.id));
-                      }}
-                      title="Project actions"
-                      aria-label="Project actions"
-                    >
-                      <MoreHorizontal size={16} />
-                    </button>
-
-                    {activeMenuProjectId === proj.id && (
-                      <div className="landing-card-dropdown" onClick={e => e.stopPropagation()}>
-                        <button
-                          className="landing-card-dropdown-item"
-                          onClick={() => {
-                            setActiveMenuProjectId(null);
-                            onOpenProject(proj.id);
-                          }}
-                        >
-                          <FolderOpen size={14} />
-                          <span>Open</span>
-                        </button>
-                        <button
-                          className="landing-card-dropdown-item"
-                          onClick={() => {
-                            setActiveMenuProjectId(null);
-                            setProjectToRename(proj);
-                            setRenamedName(proj.name);
-                          }}
-                        >
-                          <Edit2 size={14} />
-                          <span>Rename</span>
-                        </button>
-                        <hr className="landing-dropdown-divider" />
-                        <button
-                          className="landing-card-dropdown-item danger"
-                          onClick={() => {
-                            setActiveMenuProjectId(null);
-                            setProjectToDelete(proj.id);
-                          }}
-                        >
-                          <Trash2 size={14} />
-                          <span>Delete</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        <section className="studio-faq-section" id="questions" aria-labelledby="faq-heading">
+          <div><p className="studio-section-label">GOOD TO KNOW</p><h2 id="faq-heading">Before you begin.</h2><p className="studio-content-updated">Product information updated<br /><time dateTime={HOME_MODIFIED}>{formatContentDate(HOME_MODIFIED)}</time></p></div>
+          <div className="studio-faq-list">
+            {HOME_FAQS.map((faq, index) => <details key={faq.id} id={faq.id} open={index === 0}><summary><h3>{faq.question}<Plus size={17} aria-hidden="true" /></h3></summary><p>{faq.answer}</p></details>)}
+          </div>
+        </section>
+        <section className="studio-resource-section" aria-labelledby="resources-heading">
+          <p className="studio-section-label">FROM A CLEAR BRIEF TO A WORKING PROJECT</p>
+          <h2 id="resources-heading">Get more from your AI app builder.</h2>
+          <div className="studio-resource-links">
+            <a href="/guides/build-an-app-with-ai">How to build an app with AI <ArrowUpRight size={17} /></a>
+            <a href="/use-cases/ai-dashboard-builder">Build a custom dashboard <ArrowUpRight size={17} /></a>
+            <a href="/use-cases/ai-website-builder">Create a website with AI <ArrowUpRight size={17} /></a>
+            <a href="/use-cases/ai-inventory-app-builder">Plan an inventory app <ArrowUpRight size={17} /></a>
+            <a href="/guides/ai-appointment-app-example">See a tested appointment-app example <ArrowUpRight size={17} /></a>
+            <a href="/guides/full-stack-apps">Add saved data and sign-in <ArrowUpRight size={17} /></a>
+          </div>
+        </section>
+        <section className="studio-closing" aria-labelledby="closing-heading"><div><p className="studio-section-label">YOU’VE ALREADY GOT THE FIRST INGREDIENT.</p><h2 id="closing-heading">Give that idea<br />somewhere to go.</h2><p>Start with a sentence. See where it takes you.</p></div><a href="#start-building" className="studio-closing-link" onClick={focusComposer}>Let’s build your app <ArrowUpRight size={18} /></a><div className="studio-closing-mark" aria-hidden="true"><BrainHalfLogo size={240} color="currentColor" /></div></section>
       </main>
 
-      {/* Delete Confirmation Modal */}
-      {projectToDelete && (
-        <ConfirmModal
-          isOpen={true}
-          title="Delete Project"
-          message="Are you sure you want to delete this project? All files and conversation history will be permanently deleted."
-          confirmLabel="Delete Project"
-          isDestructive={true}
-          onConfirm={handleDeleteConfirm}
-          onCancel={() => setProjectToDelete(null)}
-        />
-      )}
+      <LandingFooter />
 
-      {/* Rename Modal */}
-      {projectToRename && (
-        <div className="modal-backdrop" onClick={() => setProjectToRename(null)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600 }}>Rename Project</h3>
-            <input
-              type="text"
-              value={renamedName}
-              onChange={e => setRenamedName(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') handleRenameSave();
-                if (e.key === 'Escape') setProjectToRename(null);
-              }}
-              autoFocus
-              className="text-input"
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                background: '#1a1c26',
-                border: '1px solid var(--border-medium)',
-                color: 'var(--text-primary)',
-                marginBottom: '16px',
-                outline: 'none'
-              }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button className="button-secondary" onClick={() => setProjectToRename(null)}>
-                Cancel
-              </button>
-              <button className="button-primary" onClick={handleRenameSave}>
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

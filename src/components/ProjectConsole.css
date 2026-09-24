@@ -1,0 +1,292 @@
+.project-console-page {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 16px;
+  background: var(--bg-base);
+  display: flex;
+}
+
+.project-console {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel, var(--bg-surface));
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.project-console header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 24px 12px;
+}
+
+.project-console h2,
+.project-console h3 {
+  margin: 0 0 8px;
+}
+
+.project-console p {
+  line-height: 1.6;
+  margin: 8px 0 14px;
+  overflow-wrap: anywhere;
+}
+
+.project-console header p,
+.project-console .settings-muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.project-console nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 24px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.project-console main {
+  min-height: 0;
+  overflow: auto;
+  padding: 24px;
+}
+
+.project-console button,
+.project-console select,
+.project-console input,
+.project-console textarea {
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+.project-console button {
+  cursor: pointer;
+  min-height: 40px;
+  font-weight: 600;
+}
+
+.project-console button:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+}
+
+.project-console button:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  color: var(--text-muted);
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.project-console button[aria-pressed='true'] {
+  border-color: var(--accent-secondary);
+  background: var(--accent-secondary);
+  color: var(--bg-base, #071722);
+}
+
+.project-console :is(button, input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: 3px;
+}
+
+.project-console a {
+  color: var(--accent-light);
+  text-underline-offset: 3px;
+}
+
+.project-console label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.project-console .services-toggle {
+  flex-direction: row !important;
+  align-items: center;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.project-console .console-environment {
+  max-width: 260px;
+}
+
+.project-console .settings-card {
+  border: 1px solid var(--border-subtle);
+  padding: 20px;
+  border-radius: 12px;
+}
+
+.project-console .settings-actions,
+.project-console .services-readiness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.project-console .settings-job {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.project-console .settings-job small,
+.project-console .services-list small {
+  display: block;
+  color: var(--text-muted);
+}
+
+.project-console .settings-notice {
+  background: var(--bg-surface);
+  border-left: 3px solid var(--accent-secondary);
+  padding: 12px;
+}
+
+.project-console .settings-error {
+  color: var(--color-error, #dc4f62);
+}
+
+.project-console fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.project-console .services-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.project-console :is(input, select, textarea) {
+  max-width: 100%;
+  box-sizing: border-box;
+  color: var(--text-primary);
+}
+
+.project-console :is(input, textarea)::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+.project-console textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.project-console table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.project-console :is(th, td) {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-wrap: anywhere;
+}
+
+.project-console .database-table,
+.project-console .settings-table-wrap,
+.project-console .settings-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.project-console .settings-heading-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-console pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.project-console li {
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+
+.product-outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.product-outcome-grid > div {
+  padding: 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+}
+
+.product-outcome-grid dt {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.product-outcome-grid dd {
+  margin: 7px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .project-console-page {
+    padding: 8px;
+  }
+
+  .project-console {
+    border-radius: 12px;
+  }
+
+  .project-console header,
+  .project-console main {
+    padding: 16px;
+  }
+
+  .project-console nav {
+    padding: 8px 16px;
+  }
+
+  .project-console .settings-card {
+    padding: 12px;
+  }
+
+  .project-console .services-grid {
+    grid-template-columns: 1fr;
+  }
+}

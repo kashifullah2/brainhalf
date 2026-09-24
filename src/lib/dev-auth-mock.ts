@@ -38,6 +38,9 @@ export function handleDevAuth(
 ): DevAuthResult | null {
   const path = url.split('?')[0]!;
   if (!path.startsWith('/api/auth/')) return null;
+  if (path.startsWith('/api/auth/google/')) {
+    return { status: 503, body: { error: 'Google sign-in is not available in this local preview. Please continue with email.' }, headers: JSON_HEADERS };
+  }
 
   // The session check is what the app makes on load; any well-formed bearer is
   // accepted, mirroring "the server has the authoritative say" without a real
@@ -75,11 +78,28 @@ export function handleDevAuth(
     };
   }
 
-  // Single-use tickets do not exist in dev — there is no Durable Object to
-  // redeem them against — but the client asks for one before opening a socket,
-  // so answer with a well-formed value rather than a 404.
   if (path === '/api/auth/ws-ticket' && method === 'POST') {
     return { status: 201, body: { ticket: 'bhwt_dev_local_not_a_real_ticket' }, headers: JSON_HEADERS };
+  }
+
+  if (path === '/api/auth/forgot-password' && method === 'POST') {
+    return { status: 202, body: { ok: true, message: 'If this address is eligible, you will receive an email with the next steps. Check your spam folder too.' }, headers: JSON_HEADERS };
+  }
+
+  if (path === '/api/auth/reset-password' && method === 'POST') {
+    return { status: 200, body: { ok: true, message: 'Your password has been reset. You can now sign in.' }, headers: JSON_HEADERS };
+  }
+
+  if (path === '/api/auth/resend-verification' && method === 'POST') {
+    return { status: 202, body: { ok: true, message: 'If this address is eligible, you will receive an email with the next steps. Check your spam folder too.' }, headers: JSON_HEADERS };
+  }
+
+  if (path === '/api/auth/verify-email' && method === 'POST') {
+    return { status: 200, body: { ok: true, message: 'Email verified. You can now sign in.' }, headers: JSON_HEADERS };
+  }
+
+  if (path === '/api/contact' && method === 'POST') {
+    return { status: 200, body: { ok: true }, headers: JSON_HEADERS };
   }
 
   return { status: 404, body: { error: 'not found' }, headers: JSON_HEADERS };

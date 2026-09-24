@@ -1,8 +1,6 @@
-# Cloudflare serves files from [assets] directory WITHOUT invoking the Worker
-# unless run_worker_first is set. That means worker.ts:withShellSecurity never
-# runs for the static shell (/, /index.html, /assets/*) in production -- the
-# headers below are the only thing hardening the app surface. Keep them in sync
-# with shellSecurityHeaders() in src/worker.ts.
+# Static public pages and assets use these headers. The root shell also runs
+# through worker.ts so private query URLs can receive noindex. Keep the shared
+# security directives aligned with shellSecurityHeaders().
 
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate, max-age=0
@@ -15,6 +13,55 @@
   Cross-Origin-Resource-Policy: same-origin
   X-Frame-Options: deny
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://cloudflareinsights.com; worker-src 'self' blob:; frame-src 'self'; manifest-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-eval' data: blob: https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com; worker-src 'self' blob:; frame-src 'self'; manifest-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
+# Fingerprinted bundles can be cached without serving stale releases.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Older HTML and development still use the unversioned startup script.
+# Only its content-hashed production copy is safe to cache for a year.
+/theme-init.js
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/fonts/*
+  Cache-Control: public, max-age=604800
+
+/images/*
+  Cache-Control: public, max-age=86400
+
+/404.html
+  X-Robots-Tag: noindex, follow
+
+/sitemap.xml
+  Content-Type: application/xml; charset=utf-8
+  Cache-Control: public, max-age=3600
+
+/robots.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=3600
+
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=3600
+
+/forgot-password
+  X-Robots-Tag: noindex, follow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+
+/reset-password
+  X-Robots-Tag: noindex, follow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+
+/verify-email
+  X-Robots-Tag: noindex, follow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+
+/resend-verification
+  X-Robots-Tag: noindex, follow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer

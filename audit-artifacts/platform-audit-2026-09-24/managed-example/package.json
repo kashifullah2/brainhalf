@@ -1,0 +1,34 @@
+{
+  "name": "application",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && tsc -p worker/tsconfig.json && esbuild worker/index.ts --bundle --format=esm --platform=neutral --outfile=dist-worker/index.js",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "test": "node --test worker/backend.test.mjs"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "lucide-react": "^1.43.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.3",
+    "@types/node": "^22.18.0",
+    "esbuild": "^0.28.0",
+    "@cloudflare/workers-types": "^5.20260908.1"
+  },
+  "brainhalf": {
+    "runtime": "workers"
+  }
+}

@@ -72,14 +72,23 @@ describe('P3 Preview CSP contract', () => {
     expect(scriptSrc![1].trim().split(/\s+/)).not.toContain('*');
   });
 
-  it('no wildcard postMessage targetOrigin remains anywhere in the source tree', () => {
+  it('preview-to-parent messages do not use wildcard origins', () => {
     const fs = require('fs');
-    const files = ['src/agent.ts', 'src/components/PreviewRunner.tsx', 'src/components/Workspace.tsx', 'src/main.tsx'];
+    const files = ['src/agent.ts', 'src/components/PreviewRunner.tsx', 'src/main.tsx'];
     for (const file of files) {
       const src = fs.readFileSync(file, 'utf-8');
       expect(src, `${file} must not postMessage to a wildcard origin`).not.toMatch(
         /postMessage\((\{[\s\S]*?\}|'[^']*'),?\s*'\*'/
       );
     }
+  });
+  it('scopes opaque-origin messages to the current sandboxed frame and project files', () => {
+    const source = require('fs').readFileSync('src/components/Workspace.tsx', 'utf-8');
+    expect(source).toContain("if (event.origin !== 'null') return;");
+    expect(source).toContain('if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) return;');
+    expect(source).toContain('sandbox={PREVIEW_SANDBOX}');
+    expect(source).toContain('projectId: activeProjectId, files: previewFiles(');
+    expect(source).toContain('confirmLabel="Approve AI fix"');
+    expect(source).toContain("if (isCurrent() && previewFixRequest.projectId === activeProjectId) appEvents.emit('auto-fix-error', previewFixRequest);");
   });
 });

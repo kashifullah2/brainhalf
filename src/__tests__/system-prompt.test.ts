@@ -11,7 +11,7 @@ import { buildSystemPrompt } from '../lib/system-prompt';
 describe('7.3 extracted system prompt', () => {
   it('teaches the file and edit tag grammar the message parser implements', () => {
     const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
-    expect(prompt).toContain('<file path="/src/App.jsx">');
+    expect(prompt).toContain('<file path="/src/App.tsx">');
     expect(prompt).toContain('<edit path="/path/to/file">');
     expect(prompt).toContain('<search>');
     expect(prompt).toContain('<replace>');
@@ -21,9 +21,10 @@ describe('7.3 extracted system prompt', () => {
     expect(prompt).toContain('Do NOT wrap <file> or <edit> tags in markdown code fences');
   });
 
-  it('forbids the outer router the preview harness already provides', () => {
+  it('requires standalone routing without nesting routers in the preview', () => {
     const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
-    expect(prompt).toContain('Do NOT wrap <App /> in <BrowserRouter> or <HashRouter>');
+    expect(prompt).toContain('exported code works without the preview harness');
+    expect(prompt).toContain('Do not nest routers');
   });
 
   it('appends the planner block only in planner mode', () => {
@@ -32,7 +33,7 @@ describe('7.3 extracted system prompt', () => {
 
     expect(coding).not.toContain('PLANNER MODE ACTIVE');
     expect(planning).toContain('PLANNER MODE ACTIVE');
-    expect(planning).toContain('Do NOT write code yet');
+    expect(planning).toContain('Do NOT write code or file blocks');
 
     // The files context is always last: it is the largest payload and the part
     // the model should be reasoning about.

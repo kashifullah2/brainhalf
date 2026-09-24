@@ -27,9 +27,12 @@ class FakeResult {
 class FakeSql {
   // project_owners rows keyed by project_id; the one table these tests touch.
   readonly owners = new Map<string, Row>();
+  readonly idempotency = new Map<string, Row>();
 
   exec(sql: string, ...params: any[]): FakeResult {
     const text = sql.trim();
+    if (text.startsWith('INSERT OR IGNORE INTO project_cleanup')) return new FakeResult([]);
+    if (text.startsWith('SELECT MIN(next_at)')) return new FakeResult([{ next: null }]);
 
     // Schema bootstrap. CREATE / ALTER / schema_version inserts have no effect
     // on the behaviour under test. PRAGMA table_info is what decides whether the
@@ -40,6 +43,29 @@ class FakeSql {
     }
     if (text.startsWith('PRAGMA ')) {
       return new FakeResult([{ name: 'deleted_at' }]);
+    }
+
+    if (text.startsWith('DELETE FROM project_claim_idempotency WHERE created_at <= ?')) {
+      const cutoff = Number(params[0]);
+      for (const [key, row] of this.idempotency.entries()) {
+        if (Number(row.created_at) <= cutoff) this.idempotency.delete(key);
+      }
+      return new FakeResult([]);
+    }
+
+    if (text.startsWith('SELECT project_id FROM project_claim_idempotency WHERE user_id = ? AND idempotency_key = ?')) {
+      const [userId, idempotencyKey] = params;
+      const row = this.idempotency.get(`${userId}:${idempotencyKey}`);
+      return new FakeResult(row ? [{ project_id: row.project_id }] : []);
+    }
+
+    if (text.startsWith('INSERT OR IGNORE INTO project_claim_idempotency')) {
+      const [userId, idempotencyKey, projectId, createdAt] = params;
+      const key = `${userId}:${idempotencyKey}`;
+      if (!this.idempotency.has(key)) {
+        this.idempotency.set(key, { user_id: userId, idempotency_key: idempotencyKey, project_id: projectId, created_at: createdAt });
+      }
+      return new FakeResult([]);
     }
 
     if (text.startsWith('INSERT OR IGNORE INTO project_owners')) {
@@ -86,7 +112,7 @@ class FakeSql {
       return new FakeResult([]);
     }
 
-    if (text.startsWith('SELECT project_id, user_id, name, created_at, updated_at FROM project_owners')) {
+    if (text.startsWith('SELECT project_id, user_id, name, created_at, updated_at, published FROM project_owners')) {
       const userId = params[0];
       const limit = params[1];
       return new FakeResult(
@@ -94,7 +120,7 @@ class FakeSql {
           .filter((r) => r.user_id === userId && r.deleted_at == null)
           .sort((a, b) => Number(b.updated_at) - Number(a.updated_at))
           .slice(0, limit)
-          .map((r) => ({ project_id: r.project_id, user_id: r.user_id, name: r.name, created_at: r.created_at, updated_at: r.updated_at }))
+          .map((r) => ({ project_id: r.project_id, user_id: r.user_id, name: r.name, created_at: r.created_at, updated_at: r.updated_at, published: r.published ?? 0 }))
       );
     }
 
@@ -115,7 +141,7 @@ function registryWith(n: number, { tombstoned = false }: { tombstoned?: boolean 
       deleted_at: tombstoned ? 5_000 : null,
     });
   }
-  const registry = new AuthRegistry({ storage: { sql } } as unknown as DurableObjectState, {});
+  const registry = new AuthRegistry({ storage: { sql, transactionSync: (work: () => unknown) => work(), setAlarm: async () => {} } } as unknown as DurableObjectState, {});
   return { registry, sql };
 }
 
@@ -124,6 +150,15 @@ async function claim(registry: AuthRegistry, projectId: string, userId = 'user-a
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ projectId, userId }),
+  }));
+  return { status: res.status, body: await res.json() };
+}
+
+async function claimWithKey(registry: AuthRegistry, projectId: string, idempotencyKey: string, userId = 'user-a'): Promise<{ status: number; body: any }> {
+  const res = await registry.fetch(new Request('https://do/projects/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, userId, idempotencyKey }),
   }));
   return { status: res.status, body: await res.json() };
 }
@@ -147,6 +182,19 @@ describe('AuthRegistry project quota (Task 2.5)', () => {
     expect(result.body).toEqual({ projectId: 'proj-new', ownerId: 'user-a', claimed: true });
   });
 
+  it('returns the first claim when the same idempotency key is retried', async () => {
+    const { registry } = registryWith(0);
+    const first = await claimWithKey(registry, 'proj-key-first', 'submission-1');
+    expect(first.status).toBe(200);
+    expect(first.body.projectId).toBe('proj-key-first');
+    const replay = await claimWithKey(registry, 'proj-key-first', 'submission-1');
+    expect(replay.status).toBe(200);
+    expect(replay.body).toMatchObject({ projectId: 'proj-key-first', ownerId: 'user-a', claimed: false, idempotent: true });
+    const duplicateSubmission = await claimWithKey(registry, 'proj-key-second', 'submission-1');
+    expect(duplicateSubmission.status).toBe(409);
+    expect(duplicateSubmission.body.error).toMatch(/Duplicate project submission detected/);
+  });
+
   it('refuses the claim that would exceed the live-project limit', async () => {
     const { registry } = registryWith(50);
     const result = await claim(registry, 'proj-over-limit');
@@ -159,7 +207,7 @@ describe('AuthRegistry project quota (Task 2.5)', () => {
   it('admits one more claim when a project has been deleted', async () => {
     const { registry, sql } = registryWith(50);
     // A tombstoned row no longer counts towards `live`, so the slot is free...
-    expect(await del(registry, 'proj-seed-0')).toBe(200);
+    expect(await del(registry, 'proj-seed-0')).toBe(202);
     const result = await claim(registry, 'proj-after-delete');
     expect(result.status).toBe(200);
     // ...but the tombstone row is still there.
@@ -183,7 +231,7 @@ describe('AuthRegistry project quota (Task 2.5)', () => {
   it('never revives a tombstoned project, even for its original owner', async () => {
     const { registry } = registryWith(0);
     expect((await claim(registry, 'proj-doomed')).status).toBe(200);
-    expect(await del(registry, 'proj-doomed')).toBe(200);
+    expect(await del(registry, 'proj-doomed')).toBe(202);
     const reclaimed = await claim(registry, 'proj-doomed');
     expect(reclaimed.status).toBe(410);
     expect(reclaimed.body.error).toMatch(/has been deleted/);

@@ -1,10 +1,13 @@
 import { appEvents } from './events';
+import { isSystemContinuation } from './chat-transcript';
 
 export interface Project {
   id: string;
   name: string;
   framework?: string;
-  status?: 'draft' | 'building' | 'ready';
+  status?: 'draft' | 'building' | 'ready' | 'error';
+  published?: boolean;
+  productionPublished?: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -27,13 +30,65 @@ export function formatRelativeTime(timestamp: number): string {
 
 const STORAGE_KEY = 'brainhalf_projects';
 const ACTIVE_PROJECT_KEY = 'brainhalf_active_project';
+let accountScope: Readonly<{ accountId: string | null }> = { accountId: null };
+let legacyProjectIds = new Set<string>();
+let deletedProjectIds = new Set<string>();
+const projectSubmissionKeys = new Map<string, string>();
+
+function projectDeleted(projectId: string): boolean {
+  if (deletedProjectIds.has(projectId)) return true;
+  try { return localStorage.getItem(projectStorageKey(`deleted:project:${projectId}`)) === 'true'; } catch { return false; }
+}
+
+export function getProjectStorageScope() {
+  return accountScope;
+}
+
+export function projectStorageKey(key: string): string {
+  return `brainhalf_account:${encodeURIComponent(accountScope.accountId || '')}:${key}`;
+}
+
+export function setProjectAccount(accountId: string | null): void {
+  if (accountScope.accountId === accountId) return;
+  flushProjectFileWrites();
+  accountScope = { accountId };
+  legacyProjectIds = new Set();
+  deletedProjectIds = new Set();
+  projectSubmissionKeys.clear();
+  for (const key of Object.keys(memoryCache)) delete memoryCache[key];
+  storageRevisions.clear();
+  try { sessionStorage.removeItem('brainhalf_github_pat'); } catch {}
+  appEvents.emit('project-account-changed');
+}
+
+export function reconcileOwnedProjects(owned: Project[]): void {
+  if (!accountScope.accountId) return;
+  legacyProjectIds = new Set(owned.map(project => project.id));
+  let legacy: Project[] = [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    if (Array.isArray(parsed)) legacy = parsed.filter(project => project && legacyProjectIds.has(project.id));
+  } catch {}
+  const current = getProjects();
+  const merged = new Map(current.map(project => [project.id, project]));
+  for (const project of owned) {
+    if (projectDeleted(project.id)) continue;
+    const saved = merged.get(project.id) || legacy.find(saved => saved.id === project.id) || project;
+    merged.set(project.id, {
+      ...saved,
+      ...(typeof project.published === 'boolean' ? { published: project.published } : {}),
+    });
+  }
+  saveProjects([...merged.values()]);
+  appEvents.emit('project-account-changed');
+}
 
 // A hard-coded project id would be shared by every brand-new visitor, and the
 // server claims a project on the first authenticated connection. So the first
 // person to open the app would permanently own "default" for everyone, and
 // every other newcomer's preview iframe would 403. Always mint a unique id.
 function newProjectId(): string {
-  return 'proj-' + Math.random().toString(36).substring(2, 8) + '-' + Date.now().toString(36);
+  return 'proj-' + crypto.randomUUID();
 }
 
 function seedProject(): Project {
@@ -48,12 +103,13 @@ function seedProject(): Project {
 }
 
 export function getProjects(): Project[] {
+  if (!accountScope.accountId) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(projectStorageKey(STORAGE_KEY));
     if (raw) {
       const list = JSON.parse(raw);
       if (Array.isArray(list) && list.length > 0) {
-        return list.map(p => ({
+        return list.filter(project => !projectDeleted(project.id)).map(p => ({
           framework: 'React 18 + Vite',
           status: 'ready',
           ...p
@@ -70,8 +126,9 @@ export function getProjects(): Project[] {
 }
 
 export function saveProjects(projects: Project[]) {
+  if (!accountScope.accountId) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+    localStorage.setItem(projectStorageKey(STORAGE_KEY), JSON.stringify(projects));
   } catch {}
 }
 
@@ -80,25 +137,26 @@ export function getActiveProjectId(): string {
   if (typeof window !== 'undefined' && window.location?.search) {
     const params = new URLSearchParams(window.location.search);
     const urlProj = params.get('project');
-    if (urlProj && /^[a-zA-Z0-9_-]+$/.test(urlProj)) {
+    if (urlProj && /^[a-zA-Z0-9_-]+$/.test(urlProj) && !projectDeleted(urlProj)) {
       return urlProj;
     }
   }
 
   if (typeof localStorage !== 'undefined') {
-    const saved = localStorage.getItem(ACTIVE_PROJECT_KEY);
-    if (saved) return saved;
+    const saved = accountScope.accountId ? localStorage.getItem(projectStorageKey(ACTIVE_PROJECT_KEY)) : null;
+    if (saved && !projectDeleted(saved)) return saved;
   }
 
   // Never fall back to a hard-coded id: getProjects() has already seeded a
   // uniquely-owned project for first-time visitors, so this is either that id
   // or an existing project the user chose earlier.
-  return getProjects()[0]?.id ?? newProjectId();
+  return accountScope.accountId ? (getProjects()[0]?.id ?? newProjectId()) : '';
 }
 
 export function setActiveProjectId(id: string) {
+  if (!accountScope.accountId) return;
   if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(ACTIVE_PROJECT_KEY, id);
+    localStorage.setItem(projectStorageKey(ACTIVE_PROJECT_KEY), id);
   }
 
   if (typeof window !== 'undefined' && window.location && window.history?.replaceState) {
@@ -115,6 +173,7 @@ export function setActiveProjectId(id: string) {
 }
 
 export function createProject(name: string = 'Untitled Project'): Project {
+  if (!accountScope.accountId) throw new Error('Sign in before creating a project');
   const id = newProjectId();
   const newProj: Project = {
     id,
@@ -126,15 +185,31 @@ export function createProject(name: string = 'Untitled Project'): Project {
   };
   const projects = [newProj, ...getProjects().filter(p => p.id !== id)];
   saveProjects(projects);
+  projectSubmissionKeys.set(id, crypto.randomUUID());
   setActiveProjectId(id);
   return newProj;
 }
 
+export function setProjectSubmissionKey(projectId: string, submissionKey: string) {
+  if (!projectId || !submissionKey) return;
+  projectSubmissionKeys.set(projectId, submissionKey);
+}
+
+export function getProjectSubmissionKey(projectId: string): string {
+  const existing = projectSubmissionKeys.get(projectId);
+  if (existing) return existing;
+  const fallback = `proj-${projectId}`;
+  projectSubmissionKeys.set(projectId, fallback);
+  return fallback;
+}
+
 export async function createBranch(sourceId: string, branchName: string): Promise<Project> {
+  const scope = accountScope;
   const newProj = createProject(branchName);
   
   // Clone files (check local cache/IndexedDB, falling back to edge preview API)
   let sourceFiles = await getProjectFilesAsync(sourceId);
+  if (scope !== accountScope) throw new Error('Account changed during branch creation');
   if (!sourceFiles || Object.keys(sourceFiles).length === 0) {
     try {
       const res = await fetch(`/preview/${sourceId}/api/files`);
@@ -148,11 +223,13 @@ export async function createBranch(sourceId: string, branchName: string): Promis
   }
 
   if (sourceFiles && Object.keys(sourceFiles).length > 0) {
+    if (scope !== accountScope) throw new Error('Account changed during branch creation');
     saveProjectFiles(newProj.id, JSON.parse(JSON.stringify(sourceFiles)));
   }
 
   // Clone messages
   const sourceMsgs = await getProjectMessagesAsync(sourceId);
+  if (scope !== accountScope) throw new Error('Account changed during branch creation');
   if (sourceMsgs) {
     saveProjectMessages(newProj.id, JSON.parse(JSON.stringify(sourceMsgs)));
   }
@@ -175,8 +252,11 @@ export interface MergeResult {
 }
 
 export async function mergeBranches(targetProjectId: string, sourceProjectId: string): Promise<MergeResult> {
+  const scope = accountScope;
   const targetFiles = (await getProjectFilesAsync(targetProjectId)) || {};
+  if (scope !== accountScope) throw new Error('Account changed during merge');
   const sourceFiles = (await getProjectFilesAsync(sourceProjectId)) || {};
+  if (scope !== accountScope) throw new Error('Account changed during merge');
 
   const merged: Record<string, string> = { ...targetFiles };
   const conflicts: string[] = [];
@@ -222,9 +302,32 @@ export function updateProjectMeta(id: string, meta: Partial<Project>) {
     return p;
   });
   saveProjects(projects);
+  appEvents.emit('project-list-updated');
+}
+
+/** Cache confirmed publication without making a status read look like an edit. */
+export function updateProjectPublication(id: string, published: boolean) {
+  if (!accountScope.accountId) return;
+  const projects = getProjects();
+  if (!projects.some(project => project.id === id && project.published !== published)) return;
+  saveProjects(projects.map(project => project.id === id ? { ...project, published } : project));
+  appEvents.emit('project-list-updated');
+}
+
+/** Last confirmed hosted release, separate from legacy preview-link visibility. */
+export function updateProjectDeployment(id: string, published: boolean) {
+  if (!accountScope.accountId || projectDeleted(id)) return;
+  const projects = getProjects();
+  if (!projects.some(project => project.id === id && project.productionPublished !== published)) return;
+  saveProjects(projects.map(project => project.id === id ? { ...project, productionPublished: published } : project));
+  appEvents.emit('project-list-updated');
 }
 
 export function deleteProject(id: string): Project[] {
+  const wasActive = getActiveProjectId() === id;
+  deletedProjectIds.add(id);
+  projectSubmissionKeys.delete(id);
+  try { localStorage.setItem(projectStorageKey(`deleted:project:${id}`), 'true'); } catch {}
   let projects = getProjects().filter(p => p.id !== id);
   if (projects.length === 0) {
     projects = [seedProject()];
@@ -232,10 +335,44 @@ export function deleteProject(id: string): Project[] {
   saveProjects(projects);
   deleteProjectFiles(id);
   deleteProjectMessages(id);
-  if (getActiveProjectId() === id) {
+  if (wasActive) {
     setActiveProjectId(projects[0].id);
   }
   return projects;
+}
+
+export async function deleteProjectDurably(id: string): Promise<Project[]> {
+  const scope = accountScope;
+  if (!scope.accountId) throw new Error('Sign in before deleting a project');
+  const key = projectStorageKey(id);
+  const marker = projectStorageKey(`deleted:project:${id}`);
+  const legacyMarker = projectStorageKey(`deleted:${id}`);
+  const remaining = deleteProject(id);
+  try {
+    localStorage.setItem(projectStorageKey(`deleted:project:${id}`), 'true');
+    localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${id}`));
+    localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${id}`));
+  } catch {
+    throw new Error('Server deletion succeeded, but browser cleanup failed. Retry to finish cleanup.');
+  }
+  const database = await getDb();
+  if (!database) {
+    if (scope !== accountScope) throw new Error('Account changed during deletion');
+    return remaining;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(['files', 'messages'], 'readwrite');
+    for (const name of ['files', 'messages']) {
+      transaction.objectStore(name).put(true, marker);
+      transaction.objectStore(name).put(true, legacyMarker);
+      transaction.objectStore(name).delete(key);
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(new Error('Server deletion succeeded, but browser cleanup failed. Retry to finish cleanup.'));
+    transaction.onabort = () => reject(new Error('Server deletion succeeded, but browser cleanup was interrupted. Retry to finish cleanup.'));
+  });
+  if (scope !== accountScope) throw new Error('Account changed during deletion');
+  return remaining;
 }
 
 const PROJECT_FILES_PREFIX = 'brainhalf_files_';
@@ -243,6 +380,11 @@ const PROJECT_MESSAGES_PREFIX = 'brainhalf_messages_';
 
 // In-memory cache for fast synchronous access
 const memoryCache: Record<string, any> = {};
+const storageRevisions = new Map<string, number>();
+
+function markStorageWrite(key: string) {
+  storageRevisions.set(key, (storageRevisions.get(key) || 0) + 1);
+}
 
 // Zero-dependency native IndexedDB persistence for large files and history
 const DB_NAME = 'BrainHalfStorage';
@@ -265,7 +407,7 @@ function getDb(): Promise<IDBDatabase> | null {
           }
         };
         req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        req.onerror = () => { dbPromise = null; reject(req.error); };
       } catch (err) {
         reject(err);
       }
@@ -274,7 +416,7 @@ function getDb(): Promise<IDBDatabase> | null {
   return dbPromise;
 }
 
-export async function idbGet<T>(storeName: 'files' | 'messages', key: string): Promise<T | null> {
+async function readIdbKey<T>(storeName: 'files' | 'messages', key: string): Promise<T | null> {
   const dbPromiseLocal = getDb();
   if (!dbPromiseLocal) return null;
   try {
@@ -295,7 +437,17 @@ export async function idbGet<T>(storeName: 'files' | 'messages', key: string): P
   }
 }
 
+export async function idbGet<T>(storeName: 'files' | 'messages', key: string): Promise<T | null> {
+  const scope = accountScope;
+  if (!scope.accountId) return null;
+  const result = await readIdbKey<T>(storeName, projectStorageKey(key));
+  return scope === accountScope ? result : null;
+}
+
 export async function idbSet(storeName: 'files' | 'messages', key: string, value: any): Promise<void> {
+  if (!accountScope.accountId) return;
+  const scopedKey = projectStorageKey(key);
+  const markerKey = projectStorageKey(`deleted:project:${key}`);
   const dbPromiseLocal = getDb();
   if (!dbPromiseLocal) return;
   try {
@@ -304,9 +456,15 @@ export async function idbSet(storeName: 'files' | 'messages', key: string, value
       try {
         const tx = db.transaction(storeName, 'readwrite');
         const store = tx.objectStore(storeName);
-        store.put(value, key);
+        if (key.startsWith('deleted:')) {
+          store.put(value, scopedKey);
+        } else {
+          const marker = store.get(markerKey);
+          marker.onsuccess = () => { if (!marker.result) store.put(value, scopedKey); };
+        }
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();
+        tx.onabort = () => resolve();
       } catch {
         resolve();
       }
@@ -317,6 +475,8 @@ export async function idbSet(storeName: 'files' | 'messages', key: string, value
 }
 
 export async function idbDelete(storeName: 'files' | 'messages', key: string): Promise<void> {
+  if (!accountScope.accountId) return;
+  const scopedKey = projectStorageKey(key);
   const dbPromiseLocal = getDb();
   if (!dbPromiseLocal) return;
   try {
@@ -325,9 +485,10 @@ export async function idbDelete(storeName: 'files' | 'messages', key: string): P
       try {
         const tx = db.transaction(storeName, 'readwrite');
         const store = tx.objectStore(storeName);
-        store.delete(key);
+        store.delete(scopedKey);
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();
+        tx.onabort = () => resolve();
       } catch {
         resolve();
       }
@@ -338,6 +499,7 @@ export async function idbDelete(storeName: 'files' | 'messages', key: string): P
 }
 
 export function getProjectFiles(projectId: string): Record<string, string> | null {
+  if (!accountScope.accountId || projectDeleted(projectId)) return null;
   const cacheKey = `files_${projectId}`;
   if (memoryCache[cacheKey]) {
     return memoryCache[cacheKey];
@@ -345,10 +507,10 @@ export function getProjectFiles(projectId: string): Record<string, string> | nul
 
   try {
     if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem(`${PROJECT_FILES_PREFIX}${projectId}`);
+    const raw = localStorage.getItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`));
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         memoryCache[cacheKey] = parsed;
         return parsed;
       }
@@ -360,20 +522,43 @@ export function getProjectFiles(projectId: string): Record<string, string> | nul
 }
 
 export async function getProjectFilesAsync(projectId: string): Promise<Record<string, string> | null> {
-  const syncResult = getProjectFiles(projectId);
-  if (syncResult) return syncResult;
-
-  // Fallback to IndexedDB for large projects that exceeded localStorage quota
+  const scope = accountScope;
+  if (!scope.accountId || projectDeleted(projectId)) return null;
+  const cacheKey = `files_${projectId}`;
+  const revision = storageRevisions.get(cacheKey) || 0;
+  if (revision > 0) return getProjectFiles(projectId);
   const idbResult = await idbGet<Record<string, string>>('files', projectId);
+  if (scope !== accountScope || projectDeleted(projectId)) return null;
+  if ((storageRevisions.get(cacheKey) || 0) !== revision) return getProjectFiles(projectId);
   if (idbResult) {
-    memoryCache[`files_${projectId}`] = idbResult;
+    memoryCache[cacheKey] = idbResult;
     return idbResult;
+  }
+  const cached = getProjectFiles(projectId);
+  if (cached || !legacyProjectIds.has(projectId)) return cached;
+  const legacy = await readLegacy<Record<string, string>>('files', projectId);
+  if (scope !== accountScope || projectDeleted(projectId)) return null;
+  if ((storageRevisions.get(cacheKey) || 0) !== revision) return getProjectFiles(projectId);
+  if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
+    saveProjectFiles(projectId, legacy);
+    return legacy;
   }
   return null;
 }
 
+async function readLegacy<T>(store: 'files' | 'messages', projectId: string): Promise<T | null> {
+  const scope = accountScope;
+  if (await idbGet<boolean>(store, `deleted:${projectId}`)) return null;
+  if (scope !== accountScope) return null;
+  try { if (localStorage.getItem(projectStorageKey(`deleted:${store}:${projectId}`))) return null; } catch {}
+  const stored = await readIdbKey<T>(store, projectId);
+  if (scope !== accountScope) return null;
+  if (stored) return stored;
+  try { return JSON.parse(localStorage.getItem(`brainhalf_${store}_${projectId}`) || 'null'); } catch { return null; }
+}
+
 export function saveProjectFiles(projectId: string, files: Record<string, string>) {
-  if (!projectId || !files || Object.keys(files).length === 0) return;
+  if (!projectId || !files) return;
   persistFiles(projectId, files);
 }
 
@@ -383,6 +568,7 @@ export function saveProjectFiles(projectId: string, files: Record<string, string
  * can share one implementation.
  */
 function persistFiles(projectId: string, files: Record<string, string>) {
+  if (!accountScope.accountId || projectDeleted(projectId)) return;
   // A write still in the debounce window holds an older snapshot and would
   // overwrite this one when it fires. Any newer state being persisted
   // explicitly supersedes it.
@@ -392,6 +578,7 @@ function persistFiles(projectId: string, files: Record<string, string>) {
     pendingFileWrites.delete(projectId);
   }
   memoryCache[`files_${projectId}`] = files;
+  markStorageWrite(`files_${projectId}`);
 
   // 1. Asynchronously persist to high-capacity IndexedDB
   void idbSet('files', projectId, files);
@@ -399,11 +586,11 @@ function persistFiles(projectId: string, files: Record<string, string>) {
   // 2. Synchronously cache to localStorage if within quota
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(`${PROJECT_FILES_PREFIX}${projectId}`, JSON.stringify(files));
+      localStorage.setItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`), JSON.stringify(files));
     }
   } catch (e) {
-    // QuotaExceededError: IndexedDB has already persisted the state safely
-    console.warn('localStorage quota exceeded for files, persisted via IndexedDB:', e);
+    try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`)); } catch {}
+    console.warn('localStorage unavailable for files; IndexedDB persistence requested:', e);
   }
 }
 
@@ -421,8 +608,10 @@ const pendingFileWrites = new Map<string, ReturnType<typeof setTimeout>>();
  * current content rather than the last persisted snapshot.
  */
 export function saveProjectFilesDebounced(projectId: string, files: Record<string, string>) {
-  if (!projectId || !files || Object.keys(files).length === 0) return;
+  if (projectDeleted(projectId)) return;
+  if (!accountScope.accountId || !projectId || !files) return;
   memoryCache[`files_${projectId}`] = files;
+  markStorageWrite(`files_${projectId}`);
 
   const pending = pendingFileWrites.get(projectId);
   if (pending) clearTimeout(pending);
@@ -447,6 +636,9 @@ export function flushProjectFileWrites(): void {
 }
 
 export function deleteProjectFiles(projectId: string) {
+  if (!accountScope.accountId) return;
+  void idbSet('files', `deleted:${projectId}`, true);
+  try { localStorage.setItem(projectStorageKey(`deleted:files:${projectId}`), 'true'); } catch {}
   // A write still in the debounce window would otherwise land after the
   // delete and resurrect the files the user just got rid of.
   const pending = pendingFileWrites.get(projectId);
@@ -455,16 +647,18 @@ export function deleteProjectFiles(projectId: string) {
     pendingFileWrites.delete(projectId);
   }
   delete memoryCache[`files_${projectId}`];
+  markStorageWrite(`files_${projectId}`);
   void idbDelete('files', projectId);
 
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(`${PROJECT_FILES_PREFIX}${projectId}`);
+      localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`));
     }
   } catch {}
 }
 
 export function getProjectMessages(projectId: string): any[] | null {
+  if (!accountScope.accountId || projectDeleted(projectId)) return null;
   const cacheKey = `messages_${projectId}`;
   if (memoryCache[cacheKey]) {
     return memoryCache[cacheKey];
@@ -472,10 +666,10 @@ export function getProjectMessages(projectId: string): any[] | null {
 
   try {
     if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`);
+    const raw = localStorage.getItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`));
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         memoryCache[cacheKey] = parsed;
         return parsed;
       }
@@ -487,14 +681,26 @@ export function getProjectMessages(projectId: string): any[] | null {
 }
 
 export async function getProjectMessagesAsync(projectId: string): Promise<any[] | null> {
-  const syncResult = getProjectMessages(projectId);
-  if (syncResult) return syncResult;
-
-  // Fallback to IndexedDB for large conversation histories
+  const scope = accountScope;
+  if (!scope.accountId || projectDeleted(projectId)) return null;
+  const cacheKey = `messages_${projectId}`;
+  const revision = storageRevisions.get(cacheKey) || 0;
+  if (revision > 0) return getProjectMessages(projectId);
   const idbResult = await idbGet<any[]>('messages', projectId);
+  if (scope !== accountScope || projectDeleted(projectId)) return null;
+  if ((storageRevisions.get(cacheKey) || 0) !== revision) return getProjectMessages(projectId);
   if (idbResult) {
-    memoryCache[`messages_${projectId}`] = idbResult;
+    memoryCache[cacheKey] = idbResult;
     return idbResult;
+  }
+  const cached = getProjectMessages(projectId);
+  if (cached || !legacyProjectIds.has(projectId)) return cached;
+  const legacy = await readLegacy<any[]>('messages', projectId);
+  if (scope !== accountScope || projectDeleted(projectId)) return null;
+  if ((storageRevisions.get(cacheKey) || 0) !== revision) return getProjectMessages(projectId);
+  if (Array.isArray(legacy)) {
+    saveProjectMessages(projectId, legacy);
+    return legacy;
   }
   return null;
 }
@@ -502,31 +708,30 @@ export async function getProjectMessagesAsync(projectId: string): Promise<any[] 
 export function getProjectDisplayTitle(proj: Project): string {
   if (!proj) return 'Untitled Project';
 
-  // 1. Check stored messages for the first user prompt
+  // A chosen name must survive subsequent messages and landing-page reloads.
+  const name = (proj.name || '').trim().replace(/\s+/g, ' ');
+  const customName = name && !/^Project \d+$/i.test(name) && !['Untitled Project', 'New project'].includes(name);
   const msgs = getProjectMessages(proj.id);
   if (msgs && Array.isArray(msgs)) {
     const firstUserMsg = msgs.find(
-      m => m && m.role === 'user' && typeof m.content === 'string' && m.content.trim().length > 0
+      m => m && m.role === 'user' && !m.internal && typeof m.content === 'string' && m.content.trim().length > 0 && !isSystemContinuation(m.content)
     );
     if (firstUserMsg && firstUserMsg.content) {
       const cleaned = firstUserMsg.content.trim().replace(/\s+/g, ' ');
-      return cleaned.length > 30 ? `${cleaned.slice(0, 30)}…` : cleaned;
+      // Older project creation stored only a prompt prefix as the name.
+      // Expand that prefix for display; CSS handles the available line length.
+      const automaticPrefix = /(?:…|\.\.\.)$/.test(name) && cleaned.startsWith(name.replace(/(?:…|\.\.\.)$/, ''));
+      return customName && !automaticPrefix ? name : cleaned;
     }
   }
 
-  // 2. If project name is custom (not generic "Project N" or "Untitled Project"), use it truncated to ~30 chars
-  if (proj.name && !/^Project \d+$/i.test(proj.name) && proj.name !== 'Untitled Project') {
-    const cleaned = proj.name.trim().replace(/\s+/g, ' ');
-    return cleaned.length > 30 ? `${cleaned.slice(0, 30)}…` : cleaned;
-  }
-
-  // 3. Fallback to generic name or default
-  return proj.name || 'New project';
+  return name || 'New project';
 }
 
 export function saveProjectMessages(projectId: string, messages: any[]) {
-  if (!projectId || !messages) return;
+  if (!accountScope.accountId || !projectId || !messages || projectDeleted(projectId)) return;
   memoryCache[`messages_${projectId}`] = messages;
+  markStorageWrite(`messages_${projectId}`);
 
   // 1. Asynchronously persist to high-capacity IndexedDB
   void idbSet('messages', projectId, messages);
@@ -534,21 +739,47 @@ export function saveProjectMessages(projectId: string, messages: any[]) {
   // 2. Synchronously cache to localStorage if within quota
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`, JSON.stringify(messages));
+      localStorage.setItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`), JSON.stringify(messages));
     }
   } catch (e) {
-    console.warn('localStorage quota exceeded for messages, persisted via IndexedDB:', e);
+    try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`)); } catch {}
+    console.warn('localStorage unavailable for messages; IndexedDB persistence requested:', e);
   }
 }
 
 export function deleteProjectMessages(projectId: string) {
+  if (!accountScope.accountId) return;
+  void idbSet('messages', `deleted:${projectId}`, true);
+  try { localStorage.setItem(projectStorageKey(`deleted:messages:${projectId}`), 'true'); } catch {}
   delete memoryCache[`messages_${projectId}`];
+  markStorageWrite(`messages_${projectId}`);
   void idbDelete('messages', projectId);
 
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(`${PROJECT_MESSAGES_PREFIX}${projectId}`);
+      localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`));
     }
   } catch {}
 }
 
+export function bindProjectStore() {
+  const scope = accountScope;
+  const current = () => scope === accountScope;
+  return {
+    isCurrent: current,
+    getProjects: () => current() ? getProjects() : [],
+    getProjectFiles: (id: string) => current() ? getProjectFiles(id) : null,
+    getProjectMessages: (id: string) => current() ? getProjectMessages(id) : null,
+    getProjectFilesAsync: (id: string) => current() ? getProjectFilesAsync(id) : Promise.resolve(null),
+    getProjectMessagesAsync: (id: string) => current() ? getProjectMessagesAsync(id) : Promise.resolve(null),
+    saveProjectFiles: (id: string, files: Record<string, string>) => { if (current()) saveProjectFiles(id, files); },
+    saveProjectFilesDebounced: (id: string, files: Record<string, string>) => { if (current()) saveProjectFilesDebounced(id, files); },
+    saveProjectMessages: (id: string, messages: any[]) => { if (current()) saveProjectMessages(id, messages); },
+    deleteProjectMessages: (id: string) => { if (current()) deleteProjectMessages(id); },
+    deleteProject: (id: string) => current() ? deleteProject(id) : [],
+    updateProjectName: (id: string, name: string) => { if (current()) updateProjectName(id, name); },
+    setActiveProjectId: (id: string) => { if (current()) setActiveProjectId(id); },
+    flushProjectFileWrites: () => { if (current()) flushProjectFileWrites(); },
+    forkProject: (id: string, name?: string) => current() ? forkProject(id, name) : Promise.reject(new Error('Account changed')),
+  };
+}

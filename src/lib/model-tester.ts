@@ -1,5 +1,7 @@
+import { AiBudget, meteredModel } from './ai-budget';
 import { transform } from 'sucrase';
-import { isAllowedOrigin, USER_ID_HEADER } from './auth';
+import { authorizeProject, isAllowedOrigin, USER_ID_HEADER } from './auth';
+import { atriaConfiguration, bedrockBearer, credential, dahlConfiguration, validateRuntimeProviders } from './runtime-config';
 import {
   MODEL_ALLOWLIST,
   MODEL_TEST_TIMEOUT_MS,
@@ -281,10 +283,10 @@ export async function handleModelTest(
   // Anthropic-family models may be served by the native API or by Bedrock.
   // Match agent.ts transport choice: if native API key is missing but Bedrock
   // is configured (or vice versa), route through the configured transport.
-  if (resolved.provider === 'anthropic' && !env.ANTHROPIC_API_KEY) {
+  if (!provider && resolved.provider === 'anthropic' && !credential(env, 'ANTHROPIC_API_KEY')) {
     const alt = resolveModel(resolved.name, 'aws');
     if (alt) resolved = alt;
-  } else if (resolved.provider === 'aws' && !(env.BEDROCK_API_KEY || (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY))) {
+  } else if (!provider && resolved.provider === 'aws' && !(bedrockBearer(env) || (credential(env, 'AWS_ACCESS_KEY_ID') && credential(env, 'AWS_SECRET_ACCESS_KEY')))) {
     const alt = resolveModel(resolved.name, 'anthropic');
     if (alt) resolved = alt;
   }
@@ -299,14 +301,21 @@ export async function handleModelTest(
   // -------------------------------------------------------------
   // STRICT ZERO-FALLBACK EXECUTION
   // -------------------------------------------------------------
+  const budget = new AiBudget(env, identity?.userId || '');
   const startTime = Date.now();
   let firstTokenTime: number | null = null;
   let outputContent = '';
   let errorMsg: string | null = null;
 
   try {
+    validateRuntimeProviders(env);
+    await budget.start();
+    // Reserve the full budget once before the token ladder, not on every retry.
+    // Each reserve() is a cross-DO network hop; doing it 4× in a loop was the
+    // same per-step billing issue fixed in the main generation path.
+    await budget.reserve(65536);
     if (resolved.provider === 'cloudflare') {
-      if (!env || !env.AI) {
+      if (typeof env?.AI?.run !== 'function') {
         throw new Error('Cloudflare Workers AI binding env.AI is not available');
       }
 
@@ -427,7 +436,7 @@ export async function handleModelTest(
         }
       }
     } else if (resolved.provider === 'anthropic') {
-      const anthropicApiKey = env.ANTHROPIC_API_KEY;
+      const anthropicApiKey = credential(env, 'ANTHROPIC_API_KEY');
       if (!anthropicApiKey) {
         throw new Error(`ANTHROPIC_API_KEY is not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
       }
@@ -436,9 +445,10 @@ export async function handleModelTest(
       const { streamText } = await import('ai');
       const anthropic = createAnthropic({ apiKey: anthropicApiKey });
       const stream = streamText({
-        model: anthropic(resolved.id),
+        model: meteredModel(anthropic(resolved.id)),
         messages: [{ role: 'user', content: prompt }],
-        abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS)
+        abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+        onError: ({ error }) => { errorMsg = error instanceof Error ? error.message : String(error); },
       });
 
       for await (const chunk of stream.textStream) {
@@ -448,9 +458,9 @@ export async function handleModelTest(
         outputContent += chunk;
       }
     } else if (resolved.provider === 'aws') {
-      const awsKey = env.AWS_ACCESS_KEY_ID;
-      const awsSecret = env.AWS_SECRET_ACCESS_KEY;
-      const bedrockApiKey = env.BEDROCK_API_KEY || env.AWS_BEARER_TOKEN_BEDROCK || env.AWS_API_KEY || env.AWS_BEDROCK_API_KEY || env.BEDROCK_TOKEN || env.AWS_BEDROCK_KEY;
+      const awsKey = credential(env, 'AWS_ACCESS_KEY_ID');
+      const awsSecret = credential(env, 'AWS_SECRET_ACCESS_KEY');
+      const bedrockApiKey = bedrockBearer(env);
 
       if (!bedrockApiKey && (!awsKey || !awsSecret)) {
         throw new Error(`AWS Bedrock credentials are not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
@@ -469,8 +479,8 @@ export async function handleModelTest(
         'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
         'moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
         'global.moonshotai.kimi-k3': ['global.moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-        'us.anthropic.claude-sonnet-4-6': ['us.anthropic.claude-sonnet-4-6', 'global.anthropic.claude-sonnet-4-6', 'anthropic.claude-sonnet-4-6', 'us.anthropic.claude-sonnet-4-6-v1:0', 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'],
-        'us.anthropic.claude-opus-4-6': ['us.anthropic.claude-opus-4-6', 'global.anthropic.claude-opus-4-6', 'anthropic.claude-opus-4-6', 'us.anthropic.claude-opus-4-6-v1:0', 'us.anthropic.claude-3-opus-20240229-v1:0'],
+        'us.anthropic.claude-sonnet-4-6': ['us.anthropic.claude-sonnet-4-6', 'global.anthropic.claude-sonnet-4-6', 'anthropic.claude-sonnet-4-6', 'us.anthropic.claude-sonnet-4-6-v1:0'],
+        'us.anthropic.claude-opus-4-6': ['us.anthropic.claude-opus-4-6', 'global.anthropic.claude-opus-4-6', 'anthropic.claude-opus-4-6', 'us.anthropic.claude-opus-4-6-v1:0'],
         'minimax.minimax-m2.5': ['minimax.minimax-m2.5', 'us.minimax.minimax-m2.5'],
       };
 
@@ -484,7 +494,7 @@ export async function handleModelTest(
           outputContent = '';
           firstTokenTime = null;
           const stream = streamText({
-            model: bedrock(candidateId),
+            model: meteredModel(bedrock(candidateId)),
             messages: [{ role: 'user', content: prompt }],
             abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
             onError: (errEvent: any) => {
@@ -519,16 +529,7 @@ export async function handleModelTest(
       }
       if (lastErr) throw lastErr;
     } else if (resolved.provider === 'atria') {
-      const rawAtriaKey = env.ATRIA_API_KEY || env.XKIRO_API_KEY;
-      let atriaApiKey = rawAtriaKey;
-      let atriaBaseUrl = env.ATRIA_BASE_URL;
-
-      if (!atriaApiKey && atriaBaseUrl && !atriaBaseUrl.startsWith('http')) {
-        atriaApiKey = atriaBaseUrl;
-        atriaBaseUrl = 'https://api.atria-asi.ai/v1';
-      } else if (!atriaBaseUrl || !atriaBaseUrl.startsWith('http')) {
-        atriaBaseUrl = 'https://api.atria-asi.ai/v1';
-      }
+      const { apiKey: atriaApiKey, baseURL: atriaBaseUrl } = atriaConfiguration(env);
 
       if (!atriaApiKey) {
         throw new Error(`ATRIA_API_KEY is not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
@@ -543,9 +544,38 @@ export async function handleModelTest(
         compatibility: 'compatible',
       } as any);
       const stream = streamText({
-        model: atria.chat(resolved.id),
+        model: meteredModel(atria.chat(resolved.id)),
         messages: [{ role: 'user', content: prompt }],
         abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+        onError: ({ error }) => { errorMsg = error instanceof Error ? error.message : String(error); },
+      });
+
+      for await (const chunk of stream.textStream) {
+        if (!firstTokenTime) {
+          firstTokenTime = Date.now() - startTime;
+        }
+        outputContent += chunk;
+      }
+    } else if (resolved.provider === 'dahl') {
+      const { apiKey: dahlApiKey, baseURL: dahlBaseUrl } = dahlConfiguration(env);
+
+      if (!dahlApiKey) {
+        throw new Error(`DAHL_API_KEY is not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
+      }
+
+      const { createOpenAI } = await import('@ai-sdk/openai');
+      const { streamText } = await import('ai');
+      const dahl = createOpenAI({
+        name: 'dahl',
+        apiKey: dahlApiKey,
+        baseURL: dahlBaseUrl,
+        compatibility: 'compatible',
+      } as any);
+      const stream = streamText({
+        model: meteredModel(dahl.chat(resolved.id)),
+        messages: [{ role: 'user', content: prompt }],
+        abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
+        onError: ({ error }) => { errorMsg = error instanceof Error ? error.message : String(error); },
       });
 
       for await (const chunk of stream.textStream) {
@@ -560,6 +590,8 @@ export async function handleModelTest(
     }
   } catch (err: any) {
     errorMsg = (err.message || String(err)).replace(/^undefined:\s*/i, '');
+  } finally {
+    await budget.end().catch(() => { console.warn('Model test lease will expire automatically.'); });
   }
 
   const durationMs = Date.now() - startTime;
@@ -600,13 +632,24 @@ export async function handleModelTest(
     syntaxValid = false;
     syntaxError = transpileErr.message || 'Sucrase JSX/TypeScript transpile error';
   }
+  if (!syntaxValid) {
+    return new Response(JSON.stringify({
+      success: false, level, model: resolved.name, provider: resolved.provider,
+      ttftMs: firstTokenTime, durationMs, tokens: estimatedTokens, tokensPerSec,
+      syntaxValid, syntaxError, error: 'Generated code failed syntax validation',
+    }), { status: 422, headers: corsHeaders });
+  }
 
   // -------------------------------------------------------------
   // EDGE PREVIEW PERSISTENCE
   // -------------------------------------------------------------
-  let previewUrl = `/preview/${testProjectId}/index.html`;
+  let previewUrl: string | undefined;
+  let previewError: string | undefined;
   try {
     if (env.ChatAgent) {
+      if (!identity?.userId) throw new Error('Authenticated project owner is required for preview');
+      const ownership = await authorizeProject(env, testProjectId, identity.userId, `${resolved.name} ${level} test`);
+      if (!ownership.ok) throw new Error(`Preview project could not be authorized (${ownership.status})`);
       const doId = env.ChatAgent.idFromName(testProjectId);
       const doObj = env.ChatAgent.get(doId);
       // The Durable Object fails closed on every HTTP path, so this internal
@@ -626,15 +669,17 @@ export async function handleModelTest(
         })
       }));
       if (!syncRes.ok) {
-        console.warn(`Preview sync rejected with ${syncRes.status}; the result's preview URL may be stale`);
+        throw new Error(`Preview files could not be saved (${syncRes.status})`);
       }
+      previewUrl = `/preview/${testProjectId}/index.html`;
     }
   } catch (syncErr: any) {
     console.warn('Failed to auto-sync to Edge Preview DO:', syncErr);
+    previewError = syncErr instanceof Error ? syncErr.message : 'Preview could not be saved';
   }
 
   const result: ModelTestResult & { rawOutput?: string } = {
-    success: true,
+    success: !previewError,
     level,
     model: resolved.name,
     provider: resolved.provider,
@@ -645,9 +690,10 @@ export async function handleModelTest(
     syntaxValid,
     syntaxError,
     previewUrl,
+    error: previewError,
     codeSnippet: extractedCode.substring(0, 200) + '...',
     rawOutput: outputContent.substring(0, 300)
   };
 
-  return new Response(JSON.stringify(result, null, 2), { status: 200, headers: corsHeaders });
+  return new Response(JSON.stringify(result, null, 2), { status: previewError ? 502 : 200, headers: corsHeaders });
 }

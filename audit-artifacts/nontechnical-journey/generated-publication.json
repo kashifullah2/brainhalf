@@ -1,0 +1,56 @@
+{
+  "projectId": "proj-2871be52-6390-441c-9089-1648408f7978",
+  "status": "passed",
+  "checks": [
+    "Empty form validates both fields",
+    "Public appointment form confirms valid submission",
+    "Public mobile layout fits",
+    "Public page reloads"
+  ],
+  "dialog": "Publish your app\n\nPublish a complete, tested version of your app. BrainHalf builds your frontend and backend, prepares the production database, and checks the release before it goes live.\n\nDeploying your frontend, backend, and production database\n\n✓\nBuild app\n✓\nTest frontend & backend\n✓\nConnect production services\n4\nDeploy app\n5\nCheck deployment\n6\nLive\n\nYou can close this panel. Publishing continues on the server.\n\nPublishing…\nManage services\nCancel publishing\n\nPublishing saves this version. Later edits stay in your workspace until you publish again. Production uses its own database; development test records are not copied.",
+  "jobs": [
+    {
+      "id": "4eac2aae-d600-416b-96a2-021a51d094b5",
+      "kind": "publish",
+      "environment": "production",
+      "revision": "daa76f43fe480afa6bb8ac2f74a5cd2c3b1e64a493657cba76389576db75e484",
+      "status": "passed",
+      "createdAt": 1790274153081,
+      "updatedAt": 1790274230835,
+      "leaseUntil": 1790274275706,
+      "processIds": [
+        "620ccb43-3900-49af-9178-4750f0af1770",
+        "afb5ec14-4e45-481e-95f0-a74b7d16eac4",
+        "8669c809-afbb-40e3-b3c9-143e5654aa81"
+      ],
+      "message": "Your app is live",
+      "publishStage": "live",
+      "startedAt": 1790274158619,
+      "releaseId": "4eac2aae-d600-416b-96a2-021a51d094b5",
+      "finishedAt": 1790274230835
+    }
+  ],
+  "job": {
+    "id": "4eac2aae-d600-416b-96a2-021a51d094b5",
+    "kind": "publish",
+    "environment": "production",
+    "revision": "daa76f43fe480afa6bb8ac2f74a5cd2c3b1e64a493657cba76389576db75e484",
+    "status": "passed",
+    "createdAt": 1790274153081,
+    "updatedAt": 1790274230835,
+    "leaseUntil": 1790274275706,
+    "processIds": [
+      "620ccb43-3900-49af-9178-4750f0af1770",
+      "afb5ec14-4e45-481e-95f0-a74b7d16eac4",
+      "8669c809-afbb-40e3-b3c9-143e5654aa81"
+    ],
+    "message": "Your app is live",
+    "publishStage": "live",
+    "startedAt": 1790274158619,
+    "releaseId": "4eac2aae-d600-416b-96a2-021a51d094b5",
+    "finishedAt": 1790274230835
+  },
+  "publishMs": 79754,
+  "productionUrl": "https://deb260c733cb9b82876ea09cda516d76.apps.brainhalf.com",
+  "verification": null
+}

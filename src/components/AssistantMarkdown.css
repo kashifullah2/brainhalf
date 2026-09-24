@@ -1,0 +1,17 @@
+.assistant-markdown { overflow-wrap: anywhere; min-width: 0; line-height: 1.75; color: var(--text-primary); }
+.assistant-markdown > :first-child { margin-top: 0; }
+.assistant-markdown > :last-child { margin-bottom: 0; }
+.assistant-markdown p { margin: .65em 0; }
+.assistant-markdown h1, .assistant-markdown h2, .assistant-markdown h3, .assistant-markdown h4 { line-height: 1.35; font-weight: 650; letter-spacing: -.015em; margin: 1.1em 0 .5em; }
+.assistant-markdown h1 { font-size: 1.45em; }.assistant-markdown h2 { font-size: 1.28em; }.assistant-markdown h3, .assistant-markdown h4 { font-size: 1.1em; }
+.assistant-markdown ul, .assistant-markdown ol { margin: .6em 0; padding-left: 1.5em; }.assistant-markdown li { margin: .35em 0; }.assistant-markdown li > p { margin: .25em 0; }
+.assistant-markdown code { font-family: var(--font-mono); font-size: .9em; background: var(--bg-hover); border-radius: 4px; padding: .15em .35em; }
+.assistant-markdown pre { max-width: 100%; overflow: auto; white-space: pre; border: 1px solid var(--border-subtle); background: var(--bg-primary); padding: 14px; border-radius: 9px; }
+.assistant-markdown pre code { background: none; padding: 0; }
+.assistant-markdown a { color: var(--accent-primary, #1b7285); text-decoration: underline; text-underline-offset: 3px; }
+.assistant-markdown blockquote { margin: 1em 0; border-left: 3px solid var(--border-subtle); padding: 2px 0 2px 14px; color: var(--text-secondary); }
+.markdown-table-scroll { width: 100%; overflow-x: auto; margin: 12px 0; border: 1px solid var(--border-subtle); border-radius: 8px; }
+.assistant-markdown table { width: 100%; border-collapse: collapse; font-size: 12px; }.assistant-markdown th, .assistant-markdown td { padding: 9px 12px; border-bottom: 1px solid var(--border-subtle); text-align: left; min-width: 85px; }.assistant-markdown th { background: var(--bg-hover); }.assistant-markdown tr:last-child td { border-bottom: 0; }
+.assistant-markdown hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 16px 0; }
+.assistant-markdown input[type=checkbox] { accent-color: var(--accent-primary); margin-right: 8px; }
+.assistant-markdown :focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; }.markdown-image-label { color: var(--text-secondary); font-size: .92em; }

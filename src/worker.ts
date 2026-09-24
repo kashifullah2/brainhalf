@@ -1,14 +1,19 @@
+import { isPrivateSearch } from './seo/metadata';
 import { routeAgentRequest } from 'agents';
+import { handleGoogleAuth } from './lib/google-auth';
+import { handleManagedGoogle } from './lib/managed-providers';
+export { ManagedProviders } from './lib/managed-providers';
+import { handleEmailRequest } from './lib/email';
 import type { ExecutionContext } from '@cloudflare/workers-types';
 import { ChatAgent } from './agent';
 import { AuthRegistry } from './registry';
 import { handleModelTest } from './lib/model-tester';
 import {
+  authUnavailable,
   forbidden,
   handleLogin,
   handleLogout,
   handleSession,
-  handleSignup,
   injectUserId,
   isAllowedOrigin,
   isProjectOwner,
@@ -18,10 +23,17 @@ import {
   json,
   unauthorized,
   verifySession,
-  verifyWsTicket,
+  verifyPreviewSession,
+  redeemWsIdentity,
+  extractToken,
   USER_ID_QUERY_PARAM,
 } from './lib/auth';
-import { RateLimiter } from './lib/rate-limit';
+import { sha256Hex } from './lib/crypto';
+import { aiBudgetEndpoint } from './lib/ai-budget';
+import { createTenantRequest } from './lib/tenant-request';
+import { checkPreviewAccess, isPublicPreviewRead, PREVIEW_ACCESS_HEADER } from './lib/project-access';
+import { validSessionSecret } from './lib/runtime-config';
+import { isolatedPreviewHtml, previewFiles, previewSecurityHeaders } from './lib/preview-isolation';
 
 export { ChatAgent, AuthRegistry };
 
@@ -31,30 +43,50 @@ const AUTH_ROUTES = new Set([
   '/api/auth/logout',
   '/api/auth/session',
   '/api/auth/ws-ticket',
+  '/api/auth/google/start',
+  '/api/auth/google/callback',
+  '/api/auth/google/complete',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/resend-verification',
+  '/api/auth/verify-email',
+  '/api/contact',
 ]);
 
 /** Paths whose preflight must be answered by this Worker. */
 const CORS_PREFIXES = ['/api/', '/agents/', '/preview/', '/p/'];
 
-/* ------------------------------------------------------------------ *
- * Rate limiting
- *
- * The model-test endpoints call an LLM on every request. They were
- * authenticated but unmetered, so one signed-in account could drive
- * unbounded inference spend with a loop. This is a small fixed-window
- * counter held in the isolate; it is not a distributed limiter (an
- * attacker spread across colos gets a higher effective ceiling), but it
- * removes the trivial single-client abuse case with no added latency.
- * For a hard guarantee, move this into the AuthRegistry Durable Object
- * or Cloudflare's Rate Limiting binding.
- * ------------------------------------------------------------------ */
-const RATE_LIMITS = new RateLimiter({
+const RATE_LIMIT_CONFIG = {
   modelTest: { limit: 20, windowMs: 60_000 },
   auth: { limit: 10, windowMs: 60_000 },
-});
+} as const;
 
-function checkRateLimit(bucket: 'modelTest' | 'auth', key: string): { ok: boolean; retryAfter: number } {
-  return RATE_LIMITS.check(bucket, key);
+async function checkRateLimit(
+  env: any,
+  bucket: keyof typeof RATE_LIMIT_CONFIG,
+  key: string
+): Promise<{ ok: boolean; retryAfter: number; unavailable?: boolean }> {
+  try {
+    const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
+    const config = RATE_LIMIT_CONFIG[bucket];
+    const response = await registry.fetch('https://registry/rate-limit/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bucket, key, limit: config.limit, windowMs: config.windowMs }),
+    });
+    if (!response.ok) return { ok: false, retryAfter: 30, unavailable: true };
+    const body = await response.json() as { ok?: boolean; retryAfter?: number };
+    if (typeof body?.ok !== 'boolean') return { ok: false, retryAfter: 30, unavailable: true };
+    return {
+      ok: body.ok === true,
+      retryAfter: typeof body.retryAfter === 'number' && Number.isFinite(body.retryAfter)
+        ? Math.max(0, Math.ceil(body.retryAfter))
+        : 0,
+    };
+  } catch (err) {
+    console.warn('Rate-limit check failed:', err);
+    return { ok: false, retryAfter: 30, unavailable: true };
+  }
 }
 
 function tooManyRequests(retryAfter: number): Response {
@@ -92,7 +124,9 @@ function corsHeaders(origin: string | null): Record<string, string> {
 
 function withCors(response: Response, origin: string | null): Response {
   const next = new Response(response.body, response);
+  next.headers.set('Cache-Control', 'no-store');
   for (const [k, v] of Object.entries(corsHeaders(origin))) next.headers.set(k, v);
+  next.headers.set('X-Robots-Tag', 'noindex, nofollow');
   return next;
 }
 
@@ -104,45 +138,47 @@ function jsonError(message: string, status: number): Response {
   });
 }
 
+function withPreviewPrivacy(response: Response): Response {
+  const next = new Response(response.body, response);
+  for (const name of ['Set-Cookie', 'Clear-Site-Data', 'Refresh', 'Access-Control-Allow-Credentials', 'X-Frame-Options']) next.headers.delete(name);
+  for (const [name, value] of Object.entries(previewSecurityHeaders())) next.headers.set(name, value);
+  return next;
+}
+
+function previewRequest(request: Request, userId: string | undefined, owner: boolean): Request {
+  const forwarded = injectUserId(request, userId || 'public-preview-viewer');
+  forwarded.headers.set(PREVIEW_ACCESS_HEADER, owner ? 'owner' : 'public');
+  return forwarded;
+}
+
+function previewDenied(status: number): Response {
+  return withPreviewPrivacy(jsonError(status === 503 ? 'Project service unavailable' : 'Project unavailable or access denied', status));
+}
+
 /**
  * Content-Security-Policy and friends for the IDE shell itself.
  *
- * The built shell emits no inline scripts (verified against `dist/index.html`), so
+ * The built shell emits no executable inline scripts (verified against `dist/index.html`), so
  * script-src can be strict: 'self' plus the CDNs Monaco's loader actually fetches
  * from. `unsafe-inline` stays out of script-src on purpose — it is present in
  * style-src only, where the app relies on injected styles and the risk profile is
  * different.
  *
- * `unsafe-eval` is a hard requirement, not a TODO. The preview engine
- * (PreviewRunner.tsx) transpiles user files with sucrase and executes them
- * through `new Function` in a same-origin iframe; that is the product's core
- * feature, not leftover dev tooling. Removing it means replacing the in-browser
- * module loader with a Worker-side bundler. Until that happens, script-src must
- * keep 'unsafe-eval' or the preview stops running anything.
- *
- * The preview iframe is same-origin (`/preview/<id>/index.html`), so frame-src
- * only ever needs 'self'. The codesandbox origins previously listed here were
- * for a Sandpack engine toggle that never actually rendered anything.
- *
- * Note on `run_worker_first`: assets are served from [assets] without invoking
- * this Worker, so `public/_headers` -- not this function -- is what ships in
- * production. src/__tests__/headers-drift.test.ts makes the two drifting fail
+ * Note on `run_worker_first`: most public pages and assets are served from [assets]
+ * without invoking this Worker. The root shell runs through the Worker to set
+ * request-specific indexing headers. Keep `public/_headers` and this function
+ * aligned for both delivery paths. src/__tests__/headers-drift.test.ts makes the two drifting fail
  * the build, which is a cheaper and equivalent guarantee than paying for a
  * Worker invocation on every static asset.
  */
 export function shellSecurityHeaders(): Record<string, string> {
   const csp = [
     `default-src 'none'`,
-    `script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com`,
+    `script-src 'self' 'unsafe-eval' data: blob: https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net`,
     `img-src 'self' data: https: blob:`,
     `font-src 'self' data: https://fonts.gstatic.com`,
-    // connect-src is deliberately not `https:`. Nothing in the shell makes a
-    // cross-origin request (every fetch and the agent WebSocket are same-origin;
-    // apiBase() resolves to window.location.origin in production), so a blanket
-    // scheme would only hand an XSS an exfiltration channel to any host. The
-    // insights beacon is the one exception.
-    `connect-src 'self' https://cloudflareinsights.com`,
+    `connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com`,
     `worker-src 'self' blob:`,
     `frame-src 'self'`,
     `manifest-src 'self'`,
@@ -168,22 +204,52 @@ export function shellSecurityHeaders(): Record<string, string> {
 }
 
 /** Applies the shell security headers to an ASSETS response without losing its own. */
-function withShellSecurity(response: Response): Response {
+function withShellSecurity(response: Response, privateSearch = false): Response {
   const next = new Response(response.body, response);
   for (const [k, v] of Object.entries(shellSecurityHeaders())) next.headers.set(k, v);
+  if (next.status >= 400 || privateSearch) next.headers.set('X-Robots-Tag', 'noindex, nofollow');
   return next;
 }
 
 export default {
   async fetch(request: Request, env: any, _ctx: ExecutionContext) {
     const url = new URL(request.url);
+    const privateSearch = isPrivateSearch(url.search);
     const origin = request.headers.get('origin');
+    const untrustedOrigin = (origin !== null && !isAllowedOrigin(origin)) || request.headers.get('sec-fetch-site') === 'cross-site';
+    const googleCallback = url.pathname === '/api/auth/google/callback' && request.method === 'GET';
+    const managedGoogleStart = url.pathname === '/api/apps/google/start' && request.method === 'GET';
+    if ((url.pathname.startsWith('/api/') || url.pathname.startsWith('/agents/')) && untrustedOrigin && !googleCallback && !managedGoogleStart) {
+      return withCors(forbidden('Untrusted request origin'), origin);
+    }
+    if (url.pathname === '/preview-rules.json' && ['GET', 'HEAD'].includes(request.method)) {
+      return new Response(request.method === 'HEAD' ? null : '{}', { headers: {
+        'Content-Type': 'application/speculationrules+json', 'Access-Control-Allow-Origin': '*',
+        'Cross-Origin-Resource-Policy': 'cross-origin', 'Cache-Control': 'public, max-age=86400',
+        'X-Content-Type-Options': 'nosniff',
+      } });
+    }
+    if (url.pathname === '/preview-runtime.js') {
+      const asset = await env.ASSETS.fetch(request);
+      return new Response(asset.body, { status: asset.status, headers: {
+        'Content-Type': 'application/javascript', 'Access-Control-Allow-Origin': '*',
+        'Cross-Origin-Resource-Policy': 'cross-origin', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff',
+      } });
+    }
+    if (request.headers.has(PREVIEW_ACCESS_HEADER)) {
+      request = new Request(request);
+      request.headers.delete(PREVIEW_ACCESS_HEADER);
+    }
 
     // FIX: preflight was answered only for /api/ and /agents/. A cross-origin
     // preflight for /preview/ or /p/ fell through to the static asset handler
     // and returned HTML, so the real request was never sent.
     if (request.method === 'OPTIONS' && CORS_PREFIXES.some(p => url.pathname.startsWith(p))) {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+    if (CORS_PREFIXES.some(prefix => url.pathname.startsWith(prefix)) && !validSessionSecret(env?.SESSION_SECRET)) {
+      return withCors(authUnavailable(), origin);
     }
 
     // Strip any client-supplied _uid param that would bypass our auth gate.
@@ -194,22 +260,42 @@ export default {
     }
 
     /* ------------------------- auth endpoints ------------------------- */
+    if (managedGoogleStart || (googleCallback && url.searchParams.get('state')?.startsWith('mg_'))) {
+      return handleManagedGoogle(request, env);
+    }
     if (AUTH_ROUTES.has(url.pathname)) {
+      const method = url.pathname === '/api/auth/session' || url.pathname === '/api/auth/google/callback' ? 'GET' : 'POST';
+      if (request.method !== method) {
+        const response = jsonError('Method not allowed', 405);
+        response.headers.set('Allow', method);
+        return withCors(response, origin);
+      }
       // Login and signup are the classic credential-stuffing targets and were
       // completely unmetered. Session and logout are cheap, so only the two
       // write paths are limited.
-      if (url.pathname === '/api/auth/login' || url.pathname === '/api/auth/signup') {
-        const rate = checkRateLimit('auth', clientKey(request));
-        if (!rate.ok) return withCors(tooManyRequests(rate.retryAfter), origin);
+      if (request.method === 'POST' && url.pathname !== '/api/auth/session' && url.pathname !== '/api/auth/ws-ticket') {
+        const rate = await checkRateLimit(env, 'auth', clientKey(request));
+        if (!rate.ok) return withCors(rate.unavailable ? jsonError('Rate-limit service unavailable. Please retry shortly.', 503) : tooManyRequests(rate.retryAfter), origin);
       }
 
       let response: Response;
       switch (url.pathname) {
+        case '/api/auth/google/start':
+        case '/api/auth/google/callback':
+        case '/api/auth/google/complete':
+          response = await handleGoogleAuth(request, env);
+          break;
         case '/api/auth/signup':
-          response = await handleSignup(request, env);
+        case '/api/auth/forgot-password':
+        case '/api/auth/reset-password':
+        case '/api/auth/resend-verification':
+        case '/api/auth/verify-email':
+        case '/api/contact':
+          response = await handleEmailRequest(request, env);
           break;
         case '/api/auth/login':
-          response = await handleLogin(request, env);
+          try { response = await handleLogin(request, env); }
+          catch { response = authUnavailable(); }
           break;
         case '/api/auth/logout':
           response = await handleLogout(request, env);
@@ -223,7 +309,7 @@ export default {
             response = unauthorized('Sign in to request a connection ticket');
             break;
           }
-          const ticket = await issueWsTicket(env, user.userId);
+          const ticket = await issueWsTicket(env, user.userId, await sha256Hex(extractToken(request)!));
           response = ticket
             ? json(200, { ticket })
             : jsonError('Could not issue a connection ticket', 503);
@@ -235,13 +321,69 @@ export default {
       }
       // Local dev over plain http cannot use Secure cookies; match the scheme.
       if (url.protocol !== 'https:') {
-        const setCookie = response.headers.get('Set-Cookie');
-        if (setCookie) response.headers.set('Set-Cookie', setCookie.replace('; Secure', ''));
+        const cookies = response.headers.getSetCookie();
+        response.headers.delete('Set-Cookie');
+        for (const value of cookies) response.headers.append('Set-Cookie', value.replace('; Secure', ''));
       }
       return withCors(response, origin);
     }
 
+    if ((url.pathname === '/api/account/outcomes' || url.pathname === '/api/admin/outcomes') && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      const admin = url.pathname === '/api/admin/outcomes';
+      if (admin && !String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      try {
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/outcomes' + (admin ? '' : '?userId=' + encodeURIComponent(user.userId)));
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch { return withCors(jsonError('Outcome metrics unavailable', 503), origin); }
+    }
+
+    if (url.pathname === '/api/account/ai-usage' && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      try { return withCors(await aiBudgetEndpoint(env, user.userId).fetch(new Request('https://registry/ai/usage')), origin); }
+      catch { return withCors(jsonError('AI allowance unavailable', 503), origin); }
+    }
+    if (url.pathname === '/api/account/deletions' && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      try { return withCors(await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/projects/deletions?userId=${encodeURIComponent(user.userId)}`), origin); }
+      catch { return withCors(jsonError('Cleanup status unavailable', 503), origin); }
+    }
     /* --------- project listing / management (authenticated) --------- */
+    const stopMatch = url.pathname.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/stop$/);
+    if (stopMatch && request.method === 'POST') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!await isProjectOwner(env, stopMatch[1], user.userId)) return withCors(forbidden('You do not own this project'), origin);
+      try {
+        const agent = env.ChatAgent.get(env.ChatAgent.idFromName(stopMatch[1]));
+        const [stopped, runtime] = await Promise.allSettled([
+          agent.fetch(injectUserId(new Request('https://agent/internal/stop', { method: 'POST' }), user.userId)),
+          env.RUNTIME ? env.RUNTIME.fetch(new Request('https://runtime/stop', { method: 'POST', headers: { 'x-bh-project': stopMatch[1], 'x-bh-owner': user.userId } })) : Promise.resolve(null),
+        ]);
+        if (runtime.status === 'rejected' || (runtime.value && !runtime.value.ok)) return withCors(jsonError('Runtime termination could not be confirmed.', 502), origin);
+        if (stopped.status === 'rejected') throw stopped.reason;
+        return withCors(stopped.value, origin);
+      } catch { return withCors(jsonError('Could not confirm shutdown. Keep this page open and retry.', 503), origin); }
+    }
+    const runtimeMatch = url.pathname.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/runtime(\/.*)$/);
+    if (runtimeMatch) {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!await isProjectOwner(env, runtimeMatch[1], user.userId)) return withCors(forbidden('You do not own this project'), origin);
+      if (!env.RUNTIME) return withCors(jsonError('The full-stack runtime has not been deployed yet.', 503), origin);
+      const target = new URL(request.url); target.pathname = runtimeMatch[2];
+      const headers = new Headers({ 'Content-Type': 'application/json', 'x-bh-project': runtimeMatch[1], 'x-bh-owner': user.userId });
+      if (runtimeMatch[2] === '/email-test' && env.CONTACT_EMAIL) headers.set('x-bh-test-inbox', env.CONTACT_EMAIL);
+      try {
+        const response = await env.RUNTIME.fetch(new Request(target, { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body, redirect: 'manual' }));
+        const safe = new Response(response.body, response); safe.headers.set('Cache-Control', 'no-store');
+        return withCors(safe, origin);
+      } catch { return withCors(jsonError('Project runtime unavailable. Try again shortly.', 503), origin); }
+    }
     if (url.pathname === '/api/projects' && request.method === 'GET') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
@@ -256,22 +398,41 @@ export default {
       }
     }
 
+    const publicationMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/publication$/);
+    if (publicationMatch) {
+      if (request.method !== 'GET' && request.method !== 'PUT') return withCors(jsonError('Method not allowed', 405), origin);
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      const query = new URLSearchParams({ projectId: publicationMatch[1], userId: user.userId });
+      try {
+        const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
+        const response = await registry.fetch(`https://registry/projects/publication?${query}`, {
+          method: request.method,
+          headers: { 'Content-Type': 'application/json' },
+          body: request.method === 'PUT' ? JSON.stringify(await request.json()) : undefined,
+        });
+        return withCors(withPreviewPrivacy(response), origin);
+      } catch (error) {
+        if (error instanceof SyntaxError) return withCors(jsonError('Invalid JSON', 400), origin);
+        return withCors(previewDenied(503), origin);
+      }
+    }
+
     if (url.pathname.startsWith('/api/projects/') && (request.method === 'DELETE' || request.method === 'PATCH')) {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
 
-      const projectId = decodeURIComponent(url.pathname.slice('/api/projects/'.length));
+      let projectId: string;
+      try { projectId = decodeURIComponent(url.pathname.slice('/api/projects/'.length)); }
+      catch { return withCors(jsonError('Invalid project id', 400), origin); }
       if (!projectId || projectId.includes('/')) {
         return withCors(jsonError('Invalid project id', 400), origin);
       }
 
-      // FIX: ownership was delegated entirely to the Registry via a userId
-      // query parameter for DELETE, and for PATCH by merging userId into the
-      // body — where a client-supplied `userId` field in that same body could
-      // override it, since `...body` was spread first. Ownership is now checked
-      // here, before the call, and the client body can no longer carry a userId.
-      const owns = await isProjectOwner(env, projectId, user.userId);
-      if (!owns) return withCors(forbidden('You do not own this project'), origin);
+      if (request.method === 'PATCH' && !await isProjectOwner(env, projectId, user.userId)) {
+        return withCors(forbidden('You do not own this project'), origin);
+      }
+
 
       const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
       const target = new URL(`https://registry/projects/${encodeURIComponent(projectId)}`);
@@ -287,24 +448,7 @@ export default {
 
       try {
         const res = await registry.fetch(target.toString(), init);
-        if (res.ok && request.method === 'DELETE') {
-          // The registry tombstones the ownership row, but the Durable Object and
-          // its R2 backup still hold the project's files. The tombstone makes the
-          // id unreachable, so this is erasure rather than access control — and
-          // it is best-effort: a failed delete here only leaves orphaned storage,
-          // not an exposed project.
-          try {
-            const doId = env.ChatAgent.idFromName(projectId);
-            await Promise.allSettled([
-              env.PROJECT_BACKUPS?.delete(`backup-${doId}`),
-              env.PROJECT_BACKUPS?.delete(`backup-${doId}.json`),
-              env.PROJECT_BACKUPS?.delete(`backup-${projectId}`),
-              env.PROJECT_BACKUPS?.delete(`backup-${projectId}.json`),
-            ]);
-          } catch (backupErr) {
-            console.error('Failed to delete project backup:', backupErr);
-          }
-        }
+
         return withCors(new Response(await res.text(), { status: res.status, headers: { 'Content-Type': 'application/json' } }), origin);
       } catch (err) {
         console.error('Registry call failed:', err);
@@ -321,8 +465,8 @@ export default {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized('Sign in to run model tests'), origin);
 
-      const rate = checkRateLimit('modelTest', user.userId);
-      if (!rate.ok) return withCors(tooManyRequests(rate.retryAfter), origin);
+      const rate = await checkRateLimit(env, 'modelTest', user.userId);
+      if (!rate.ok) return withCors(rate.unavailable ? jsonError('Rate-limit service unavailable. No model test was started.', 503) : tooManyRequests(rate.retryAfter), origin);
 
       try {
         return withCors(await handleModelTest(request, env, level, { userId: user.userId }), origin);
@@ -340,22 +484,15 @@ export default {
       if (match && match[1]) {
         const scriptName = match[1];
         const subPath = match[2] || '/';
-        const user = await verifySession(request, env);
-        // Mutating operations require ownership; viewing web apps is public
-        if (request.method !== 'GET' && request.method !== 'HEAD') {
-          if (!user || !(await isProjectOwner(env, scriptName, user.userId))) {
-            return withCors(forbidden('You do not own this deployment'), origin);
-          }
-        }
+        const user = untrustedOrigin ? null : await verifyPreviewSession(request, env);
+        const access = await checkPreviewAccess(env, scriptName, user?.userId, request.method, subPath, 'deployment');
+        if (!access.ok) return withCors(previewDenied(access.status), origin);
 
         if (env.DISPATCHER) {
           try {
             const subworker = env.DISPATCHER.get(scriptName);
-            const targetUrl = new URL(request.url);
-            targetUrl.pathname = subPath;
-            const effectiveUserId = user?.userId || 'public-preview-viewer';
-            const subRequest = new Request(targetUrl.toString(), injectUserId(request, effectiveUserId));
-            return await subworker.fetch(subRequest);
+            const subRequest = createTenantRequest(request, subPath);
+            return withPreviewPrivacy(await subworker.fetch(subRequest));
           } catch (dispatchErr: any) {
             // Worker not found in the dispatch namespace; fall back to the DO.
             console.warn(`Dispatch miss for ${scriptName}:`, dispatchErr?.message || dispatchErr);
@@ -363,18 +500,18 @@ export default {
         }
 
         if (env.ChatAgent) {
+          if (!access.owner && !isPublicPreviewRead(subPath)) return withCors(previewDenied(user ? 403 : 401), origin);
           const redirectPath = subPath === '/' || subPath === '' ? '/index.html' : subPath;
-          if (request.method === 'GET' && (subPath === '/' || subPath === '')) {
-            return Response.redirect(`${url.origin}/preview/${scriptName}${redirectPath}`, 302);
+          if ((request.method === 'GET' || request.method === 'HEAD') && (subPath === '/' || subPath === '' || subPath === '/index.html')) {
+            return withPreviewPrivacy(Response.redirect(`${url.origin}/preview/${scriptName}${redirectPath}`, 302));
           }
 
           const targetUrl = new URL(request.url);
           targetUrl.pathname = `/preview/${scriptName}${redirectPath}`;
-          const effectiveUserId = user?.userId || 'public-preview-viewer';
-          const forwardRequest = new Request(targetUrl.toString(), injectUserId(request, effectiveUserId));
+          const forwardRequest = new Request(targetUrl.toString(), previewRequest(request, user?.userId, access.owner));
           const id = env.ChatAgent.idFromName(scriptName);
           const obj = env.ChatAgent.get(id);
-          return obj.fetch(forwardRequest);
+          return withPreviewPrivacy(await obj.fetch(forwardRequest));
         }
 
         return jsonError('Deployment not found', 404);
@@ -386,27 +523,23 @@ export default {
       const match = url.pathname.match(/^\/preview\/([^/]+)/);
       if (match && match[1]) {
         const agentId = match[1];
-        const isShowcase = isPublicProject(agentId);
-        const user = await verifySession(request, env);
-        if (!user && !isShowcase) return unauthorized('Sign in to view this preview');
-
-        // Mutating operations (e.g. /api/sync) always require genuine ownership
-        if (request.method !== 'GET' && request.method !== 'HEAD') {
-          if (!user || !(await isProjectOwner(env, agentId, user.userId))) {
-            return forbidden('You do not have permission to modify this preview');
-          }
-        } else {
-          // If an authenticated user views an unclaimed project, claim it for them.
-          // Viewing previews never fails with 403: any authenticated user (and public visitors) can view.
-          if (user) {
-            await authorizeOrClaim(env, agentId, user.userId, request.url).catch(() => false);
-          }
-        }
+        const user = untrustedOrigin ? null : await verifyPreviewSession(request, env);
+        const subPath = url.pathname.slice(match[0].length) || '/';
+        const access = await checkPreviewAccess(env, agentId, user?.userId, request.method, subPath);
+        if (!access.ok) return withCors(previewDenied(access.status), origin);
 
         const id = env.ChatAgent.idFromName(agentId);
         const obj = env.ChatAgent.get(id);
-        const effectiveUserId = user ? user.userId : 'public-preview-viewer';
-        return obj.fetch(injectUserId(request, effectiveUserId));
+        if ((request.method === 'GET' || request.method === 'HEAD') && ['/', '/index.html'].includes(subPath)) {
+          const snapshotUrl = new URL(request.url);
+          snapshotUrl.pathname = `/preview/${agentId}/api/files`;
+          const snapshot = await obj.fetch(previewRequest(new Request(snapshotUrl, { headers: request.headers }), user?.userId, true));
+          if (!snapshot.ok) return withPreviewPrivacy(jsonError('Preview files unavailable', 502));
+          const files = await snapshot.json().catch(() => null);
+          if (!files || typeof files !== 'object' || Array.isArray(files)) return withPreviewPrivacy(jsonError('Invalid preview snapshot', 502));
+          return withPreviewPrivacy(new Response(request.method === 'HEAD' ? null : isolatedPreviewHtml(agentId, previewFiles(files, access.owner)), { headers: { 'Content-Type': 'text/html; charset=utf-8' } }));
+        }
+        return withPreviewPrivacy(await obj.fetch(previewRequest(request, user?.userId, access.owner)));
       }
     }
 
@@ -421,19 +554,21 @@ export default {
         // path stays as a fallback so a client predating the ticket still
         // connects; both resolve to a user id before any ownership check.
         const ticket = extractWsTicket(req);
-        let userId = ticket ? await verifyWsTicket(env, ticket) : null;
+        const identity = ticket ? await redeemWsIdentity(env, ticket) : null;
+        let userId = identity?.userId ?? null;
+        let sessionHash = identity?.sessionHash ?? null;
         if (!userId) {
           userId = (await verifySession(req, env))?.userId ?? null;
+          if (userId) sessionHash = await sha256Hex(extractToken(req)!);
         }
-        if (!userId) return unauthorized('Sign in to connect');
+        if (!userId || !sessionHash || !/^[a-f0-9]{64}$/.test(sessionHash)) return unauthorized('Sign in to connect');
         const claim = await authorizeOrClaim(env, route.name, userId, req.url);
         if (!claim.ok) {
           console.warn(`[DEBUG] authorizeOrClaim failed for ${route.name}. Status: ${claim.status}`);
           if (claim.status === 409) return injectUserId(req, 'QUOTA_EXCEEDED');
           return injectUserId(req, 'FORBIDDEN');
         }
-        console.warn(`[DEBUG] authorizeOrClaim succeeded for ${route.name}. Injecting userId: ${userId}`);
-        return injectUserId(req, userId);
+        return injectUserId(req, userId, sessionHash);
       },
       onBeforeRequest: async (req, route) => {
         const user = await verifySession(req, env);
@@ -449,29 +584,28 @@ export default {
       // response must be returned untouched — copying it into a new Response
       // drops the socket.
       if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
-        return withCors(agentResponse, origin);
+        return withCors(withPreviewPrivacy(agentResponse), origin);
       }
       return agentResponse;
     }
 
     /* --------- Unmatched API / agent routes --------- */
     if (url.pathname.startsWith('/api/')) {
-      const referer = request.headers.get('Referer') || '';
-      const previewMatch = referer.match(/\/preview\/([^/?#]+)/);
+      let previewMatch: RegExpMatchArray | null = null;
+      try {
+        const referer = new URL(request.headers.get('Referer') || '');
+        if (referer.origin === url.origin) previewMatch = referer.pathname.match(/^\/(?:preview|p)\/([^/]+)(?:\/|$)/);
+      } catch {}
       if (previewMatch && previewMatch[1] && env.ChatAgent) {
         const agentId = previewMatch[1];
-        const user = await verifySession(request, env);
-        if (request.method !== 'GET' && request.method !== 'HEAD') {
-          if (!user || !(await isProjectOwner(env, agentId, user.userId))) {
-            return withCors(forbidden('You do not have permission to modify this preview'), origin);
-          }
-        }
+        const user = await verifyPreviewSession(request, env);
+        const access = await checkPreviewAccess(env, agentId, user?.userId, request.method, url.pathname);
+        if (!access.ok) return withCors(previewDenied(access.status), origin);
         const id = env.ChatAgent.idFromName(agentId);
         const obj = env.ChatAgent.get(id);
         const targetUrl = new URL(request.url);
         targetUrl.pathname = `/preview/${agentId}${url.pathname}`;
-        const effectiveUserId = user ? user.userId : 'public-preview-viewer';
-        return obj.fetch(new Request(targetUrl.toString(), injectUserId(request, effectiveUserId)));
+        return withPreviewPrivacy(await obj.fetch(new Request(targetUrl.toString(), previewRequest(request, user?.userId, access.owner))));
       }
     }
 
@@ -488,30 +622,15 @@ export default {
       // withShellSecurity sets no-store caching, so the previous special case
       // for '/' and '/index.html' is no longer needed — every shell response
       // gets the same headers through one path.
-      return withShellSecurity(await env.ASSETS.fetch(request));
+      // Fetch the root asset: html_handling canonicalizes /index.html to /,
+      // which would otherwise redirect a dashboard reload back to the landing page.
+      const assetRequest = url.pathname === '/dashboard' ? new Request(new URL('/', url), request) : request;
+      return withShellSecurity(await env.ASSETS.fetch(assetRequest), privateSearch || url.pathname === '/dashboard');
     }
 
     return new Response('Not found', { status: 404 });
   }
 };
-
-/**
- * Public showcase projects, template previews, and diagnostic benchmark suites
- * are publicly readable so users, guests, and evaluators can preview them without
- * encountering 403/401 lockouts. Modifying project files still requires owner authentication.
- */
-export function isPublicProject(projectId: string): boolean {
-  if (!projectId) return false;
-  return (
-    projectId === 'all-models-studio' ||
-    projectId === 'default' ||
-    projectId.startsWith('test-model-') ||
-    projectId.startsWith('showcase-') ||
-    projectId.startsWith('demo-') ||
-    projectId.startsWith('public-') ||
-    projectId.startsWith('template-')
-  );
-}
 
 /**
  * A project the user is connecting to is *claimed* on first authenticated
@@ -522,13 +641,15 @@ export function isPublicProject(projectId: string): boolean {
 async function authorizeOrClaim(env: any, projectId: string, userId: string, requestUrl: string): Promise<{ ok: boolean; status: number }> {
   if (!projectId || !userId) return { ok: false, status: 400 };
   let name: string | undefined;
+  let idempotencyKey: string | undefined;
   try {
     name = new URL(requestUrl).searchParams.get('name') || undefined;
+    idempotencyKey = new URL(requestUrl).searchParams.get('idempotencyKey') || undefined;
   } catch {
     /* a malformed URL just means no display name */
   }
   try {
-    const result = await authorizeProject(env, projectId, userId, name);
+    const result = await authorizeProject(env, projectId, userId, name, idempotencyKey);
     console.warn(`[DEBUG] authorizeProject returned: ${JSON.stringify(result)}`);
     return result;
   } catch (err) {

@@ -1,0 +1,81 @@
+{
+  "recordedAt": "2026-09-23T16:29:44.684Z",
+  "status": "Model fixes deployed per user output; all 12 tests in corrected browser files passed across focused reruns. Complete guarded release and live inference remain unverified.",
+  "sourceDigest": "cfff0b80c9b6e89d0a595fb6898d74203dea7a4d26930801ea6b3a6d7e662c6e",
+  "initialModelFixSnapshot": {
+    "recordedAt": "2026-09-23T15:11:26.085Z",
+    "sourceDigest": "2fc3ddb4e3ce11cb257ecfd3b5f63d0a9c9ff6f268739bcab423548370da85ba",
+    "artifactDigest": "660be0b09b12e87900d4792e824783aadb60a49e5b0982cf3b8aaddc91264f66",
+    "checks": {
+      "appPassed": 889,
+      "appFailed": 1,
+      "runtimePassed": 46,
+      "scriptFilesPassed": 3,
+      "browserExecuted": false
+    }
+  },
+  "deploymentReported": {
+    "evidence": "User-provided successful Wrangler deploy output",
+    "versionId": "49885a45-fb2a-47ec-b333-2eed45b308b7",
+    "chatPanelAsset": "ChatPanel-U07CFOyR.js",
+    "modelFixesDeployed": true,
+    "laterBrowserFixesDeployed": false
+  },
+  "liveInferenceVerified": false,
+  "releaseVerified": false,
+  "userTerminalChecks": {
+    "typecheck": "passed",
+    "appPassed": 890,
+    "runtimePassed": 46,
+    "nodeTestsPassed": 23,
+    "lint": "passed",
+    "build": "passed",
+    "secretsConfiguration": "passed; remote values unverified"
+  },
+  "followupChecks": {
+    "lint": "passed",
+    "build": "passed including SEO checks; existing large-chunk advisory remains",
+    "previewTestsPassed": 13,
+    "previewTestFilesPassed": 2,
+    "browserCorrections": "All 12 focused tests passed before the nonfunctional Vite import annotation",
+    "fullGuardedRelease": "pending",
+    "liveInference": "pending"
+  },
+  "agentEnvironmentLimits": [
+    "local TCP listeners denied (EPERM)",
+    "Docker installed but socket access denied",
+    "outbound Cloudflare access unavailable in agent session; user-terminal OAuth works",
+    "expanded-access approval service previously failed before execution with HTTP 404"
+  ],
+  "latestCompletedFullBrowserRun": {
+    "command": "npx playwright test --workers=1 --retries=0",
+    "passed": 109,
+    "failed": 3,
+    "flaky": 0,
+    "skipped": 0,
+    "evidence": "../browser-release-2026-09-23/browser-run-before-followup.json",
+    "corrections": "All three failures passed focused reruns; full-suite release rerun pending."
+  },
+  "focusedBrowserReruns": [
+    {
+      "files": [
+        "ai-ide-e2e-001-lifecycle.spec.ts",
+        "critical-remediation.spec.ts"
+      ],
+      "passed": 7,
+      "failed": 0,
+      "durationSeconds": 28.6,
+      "workers": 4,
+      "evidence": "User-provided terminal output"
+    },
+    {
+      "files": [
+        "managed-runtime.spec.ts"
+      ],
+      "passed": 5,
+      "failed": 0,
+      "durationSeconds": 19.2,
+      "evidence": "../browser-release-2026-09-23/browser-followup-latest.json"
+    }
+  ]
+}

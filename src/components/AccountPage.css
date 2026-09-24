@@ -1,0 +1,19 @@
+.account-page { min-height:100dvh; padding:clamp(24px,6vw,72px) 20px; background:var(--studio-page, var(--bg-primary)); display:grid; place-items:center; color:var(--text-primary); }
+.account-card { width:100%; max-width:520px; padding:clamp(24px,5vw,42px); border:1px solid var(--border-medium); border-radius:22px; background:var(--studio-white); }
+.account-card header { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:42px; }
+.account-card header a { display:flex; align-items:center; gap:12px; color:inherit; text-decoration:none; font-size:20px; }
+.account-card h1 { font-family:var(--studio-display,'Bricolage Grotesque',sans-serif); font-size:clamp(28px,5vw,38px); letter-spacing:-1px; margin:12px 0; }
+.account-card p,.account-form p { color:var(--text-secondary); line-height:1.65; font-size:14px; }
+.account-form { display:grid; gap:20px; margin:28px 0; text-align:left; }
+.account-form label { display:grid; gap:9px; font-weight:600; font-size:14px; }
+.account-form input,.account-form textarea { box-sizing:border-box; width:100%; min-width:0; padding:13px 15px; border:1px solid var(--border-medium); border-radius:9px; background:var(--bg-secondary); color:var(--text-primary); font:inherit; }
+.account-form input:focus,.account-form textarea:focus { outline:2px solid var(--studio-blue); outline-offset:2px; }
+.account-form textarea { resize:vertical; }
+.account-form button { justify-self:start; min-height:44px; }
+.account-form button:disabled { opacity:.6; cursor:wait; }
+.account-links { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; line-height:1.5; }
+.account-links a,.account-form a { color:var(--studio-blue); }
+.account-notice { padding:18px; background:var(--studio-wash); border:1px solid var(--border-medium); border-radius:10px; margin:24px 0; line-height:1.6; }
+.account-error { color:var(--status-error,#be3348) !important; }
+.contact-form { max-width:640px; }
+.contact-trap { position:absolute; left:-10000px; width:1px; height:1px; overflow:hidden; }

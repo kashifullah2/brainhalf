@@ -1,0 +1,8 @@
+{
+  "full_stack_guide_http_200": true,
+  "guide_prerendered": true,
+  "guide_canonical": true,
+  "guide_in_sitemap": true,
+  "private_source_requires_signin": true,
+  "private_source_noindex": true
+}

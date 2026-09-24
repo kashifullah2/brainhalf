@@ -1,0 +1,64 @@
+{
+  "scope": "Browser → loopback HTTP → generated Worker → real local D1; contact → actual BrainHalf runtime SQLite. Fixture identities, no Google consent or email sending.",
+  "passed": 14,
+  "failed": 0,
+  "errors": [],
+  "results": [
+    {
+      "name": "Create trip and saved destination through real HTTP; reload persists both",
+      "status": "passed"
+    },
+    {
+      "name": "Owner invites teammate and books a seat",
+      "status": "passed"
+    },
+    {
+      "name": "Lost booking response retries with same key and creates no duplicate",
+      "status": "passed"
+    },
+    {
+      "name": "Fractional seat input is rejected before a network mutation",
+      "status": "passed"
+    },
+    {
+      "name": "Fractional cents are rejected; valid decimal amount is saved exactly",
+      "status": "passed"
+    },
+    {
+      "name": "Cancel requires in-page confirmation and Keep booking preserves the seat",
+      "status": "passed"
+    },
+    {
+      "name": "Owner can read persisted audit events",
+      "status": "passed"
+    },
+    {
+      "name": "Stale edit shows conflict and preserves unsaved title",
+      "status": "passed"
+    },
+    {
+      "name": "Contact form recognizes actual captured status and records no production email",
+      "status": "passed"
+    },
+    {
+      "name": "Injected HTML and attribute text render without executable DOM",
+      "status": "passed"
+    },
+    {
+      "name": "Dynamic inputs have persistent visible labels and accessible names",
+      "status": "passed"
+    },
+    {
+      "name": "Desktop and narrow mobile layout fit the viewport",
+      "status": "passed"
+    },
+    {
+      "name": "Teammate has no owner controls; outsider sees no private trip",
+      "status": "passed"
+    },
+    {
+      "name": "No uncaught browser errors",
+      "status": "passed"
+    }
+  ]
+}

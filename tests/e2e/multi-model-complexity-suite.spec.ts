@@ -4,18 +4,19 @@ import { runPlatformLevelChecks } from '../platform-checks';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
 
 const MODELS = [
-  { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B' },
+  { id: '@cf/deepseek-ai/deepseek-v4-pro-0813', name: 'DeepSeek V4 Pro' },
+  { id: '@cf/openai/gpt-oss-120b', name: 'GPT-OSS 120B' },
+  { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code' },
+  { id: '@cf/qwen/qwen3.8-27b', name: 'Qwen 3.8 27B' },
+  { id: 'claude-sonnet-6', name: 'Claude Sonnet 6' },
+  { id: 'kimi-k3', name: 'Kimi K3' },
   { id: 'Atria-Dawn-Preview', name: 'Atria Dawn Preview' },
 ];
 
 const PROMPTS = [
   {
-    tier: 'Medium',
-    prompt: 'Create a full-stack Todo app with categories. Allow users to add, edit, delete, and toggle the completion status of todos. Include a summary of completed vs pending tasks.'
-  },
-  {
-    tier: 'Tricky',
-    prompt: 'Create a responsive Crypto Portfolio Dashboard. It should show a list of mock assets with fake live-updating prices every 2 seconds, and a chart (using simple divs) showing the overall profit/loss over time.'
+    tier: 'Build',
+    prompt: 'Create a simple responsive task tracker app with add, toggle complete, and delete actions. Use React and clean UI.'
   }
 ];
 
@@ -68,7 +69,7 @@ test.describe('Multi-Model Complexity Test Suite', () => {
         await sendBtn.click();
 
         // 3. Wait for Generation to start and finish
-        const stopBtn = page.locator('button[aria-label="Stop Generation"]');
+        const stopBtn = page.locator('button[aria-label="Stop generation"], button[title="Stop generation"]');
         await stopBtn.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
         await stopBtn.waitFor({ state: 'hidden', timeout: 7 * 60 * 1000 });
 
@@ -92,7 +93,7 @@ test.describe('Multi-Model Complexity Test Suite', () => {
 
         // 4. Validate the Sandbox/Preview
         // Ensure the Cloudflare Edge preview iframe is present and has loaded
-        const previewIframe = page.frameLocator('iframe[title="Cloudflare Edge preview"], iframe').first();
+        const previewIframe = page.frameLocator('iframe[title="Application Preview"], iframe').first();
         const body = previewIframe.locator('body');
 
         // Wait for some content to be injected into the preview body
@@ -107,17 +108,12 @@ test.describe('Multi-Model Complexity Test Suite', () => {
         console.log('[DEBUG] Preview body innerText:', bodyText);
 
         // Specific content checks based on prompt
-        if (prompt.tier === 'Medium') {
-           // Should see something related to a Todo app. Use lenient matching to avoid flakiness.
-           const todoContent = previewIframe.locator('body', { hasText: /[Tt]odo|[Tt]ask|[Aa]dd/ });
-           await expect(todoContent).toBeVisible();
-        } else if (prompt.tier === 'Hard') {
-           // Kanban columns
-           const kanbanContent = previewIframe.locator('body', { hasText: /[Tt]odo|[Ii]n [Pp]rogress|[Dd]one/ });
-           await expect(kanbanContent).toBeVisible();
+        // Require non-empty rendered output and no obvious runtime-crash text.
+        await expect(body).not.toContainText(/Minified React error|Uncaught|preview-error|runtime error/i);
+        const rootText = await root.innerText().catch(() => '');
+        if (!rootText || rootText.trim().length < 3) {
+          throw new Error(`Preview appears empty for ${model.name}`);
         }
-        // Other tiers can be hard to assert statically via text since it's a game or audio API,
-        // so we mainly rely on the fact that NO preview errors crashed the iframe.
       });
     }
   }

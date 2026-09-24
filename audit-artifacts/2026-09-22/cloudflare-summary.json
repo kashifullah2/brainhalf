@@ -1,0 +1,20 @@
+{
+  "events": 478,
+  "outcomes": {
+    "ok": 391,
+    "canceled": 66,
+    "responseStreamDisconnected": 21
+  },
+  "httpStatuses": {
+    "200": 381,
+    "404": 4,
+    "401": 3,
+    "None": 89,
+    "422": 1
+  },
+  "exceptions": 0,
+  "warningLogs": 122,
+  "versions": {
+    "105b7552-d336-451b-a549-5c0f8cfe0d9f": 478
+  }
+}

@@ -1,0 +1,98 @@
+[
+  {
+    "theme": "light",
+    "foreground": "--text-primary",
+    "background": "--studio-paper",
+    "ratio": 14.42
+  },
+  {
+    "theme": "light",
+    "foreground": "--text-secondary",
+    "background": "--studio-white",
+    "ratio": 7.48
+  },
+  {
+    "theme": "light",
+    "foreground": "--text-muted",
+    "background": "--studio-paper",
+    "ratio": 4.96
+  },
+  {
+    "theme": "light",
+    "foreground": "--text-muted",
+    "background": "--studio-white",
+    "ratio": 5.23
+  },
+  {
+    "theme": "light",
+    "foreground": "--text-muted",
+    "background": "--bg-surface-hover",
+    "ratio": 4.58
+  },
+  {
+    "theme": "light",
+    "foreground": "--studio-blue",
+    "background": "--studio-white",
+    "ratio": 5.85
+  },
+  {
+    "theme": "light",
+    "foreground": "--brand-on-solid",
+    "background": "--brand-solid",
+    "ratio": 5.85
+  },
+  {
+    "theme": "light",
+    "foreground": "--brand-on-solid",
+    "background": "--brand-solid-hover",
+    "ratio": 7.62
+  },
+  {
+    "theme": "dark",
+    "foreground": "--text-primary",
+    "background": "--studio-paper",
+    "ratio": 15.97
+  },
+  {
+    "theme": "dark",
+    "foreground": "--text-secondary",
+    "background": "--studio-white",
+    "ratio": 10.37
+  },
+  {
+    "theme": "dark",
+    "foreground": "--text-muted",
+    "background": "--studio-paper",
+    "ratio": 8.26
+  },
+  {
+    "theme": "dark",
+    "foreground": "--text-muted",
+    "background": "--studio-white",
+    "ratio": 7.36
+  },
+  {
+    "theme": "dark",
+    "foreground": "--text-muted",
+    "background": "--bg-surface-hover",
+    "ratio": 5.4
+  },
+  {
+    "theme": "dark",
+    "foreground": "--studio-blue",
+    "background": "--studio-white",
+    "ratio": 8.83
+  },
+  {
+    "theme": "dark",
+    "foreground": "--brand-on-solid",
+    "background": "--brand-solid",
+    "ratio": 9.03
+  },
+  {
+    "theme": "dark",
+    "foreground": "--brand-on-solid",
+    "background": "--brand-solid-hover",
+    "ratio": 10.64
+  }
+]

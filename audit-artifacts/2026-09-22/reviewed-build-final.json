@@ -1,0 +1,8 @@
+{
+  "command": "npm run build",
+  "exitCode": 0,
+  "modules": 1888,
+  "jsBytes": 252010,
+  "cssBytes": 9630,
+  "notes": "Vite emitted nonfatal lucide-react use-client directive warnings; final mobile navigation included."
+}

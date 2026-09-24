@@ -1,0 +1,101 @@
+{
+  "stats": {
+    "total": 112,
+    "expected": 109,
+    "unexpected": 3,
+    "flaky": 0,
+    "skipped": 0,
+    "ok": false
+  },
+  "startTime": 1790179856610,
+  "duration": 398111.388,
+  "failures": [
+    {
+      "testId": "2c6d1b5aa66284a0b31e-e7d6fb0f8e0faacbed1b",
+      "title": "local lifecycle: stop, switch, authenticated deletion, reload, mobile generation and socket reconnection",
+      "projectName": "chromium",
+      "location": {
+        "file": "ai-ide-e2e-001-lifecycle.spec.ts",
+        "line": 5,
+        "column": 1
+      },
+      "duration": 11965,
+      "annotations": [],
+      "tags": [],
+      "outcome": "unexpected",
+      "path": [],
+      "ok": false,
+      "results": [
+        {
+          "attachments": [
+            {
+              "name": "error-context",
+              "contentType": "text/markdown",
+              "path": "data/3a7b2a41b124583a6e2fdba50b11de7f20496ff6.md"
+            }
+          ],
+          "startTime": "2026-09-23T16:11:38.781Z",
+          "workerIndex": 0
+        }
+      ]
+    },
+    {
+      "testId": "2c9aa604fd9cf22431a1-49bf91ece17b82cabd3b",
+      "title": "deletion retains recovery files on failure and awaits a successful authenticated retry",
+      "projectName": "chromium",
+      "location": {
+        "file": "critical-remediation.spec.ts",
+        "line": 5,
+        "column": 1
+      },
+      "duration": 9360,
+      "annotations": [],
+      "tags": [],
+      "outcome": "unexpected",
+      "path": [],
+      "ok": false,
+      "results": [
+        {
+          "attachments": [
+            {
+              "name": "error-context",
+              "contentType": "text/markdown",
+              "path": "data/df2c14a38a84676ecbd2983751a83a34365ba14b.md"
+            }
+          ],
+          "startTime": "2026-09-23T16:14:32.297Z",
+          "workerIndex": 1
+        }
+      ]
+    },
+    {
+      "testId": "2496485211eb1d5df32d-03d8b02abd742288ee30",
+      "title": "a delayed hosting check cannot send a prompt after switch",
+      "projectName": "chromium",
+      "location": {
+        "file": "managed-runtime.spec.ts",
+        "line": 47,
+        "column": 51
+      },
+      "duration": 7856,
+      "annotations": [],
+      "tags": [],
+      "outcome": "unexpected",
+      "path": [],
+      "ok": false,
+      "results": [
+        {
+          "attachments": [
+            {
+              "name": "error-context",
+              "contentType": "text/markdown",
+              "path": "data/6f2d299b9b1faeb04b9bff633969b451e9affe27.md"
+            }
+          ],
+          "startTime": "2026-09-23T16:15:23.257Z",
+          "workerIndex": 2
+        }
+      ]
+    }
+  ]
+}

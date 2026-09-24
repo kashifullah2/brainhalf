@@ -74,10 +74,11 @@ export function checkUnsupportedBackendFeatures(promptOrConfig: string): { suppo
 
   const unsupportedRuntimes = ['golang', 'go lang', 'rust', 'ruby on rails', 'php', 'c#', '.net', 'elixir'];
   for (const runtime of unsupportedRuntimes) {
-    if (lower.includes(runtime)) {
+    const escapedRuntime = runtime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`(?:^|\\W)${escapedRuntime}(?=$|\\W)`).test(lower)) {
       return {
         supported: false,
-        reason: `Custom backend runtime "${runtime}" is not yet supported. BrainHalf supports Node.js/Express and Python/FastAPI.`
+      reason: `Custom backend runtime "${runtime}" is not yet supported. Preview provides simulated API routes; custom servers need their own runtime.`
       };
     }
   }
@@ -109,7 +110,7 @@ const MAX_TABLES = 64;
 const MAX_ROWS_PER_TABLE = 10_000;
 
 export class InMemoryDataStore {
-  private tables: Map<string, Map<string | number, any>> = new Map();
+  private tables: Map<string, Map<string, any>> = new Map();
   private autoIds: Map<string, number> = new Map();
 
   constructor() {
@@ -121,7 +122,7 @@ export class InMemoryDataStore {
     this.autoIds.clear();
   }
 
-  private getTable(name: string): Map<string | number, any> {
+  private getTable(name: string): Map<string, any> {
     const tableKey = name.toLowerCase();
     if (!this.tables.has(tableKey)) {
       if (this.tables.size >= MAX_TABLES) {
@@ -141,7 +142,7 @@ export class InMemoryDataStore {
   }
 
   findById(table: string, id: string | number): any | null {
-    const item = this.getTable(table).get(id) || this.getTable(table).get(String(id)) || this.getTable(table).get(Number(id));
+    const item = this.getTable(table).get(String(id));
     return item || null;
   }
 
@@ -162,13 +163,16 @@ export class InMemoryDataStore {
     // silently — a POST that looked like a 201 success while clobbering data.
     // It now fails with a status the caller can surface as 409.
     const id = data.id !== undefined ? data.id : this.nextAutoId(tableKey);
+    if ((typeof id !== 'string' && typeof id !== 'number') || String(id).trim() === '' || (typeof id === 'number' && !Number.isSafeInteger(id))) {
+      throw Object.assign(new Error('Record id must be a nonempty string or a safe integer'), { status: 400 });
+    }
     // A caller-supplied numeric id must still push the auto counter past it,
     // otherwise a later auto id would collide with this row.
     if (typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id))) {
       const asNum = Number(id);
       this.autoIds.set(tableKey, Math.max(this.autoIds.get(tableKey) ?? 1, asNum + 1));
     }
-    if (tbl.has(id)) {
+    if (tbl.has(String(id))) {
       const err: any = new Error(`${table} with id ${String(id)} already exists`);
       err.status = 409;
       err.code = 'CONFLICT';
@@ -181,7 +185,7 @@ export class InMemoryDataStore {
       createdAt: data.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    tbl.set(id, record);
+    tbl.set(String(id), record);
     return record;
   }
 
@@ -209,7 +213,7 @@ export class InMemoryDataStore {
       id: existing.id,
       updatedAt: new Date().toISOString()
     };
-    tbl.set(existing.id, updated);
+    tbl.set(String(existing.id), updated);
     return updated;
   }
 
@@ -217,7 +221,7 @@ export class InMemoryDataStore {
     const tbl = this.getTable(table);
     const existing = this.findById(table, id);
     if (!existing) return false;
-    return tbl.delete(existing.id);
+    return tbl.delete(String(existing.id));
   }
 
   seed(table: string, items: any[]) {
@@ -255,7 +259,7 @@ export function stripSecrets<T>(item: T): T {
  * Returns error with attribution if broken, or null if healthy.
  */
 export function validateBackendFiles(files: ProjectFiles): { error?: string; file?: string } | null {
-  const serverFiles = Object.keys(files).filter(p => p.startsWith('/server/') || p.startsWith('server/'));
+  const serverFiles = Object.keys(files).filter(isBackendPath);
   
   if (serverFiles.length === 0) {
     // No backend files present - not an error, frontend-only app
@@ -264,7 +268,7 @@ export function validateBackendFiles(files: ProjectFiles): { error?: string; fil
 
   for (const filePath of serverFiles) {
     const content = files[filePath];
-    if (filePath.endsWith('.js') || filePath.endsWith('.ts') || filePath.endsWith('.mjs')) {
+    if (/\.(?:js|ts|mjs|cjs)$/.test(filePath)) {
       try {
         // Robust syntax check using Sucrase parser (handles ESM imports, exports, TS, and avoids CSP eval)
         transform(content, { transforms: ['typescript', 'imports'] });
@@ -284,12 +288,16 @@ export function validateBackendFiles(files: ProjectFiles): { error?: string; fil
  * Checks if a project contains full-stack backend files.
  */
 export function isFullStackProject(files: ProjectFiles): boolean {
-  return Object.keys(files).some(p => 
-    p.startsWith('/server/') || 
-    p.startsWith('server/') ||
-    p === '/server.js' ||
-    p === 'server.js'
-  );
+  if (files['/worker/index.ts'] || files['worker/index.ts']) return true;
+  return Object.keys(files).some(isBackendPath);
+}
+
+function isBackendPath(path: string): boolean {
+  return /^\/?server(?:\/|\.(?:js|ts|mjs|cjs)$)/.test(path);
+}
+
+function backendError(status: number, message: string): BackendResponse {
+  return { status, headers: { 'Content-Type': 'application/json' }, body: { error: message, layer: 'backend' }, layer: 'backend', error: message };
 }
 
 /**
@@ -306,16 +314,8 @@ export async function executeBackendRequest(
   const pathname = urlObj.pathname.replace(/^\/(?:preview|p)\/[^/]+/, ''); // normalize
   const searchParams = urlObj.searchParams;
 
-  // Check out-of-scope features
-  const outOfScopeCheck = checkUnsupportedBackendFeatures(pathname + ' ' + JSON.stringify(req.body || {}));
-  if (!outOfScopeCheck.supported) {
-    return {
-      status: 501,
-      headers: { 'Content-Type': 'application/json' },
-      body: { error: outOfScopeCheck.reason, layer: 'backend', supported: false },
-      layer: 'backend',
-      error: outOfScopeCheck.reason
-    };
+  if (req.body != null && (typeof req.body !== 'object' || Array.isArray(req.body))) {
+    return backendError(400, 'Request body must be a JSON object');
   }
 
   // Handle Health check: /api/health
@@ -346,7 +346,10 @@ export async function executeBackendRequest(
   // 1. Signup / Register: POST /api/auth/signup or POST /api/auth/register
   if ((pathname === '/api/auth/signup' || pathname === '/api/auth/register') && method === 'POST') {
     const { email, password, username, orgName, name } = req.body || {};
-    const userEmail = (email || username || '').toLowerCase().trim();
+    const identity = email || username;
+    const userEmail = typeof identity === 'string' ? identity.toLowerCase().trim() : '';
+    if (typeof password !== 'string' || !password.trim()) return backendError(400, 'Password is required');
+    if ((orgName !== undefined && typeof orgName !== 'string') || (name !== undefined && typeof name !== 'string')) return backendError(400, 'Name and organization must be strings');
     if (!userEmail) {
       return {
         status: 400,
@@ -369,6 +372,11 @@ export async function executeBackendRequest(
       };
     }
 
+    const passwordDigest = await hashPassword(password);
+    if (store.findAll('users').some(user => (user.email || '').toLowerCase() === userEmail)) {
+      return backendError(409, 'Email already registered');
+    }
+
     // Create Organization
     const resolvedOrgName = orgName || `${userEmail.split('@')[0]}'s Organization`;
     const org = store.create('organizations', {
@@ -383,7 +391,7 @@ export async function executeBackendRequest(
     const user = store.create('users', {
       email: userEmail,
       name: name || userEmail.split('@')[0],
-      password: await hashPassword(String(password || 'default_secret')),
+      password: passwordDigest,
       orgId: org.id,
       role: 'admin',
       status: 'active',
@@ -391,7 +399,7 @@ export async function executeBackendRequest(
     });
 
     // Generate Session Token
-    const sessionToken = 'bh_token_' + btoa(`${user.id}:${user.orgId}:${Date.now()}`).replace(/=/g, '');
+    const sessionToken = 'bh_token_' + crypto.randomUUID();
     store.create('sessions', {
       token: sessionToken,
       userId: user.id,
@@ -417,8 +425,10 @@ export async function executeBackendRequest(
   // 2. Login: POST /api/auth/login
   if (pathname === '/api/auth/login' && method === 'POST') {
     const { email, password, username } = req.body || {};
-    const userEmail = (email || username || '').toLowerCase().trim();
-    if (!password) {
+    const identity = email || username;
+    const userEmail = typeof identity === 'string' ? identity.toLowerCase().trim() : '';
+    if (!userEmail) return backendError(400, 'Email is required');
+    if (typeof password !== 'string' || !password.trim()) {
       return {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -429,20 +439,11 @@ export async function executeBackendRequest(
     }
 
     // Lookup user in store
-    let user = store.findAll('users').find(u => (u.email || '').toLowerCase() === userEmail && u.status !== 'removed');
+    const user = store.findAll('users').find(u => (u.email || '').toLowerCase() === userEmail && u.status !== 'removed');
     let org: any = null;
 
     if (!user) {
-      // For demo / initial preview test: if no user in store, auto-bootstrap one
-      org = store.create('organizations', { name: `${userEmail.split('@')[0]} Org` });
-      user = store.create('users', {
-        email: userEmail,
-        password: await hashPassword(password),
-        name: userEmail.split('@')[0],
-        orgId: org.id,
-        role: 'admin',
-        status: 'active'
-      });
+      return backendError(401, 'Invalid email or password');
     } else {
       // The password used to be ignored here: any password logged any existing
       // account in. A row from before digests existed still compares directly and
@@ -465,7 +466,7 @@ export async function executeBackendRequest(
       org = store.findById('organizations', user.orgId);
     }
 
-    const sessionToken = 'bh_token_' + btoa(`${user.id}:${user.orgId}:${Date.now()}`).replace(/=/g, '');
+    const sessionToken = 'bh_token_' + crypto.randomUUID();
     store.create('sessions', {
       token: sessionToken,
       userId: user.id,
@@ -576,7 +577,7 @@ export async function executeBackendRequest(
       };
     }
     const { email, role } = req.body || {};
-    if (!email) {
+    if (typeof email !== 'string' || !email.trim()) {
       return {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -747,6 +748,7 @@ export async function executeBackendRequest(
   if (apiMatch) {
     const resource = apiMatch[1].toLowerCase();
     const resourceId = apiMatch[2];
+    if (resource === 'sessions') return backendError(403, 'Sessions are managed through authentication endpoints');
 
     // Enforce authentication if Bearer header is supplied (preventing use of revoked/invalid tokens)
     // or if accessing secured multi-tenant resources like events
@@ -771,19 +773,6 @@ export async function executeBackendRequest(
           // Tenancy scoping: if authenticated user exists, filter records matching user's orgId
           if (currentUser && (resource === 'events' || items.some(i => i.orgId !== undefined))) {
             items = items.filter(item => item.orgId === currentUser.orgId);
-          } else if (items.length === 0 && resource !== 'events') {
-            // Seed initial placeholder data if collection is completely empty
-            const seedCount = 3;
-            for (let i = 1; i <= seedCount; i++) {
-              store.create(resource, {
-                title: `${resource.slice(0, -1) || resource} ${i}`,
-                name: `${resource.slice(0, -1) || resource} ${i}`,
-                description: `Default sample ${resource} created for preview.`,
-                price: Math.floor(Math.random() * 80) + 20,
-                status: 'active'
-              });
-            }
-            items = store.findAll(resource);
           }
 
           // Date range filtering
@@ -818,14 +807,17 @@ export async function executeBackendRequest(
           // Pagination support
           const hasPagination = searchParams.has('page') || searchParams.has('limit');
           const total = items.length;
-          const page = parseInt(searchParams.get('page') || '1', 10);
-          const limit = parseInt(searchParams.get('limit') || '10', 10);
+          const page = Number(searchParams.get('page') ?? '1');
+          const limit = Number(searchParams.get('limit') ?? '10');
+          if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_ROWS_PER_TABLE) {
+            return backendError(400, `Page and limit must be positive integers; limit cannot exceed ${MAX_ROWS_PER_TABLE}`);
+          }
           const totalPages = Math.ceil(total / limit) || 1;
           const paginatedItems = hasPagination ? items.slice((page - 1) * limit, page * limit) : items;
 
           // For frontend compatibility, provide structured object if pagination is requested
           const responseBody = hasPagination
-            ? { events: paginatedItems.map(stripSecrets), total, page, limit, totalPages }
+            ? { [resource]: paginatedItems.map(stripSecrets), items: paginatedItems.map(stripSecrets), total, page, limit, totalPages }
             : paginatedItems.map(stripSecrets);
 
           return {
@@ -875,34 +867,22 @@ export async function executeBackendRequest(
           }
 
           const bodyData = { ...req.body };
-          if (currentUser && !bodyData.orgId) {
+          if (currentUser && bodyData.orgId !== undefined && bodyData.orgId !== currentUser.orgId) {
+            return backendError(403, 'Forbidden: Cross-tenant creation denied');
+          }
+          if (currentUser) {
             bodyData.orgId = currentUser.orgId;
           }
 
-          // Anti-duplicate race condition guard for rapid submissions
-          if (resource === 'events') {
-            const existingRecent = store.findAll('events').find(e =>
-              e.orgId === bodyData.orgId &&
-              e.name === bodyData.name &&
-              e.value === bodyData.value &&
-              e.category === bodyData.category &&
-              Math.abs(new Date(e.createdAt).getTime() - Date.now()) < 1000
-            );
-            if (existingRecent) {
-              return {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-                body: existingRecent,
-                layer: 'backend'
-              };
-            }
-          }
-
           // Atomic inventory management for e-commerce orders
+          let orderedProduct: any = null;
+          let orderedQuantity = 0;
           if (resource === 'orders') {
             const { productId, quantity = 1 } = bodyData;
-            if (productId) {
+            if (!Number.isSafeInteger(quantity) || quantity < 1) return backendError(400, 'Quantity must be a positive integer');
+            if (productId !== undefined) {
               const product = store.findById('products', productId);
+              if (currentUser && product?.orgId !== undefined && product.orgId !== currentUser.orgId) return backendError(403, 'Forbidden: Cross-tenant product access denied');
               if (!product || (product.stock !== undefined && product.stock < quantity)) {
                 return {
                   status: 400,
@@ -912,12 +892,15 @@ export async function executeBackendRequest(
                   error: 'Out of Stock'
                 };
               }
-              // Atomically reduce stock
-              store.update('products', productId, { stock: Math.max(0, (product.stock || 0) - quantity) });
+              orderedProduct = product;
+              orderedQuantity = quantity;
             }
           }
 
           const created = store.create(resource, bodyData);
+          if (orderedProduct?.stock !== undefined) {
+            store.update('products', orderedProduct.id, { stock: orderedProduct.stock - orderedQuantity });
+          }
           return {
             status: 201,
             headers: { 'Content-Type': 'application/json' },
@@ -968,6 +951,7 @@ export async function executeBackendRequest(
         }
 
         if (method === 'PUT' || method === 'PATCH') {
+          if (currentUser && req.body?.orgId !== undefined && req.body.orgId !== currentUser.orgId) return backendError(403, 'Forbidden: Cross-tenant update denied');
           const existing = store.findById(resource, resourceId);
           if (!existing) {
             return {

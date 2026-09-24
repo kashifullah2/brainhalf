@@ -49,19 +49,19 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div style={{
           minHeight: '100vh',
-          backgroundColor: '#0b0c10',
-          color: '#e2e8f0',
+          backgroundColor: 'var(--studio-paper)',
+          color: 'var(--text-primary)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           padding: '24px',
-          fontFamily: 'Inter, system-ui, -apple-system, sans-serif'
+          fontFamily: 'var(--font-sans)'
         }}>
           <div style={{
             maxWidth: '520px',
             width: '100%',
-            backgroundColor: '#161922',
-            border: '1px solid #282e3e',
+            backgroundColor: 'var(--bg-card)',
+            border: '1px solid var(--border-medium)',
             borderRadius: '16px',
             padding: '32px',
             boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
@@ -77,16 +77,16 @@ export class ErrorBoundary extends Component<Props, State> {
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 20px auto',
-              color: '#ef4444'
+              color: 'var(--color-error)'
             }}>
               <AlertTriangle size={28} />
             </div>
 
-            <h2 style={{ fontSize: '20px', fontWeight: 600, margin: '0 0 8px 0', color: '#f8fafc' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 600, margin: '0 0 8px 0', color: 'var(--text-primary)' }}>
               {isChunkOrSyntax ? 'New Version Available' : 'Something went wrong'}
             </h2>
 
-            <p style={{ fontSize: '14px', color: '#94a3b8', lineHeight: 1.5, margin: '0 0 24px 0' }}>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 24px 0' }}>
               {isChunkOrSyntax
                 ? 'A new version of BrainHalf has been deployed. Please reload to load the latest code and assets.'
                 : 'An unexpected runtime issue occurred. Your project files and settings are safely stored.'}
@@ -94,13 +94,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
             {this.state.error?.message && (
               <div style={{
-                backgroundColor: '#0d0f17',
-                border: '1px solid #1f2430',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: '8px',
                 padding: '12px 14px',
                 fontSize: '12px',
-                fontFamily: 'monospace',
-                color: '#fca5a5',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--color-error)',
                 textAlign: 'left',
                 overflowX: 'auto',
                 marginBottom: '24px',
@@ -117,8 +117,8 @@ export class ErrorBoundary extends Component<Props, State> {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  backgroundColor: '#3b82f6',
-                  color: '#ffffff',
+                  backgroundColor: 'var(--accent-primary)',
+                  color: 'var(--text-on-accent)',
                   border: 'none',
                   borderRadius: '8px',
                   padding: '10px 20px',
@@ -139,8 +139,8 @@ export class ErrorBoundary extends Component<Props, State> {
                   alignItems: 'center',
                   gap: '8px',
                   backgroundColor: 'transparent',
-                  color: '#94a3b8',
-                  border: '1px solid #282e3e',
+                  color: 'var(--text-muted)',
+                  border: '1px solid var(--border-medium)',
                   borderRadius: '8px',
                   padding: '10px 16px',
                   fontSize: '14px',

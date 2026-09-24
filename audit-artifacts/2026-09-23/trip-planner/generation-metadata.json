@@ -1,0 +1,24 @@
+{
+  "model": "@cf/deepseek-ai/deepseek-v4-pro-0813",
+  "method": "Cloudflare API with actual BrainHalf system prompt and file parser; not the hosted ChatAgent workflow",
+  "usage": {
+    "prompt_tokens": 3789,
+    "completion_tokens": 16023,
+    "total_tokens": 19812,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "neurons": 6222.960221886635
+  },
+  "revision": "2fce1ce77add678bf81cb1c134dd82e474ec267d67e03e92dd397f64ad7f98f5",
+  "files": [
+    "app.js",
+    "build.js",
+    "index.html",
+    "migrations/0001.sql",
+    "package.json",
+    "README.md",
+    "styles.css",
+    "worker/index.ts"
+  ]
+}

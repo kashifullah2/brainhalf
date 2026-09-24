@@ -1,0 +1,45 @@
+{
+  "at": "2026-09-24T19:46:25.207Z",
+  "projectId": "proj-0978089d-6817-4a1c-a648-03ca63075d39",
+  "checks": [
+    "Platform, crawl files and published app health respond; anonymous app data access is denied",
+    "Workspace popout opens the real managed development app",
+    "Development app backend health passes in the opened browser tab",
+    "Managed sign-in page opens with email and Google controls",
+    "Mobile controls fit and project source is unchanged"
+  ],
+  "samples": [
+    {
+      "origin": "https://brainhalf.com",
+      "path": "/",
+      "status": 200,
+      "ms": 1015
+    },
+    {
+      "origin": "https://brainhalf.com",
+      "path": "/robots.txt",
+      "status": 200,
+      "ms": 166
+    },
+    {
+      "origin": "https://brainhalf.com",
+      "path": "/sitemap.xml",
+      "status": 200,
+      "ms": 198
+    },
+    {
+      "origin": "https://96f64707e493d216204ad9c6819e1a3c.apps.brainhalf.com",
+      "path": "/api/health",
+      "status": 200,
+      "ms": 1943
+    },
+    {
+      "origin": "https://96f64707e493d216204ad9c6819e1a3c.apps.brainhalf.com",
+      "path": "/api/items",
+      "status": 401,
+      "ms": 507
+    }
+  ],
+  "errors": [],
+  "passed": true
+}

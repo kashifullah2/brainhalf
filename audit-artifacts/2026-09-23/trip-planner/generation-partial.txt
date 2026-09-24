@@ -1,0 +1,1964 @@
+I'll build Waypoint as a complete managed Workers/D1 application with all the specified contracts and UI requirements.
+
+<file path="package.json">
+{
+  "name": "waypoint-travel-planner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "esbuild": "^0.19.0",
+    "typescript": "^5.0.0"
+  },
+  "brainhalf": {
+    "runtime": "workers",
+    "previewApi": "managed"
+  }
+}
+</file>
+
+<file path="build.js">
+import { build } from 'esbuild';
+import { copyFileSync, mkdirSync } from 'fs';
+
+mkdirSync('dist', { recursive: true });
+mkdirSync('dist-worker', { recursive: true });
+
+copyFileSync('index.html', 'dist/index.html');
+copyFileSync('app.js', 'dist/app.js');
+copyFileSync('styles.css', 'dist/styles.css');
+
+await build({
+  entryPoints: ['worker/index.ts'],
+  bundle: true,
+  format: 'esm',
+  platform: 'browser',
+  outfile: 'dist-worker/index.js',
+  sourcemap: false,
+  minify: false,
+  target: 'es2022'
+});
+
+console.log('Build complete: dist/ and dist-worker/');
+</file>
+
+<file path="migrations/0001.sql">
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS items (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS trips (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  capacity INTEGER NOT NULL CHECK (capacity BETWEEN 1 AND 100),
+  budget_cents INTEGER NOT NULL CHECK (budget_cents BETWEEN 0 AND 100000000),
+  version INTEGER NOT NULL DEFAULT 1,
+  reserved_seats INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (owner_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS trip_members (
+  trip_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (trip_id, user_id),
+  FOREIGN KEY (trip_id) REFERENCES trips(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS bookings (
+  id TEXT PRIMARY KEY,
+  trip_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  seats INTEGER NOT NULL CHECK (seats > 0),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'cancelled')),
+  idempotency_key TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (trip_id, user_id, idempotency_key),
+  FOREIGN KEY (trip_id) REFERENCES trips(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id TEXT PRIMARY KEY,
+  trip_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  description TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0 AND amount_cents <= 100000000),
+  idempotency_key TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (trip_id, user_id, idempotency_key),
+  FOREIGN KEY (trip_id) REFERENCES trips(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+  id TEXT PRIMARY KEY,
+  trip_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (trip_id) REFERENCES trips(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id);
+CREATE INDEX IF NOT EXISTS idx_trips_owner ON trips(owner_id);
+CREATE INDEX IF NOT EXISTS idx_trip_members_user ON trip_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_trip ON bookings(trip_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_trip ON expenses(trip_id);
+CREATE INDEX IF NOT EXISTS idx_audit_trip ON audit_events(trip_id);
+
+CREATE TRIGGER IF NOT EXISTS booking_insert_trigger
+BEFORE INSERT ON bookings
+FOR EACH ROW
+WHEN NEW.status = 'active'
+BEGIN
+  SELECT CASE
+    WHEN (SELECT reserved_seats FROM trips WHERE id = NEW.trip_id) + NEW.seats > 
+         (SELECT capacity FROM trips WHERE id = NEW.trip_id)
+    THEN RAISE(ABORT, 'capacity_exceeded')
+  END;
+  
+  UPDATE trips SET reserved_seats = reserved_seats + NEW.seats, updated_at = datetime('now')
+  WHERE id = NEW.trip_id;
+  
+  INSERT INTO audit_events (id, trip_id, user_id, event_type, details)
+  VALUES (
+    lower(hex(randomblob(16))),
+    NEW.trip_id,
+    NEW.user_id,
+    'booking_created',
+    json_object('booking_id', NEW.id, 'seats', NEW.seats)
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS booking_cancel_trigger
+AFTER UPDATE OF status ON bookings
+FOR EACH ROW
+WHEN NEW.status = 'cancelled' AND OLD.status = 'active'
+BEGIN
+  UPDATE trips SET reserved_seats = reserved_seats - OLD.seats, updated_at = datetime('now')
+  WHERE id = OLD.trip_id;
+  
+  INSERT INTO audit_events (id, trip_id, user_id, event_type, details)
+  VALUES (
+    lower(hex(randomblob(16))),
+    OLD.trip_id,
+    OLD.user_id,
+    'booking_cancelled',
+    json_object('booking_id', OLD.id, 'seats', OLD.seats)
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS expense_insert_trigger
+AFTER INSERT ON expenses
+FOR EACH ROW
+BEGIN
+  INSERT INTO audit_events (id, trip_id, user_id, event_type, details)
+  VALUES (
+    lower(hex(randomblob(16))),
+    NEW.trip_id,
+    NEW.user_id,
+    'expense_created',
+    json_object('expense_id', NEW.id, 'amount_cents', NEW.amount_cents)
+  );
+END;
+</file>
+
+<file path="worker/index.ts">
+interface Env {
+  DB: D1Database;
+  BRAINHALF_MANAGED?: string;
+}
+
+interface UserRow {
+  id: string;
+  email: string;
+  name: string;
+}
+
+interface TripRow {
+  id: string;
+  owner_id: string;
+  title: string;
+  capacity: number;
+  budget_cents: number;
+  version: number;
+  reserved_seats: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface BookingRow {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  seats: number;
+  status: string;
+  idempotency_key: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ExpenseRow {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  description: string;
+  amount_cents: number;
+  idempotency_key: string;
+  created_at: string;
+}
+
+interface AuditRow {
+  id: string;
+  trip_id: string;
+  user_id: string;
+  event_type: string;
+  details: string;
+  created_at: string;
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
+function error(message: string, status = 400): Response {
+  return json({ error: message }, status);
+}
+
+function uuid(): string {
+  return crypto.randomUUID();
+}
+
+function getUserId(request: Request, env: Env): string | null {
+  if (env.BRAINHALF_MANAGED !== 'true') {
+    return null;
+  }
+  return request.headers.get('x-bh-user-id');
+}
+
+function requireUser(request: Request, env: Env): string {
+  const userId = getUserId(request, env);
+  if (!userId) {
+    throw new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  return userId;
+}
+
+function checkOrigin(request: Request): boolean {
+  const origin = request.headers.get('Origin');
+  if (!origin) return false;
+  const url = new URL(request.url);
+  return origin === url.origin;
+}
+
+async function readBody(request: Request): Promise<Record<string, unknown>> {
+  const contentLength = parseInt(request.headers.get('Content-Length') || '0', 10);
+  if (contentLength > 16384) {
+    throw new Response(JSON.stringify({ error: 'Request body too large' }), {
+      status: 413,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  const text = await request.text();
+  if (text.length > 16384) {
+    throw new Response(JSON.stringify({ error: 'Request body too large' }), {
+      status: 413,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+async function ensureUser(env: Env, userId: string): Promise<void> {
+  await env.DB.prepare(
+    'INSERT OR IGNORE INTO users (id, email, name) VALUES (?, ?, ?)'
+  ).bind(userId, `user-${userId}@example.com`, '').run();
+}
+
+async function isTripMember(env: Env, tripId: string, userId: string): Promise<boolean> {
+  const result = await env.DB.prepare(
+    'SELECT 1 FROM trip_members WHERE trip_id = ? AND user_id = ?'
+  ).bind(tripId, userId).first();
+  return !!result;
+}
+
+async function isTripOwner(env: Env, tripId: string, userId: string): Promise<boolean> {
+  const trip = await env.DB.prepare(
+    'SELECT owner_id FROM trips WHERE id = ?'
+  ).bind(tripId).first<TripRow>();
+  return trip?.owner_id === userId;
+}
+
+async function getTripDetail(env: Env, tripId: string): Promise<Record<string, unknown>> {
+  const trip = await env.DB.prepare(
+    'SELECT * FROM trips WHERE id = ?'
+  ).bind(tripId).first<TripRow>();
+  
+  if (!trip) return {};
+  
+  const members = await env.DB.prepare(
+    'SELECT user_id, joined_at FROM trip_members WHERE trip_id = ? ORDER BY joined_at'
+  ).bind(tripId).all();
+  
+  const bookings = await env.DB.prepare(
+    'SELECT * FROM bookings WHERE trip_id = ? ORDER BY created_at'
+  ).bind(tripId).all<BookingRow>();
+  
+  const expenses = await env.DB.prepare(
+    'SELECT * FROM expenses WHERE trip_id = ? ORDER BY created_at'
+  ).bind(tripId).all<ExpenseRow>();
+  
+  const spentResult = await env.DB.prepare(
+    'SELECT COALESCE(SUM(amount_cents), 0) as total FROM expenses WHERE trip_id = ?'
+  ).bind(tripId).first<{ total: number }>();
+  
+  return {
+    trip,
+    members: members.results || [],
+    bookings: bookings.results || [],
+    expenses: expenses.results || [],
+    spentCents: spentResult?.total || 0
+  };
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const method = request.method;
+
+    try {
+      if (method === 'GET' && path === '/api/health') {
+        return json({ status: 'ok' });
+      }
+
+      if (method === 'GET' && path === '/api/items') {
+        const userId = requireUser(request, env);
+        await ensureUser(env, userId);
+        const items = await env.DB.prepare(
+          'SELECT id, title, created_at FROM items WHERE user_id = ? ORDER BY created_at DESC'
+        ).bind(userId).all();
+        return json({ items: items.results || [] });
+      }
+
+      if (method === 'POST' && path === '/api/items') {
+        const userId = requireUser(request, env);
+        if (!checkOrigin(request)) {
+          return error('Origin not allowed', 403);
+        }
+        await ensureUser(env, userId);
+        const body = await readBody(request);
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        if (!title || title.length > 120) {
+          return error('Title must be 1-120 characters');
+        }
+        const id = uuid();
+        await env.DB.prepare(
+          'INSERT INTO items (id, user_id, title) VALUES (?, ?, ?)'
+        ).bind(id, userId, title).run();
+        const item = await env.DB.prepare(
+          'SELECT id, title, created_at FROM items WHERE id = ?'
+        ).bind(id).first();
+        return json({ item }, 201);
+      }
+
+      if (method === 'DELETE' && path.startsWith('/api/items/')) {
+        const userId = requireUser(request, env);
+        if (!checkOrigin(request)) {
+          return error('Origin not allowed', 403);
+        }
+        const itemId = path.split('/')[3];
+        const result = await env.DB.prepare(
+          'DELETE FROM items WHERE id = ? AND user_id = ?'
+        ).bind(itemId, userId).run();
+        if (result.meta.changes === 0) {
+          return error('Item not found', 404);
+        }
+        return json({ success: true });
+      }
+
+      if (method === 'POST' && path === '/api/trips') {
+        const userId = requireUser(request, env);
+        if (!checkOrigin(request)) {
+          return error('Origin not allowed', 403);
+        }
+        await ensureUser(env, userId);
+        const body = await readBody(request);
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        const capacity = typeof body.capacity === 'number' ? body.capacity : NaN;
+        const budgetCents = typeof body.budgetCents === 'number' ? body.budgetCents : NaN;
+        
+        if (!title || title.length > 120) {
+          return error('Title must be 1-120 characters');
+        }
+        if (!Number.isInteger(capacity) || capacity < 1 || capacity > 100) {
+          return error('Capacity must be an integer 1-100');
+        }
+        if (!Number.isInteger(budgetCents) || budgetCents < 0 || budgetCents > 100000000) {
+          return error('Budget must be an integer 0-100000000 cents');
+        }
+        
+        const tripId = uuid();
+        await env.DB.prepare(
+          'INSERT INTO trips (id, owner_id, title, capacity, budget_cents) VALUES (?, ?, ?, ?, ?)'
+        ).bind(tripId, userId, title, capacity, budgetCents).run();
+        
+        await env.DB.prepare(
+          'INSERT INTO trip_members (trip_id, user_id) VALUES (?, ?)'
+        ).bind(tripId, userId).run();
+        
+        const trip = await env.DB.prepare(
+          'SELECT * FROM trips WHERE id = ?'
+        ).bind(tripId).first<TripRow>();
+        
+        return json({ trip }, 201);
+      }
+
+      if (method === 'GET' && path === '/api/trips') {
+        const userId = requireUser(request, env);
+        await ensureUser(env, userId);
+        const trips = await env.DB.prepare(
+          `SELECT DISTINCT t.* FROM trips t
+           LEFT JOIN trip_members tm ON t.id = tm.trip_id
+           WHERE t.owner_id = ? OR tm.user_id = ?
+           ORDER BY t.created_at DESC`
+        ).bind(userId, userId).all<TripRow>();
+        return json({ trips: trips.results || [] });
+      }
+
+      if (method === 'GET' && path.startsWith('/api/trips/')) {
+        const userId = requireUser(request, env);
+        const tripId = path.split('/')[3];
+        if (!tripId) return error('Trip ID required');
+        
+        if (!await isTripMember(env, tripId, userId)) {
+          return error('Not a member of this trip', 403);
+        }
+        
+        const detail = await getTripDetail(env, tripId);
+        if (!detail.trip) return error('Trip not found', 404);
+        return json(detail);
+      }
+
+      if (method === 'POST' && path.match(/^\/api\/trips\/[^/]+\/members$/)) {
+        const userId = requireUser(request, env);
+        if (!checkOrigin(request)) {
+          return error('Origin not allowed', 403);
+        }
+        const tripId = path.split('/')[3];
+        if (!await isTripOwner(env, tripId, userId)) {
+          return error('Only trip owner can add members', 403);
+        }
+        
+        const body = await readBody(request);
+        const memberId = typeof body.userId === 'string' ? body.userId : '';
+        if (!memberId) return error('userId required');
+        
+        await ensureUser(env, memberId);
+        
+        const trip = await env.DB.prepare(
+          'SELECT capacity, (SELECT COUNT(*) FROM trip_members WHERE trip_id = ?) as member_count FROM trips WHERE id = ?'
+        ).bind(tripId, tripId).first<{ capacity: number; member_count: number }>();
+        
+        if (!trip) return error('Trip not found', 404);
+        if (trip.member_count >= trip.capacity) {
+          return error('Trip is at capacity', 409);
+        }
+        
+        await env.DB.prepare(
+          'INSERT OR IGNORE INTO trip_members (trip_id, user_id) VALUES (?, ?)'
+        ).bind(tripId, memberId).run();
+        
+        const member = await env.DB.prepare(
+          'SELECT user_id, joined_at FROM trip_members WHERE trip_id = ? AND user_id = ?'
+        ).bind(tripId, memberId).first();
+        
+        return json({ member }, 201);
+      }
+
+      if (method === 'PATCH' && path.match(/^\/api\/trips\/[^/]+$/)) {
+        const userId = requireUser(request, env);
+        if (!checkOrigin(request)) {
+          return error('Origin not allowed', 403);
+        }
+        const tripId = path.split('/')[3];
+        if (!await isTripOwner(env, tripId, userId)) {
+          return error('Only trip owner can update trip', 403);
+        }
+        
+        const body = await readBody(request);
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        const version = typeof body.version === 'number' ? body.version : NaN;
+        
+        if (!title || title.length > 120) {
+          return error('Title must be 1-120 characters');
+        }
+        if (!Number.isInteger(version) || version < 1) {
+          return error('Version must be a positive integer');
+        }
+        
+        const result = await env.DB.prepare(
+          'UPDATE trips SET title = ?, version = version + 1, updated_at = datetime(\'now\') WHERE id = ? AND version = ?'
+        ).bind(title, tripId, version).run();
+        
+        if (result.meta.changes === 0) {
+          const current = await env.DB.prepare(
+            'SELECT version FROM trips WHERE id = ?'
+          ).bind(tripId).first<{ version: number }>();
+          if (!current) return error('Trip not found', 404);
+          return error('Version conflict', 409);
+        }
+        
+        const trip = await env.DB.prepare(
+          'SELECT * FROM trips WHERE id = ?'
+        ).bind(tripId).first<TripRow>();
+        
+        return json({ trip });
+      }
+
+      if (method === 'POST' && path.match(/^\/api\/trips\/[^/]+\/bookings$/)) {
+        const userId = requireUser(request, env);
+        if (!checkOrigin(request)) {
+          return error('Origin not allowed', 403);
+        }
+        const tripId = path.split('/')[3];
+        if (!await isTripMember(env, tripId, userId)) {
+          return error('Must be a trip member to book', 403);
+        }
+        
+        const idempotencyKey = request.headers.get('Idempotency-Key');
+        if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 100) {
+          return error('Idempotency-Key must be 8-100 characters');
+        }
+        
+        const body = await readBody(request);
+        const seats = typeof body.seats === 'number' ? body.seats : NaN;
+        if (!Number.isInteger(seats) || seats < 1) {
+          return error('Seats must be a positive integer');
+        }
+        
+        const existing = await env.DB.prepare(
+          'SELECT * FROM bookings WHERE trip_id = ? AND user_id = ? AND idempotency_key = ?'
+        ).bind(tripId, userId, idempotencyKey).first<BookingRow>();
+        
+        if (existing) {
+          if (existing.seats !== seats) {
+            return error('Idempotency key reused with different payload', 409);
+          }
+          return json({ booking: existing }, 200);
+        }
+        
+        const bookingId = uuid();
+        try {
+          await env.DB.prepare(
+            'INSERT INTO bookings (id, trip_id, user_id, seats, idempotency_key) VALUES (?, ?, ?, ?, ?)'
+          ).bind(bookingId, tripId, userId, seats, idempotencyKey).run();
+        } catch (e) {
+          const message = e instanceof Error ? e.message : '';
+          if (message.includes('capacity_exceeded')) {
+            return error('Not enough seats available', 409);
+          }
+          throw e;
+        }
+        
+        const booking = await env.DB.prepare(
+          'SELECT * FROM bookings WHERE id = ?'
+        ).bind(bookingId).first<BookingRow>();
+        
+        return json({ booking }, 201);
+      }
+
+      if (method === 'PATCH' && path.match(/^\/api\/trips\/[^/]+\/bookings\/[^/]+$/)) {
+        const userId = requireUser(request, env);
+        if (!checkOrigin(request)) {
+          return error('Origin not allowed', 403);
+        }
+        const parts = path.split('/');
+        const tripId = parts[3];
+        const bookingId = parts[5];
+        
+        const booking = await env.DB.prepare(
+          'SELECT * FROM bookings WHERE id = ? AND trip_id = ?'
+        ).bind(bookingId, tripId).first<BookingRow>();
+        
+        if (!booking) return error('Booking not found', 404);
+        
+        const isOwner = await isTripOwner(env, tripId, userId);
+        if (booking.user_id !== userId && !isOwner) {
+          return error('Can only cancel own booking or as trip owner', 403);
+        }
+        
+        const body = await readBody(request);
+        if (body.status !== 'cancelled') {
+          return error('Only cancellation supported');
+        }
+        
+        if (booking.status === 'cancelled') {
+          return json({ booking });
+        }
+        
+        await env.DB.prepare(
+          'UPDATE bookings SET status = \'cancelled\', updated_at = datetime(\'now\') WHERE id = ? AND status = \'active\''
+        ).bind(bookingId).run();
+        
+        const updated = await env.DB.prepare(
+          'SELECT * FROM bookings WHERE id = ?'
+        ).bind(bookingId).first<BookingRow>();
+        
+        return json({ booking: updated });
+      }
+
+      if (method === 'POST' && path.match(/^\/api\/trips\/[^/]+\/expenses$/)) {
+        const userId = requireUser(request, env);
+        if (!checkOrigin(request)) {
+          return error('Origin not allowed', 403);
+        }
+        const tripId = path.split('/')[3];
+        if (!await isTripMember(env, tripId, userId)) {
+          return error('Must be a trip member to add expenses', 403);
+        }
+        
+        const idempotencyKey = request.headers.get('Idempotency-Key');
+        if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 100) {
+          return error('Idempotency-Key must be 8-100 characters');
+        }
+        
+        const body = await readBody(request);
+        const description = typeof body.description === 'string' ? body.description.trim() : '';
+        const amountCents = typeof body.amountCents === 'number' ? body.amountCents : NaN;
+        
+        if (!description || description.length > 500) {
+          return error('Description required');
+        }
+        if (!Number.isInteger(amountCents) || amountCents < 1 || amountCents > 100000000) {
+          return error('Amount must be positive integer cents');
+        }
+        
+        const existing = await env.DB.prepare(
+          'SELECT * FROM expenses WHERE trip_id = ? AND user_id = ? AND idempotency_key = ?'
+        ).bind(tripId, userId, idempotencyKey).first<ExpenseRow>();
+        
+        if (existing) {
+          if (existing.amount_cents !== amountCents || existing.description !== description) {
+            return error('Idempotency key reused with different payload', 409);
+          }
+          return json({ expense: existing }, 200);
+        }
+        
+        const expenseId = uuid();
+        await env.DB.prepare(
+          'INSERT INTO expenses (id, trip_id, user_id, description, amount_cents, idempotency_key) VALUES (?, ?, ?, ?, ?, ?)'
+        ).bind(expenseId, tripId, userId, description, amountCents, idempotencyKey).run();
+        
+        const expense = await env.DB.prepare(
+          'SELECT * FROM expenses WHERE id = ?'
+        ).bind(expenseId).first<ExpenseRow>();
+        
+        return json({ expense }, 201);
+      }
+
+      if (method === 'GET' && path.match(/^\/api\/trips\/[^/]+\/audit$/)) {
+        const userId = requireUser(request, env);
+        const tripId = path.split('/')[3];
+        if (!await isTripOwner(env, tripId, userId)) {
+          return error('Only trip owner can view audit', 403);
+        }
+        
+        const events = await env.DB.prepare(
+          'SELECT * FROM audit_events WHERE trip_id = ? ORDER BY created_at DESC'
+        ).bind(tripId).all<AuditRow>();
+        
+        return json({ events: events.results || [] });
+      }
+
+      return error('Not found', 404);
+    } catch (e) {
+      if (e instanceof Response) return e;
+      console.error('Unhandled error:', e);
+      return error('Internal server error', 500);
+    }
+  }
+};
+</file>
+
+<file path="index.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Waypoint - Team Travel Planner</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 2v20M2 12h20"/>
+        </svg>
+        <span>Waypoint</span>
+      </div>
+      <div class="auth-area">
+        <span id="user-email" class="user-email"></span>
+        <a href="/api/auth/google/start" id="signin-link" class="btn btn-outline">Sign in</a>
+        <button id="logout-btn" class="btn btn-outline hidden">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <div id="loading-state" class="state-message">Loading...</div>
+    <div id="error-state" class="state-message error hidden"></div>
+    
+    <div id="signed-out-view" class="view hidden">
+      <div class="welcome-card">
+        <h1>Plan your next journey together</h1>
+        <p>Sign in to create trips, invite teammates, and manage bookings and expenses.</p>
+        <a href="/api/auth/google/start" class="btn btn-primary">Sign in with Google</a>
+      </div>
+    </div>
+
+    <div id="signed-in-view" class="view hidden">
+      <section class="section">
+        <h2>Your Trips</h2>
+        <form id="create-trip-form" class="form-row">
+          <label for="trip-title">Trip title</label>
+          <input type="text" id="trip-title" required maxlength="120" placeholder="e.g. Summer Retreat">
+          <label for="trip-capacity">Capacity</label>
+          <input type="number" id="trip-capacity" required min="1" max="100" value="10">
+          <label for="trip-budget">Budget ($)</label>
+          <input type="number" id="trip-budget" required min="0" max="1000000" step="0.01" value="1000">
+          <button type="submit" class="btn btn-primary" id="create-trip-btn">Create Trip</button>
+        </form>
+        <div id="trips-list" class="trips-list"></div>
+        <div id="trips-empty" class="state-message hidden">No trips yet. Create your first trip above.</div>
+      </section>
+
+      <section class="section">
+        <h2>Saved Destinations</h2>
+        <form id="add-item-form" class="form-row">
+          <label for="item-title">Destination</label>
+          <input type="text" id="item-title" required maxlength="120" placeholder="e.g. Kyoto, Japan">
+          <button type="submit" class="btn btn-primary" id="add-item-btn">Save</button>
+        </form>
+        <div id="items-list" class="items-list"></div>
+        <div id="items-empty" class="state-message hidden">No saved destinations yet.</div>
+      </section>
+
+      <section id="trip-detail-section" class="section hidden">
+        <h2 id="trip-detail-title">Trip Details</h2>
+        <div id="trip-detail-content"></div>
+      </section>
+
+      <section class="section">
+        <h2>Contact Us</h2>
+        <form id="contact-form" class="form-column">
+          <label for="contact-name">Name</label>
+          <input type="text" id="contact-name" required>
+          <label for="contact-email">Email</label>
+          <input type="email" id="contact-email" required>
+          <label for="contact-message">Message</label>
+          <textarea id="contact-message" required rows="4"></textarea>
+          <button type="submit" class="btn btn-primary" id="contact-btn">Send Message</button>
+        </form>
+        <div id="contact-result" class="contact-result hidden"></div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
+</file>
+
+<file path="styles.css">
+:root {
+  --navy: #18354a;
+  --glacier: #e5f0f4;
+  --white: #ffffff;
+  --orange: #bb4c12;
+  --text: #1a1a1a;
+  --text-light: #666;
+  --border: #d0d8dc;
+  --error: #c0392b;
+  --success: #27ae60;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: var(--glacier);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.app-header {
+  background: var(--navy);
+  color: var(--white);
+  padding: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.auth-area {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.user-email {
+  font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+.app-main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.section {
+  background: var(--white);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.section h2 {
+  color: var(--navy);
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+}
+
+.welcome-card {
+  background: var(--white);
+  border-radius: 8px;
+  padding: 3rem 2rem;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.welcome-card h1 {
+  color: var(--navy);
+  margin-bottom: 1rem;
+}
+
+.welcome-card p {
+  margin-bottom: 2rem;
+  color: var(--text-light);
+}
+
+.btn {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--orange);
+  color: var(--white);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--white);
+  border: 1px solid var(--white);
+}
+
+.btn-secondary {
+  background: var(--navy);
+  color: var(--white);
+}
+
+.btn-danger {
+  background: var(--error);
+  color: var(--white);
+}
+
+.btn-small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.form-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.form-row label,
+.form-column label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--navy);
+}
+
+.form-row input,
+.form-column input,
+.form-column textarea {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.form-row input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.form-column input,
+.form-column textarea {
+  width: 100%;
+}
+
+.trips-list,
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.trip-row,
+.item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  gap: 0.5rem;
+}
+
+.trip-row:hover,
+.item-row:hover {
+  background: var(--glacier);
+}
+
+.trip-info,
+.item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.trip-title,
+.item-title {
+  font-weight: 500;
+  color: var(--navy);
+}
+
+.trip-meta,
+.item-meta {
+  font-size: 0.75rem;
+  color: var(--text-light);
+}
+
+.trip-actions,
+.item-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.state-message {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-light);
+}
+
+.state-message.error {
+  color: var(--error);
+  background: #fdf0ed;
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.trip-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.detail-card {
+  background: var(--glacier);
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.detail-card h3 {
+  color: var(--navy);
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+}
+
+.member-list,
+.booking-list,
+.expense-list,
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.member-row,
+.booking-row,
+.expense-row,
+.audit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--white);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  gap: 0.5rem;
+}
+
+.booking-row.cancelled {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.expense-amount {
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.audit-row {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.audit-event-type {
+  font-weight: 600;
+  color: var(--orange);
+}
+
+.audit-details {
+  font-size: 0.75rem;
+  color: var(--text-light);
+}
+
+.contact-result {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 4px;
+}
+
+.contact-result.success {
+  background: #e8f5e9;
+  color: var(--success);
+}
+
+.contact-result.error {
+  background: #fdf0ed;
+  color: var(--error);
+}
+
+.inline-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.inline-form input {
+  flex: 1;
+  min-width: 100px;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.inline-form button {
+  flex-shrink: 0;
+}
+
+.confirmation-message {
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.confirmation-message.success {
+  background: #e8f5e9;
+  color: var(--success);
+}
+
+.confirmation-message.error {
+  background: #fdf0ed;
+  color: var(--error);
+}
+
+@media (max-width: 600px) {
+  .trip-detail-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .header-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .form-row input {
+    width: 100%;
+  }
+  
+  .trip-row,
+  .item-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .trip-actions,
+  .item-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+</file>
+
+<file path="app.js">
+const state = {
+  user: null,
+  trips: [],
+  items: [],
+  selectedTripId: null,
+  tripDetail: null,
+  pendingRequests: new Set(),
+  idempotencyKeys: new Map()
+};
+
+const elements = {};
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+function initElements() {
+  elements.loadingState = $('loading-state');
+  elements.errorState = $('error-state');
+  elements.signedOutView = $('signed-out-view');
+  elements.signedInView = $('signed-in-view');
+  elements.userEmail = $('user-email');
+  elements.signinLink = $('signin-link');
+  elements.logoutBtn = $('logout-btn');
+  elements.createTripForm = $('create-trip-form');
+  elements.createTripBtn = $('create-trip-btn');
+  elements.tripsList = $('trips-list');
+  elements.tripsEmpty = $('trips-empty');
+  elements.addItemForm = $('add-item-form');
+  elements.addItemBtn = $('add-item-btn');
+  elements.itemsList = $('items-list');
+  elements.itemsEmpty = $('items-empty');
+  elements.tripDetailSection = $('trip-detail-section');
+  elements.tripDetailTitle = $('trip-detail-title');
+  elements.tripDetailContent = $('trip-detail-content');
+  elements.contactForm = $('contact-form');
+  elements.contactBtn = $('contact-btn');
+  elements.contactResult = $('contact-result');
+}
+
+function showLoading() {
+  elements.loadingState.classList.remove('hidden');
+  elements.errorState.classList.add('hidden');
+  elements.signedOutView.classList.add('hidden');
+  elements.signedInView.classList.add('hidden');
+}
+
+function showError(message) {
+  elements.loadingState.classList.add('hidden');
+  elements.errorState.textContent = message;
+  elements.errorState.classList.remove('hidden');
+}
+
+function showSignedOut() {
+  elements.loadingState.classList.add('hidden');
+  elements.errorState.classList.add('hidden');
+  elements.signedOutView.classList.remove('hidden');
+  elements.signedInView.classList.add('hidden');
+}
+
+function showSignedIn() {
+  elements.loadingState.classList.add('hidden');
+  elements.errorState.classList.add('hidden');
+  elements.signedOutView.classList.add('hidden');
+  elements.signedInView.classList.remove('hidden');
+}
+
+function setPending(key, pending) {
+  if (pending) {
+    state.pendingRequests.add(key);
+  } else {
+    state.pendingRequests.delete(key);
+  }
+  updateButtons();
+}
+
+function isPending(key) {
+  return state.pendingRequests.has(key);
+}
+
+function updateButtons() {
+  elements.createTripBtn.disabled = isPending('create-trip');
+  elements.addItemBtn.disabled = isPending('add-item');
+  elements.contactBtn.disabled = isPending('contact');
+  
+  document.querySelectorAll('[data-pending-key]').forEach(btn => {
+    btn.disabled = isPending(btn.dataset.pendingKey);
+  });
+}
+
+function generateIdempotencyKey() {
+  return crypto.randomUUID();
+}
+
+function getOrCreateIdempotencyKey(operationKey) {
+  if (!state.idempotencyKeys.has(operationKey)) {
+    state.idempotencyKeys.set(operationKey, generateIdempotencyKey());
+  }
+  return state.idempotencyKeys.get(operationKey);
+}
+
+function clearIdempotencyKey(operationKey) {
+  state.idempotencyKeys.delete(operationKey);
+}
+
+async function apiFetch(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+  
+  const data = await response.json().catch(() => ({}));
+  
+  if (!response.ok) {
+    throw new Error(data.error || `Request failed with status ${response.status}`);
+  }
+  
+  return data;
+}
+
+async function loadSession() {
+  try {
+    const data = await apiFetch('/api/auth/session');
+    state.user = data.user || null;
+    if (state.user) {
+      elements.userEmail.textContent = state.user.email || '';
+      elements.signinLink.classList.add('hidden');
+      elements.logoutBtn.classList.remove('hidden');
+      showSignedIn();
+      await Promise.all([loadTrips(), loadItems()]);
+    } else {
+      elements.userEmail.textContent = '';
+      elements.signinLink.classList.remove('hidden');
+      elements.logoutBtn.classList.add('hidden');
+      showSignedOut();
+    }
+  } catch (err) {
+    showError(`Failed to load session: ${err.message}`);
+  }
+}
+
+async function loadTrips() {
+  try {
+    const data = await apiFetch('/api/trips');
+    state.trips = data.trips || [];
+    renderTrips();
+  } catch (err) {
+    showError(`Failed to load trips: ${err.message}`);
+  }
+}
+
+async function loadItems() {
+  try {
+    const data = await apiFetch('/api/items');
+    state.items = data.items || [];
+    renderItems();
+  } catch (err) {
+    showError(`Failed to load destinations: ${err.message}`);
+  }
+}
+
+function renderTrips() {
+  elements.tripsList.innerHTML = '';
+  if (state.trips.length === 0) {
+    elements.tripsEmpty.classList.remove('hidden');
+    return;
+  }
+  elements.tripsEmpty.classList.add('hidden');
+  
+  state.trips.forEach(trip => {
+    const row = document.createElement('div');
+    row.className = 'trip-row';
+    
+    const info = document.createElement('div');
+    info.className = 'trip-info';
+    info.innerHTML = `
+      <div class="trip-title">${escapeHtml(trip.title)}</div>
+      <div class="trip-meta">Capacity: ${trip.capacity} | Budget: $${(trip.budget_cents / 100).toFixed(2)} | Reserved: ${trip.reserved_seats}</div>
+    `;
+    
+    const actions = document.createElement('div');
+    actions.className = 'trip-actions';
+    
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'btn btn-secondary btn-small';
+    viewBtn.textContent = 'View';
+    viewBtn.dataset.pendingKey = `view-trip-${trip.id}`;
+    viewBtn.addEventListener('click', () => selectTrip(trip.id));
+    
+    actions.appendChild(viewBtn);
+    row.appendChild(info);
+    row.appendChild(actions);
+    elements.tripsList.appendChild(row);
+  });
+}
+
+function renderItems() {
+  elements.itemsList.innerHTML = '';
+  if (state.items.length === 0) {
+    elements.itemsEmpty.classList.remove('hidden');
+    return;
+  }
+  elements.itemsEmpty.classList.add('hidden');
+  
+  state.items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'item-row';
+    
+    const info = document.createElement('div');
+    info.className = 'item-info';
+    info.innerHTML = `
+      <div class="item-title">${escapeHtml(item.title)}</div>
+      <div class="item-meta">${new Date(item.created_at).toLocaleDateString()}</div>
+    `;
+    
+    const actions = document.createElement('div');
+    actions.className = 'item-actions';
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn btn-danger btn-small';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.dataset.pendingKey = `delete-item-${item.id}`;
+    deleteBtn.addEventListener('click', () => deleteItem(item.id));
+    
+    actions.appendChild(deleteBtn);
+    row.appendChild(info);
+    row.appendChild(actions);
+    elements.itemsList.appendChild(row);
+  });
+}
+
+async function selectTrip(tripId) {
+  const pendingKey = `view-trip-${tripId}`;
+  setPending(pendingKey, true);
+  try {
+    const data = await apiFetch(`/api/trips/${tripId}`);
+    state.selectedTripId = tripId;
+    state.tripDetail = data;
+    renderTripDetail();
+  } catch (err) {
+    showError(`Failed to load trip: ${err.message}`);
+  } finally {
+    setPending(pendingKey, false);
+  }
+}
+
+function renderTripDetail() {
+  if (!state.tripDetail) return;
+  
+  const { trip, members, bookings, expenses, spentCents } = state.tripDetail;
+  elements.tripDetailSection.classList.remove('hidden');
+  elements.tripDetailTitle.textContent = trip.title;
+  
+  const isOwner = state.user && trip.owner_id === state.user.id;
+  
+  elements.tripDetailContent.innerHTML = `
+    <div class="trip-detail-grid">
+      <div class="detail-card">
+        <h3>Trip Info</h3>
+        <div class="trip-meta">
+          <div>Capacity: ${trip.capacity}</div>
+          <div>Reserved seats: ${trip.reserved_seats}</div>
+          <div>Budget: $${(trip.budget_cents / 100).toFixed(2)}</div>
+          <div>Spent: $${(spentCents / 100).toFixed(2)}</div>
+          <div>Version: ${trip.version}</div>
+        </div>
+        ${isOwner ? `
+          <div class="inline-form" style="margin-top: 1rem;">
+            <input type="text" id="rename-title" placeholder="New title" maxlength="120" value="${escapeHtml(trip.title)}">
+            <button class="btn btn-secondary btn-small" id="rename-btn" data-pending-key="rename-trip">Rename</button>
+          </div>
+          <div id="rename-result" class="confirmation-message hidden"></div>
+        ` : ''}
+      </div>
+      
+      <div class="detail-card">
+        <h3>Members (${members.length})</h3>
+        <div class="member-list">
+          ${members.map(m => `
+            <div class="member-row">
+              <span>${escapeHtml(m.user_id)}</span>
+              <span class="trip-meta">${new Date(m.joined_at).toLocaleDateString()}</span>
+            </div>
+          `).join('')}
+        </div>
+        ${isOwner ? `
+          <div class="inline-form" style="margin-top: 1rem;">
+            <input type="text" id="member-id" placeholder="User ID to invite">
+            <button class="btn btn-secondary btn-small" id="invite-btn" data-pending-key="invite-member">Invite</button>
+          </div>
+          <div id="invite-result" class="confirmation-message hidden"></div>
+        ` : ''}
+      </div>
+    </div>
+    
+    <div class="trip-detail-grid">
+      <div class="detail-card">
+        <h3>Bookings</h3>
+        <div class="inline-form">
+          <input type="number" id="booking-seats" placeholder="Seats" min="1" max="${trip.capacity - trip.reserved_seats}">
+          <button class="btn btn-primary btn-small" id="book-btn" data-pending-key="book-seats">Book Seats</button>
+        </div>
+        <div id="booking-result" class="confirmation-message hidden"></div>
+        <div class="booking-list">
+          ${bookings.map(b => `
+            <div class="booking-row ${b.status === 'cancelled' ? 'cancelled' : ''}">
+              <span>${escapeHtml(b.user_id)} - ${b.seats} seat(s)</span>
+              <span class="trip-meta">${b.status}</span>
+              ${b.status === 'active' ? `
+                <button class="btn btn-danger btn-small cancel-booking-btn" data-booking-id="${b.id}" data-pending-key="cancel-booking-${b.id}">Cancel</button>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      <div class="detail-card">
+        <h3>Expenses</h3>
+        <div class="inline-form">
+          <input type="text" id="expense-description" placeholder="Description" maxlength="500">
+          <input type="number" id="expense-amount" placeholder="Amount ($)" min="0.01" step="0.01">
+          <button class="btn btn-primary btn-small" id="add-expense-btn" data-pending-key="add-expense">Add Expense</button>
+        </div>
+        <div id="expense-result" class="confirmation-message hidden"></div>
+        <div class="expense-list">
+          ${expenses.map(e => `
+            <div class="expense-row">
+              <span>${escapeHtml(e.description)}</span>
+              <span class="expense-amount">$${(e.amount_cents / 100).toFixed(2)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+    
+    ${isOwner ? `
+      <div class="detail-card">
+        <h3>Audit Log</h3>
+        <button class="btn btn-secondary btn-small" id="load-audit-btn" data-pending-key="load-audit">Load Audit</button>
+        <div id="audit-list" class="audit-list" style="margin-top: 1rem;"></div>
+      </div>
+    ` : ''}
+  `;
+  
+  if (isOwner) {
+    $('rename-btn').addEventListener('click', renameTrip);
+    $('invite-btn').addEventListener('click', inviteMember);
+    $('load-audit-btn').addEventListener('click', loadAudit);
+  }
+  
+  $('book-btn').addEventListener('click', bookSeats);
+  $('add-expense-btn').addEventListener('click', addExpense);
+  
+  document.querySelectorAll('.cancel-booking-btn').forEach(btn => {
+    btn.addEventListener('click', () => cancelBooking(btn.dataset.bookingId));
+  });
+}
+
+async function renameTrip() {
+  const titleInput = $('rename-title');
+  const resultDiv = $('rename-result');
+  const title = titleInput.value.trim();
+  
+  if (!title) {
+    resultDiv.textContent = 'Title required';
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+    return;
+  }
+  
+  setPending('rename-trip', true);
+  try {
+    const data = await apiFetch(`/api/trips/${state.selectedTripId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title, version: state.tripDetail.trip.version })
+    });
+    state.tripDetail.trip = data.trip;
+    resultDiv.textContent = 'Trip renamed successfully';
+    resultDiv.className = 'confirmation-message success';
+    resultDiv.classList.remove('hidden');
+    renderTripDetail();
+    await loadTrips();
+  } catch (err) {
+    resultDiv.textContent = err.message;
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+  } finally {
+    setPending('rename-trip', false);
+  }
+}
+
+async function inviteMember() {
+  const memberIdInput = $('member-id');
+  const resultDiv = $('invite-result');
+  const userId = memberIdInput.value.trim();
+  
+  if (!userId) {
+    resultDiv.textContent = 'User ID required';
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+    return;
+  }
+  
+  setPending('invite-member', true);
+  try {
+    await apiFetch(`/api/trips/${state.selectedTripId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ userId })
+    });
+    resultDiv.textContent = 'Member invited successfully';
+    resultDiv.className = 'confirmation-message success';
+    resultDiv.classList.remove('hidden');
+    memberIdInput.value = '';
+    await selectTrip(state.selectedTripId);
+  } catch (err) {
+    resultDiv.textContent = err.message;
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+  } finally {
+    setPending('invite-member', false);
+  }
+}
+
+async function bookSeats() {
+  const seatsInput = $('booking-seats');
+  const resultDiv = $('booking-result');
+  const seats = parseInt(seatsInput.value, 10);
+  
+  if (!Number.isInteger(seats) || seats < 1) {
+    resultDiv.textContent = 'Seats must be a positive integer';
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+    return;
+  }
+  
+  const operationKey = `book-${state.selectedTripId}-${seats}`;
+  const idempotencyKey = getOrCreateIdempotencyKey(operationKey);
+  
+  setPending('book-seats', true);
+  try {
+    const data = await apiFetch(`/api/trips/${state.selectedTripId}/bookings`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ seats })
+    });
+    clearIdempotencyKey(operationKey);
+    resultDiv.textContent = `Booked ${seats} seat(s) successfully`;
+    resultDiv.className = 'confirmation-message success';
+    resultDiv.classList.remove('hidden');
+    seatsInput.value = '';
+    await selectTrip(state.selectedTripId);
+  } catch (err) {
+    resultDiv.textContent = err.message;
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+  } finally {
+    setPending('book-seats', false);
+  }
+}
+
+async function cancelBooking(bookingId) {
+  const pendingKey = `cancel-booking-${bookingId}`;
+  setPending(pendingKey, true);
+  try {
+    await apiFetch(`/api/trips/${state.selectedTripId}/bookings/${bookingId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'cancelled' })
+    });
+    await selectTrip(state.selectedTripId);
+  } catch (err) {
+    showError(`Failed to cancel booking: ${err.message}`);
+  } finally {
+    setPending(pendingKey, false);
+  }
+}
+
+async function addExpense() {
+  const descriptionInput = $('expense-description');
+  const amountInput = $('expense-amount');
+  const resultDiv = $('expense-result');
+  const description = descriptionInput.value.trim();
+  const amountDollars = parseFloat(amountInput.value);
+  
+  if (!description) {
+    resultDiv.textContent = 'Description required';
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+    return;
+  }
+  
+  if (!Number.isFinite(amountDollars) || amountDollars <= 0) {
+    resultDiv.textContent = 'Amount must be positive';
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+    return;
+  }
+  
+  const amountCents = Math.round(amountDollars * 100);
+  if (amountCents < 1 || amountCents > 100000000) {
+    resultDiv.textContent = 'Amount out of range';
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+    return;
+  }
+  
+  const operationKey = `expense-${state.selectedTripId}-${description}-${amountCents}`;
+  const idempotencyKey = getOrCreateIdempotencyKey(operationKey);
+  
+  setPending('add-expense', true);
+  try {
+    await apiFetch(`/api/trips/${state.selectedTripId}/expenses`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ description, amountCents })
+    });
+    clearIdempotencyKey(operationKey);
+    resultDiv.textContent = 'Expense added successfully';
+    resultDiv.className = 'confirmation-message success';
+    resultDiv.classList.remove('hidden');
+    descriptionInput.value = '';
+    amountInput.value = '';
+    await selectTrip(state.selectedTripId);
+  } catch (err) {
+    resultDiv.textContent = err.message;
+    resultDiv.className = 'confirmation-message error';
+    resultDiv.classList.remove('hidden');
+  } finally {
+    setPending('add-expense', false);
+  }
+}
+
+async function loadAudit() {
+  const auditList = $('audit-list');
+  setPending('load-audit', true);
+  try {
+    const data = await apiFetch(`/api/trips/${state.selectedTripId}/audit`);
+    const events = data.events || [];
+    
+    if (events.length === 0) {
+      auditList.innerHTML = '<div class="state-message">No audit events</div>';
+    } else {
+      auditList.innerHTML = events.map(e => `
+        <div class="audit-row">
+          <div class="audit-event-type">${escapeHtml(e.event_type)}</div>
+          <div class="audit-details">${escapeHtml(e.details)}</div>
+          <div class="audit-details">${new Date(e.created_at).toLocaleString()}</div>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    auditList.innerHTML = `<div class="state-message error">${escapeHtml(err.message)}</div>`;
+  } finally {
+    setPending('load-audit', false);
+  }
+}
+
+async function deleteItem(itemId) {
+  const pendingKey = `delete-item-${itemId}`;
+  setPending(pendingKey, true);
+  try {
+    await apiFetch(`/api/items/${itemId}`, { method: 'DELETE' });
+    await loadItems();
+  } catch (err) {
+    showError(`Failed to delete destination: ${err.message}`);
+  } finally {
+    setPending(pendingKey, false);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function handleCreateTrip(event) {
+  event.preventDefault();
+  const title = $('trip-title').value.trim();
+  const capacity = parseInt($('trip-capacity').value, 10);
+  const budgetDollars = parseFloat($('trip-budget').value);
+  
+  if (!title) {
+    showError('Trip title required');
+    return;
+  }
+  
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 100) {
+    showError('Capacity must be 1-100');
+    return;
+  }
+  
+  if (!Number.isFinite(budgetDollars) || budgetDollars < 0) {
+    showError('Budget must be non-negative');
+    return;
+  }
+  
+  const budgetCents = Math.round(budgetDollars * 100);
+  if (budgetCents > 100000000) {
+    showError('Budget too large');
+    return;
+  }
+  
+  setPending('create-trip', true);
+  try {
+    await apiFetch('/api/trips', {
+      method: 'POST',
+      body: JSON.stringify({ title, capacity, budgetCents })
+    });
+    $('trip-title').value = '';
+    $('trip-capacity').value = '10';
+    $('trip-budget').value = '1000';
+    await loadTrips();
+  } catch (err) {
+    showError(`Failed to create trip: ${err.message}`);
+  } finally {
+    setPending('create-trip', false);
+  }
+}
+
+async function handleAddItem(event) {
+  event.preventDefault();
+  const title = $('item-title').value.trim();
+  
+  if (!title) {
+    showError('Destination title required');
+    return;
+  }
+  
+  setPending('add-item', true);
+  try {
+    await apiFetch('/api/items', {
+      method: 'POST',
+      body: JSON.stringify({ title })
+    });
+    $('item-title').value = '';
+    await loadItems();
+  } catch (err) {
+    showError(`Failed to save destination: ${err.message}`);
+  } finally {
+    setPending('add-item', false);
+  }
+}
+
+async function handleContact(event) {
+  event.preventDefault();
+  const name = $('contact-name').value.trim();
+  const email = $('contact-email').value.trim();
+  const message = $('contact-message').value.trim();
+  
+  if (!name || !email || !message) {
+    elements.contactResult.textContent = 'All fields required';
+    elements.contactResult.className = 'contact-result error';
+    elements.contactResult.classList.remove('hidden');
+    return;
+  }
+  
+  if (!email.includes('@')) {
+    elements.contactResult.textContent = 'Invalid email';
+    elements.contactResult.className = 'contact-result error';
+    elements.contactResult.classList.remove('hidden');
+    return;
+  }
+  
+  setPending('contact', true);
+  try {
+    const data = await apiFetch('/api/contact', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, message })
+    });
+    
+    if (data.captured) {
+      elements.contactResult.textContent = 'Message captured by development runtime. Configure Resend API key in Settings for production email delivery.';
+      elements.contactResult.className = 'contact-result success';
+    } else if (data.sent) {
+      elements.contactResult.textContent = 'Message sent successfully.';
+      elements.contactResult.className = 'contact-result success';
+    } else {
+      elements.contactResult.textContent = 'Message received but delivery status unknown.';
+      elements.contactResult.className = 'contact-result error';
+    }
+    elements.contactResult.classList.remove('hidden');
+    $('contact-name').value = '';
+    $('contact-email').value = '';
+    $('contact-message').value = '';
+  } catch (err) {
+    elements.contactResult.textContent = `Failed to send message: ${err.message}`;
+    elements.contactResult.className = 'contact-result error';
+    elements.contactResult.classList.remove('hidden');
+  } finally {
+    setPending('contact', false);
+  }
+}
+
+async function handleLogout() {
+  try {
+    await apiFetch('/api/auth/logout', { method: 'POST' });
+    state.user = null;
+    state.trips = [];
+    state.items = [];
+    state.selectedTripId = null;
+    state.tripDetail = null;
+    elements.tripDetailSection.classList.add('hidden');
+    await loadSession();
+  } catch (err) {
+    showError(`Failed to logout: ${err.message}`);
+  }
+}
+
+function initEventListeners() {
+  elements.createTripForm.addEventListener('submit', handleCreateTrip);
+  elements.addItemForm.addEventListener('submit', handleAddItem);
+  elements.contactForm.addEventListener('submit', handleContact);
+  elements.logoutBtn.addEventListener('click', handleLogout);
+}
+
+async function init() {
+  initElements();
+  initEventListeners();
+  showLoading();
+  await loadSession();
+}
+
+init();
+</file>
+
+<file path="README.md">
+# Waypoint - Team Travel Planner
+
+A full-stack team travel planning application built on Cloudflare Workers and D1.
+
+## Architecture
+
+- **Frontend**: Plain HTML/CSS/browser ES modules (no framework, no CDN dependencies)
+-

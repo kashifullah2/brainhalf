@@ -1,0 +1,963 @@
+import type { OutcomeEvent } from '../lib/product-outcomes';
+import { DurableObject } from 'cloudflare:workers';
+import { getSandbox } from '@cloudflare/sandbox';
+import { launch, connect, sessions } from '@cloudflare/playwright';
+import type { RuntimeEnv } from './env';
+import { CloudflareAPI } from './cloudflare-api';
+import { requireAdmission } from './pilot';
+import { runtimeAvailability } from './availability';
+import { verificationPlan, runVerificationPlan } from './verification';
+import { ProjectUploads } from './uploads';
+import { MANAGED_SCHEMA, ManagedStore } from './managed-store';
+import { ManagedMail } from './managed-mail';
+import { ManagedAuth } from './managed-auth';
+import { MANAGED_DEFAULTS } from './managed-types';
+import { authPage } from './auth-page';
+import { serviceCapability } from './managed-capability';
+import { databaseIdentifier, prepareRowImport, readDatabaseTable } from './database-tools';
+import { REQUEST_MONITOR_SCHEMA, recordAppRequest } from './request-monitor';
+import { COLLECT_ARTIFACT, COLLECT_STATIC_ARTIFACT, validateArtifact, type BuildArtifact } from './artifact';
+import { publicationTarget, assertProductionServices, productionHealthPath } from './publication';
+import { digest, sourceSnapshot, projectManifest, migrationFiles, assertSafeMigration } from './source';
+import { openSecret, sealSecret, validateIntegration, redactSecrets } from './secrets';
+import { contactInput, token, cookie, secureCookie, readJson, readStreamJson } from './integrations';
+import { PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport } from './types';
+
+interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean }
+interface StoredIntegration { sealed: string; updatedAt: number }
+interface DatabaseRecoveryPoint { id: string; label: string; bookmark: string; databaseId: string; createdAt: number; migrations: MigrationReceipt[] }
+const authPath = (value: string) => /^\/__brainhalf\/auth(?:\?mode=(?:verify|reset|magic)#token=[A-Za-z0-9_-]{43})?$/.test(value);
+const active = <T extends RuntimeJob>(job?: T): job is T => !!job && ['queued', 'running', 'stopping'].includes(job.status);
+
+export class ProjectRuntime extends DurableObject<RuntimeEnv> {
+  private scope!: ProjectScope;
+  private alias = '';
+  private pendingStarts = new Set<Promise<unknown>>();
+  private pendingUploads = new Set<Promise<Response>>();
+  private advancing?: Promise<void>;
+  private stopping?: Promise<void>;
+  private mailing?: Promise<void>;
+  private databaseOperation?: Promise<Response>;
+  private controlQueue: Promise<void> = Promise.resolve();
+  constructor(ctx: DurableObjectState, env: RuntimeEnv) {
+    super(ctx, env);
+    ctx.blockConcurrencyWhile(async () => {
+      this.scope = (await ctx.storage.get<ProjectScope>('scope'))!;
+      this.alias = await ctx.storage.get<string>('alias') || '';
+      ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, kind TEXT NOT NULL, environment TEXT NOT NULL, data TEXT NOT NULL, expires INTEGER NOT NULL)');
+      ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, environment TEXT NOT NULL, data TEXT NOT NULL, created INTEGER NOT NULL)');
+      ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, job TEXT NOT NULL, text TEXT NOT NULL, created INTEGER NOT NULL)');
+      for (const sql of MANAGED_SCHEMA) ctx.storage.sql.exec(sql);
+      for (const sql of REQUEST_MONITOR_SCHEMA) ctx.storage.sql.exec(sql);
+    });
+  }
+  async initialize(scope: ProjectScope, alias: string) {
+    if (this.scope && (this.scope.ownerId !== scope.ownerId || this.scope.projectId !== scope.projectId)) throw new RuntimeError('Project ownership mismatch.', 403);
+    this.scope = scope; this.alias = alias;
+    await this.ctx.storage.put({ scope, alias });
+    return !await this.ctx.storage.get<boolean>('deleted');
+  }
+  private api() { return new CloudflareAPI(this.env.CF_ACCOUNT_ID, this.env.CF_API_TOKEN); }
+  private url(environment: ProjectEnvironment) { return `https://${runtimeHost(this.alias, environment, this.env.RUNTIME_DOMAIN)}`; }
+  private pilot() { return this.env.PILOT.getByName('pilot'); }
+  private ownerUsage() { return this.env.PILOT.getByName(`usage:${this.scope.ownerId}`); }
+  private services() {
+    const store = new ManagedStore({
+      storage: this.ctx.storage, env: this.env, scope: this.scope, origin: environment => this.url(environment), integration: environment => this.config(environment),
+      createSession: (kind, environment, data, seconds) => this.createSession(kind, environment, data, seconds),
+      session: (value, kind, environment, consume) => this.session(value, kind, environment, consume),
+      consumeEmail: async key => { requireAdmission(await this.ownerUsage().consumeUsage('emails', key)); },
+      schedule: at => this.scheduleAlarm(at),
+    });
+    const mail = new ManagedMail(store);
+    return { store, mail, auth: new ManagedAuth(store, mail) };
+  }
+  private async prepareServices(environment: ProjectEnvironment) {
+    if (this.ctx.storage.sql.exec('SELECT environment FROM managed_settings WHERE environment=?', environment).toArray().length) return;
+    const config = await this.config(environment);
+    this.ctx.storage.sql.exec('INSERT OR IGNORE INTO managed_settings VALUES (?,?)', environment, JSON.stringify({ ...MANAGED_DEFAULTS, googleMode: config.google ? 'custom' : 'managed', emailMode: config.resend ? 'custom' : 'managed' }));
+  }
+  private async scheduleAlarm(at: number) {
+    const previous = await this.ctx.storage.getAlarm?.();
+    const email = this.services().mail.nextDue();
+    await this.ctx.storage.setAlarm(Math.max(Date.now() + 50, Math.min(at, previous && previous > Date.now() ? previous : Infinity, email ?? Infinity)));
+  }
+  private async serviceBindings(environment: ProjectEnvironment) {
+    return this.env.RUNTIME_SERVICE_NAME ? { service: this.env.RUNTIME_SERVICE_NAME, capability: await serviceCapability(this.scope, environment, this.env.PROJECT_SECRETS_KEY || '') } : undefined;
+  }
+  private uploads() { return new ProjectUploads(this.ctx.storage, this.env.ARTIFACTS, this.ownerUsage(), this.alias); }
+  private async uploadRequest(request: Request, environment: ProjectEnvironment, userId: string | null, admin = false): Promise<Response> {
+    if (this.pendingUploads.size >= PILOT_LIMITS.parallelUploads) throw new RuntimeError('Other file operations are in progress. Retry shortly.', 429);
+    const work = this.uploads().handle(request, environment, userId, admin);
+    this.pendingUploads.add(work);
+    try { return await work; } finally { this.pendingUploads.delete(work); }
+  }
+  private sandbox(job: StoredJob) { return getSandbox(this.env.Sandbox, job.sandboxId, { sleepAfter: '5m' }); }
+  private async config(environment: ProjectEnvironment): Promise<IntegrationConfig> {
+    const stored = await this.ctx.storage.get<StoredIntegration>(`integration:${environment}`);
+    return stored ? openSecret(stored.sealed, this.env.PROJECT_SECRETS_KEY || '', `${this.scope.projectId}:${environment}`) : {};
+  }
+  private async integrations(environment: ProjectEnvironment): Promise<IntegrationStatus[]> {
+    const config = await this.config(environment);
+    const stored = await this.ctx.storage.get<StoredIntegration>(`integration:${environment}`);
+    return [
+      { provider: 'resend', configured: !!config.resend, updatedAt: stored?.updatedAt, fields: config.resend ? { from: config.resend.from, contactTo: config.resend.contactTo } : {} },
+      { provider: 'google', configured: !!config.google, updatedAt: stored?.updatedAt, fields: config.google ? { clientId: config.google.clientId } : {}, callbackUrl: `${this.url(environment)}/api/auth/google/callback` },
+    ];
+  }
+  private log(job: string, message: string) {
+    this.ctx.storage.sql.exec('INSERT INTO logs(job,text,created) VALUES (?,?,?)', job, redactSecrets(message).slice(0, 8_000), Date.now());
+    this.ctx.storage.sql.exec('DELETE FROM logs WHERE id NOT IN (SELECT id FROM logs ORDER BY id DESC LIMIT 8)');
+  }
+  async status(environment: ProjectEnvironment): Promise<RuntimeStatus> {
+    // Older versions reserved a hosted slot just by opening a workspace.
+    // Release only never-used reservations; retain all source and runtime data.
+    // Job admission uses the same concurrency boundary, so it cannot race this.
+    await this.withControlLock(async () => {
+      const jobs = await this.ctx.storage.list<StoredJob>({ prefix: 'job:' });
+      const current = await this.ctx.storage.get<StoredJob>('current');
+      // An installation failure never hosted an app. Terminal status is only
+      // saved after sandbox cleanup succeeds; keep the source and job history.
+      const unusedAttempt = (job: StoredJob) => ['build', 'preview'].includes(job.kind)
+        && ['failed', 'stopped'].includes(job.status) && Number.isFinite(job.finishedAt)
+        && Number.isInteger(job.step) && job.step >= 0 && job.step <= 1 && !job.previewReady && !job.artifactKey;
+      const unusedJobs = [...jobs.values()].every(unusedAttempt) && (!current || unusedAttempt(current));
+      const releases = await this.ctx.storage.list({ prefix: 'release:' });
+      const databases = await this.ctx.storage.list({ prefix: 'db:' });
+      const serviceData = this.ctx.storage.sql.exec<{ used: number }>('SELECT EXISTS(SELECT 1 FROM sessions WHERE expires>?) OR EXISTS(SELECT 1 FROM managed_users) OR EXISTS(SELECT 1 FROM managed_emails) OR EXISTS(SELECT 1 FROM inbox) AS used', Date.now()).toArray()[0]?.used;
+      if (!serviceData && unusedJobs && !releases.size && !databases.size
+        && !await this.ctx.storage.get('active:development') && !await this.ctx.storage.get('active:production')) {
+        await this.pilot().unregister(this.alias, this.scope);
+      }
+    });
+    const availability = runtimeAvailability(this.env, this.scope.ownerId);
+    const jobs = [...(await this.ctx.storage.list<StoredJob>({ prefix: 'job:' })).values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
+    const releases = [...(await this.ctx.storage.list<ProjectRelease>({ prefix: `release:${environment}:` })).values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 20);
+    return {
+      enabled: availability.state === 'ready', projectId: this.scope.projectId, environment, availability,
+      usage: await this.ownerUsage().usageStatus(),
+      capabilities: { sandbox: !!this.env.Sandbox, database: !!this.env.CF_API_TOKEN && !!this.env.CF_ACCOUNT_ID, deployment: !!this.env.CF_API_TOKEN && !!this.env.CF_ACCOUNT_ID, browser: !!this.env.BROWSER, secrets: !!this.env.PROJECT_SECRETS_KEY },
+      database: await this.ctx.storage.get<DatabaseResource>(`db:${environment}`) || null,
+      migrations: await this.ctx.storage.get<MigrationReceipt[]>(`migrations:${environment}`) || [],
+      jobs: jobs.map(({ step: _step, sandboxId: _sandboxId, sourceKey: _sourceKey, artifactKey: _artifactKey, node: _node, static: _static, ...job }) => job),
+      releases, activeRelease: await this.ctx.storage.get<ProjectRelease>(`active:${environment}`) || null,
+      verification: await this.ctx.storage.get<VerificationReport>(`verification:${environment}`) || null,
+      integrations: await this.integrations(environment), previewUrl: this.url('development'), productionUrl: this.url('production'),
+    };
+  }
+  async control(request: Request): Promise<Response> {
+    try { return await this.handleControl(request); }
+    catch (error) { return Response.json({ error: error instanceof RuntimeError ? error.message : 'Runtime request failed.' }, { status: error instanceof RuntimeError ? error.status : 503 }); }
+  }
+  private async withControlLock<T>(action: () => Promise<T>): Promise<T> {
+    // Serialize admission and recovery without holding the object's global
+    // input gate across registry/R2 I/O or resetting it on expected quota errors.
+    const result = this.controlQueue.then(action);
+    this.controlQueue = result.then(() => {}, () => {});
+    return result;
+  }
+  private async handleControl(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const environment = environmentFrom(url.searchParams.get('environment') || 'development');
+    const path = url.pathname;
+    if (path === '/delete' && request.method === 'POST') {
+      await this.ctx.storage.put('deleted', true);
+      this.ctx.storage.sql.exec('UPDATE managed_emails SET next_at=NULL');
+      if (this.mailing) await Promise.allSettled([this.mailing]);
+      await this.pilot().unregister(this.alias, this.scope);
+      await this.stop();
+      if (this.databaseOperation) await Promise.allSettled([this.databaseOperation]);
+      await Promise.allSettled([...this.pendingUploads]);
+      await this.uploads().removeAll();
+      for (const env of ['development', 'production']) {
+        const releases = await this.ctx.storage.list<ProjectRelease>({ prefix: `release:${env}:` });
+        for (const release of releases.values()) await this.api().remove(`/workers/dispatch/namespaces/${encodeURIComponent(this.env.DISPATCH_NAMESPACE)}/scripts/${release.scriptName}`);
+        const db = await this.ctx.storage.get<DatabaseResource>(`db:${env}`);
+        if (db) await this.api().remove(`/d1/database/${db.id}`);
+      }
+      while (true) {
+        const objects = await this.env.ARTIFACTS.list({ prefix: `${this.alias}/`, limit: 100 });
+        if (!objects.objects.length) break;
+        await this.env.ARTIFACTS.delete(objects.objects.map(object => object.key));
+      }
+      const keys = [...(await this.ctx.storage.list()).keys()].filter(key => !['scope', 'alias', 'deleted'].includes(key));
+      for (const key of keys) await this.ctx.storage.delete(key);
+      this.ctx.storage.sql.exec('DELETE FROM sessions'); this.ctx.storage.sql.exec('DELETE FROM inbox'); this.ctx.storage.sql.exec('DELETE FROM logs');
+      this.ctx.storage.sql.exec('DELETE FROM app_request_metrics'); this.ctx.storage.sql.exec('DELETE FROM app_request_events');
+      for (const table of ['managed_settings', 'managed_users', 'managed_actions', 'managed_limits', 'managed_templates', 'managed_emails']) this.ctx.storage.sql.exec(`DELETE FROM ${table}`);
+      return Response.json({ ok: true });
+    }
+    if (path !== '/stop' && await this.ctx.storage.get<boolean>('deleted')) throw new RuntimeError('This project has been deleted.', 410);
+    if (environment === 'production' && !['GET', 'HEAD'].includes(request.method) && (path === '/services' || path.startsWith('/integrations/'))) {
+      await this.assertServiceChangesAllowed(environment);
+    }
+    if (path === '/services' || path.startsWith('/services/')) return this.servicesControl(request, environment);
+    if (path === '/status' && request.method === 'GET') return Response.json(await this.status(environment));
+    if (path === '/repair-evidence' && request.method === 'POST') {
+      const snapshot = await sourceSnapshot((await readJson(request, 8_000_000) as { files: SourceSnapshot['files'] }).files);
+      const report = await this.ctx.storage.get<VerificationReport>(`verification:${environment}`);
+      if (!report || report.passed || report.revision !== snapshot.revision) throw new RuntimeError('Run verification on the current source before requesting a repair.', 409);
+      return Response.json({ revision: report.revision, checks: report.checks.filter(check => !check.passed).map(check => ({ name: check.name.slice(0, 160), detail: redactSecrets(check.detail).slice(0, 1800) })).slice(0, 10) });
+    }
+    if (path === '/monitor' && request.method === 'GET') return Response.json({
+      daily: this.ctx.storage.sql.exec('SELECT day,requests,errors,total_ms FROM app_request_metrics WHERE environment=? ORDER BY day DESC LIMIT 7', environment).toArray(),
+      recent: this.ctx.storage.sql.exec('SELECT method,route,status,duration_ms,created_at FROM app_request_events WHERE environment=? ORDER BY id DESC LIMIT 100', environment).toArray(),
+    });
+    if (path.startsWith('/database')) {
+      if (this.databaseOperation) throw new RuntimeError('A database action is already running. Try again shortly.', 409);
+      if (request.method === 'GET') return this.databaseControl(request, environment);
+      if (this.pendingStarts.size || this.advancing || this.stopping) throw new RuntimeError('Wait for the running build or release before changing the database.', 409);
+      const operation = this.databaseControl(request, environment);
+      this.databaseOperation = operation;
+      try { return await operation; } finally { if (this.databaseOperation === operation) this.databaseOperation = undefined; }
+    }
+    if (this.databaseOperation && request.method !== 'GET' && path !== '/stop') throw new RuntimeError('Wait for the database action to finish.', 409);
+    if (path === '/uploads' || path.startsWith('/uploads/')) return this.uploadRequest(request, environment, null, true);
+    if (path === '/screenshot' && request.method === 'GET') {
+      const report = await this.ctx.storage.get<VerificationReport>(`verification:${environment}`);
+      const screenshot = report?.screenshotKey && await this.env.ARTIFACTS.get(report.screenshotKey);
+      if (!screenshot) throw new RuntimeError('No screenshot is available yet.', 404);
+      return new Response(screenshot.body, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' } });
+    }
+    if (path === '/email-test' && request.method === 'POST') {
+      const providers = await this.services().store.readiness(environment);
+      const inbox = providers.ownerEmail;
+      if (!providers.ownerVerified || !inbox) throw new RuntimeError('Verify your BrainHalf account email before sending a test.', 403);
+      return this.integrationRequest(new Request(`${this.url(environment)}/api/contact`, { method: 'POST', body: JSON.stringify({ name: 'BrainHalf integration test', email: inbox, message: '[BrainHalf integration test] This verifies your project email configuration. Provider acceptance does not confirm inbox delivery.' }) }), environment, inbox);
+    }
+    if (path === '/logs' && request.method === 'GET') {
+      const jobId = new URL(request.url).searchParams.get('job');
+      if (!jobId) return Response.json({ logs: this.ctx.storage.sql.exec('SELECT id,job,text,created FROM logs ORDER BY id DESC LIMIT 60').toArray().reverse() });
+      const report = await this.ctx.storage.get<VerificationReport>('verification:development');
+      return Response.json({
+        logs: this.ctx.storage.sql.exec('SELECT id,job,text,created FROM logs WHERE job=? ORDER BY id DESC LIMIT 60', jobId).toArray().reverse(),
+        verification: report?.jobId === jobId ? report : null,
+      });
+    }
+    if (path === '/inbox' && request.method === 'GET') return Response.json({ messages: this.ctx.storage.sql.exec<{ id: string; data: string; created: number }>('SELECT id,data,created FROM inbox WHERE environment=? ORDER BY created DESC LIMIT 50', environment).toArray().map(row => ({ id: row.id, createdAt: row.created, ...JSON.parse(row.data) })) });
+    if (path.startsWith('/integrations/')) {
+      const provider = path.slice('/integrations/'.length) as IntegrationProvider;
+      if (!['resend', 'google'].includes(provider)) throw new RuntimeError('Unknown integration.', 404);
+      if (request.method !== 'PUT' && request.method !== 'DELETE') throw new RuntimeError('Method not allowed.', 405);
+      // Serialize edits so simultaneous provider saves cannot overwrite each other.
+      const value = request.method === 'PUT' ? await readJson(request) as Record<string, unknown> : null;
+      if (request.method === 'PUT' && (!value || typeof value !== 'object' || Array.isArray(value))) throw new RuntimeError('Enter valid connection fields.');
+      await this.prepareServices(environment);
+      await this.ctx.blockConcurrencyWhile(async () => {
+        await this.assertServiceChangesAllowed(environment);
+        const config = await this.config(environment);
+        if (value) Object.assign(config, { [provider]: validateIntegration(provider, value, config[provider]) });
+        else delete config[provider];
+        await this.ctx.storage.put(`integration:${environment}`, { sealed: await sealSecret(config, this.env.PROJECT_SECRETS_KEY || '', `${this.scope.projectId}:${environment}`), updatedAt: Date.now() });
+        this.services().store.saveSettings(environment, { [provider === 'google' ? 'googleMode' : 'emailMode']: value ? 'custom' : 'managed' });
+      });
+      return Response.json({ integrations: await this.integrations(environment) });
+    }
+    if (path === '/preview-ticket' && request.method === 'POST') {
+      const body = await request.json().catch(() => ({})) as { path?: string };
+      const next = body.path === '/__brainhalf/auth' ? body.path : '/';
+      const ticket = await this.withControlLock(async () => {
+        requireAdmission(await this.pilot().register(this.alias, this.scope));
+        return this.createSession('ticket', 'development', { next }, 60);
+      });
+      return Response.json({ url: `${this.url('development')}/__brainhalf/open?ticket=${ticket}` });
+    }
+    if (path === '/heartbeat' && request.method === 'POST') {
+      await this.ctx.storage.transaction(async txn => {
+        const job = await txn.get<StoredJob>('current');
+        if (active(job) && job.status !== 'stopping') {
+          job.leaseUntil = Date.now() + PILOT_LIMITS.leaseMs;
+          await txn.put({ current: job, [`job:${job.id}`]: job });
+      const outcome = this.jobOutcome(job);
+      if (outcome) await txn.put(`outcome:${outcome.id}:${outcome.kind}`, outcome);
+        }
+      });
+      return Response.json({ ok: true });
+    }
+    if (path === '/stop' && request.method === 'POST') {
+      // A bodyless POST can cross a service binding as an empty readable stream.
+      // Read it with the same size limit; only zero bytes count as no options.
+      const value = await readJson(request, 256, { allowEmpty: true });
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RuntimeError('Stop options must be a JSON object.');
+      const body = value as { expectedJobId?: unknown };
+      if (body.expectedJobId !== undefined && (typeof body.expectedJobId !== 'string' || body.expectedJobId.length > 128)) throw new RuntimeError('Invalid job identifier.');
+      await this.stop(body.expectedJobId as string | undefined); return Response.json({ ok: true });
+    }
+    if (path === '/unpublish' && request.method === 'POST') {
+      if (environment !== 'production') throw new RuntimeError('Only production releases can be unpublished.');
+      await this.ctx.storage.transaction(async txn => {
+        if (active(await txn.get<StoredJob>('current'))) throw new RuntimeError('Wait for the running job before taking the app offline.', 409);
+        await txn.delete('active:production');
+      });
+      return Response.json({ ok: true });
+    }
+    if (path === '/rollback' && request.method === 'POST') {
+      if (active(await this.ctx.storage.get<StoredJob>('current'))) throw new RuntimeError('Wait for the running job before rolling back.', 409);
+      const body = await readJson(request) as { releaseId: string };
+      const release = await this.ctx.storage.get<ProjectRelease>(`release:${environment}:${body.releaseId}`);
+      if (!release) throw new RuntimeError('Release not found.', 404);
+      const migrations = await this.ctx.storage.get<MigrationReceipt[]>(`migrations:${environment}`) || [];
+      if (JSON.stringify(migrations) !== JSON.stringify(release.migrations)) throw new RuntimeError('This release uses a different database schema. Rollback requires a reviewed database restore.', 409);
+      await this.ctx.storage.put(`active:${environment}`, release);
+      return Response.json({ release });
+    }
+    if (path === '/jobs' && request.method === 'POST') {
+      const body = await readJson(request, 5_000_000) as { kind: RuntimeJob['kind']; files: Record<string, string>; retryJobId?: string };
+      if (!['build', 'preview', 'verify', 'deploy', 'migrate', 'publish'].includes(body.kind)) throw new RuntimeError('Unknown job kind.');
+      if (body.kind === 'publish' && environment !== 'production') throw new RuntimeError('Publish creates a production release.');
+      if (body.kind === 'verify' && environment !== 'development') throw new RuntimeError('Run destructive verification against development only.');
+      let inputFiles = body.files;
+      if (body.retryJobId) {
+        const previous = await this.ctx.storage.get<StoredJob>(`job:${body.retryJobId}`);
+        if (!previous || previous.environment !== environment || previous.kind !== body.kind) throw new RuntimeError('Saved job not found in this environment.', 404);
+        const saved = await this.env.ARTIFACTS.get(previous.sourceKey);
+        if (!saved) throw new RuntimeError('Saved job source is unavailable.', 404);
+        inputFiles = (await saved.json<SourceSnapshot>()).files;
+      }
+      const snapshot = await sourceSnapshot(inputFiles);
+      if (environment === 'production' && body.kind === 'deploy') {
+        const report = await this.ctx.storage.get<VerificationReport>('verification:development');
+        if (!report?.passed || report.revision !== snapshot.revision) throw new RuntimeError('Verify this exact revision in development before publishing production.', 409);
+      }
+      const manifest = projectManifest(snapshot.files);
+      const staticApp = body.kind === 'publish' && publicationTarget(snapshot.files) === 'static';
+      const node = !staticApp && manifest.brainhalf?.runtime !== 'workers';
+      if (node && !['build', 'preview'].includes(body.kind)) throw new RuntimeError('This Node project supports Sandbox builds and development preview. Use the Workers starter for D1 and production releases.');
+      if (!manifest.scripts.build) throw new RuntimeError('Add a build script to package.json.');
+      if ((body.kind === 'verify' || (body.kind === 'publish' && !staticApp)) && !manifest.scripts.test) throw new RuntimeError('Verification requires a test script.');
+      if (body.kind === 'verify' || body.kind === 'publish') verificationPlan(snapshot.files);
+      if (body.kind === 'publish' && !staticApp) {
+        productionHealthPath(snapshot.files);
+        await this.prepareServices('production');
+        const services = this.services().store;
+        assertProductionServices(services.settings('production'), await services.readiness('production'));
+      }
+      const job: StoredJob = { id: crypto.randomUUID(), kind: body.kind, environment, revision: snapshot.revision, status: 'queued', createdAt: Date.now(), updatedAt: Date.now(), leaseUntil: Date.now() + (body.kind === 'publish' ? PILOT_LIMITS.commandTimeoutMs : PILOT_LIMITS.leaseMs), processIds: [], message: 'Queued', step: 0, sandboxId: '', sourceKey: '', node, static: staticApp, ...(body.kind === 'publish' ? { publishStage: 'build' } : {}) };
+      job.sandboxId = `job-${job.id}`; job.sourceKey = `${this.alias}/sources/${snapshot.revision}.json`;
+      await this.withControlLock(async () => {
+        if (this.databaseOperation) throw new RuntimeError('Wait for the database action to finish.', 409);
+        if (active(await this.ctx.storage.get<StoredJob>('current'))) throw new RuntimeError('A runtime job is already running. Stop it first.', 409);
+        requireAdmission(await this.pilot().register(this.alias, this.scope));
+        requireAdmission(await this.pilot().acquire(job.id, 'sandbox', this.scope.projectId));
+        try { requireAdmission(await this.ownerUsage().consumeUsage('jobs', job.id)); await this.env.ARTIFACTS.put(job.sourceKey, JSON.stringify(snapshot)); await this.saveJob(job); await this.scheduleAlarm(Date.now() + 100); }
+        catch (error) { await this.pilot().release(job.id); throw error; }
+      });
+      return Response.json({ job }, { status: 202 });
+    }
+    throw new RuntimeError('Runtime route not found.', 404);
+  }
+  private jobOutcome(job: StoredJob): OutcomeEvent | null {
+    if (job.kind !== 'publish') return null;
+    const kind = job.status === 'queued' ? 'publish_started' : job.status === 'passed' ? 'publish_passed' : ['failed', 'stopped'].includes(job.status) ? 'publish_failed' : null;
+    return kind ? { ...this.scope, id: job.id, kind, at: kind === 'publish_started' ? job.createdAt : job.finishedAt || job.updatedAt, revision: job.revision } : null;
+  }
+  private async drainOutcomes() {
+    if (!this.env.PLATFORM) return;
+    const events = await this.ctx.storage.list<OutcomeEvent>({ prefix: 'outcome:', limit: 20 });
+    for (const [key, event] of events) {
+      try {
+        const response = await this.env.PLATFORM.fetch(new Request('https://platform/outcomes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...this.scope, environment: 'production', event }), signal: AbortSignal.timeout(5000) }));
+        if (!response.ok) break;
+        await this.ctx.storage.delete(key);
+      } catch { break; }
+    }
+    if ((await this.ctx.storage.list({ prefix: 'outcome:', limit: 1 })).size) await this.scheduleAlarm(Date.now() + 60_000);
+  }
+  private async saveJob(job: StoredJob) {
+    await this.ctx.storage.transaction(async txn => {
+      const current = await txn.get<StoredJob>('current');
+      if (current?.id === job.id) {
+        if (!active(current) || (current.status === 'stopping' && !['stopping', 'stopped', 'failed'].includes(job.status))) throw new RuntimeError('Job stopped.', 409);
+        // Alarm snapshots must preserve heartbeats received during external I/O.
+        job.leaseUntil = Math.max(job.leaseUntil, current.leaseUntil);
+      } else if (current && (active(current) || job.status !== 'queued')) throw new RuntimeError('Job superseded.', 409);
+      job.updatedAt = Date.now();
+      await txn.put({ current: job, [`job:${job.id}`]: job });
+      const outcome = this.jobOutcome(job);
+      if (outcome) await txn.put(`outcome:${outcome.id}:${outcome.kind}`, outcome);
+    });
+  }
+  private async assertRunning(job: StoredJob) {
+    const current = await this.ctx.storage.get<StoredJob>('current');
+    if (!current || current.id !== job.id || !active(current) || current.status === 'stopping') throw new RuntimeError('Job stopped.', 409);
+    job.leaseUntil = current.leaseUntil;
+    if (job.kind !== 'publish' && job.leaseUntil < Date.now()) throw new RuntimeError('Workspace disconnected; job stopped. Reopen and run it again.', 409);
+    if (Date.now() - job.createdAt > PILOT_LIMITS.commandTimeoutMs) throw new RuntimeError('Pilot job time limit reached.');
+  }
+  async stop(expectedJobId?: string) {
+    if (this.stopping) return this.stopping;
+    const work = this.stopCurrent(expectedJobId);
+    this.stopping = work;
+    try { await work; } finally { this.stopping = undefined; }
+  }
+  private async stopCurrent(expectedJobId?: string) {
+    const job = await this.ctx.storage.get<StoredJob>('current');
+    if (!active(job)) return;
+    if (expectedJobId && job.id !== expectedJobId) throw new RuntimeError('The running job changed. Refresh before retrying.', 409);
+    job.previewReady = false;
+    job.status = 'stopping'; job.message = 'Stopping processes'; await this.saveJob(job);
+    await this.scheduleAlarm(Date.now() + 5_000);
+    // Drain provisioning, uploads, browser starts and filesystem work as well as
+    // process starts. Nothing may create new resources after shutdown is acknowledged.
+    if (this.advancing) await Promise.allSettled([this.advancing]);
+    await this.cleanup(job);
+    job.status = 'stopped'; job.message = 'Stopped'; job.finishedAt = Date.now(); await this.saveJob(job);
+  }
+  private async cleanup(job: StoredJob, preserveCandidate = false) {
+    // Admission may still be returning a process handle. Wait until its cancellation
+    // guard has run before destroying the container and releasing its quota slot.
+    await Promise.allSettled([...this.pendingStarts]);
+    const browserId = await this.ctx.storage.get<string>('browser');
+    if (browserId) {
+      let browser: Awaited<ReturnType<typeof connect>> | undefined;
+      try {
+        browser = await connect(this.env.BROWSER, browserId);
+        // Closing a reconnected Playwright client only disconnects its transport.
+        // Explicitly terminate Chrome, then confirm the remote session is gone.
+        await (await browser.newBrowserCDPSession()).send('Browser.close');
+      } catch { /* A closed/expired session can reject either connect or Browser.close. */ }
+      finally { try { await browser?.close(); } catch { /* check remote state below */ } }
+      if ((await sessions(this.env.BROWSER)).some(session => session.sessionId === browserId)) throw new RuntimeError('Browser termination is still pending. Retry shutdown.', 503);
+      await this.ctx.storage.delete('browser');
+    }
+    await this.sandbox(job).destroy();
+    await Promise.allSettled([...this.pendingUploads]);
+    await this.uploads().removeForUsers([`test:${job.id}`, `other-test:${job.id}`]);
+    for (const id of [`test:${job.id}`, `other-test:${job.id}`]) { this.services().store.revoke('development', id); this.ctx.storage.sql.exec('DELETE FROM managed_users WHERE environment=? AND id=?', 'development', id); }
+    const test = await this.ctx.storage.get<ProjectRelease>(`test:${job.id}`);
+    if (test) {
+      await this.api().remove(`/workers/dispatch/namespaces/${encodeURIComponent(this.env.DISPATCH_NAMESPACE)}/scripts/${test.scriptName}`);
+      await this.api().remove(`/d1/database/${test.databaseId}`);
+      await this.ctx.storage.delete(`test:${job.id}`);
+    }
+    const pending = await this.ctx.storage.get<ProjectRelease>(`pending-release:${job.id}`);
+    if (pending && !preserveCandidate) {
+      await this.api().remove(`/workers/dispatch/namespaces/${encodeURIComponent(this.env.DISPATCH_NAMESPACE)}/scripts/${pending.scriptName}`);
+      await this.ctx.storage.delete(`pending-release:${job.id}`);
+    }
+    await this.pilot().release(job.id);
+    await this.pilot().release(`browser-${job.id}`);
+  }
+  private async drainMail() {
+    if (this.mailing) return this.mailing;
+    const work = this.services().mail.drain(); this.mailing = work;
+    try { await work; } finally { this.mailing = undefined; }
+  }
+  async alarm() {
+    // Provider latency must not delay a build's lease or shutdown recovery.
+    const results = await Promise.allSettled([this.drainMail(), this.advanceJobAlarm(), this.drainOutcomes()]);
+    const next = this.services().mail.nextDue();
+    if (next !== null && !await this.ctx.storage.get('deleted')) await this.scheduleAlarm(next);
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+  }
+  private async advanceJobAlarm() {
+    if (this.advancing) return this.advancing;
+    const job = await this.ctx.storage.get<StoredJob>('current');
+    if (!active(job)) return;
+    // Always leave a recovery alarm before external work. A Worker restart cannot strand the job.
+    await this.scheduleAlarm(Date.now() + 10_000);
+    if (job.status === 'stopping' || (job.kind !== 'publish' && job.leaseUntil < Date.now())) {
+      try { await this.stop(); } catch { /* recovery alarm retries cleanup */ }
+      return;
+    }
+    const work = this.runAdvance(job);
+    this.advancing = work;
+    try { await work; } finally { this.advancing = undefined; }
+  }
+  private async runAdvance(job: StoredJob) {
+    try {
+      await this.advance(job);
+    } catch (error) {
+      const latest = await this.ctx.storage.get<StoredJob>('current');
+      if (!latest || latest.id !== job.id || !active(latest)) return;
+      if (latest.status === 'stopping') return;
+      this.log(job.id, error instanceof Error ? error.message : 'Runtime failed');
+      job.status = 'stopping'; job.message = error instanceof RuntimeError ? error.message : 'Runtime failed. Check the build logs.';
+      await this.saveJob(job);
+      try { await this.cleanup(job); job.status = 'failed'; job.finishedAt = Date.now(); await this.saveJob(job); } catch { /* alarm retries termination */ }
+    }
+  }
+  private async advance(job: StoredJob) {
+    const box = this.sandbox(job);
+    const source = await this.env.ARTIFACTS.get(job.sourceKey);
+    if (!source) throw new RuntimeError('Saved source snapshot is missing.', 503);
+    const snapshot = await source.json<SourceSnapshot>();
+    await this.assertRunning(job);
+    if (job.step === 0) {
+      await box.mkdir('/workspace/project', { recursive: true });
+      for (const [path, content] of Object.entries(snapshot.files)) {
+        await this.assertRunning(job);
+        const directory = path.slice(0, path.lastIndexOf('/'));
+        if (path.includes('/')) await box.mkdir(`/workspace/project/${directory}`, { recursive: true });
+        await box.writeFile(`/workspace/project/${path}`, content);
+      }
+      job.status = 'running'; job.startedAt = Date.now();
+      await this.startProcess(job, ['npm', snapshot.files['package-lock.json'] ? 'ci' : 'install', '--no-audit', '--no-fund']);
+      job.step = 1; job.message = 'Installing dependencies'; await this.saveJob(job); return;
+    }
+    if (job.step <= 4) {
+      const process = await box.getProcess(job.processIds[job.processIds.length - 1]);
+      if (!process) throw new RuntimeError('The container was replaced. Source is saved; start a new job to recover.');
+      const state = await process.status();
+      if (job.node && job.step === 4 && state.state === 'running') {
+        const backend = await box.getProcess(job.processIds[job.processIds.length - 2]);
+        if (!backend || (await backend.status()).state !== 'running') throw new RuntimeError('The Node API server exited. Review the job logs and retry.');
+        await process.waitForPort(3000, { timeout: 1000 });
+        job.previewReady = true; job.message = 'Node development server running'; await this.assertRunning(job); await this.saveJob(job); return;
+      }
+      if (state.state === 'running') return;
+      const output = await process.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes });
+      this.log(job.id, `${job.message}\n${output.stdout}\n${output.stderr}`);
+      await this.assertRunning(job);
+      if (output.exitCode !== 0 || output.timedOut) throw new RuntimeError(`${job.message} failed (exit ${output.exitCode}).`);
+      if (job.step === 1) { await this.startProcess(job, ['npm', 'run', 'build']); job.step = 2; job.message = 'Building application'; await this.saveJob(job); return; }
+      if (job.step === 2 && projectManifest(snapshot.files).scripts.test) { await this.startProcess(job, ['npm', 'test']); job.step = 3; job.message = 'Running project tests'; await this.saveJob(job); return; }
+      if (job.node) {
+        if (job.step === 4) throw new RuntimeError('Node preview server exited. Start a new preview job.');
+        if (job.kind === 'preview') {
+          const scripts = projectManifest(snapshot.files).scripts;
+          if (!scripts.server || !scripts.dev) throw new RuntimeError('Node preview needs a server script honoring PORT and a Vite dev script proxying /api to port 3001.');
+          await this.startProcess(job, ['npm', 'run', 'server'], { PORT: '3001', APP_ORIGIN: this.url('development') });
+          await this.startProcess(job, ['npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '3000', '--strictPort'], { __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: new URL(this.url('development')).hostname });
+          job.step = 4; job.message = 'Starting Node API and frontend'; await this.saveJob(job); return;
+        }
+        await this.finish(job, 'Build passed'); return;
+      }
+      if (job.step < 4) { await this.startProcess(job, ['node', '-e', job.static ? COLLECT_STATIC_ARTIFACT : COLLECT_ARTIFACT]); job.step = 4; job.message = 'Collecting deployment artifacts'; await this.saveJob(job); return; }
+      const file = await box.readFile('/workspace/artifact.json', { encoding: 'none' });
+      const artifact = validateArtifact(await readStreamJson(file.content, PILOT_LIMITS.artifactBytes * 1.5));
+      job.artifactKey = `${this.alias}/artifacts/${job.id}.json`;
+      await this.env.ARTIFACTS.put(job.artifactKey, JSON.stringify(artifact));
+      await this.assertRunning(job); job.step = 5; job.message = 'Build complete'; await this.saveJob(job); return;
+    }
+    if (job.kind === 'build') { await this.finish(job, 'Build and configured tests passed'); return; }
+    if (job.kind === 'verify') { await this.verify(job, snapshot); await this.finish(job, 'Verification passed'); return; }
+    if (job.kind === 'publish' && job.step === 5) {
+      job.publishStage = 'verify'; job.message = 'Checking your app in an isolated test environment'; await this.saveJob(job);
+      await this.verify(job, snapshot);
+      // Promote the same artifact that passed, never a second, potentially different build.
+      await this.assertRunning(job); job.step = 6; job.publishStage = 'services';
+      job.message = 'Preparing production services'; await this.saveJob(job); return;
+    }
+    if (job.kind === 'publish' && !job.static) {
+      await this.prepareServices('production');
+      const services = this.services().store;
+      assertProductionServices(services.settings('production'), await services.readiness('production'));
+    }
+    if (job.kind === 'publish') {
+      job.publishStage = 'deploy'; job.message = 'Deploying your frontend, backend, and production database'; await this.saveJob(job);
+    }
+    const database = await this.database(job.environment);
+    await this.assertRunning(job);
+    const migrations = await this.migrate(database.id, snapshot, job);
+    await this.ctx.storage.put(`migrations:${job.environment}`, migrations);
+    await this.assertRunning(job);
+    if (job.kind === 'migrate') { await this.finish(job, 'Migrations applied'); return; }
+    const artifact = await this.artifact(job.artifactKey!);
+    const release: ProjectRelease = { id: job.id, revision: job.revision, environment: job.environment, scriptName: `bh-${this.alias.slice(0, 16)}-${job.id}`, createdAt: Date.now(), databaseId: database.id, migrations, artifactKey: job.artifactKey! };
+    await this.assertRunning(job);
+    // Persist upload intent so a stopped upload or isolate restart can be cleaned up.
+    await this.ctx.storage.put(`pending-release:${job.id}`, release);
+    await this.api().upload(this.env.DISPATCH_NAMESPACE, release.scriptName, artifact.worker, database.id, await this.serviceBindings(job.environment));
+    await this.assertRunning(job);
+    if (job.kind === 'publish') {
+      job.publishStage = 'check'; job.message = 'Checking the production deployment before making it public'; await this.saveJob(job);
+      if (!job.static) {
+        await this.api().query(database.id, 'SELECT 1 AS ready');
+        const response = await this.env.DISPATCHER.get(release.scriptName, {}, { limits: { cpuMs: 50, subRequests: 20 } }).fetch(new Request(this.url('production') + productionHealthPath(snapshot.files), { signal: AbortSignal.timeout(15_000), redirect: 'manual' }));
+        const healthy = response.ok;
+        await response.body?.cancel();
+        if (!healthy) throw new RuntimeError(`The deployed backend failed its health check (HTTP ${response.status}). The previous production release is still active.`, 502);
+      }
+      // Clean temporary resources before the atomic publication commit. A failed
+      // or cancelled candidate must never replace the user's current live app.
+      await this.cleanup(job, true);
+      await this.assertRunning(job);
+      await this.ctx.storage.transaction(async txn => {
+        const current = await txn.get<StoredJob>('current');
+        if (current?.id !== job.id || current.status !== 'running') throw new RuntimeError('Job stopped.', 409);
+        job.releaseId = release.id; job.status = 'passed'; job.publishStage = 'live';
+        job.message = 'Your app is live'; job.finishedAt = Date.now(); job.updatedAt = Date.now();
+        await txn.put({ [`release:production:${release.id}`]: release, 'active:production': release, current: job, [`job:${job.id}`]: job });
+        const outcome = this.jobOutcome(job);
+        if (outcome) await txn.put(`outcome:${outcome.id}:${outcome.kind}`, outcome);
+        await txn.delete(`pending-release:${job.id}`);
+      });
+      return;
+    }
+    await this.ctx.storage.transaction(async txn => {
+      const current = await txn.get<StoredJob>('current');
+      if (current?.id !== job.id || current.status !== 'running') throw new RuntimeError('Job stopped.', 409);
+      await txn.put({ [`release:${job.environment}:${release.id}`]: release, [`active:${job.environment}`]: release });
+      await txn.delete(`pending-release:${job.id}`);
+    });
+    job.releaseId = release.id; await this.finish(job, `${job.environment === 'production' ? 'Production' : 'Development'} release ready`);
+  }
+  private async startProcess(job: StoredJob, argv: [string, ...string[]], environment: Record<string, string> = {}) {
+    await this.assertRunning(job);
+    const start = (async () => {
+      const process = await this.sandbox(job).exec(argv, { cwd: '/workspace/project', env: { NODE_ENV: 'development', PORT: '3000', CI: 'true', ...environment }, timeout: Math.max(1, PILOT_LIMITS.commandTimeoutMs - (Date.now() - job.createdAt)) });
+      try { await this.assertRunning(job); } catch (error) { await process.kill(9); throw error; }
+      job.processIds.push(process.id);
+    })();
+    this.pendingStarts.add(start);
+    try { await start; } finally { this.pendingStarts.delete(start); }
+  }
+  private async finish(job: StoredJob, message: string) { await this.assertRunning(job); await this.cleanup(job); await this.assertRunning(job); job.status = 'passed'; job.message = message; job.finishedAt = Date.now(); await this.saveJob(job); }
+  private async artifact(key: string): Promise<BuildArtifact> { const object = await this.env.ARTIFACTS.get(key); if (!object) throw new RuntimeError('Release artifact unavailable.', 503); return validateArtifact(await object.json()); }
+  private async database(environment: ProjectEnvironment): Promise<DatabaseResource> {
+    const existing = await this.ctx.storage.get<DatabaseResource>(`db:${environment}`); if (existing) return existing;
+    const created = await this.api().createDatabase(`bh-${this.alias}-${environment}`);
+    const db = { id: created.uuid, name: created.name, createdAt: Date.now() };
+    await this.ctx.storage.put(`db:${environment}`, db); return db;
+  }
+  private async migrate(databaseId: string, snapshot: SourceSnapshot, job: StoredJob): Promise<MigrationReceipt[]> {
+    await this.assertRunning(job);
+    await this.api().query(databaseId, 'CREATE TABLE IF NOT EXISTS _bh_migrations(name TEXT PRIMARY KEY, checksum TEXT NOT NULL, appliedAt INTEGER NOT NULL)');
+    const receipts = await this.api().query(databaseId, 'SELECT name,checksum,appliedAt FROM _bh_migrations ORDER BY name') as unknown as MigrationReceipt[];
+    for (const receipt of receipts) if (!snapshot.files[receipt.name]) throw new RuntimeError(`Applied migration ${receipt.name} is missing from this revision.`);
+    for (const { name, sql } of migrationFiles(snapshot.files)) {
+      await this.assertRunning(job);
+      const checksum = await digest(sql); const old = receipts.find(receipt => receipt.name === name);
+      if (old) { if (old.checksum !== checksum) throw new RuntimeError(`Applied migration ${name} changed. Add a new migration instead.`); continue; }
+      assertSafeMigration(sql);
+      if (/_bh_migrations/i.test(sql)) throw new RuntimeError('Migration metadata is reserved.');
+      const receipt = { name, checksum, appliedAt: Date.now() };
+      await this.api().query(databaseId, `${sql}\n; INSERT INTO _bh_migrations(name,checksum,appliedAt) VALUES ('${name}','${checksum}',${receipt.appliedAt});`);
+      receipts.push(receipt);
+    }
+    return receipts;
+  }
+  private async createSession(kind: string, environment: ProjectEnvironment, data: unknown, seconds: number): Promise<string> {
+    const raw = token();
+    this.ctx.storage.sql.exec('DELETE FROM sessions WHERE expires < ?', Date.now());
+    this.ctx.storage.sql.exec('INSERT INTO sessions(token,kind,environment,data,expires) VALUES (?,?,?,?,?)', await digest(raw), kind, environment, JSON.stringify(data), Date.now() + seconds * 1000);
+    return raw;
+  }
+  private async session(raw: string | undefined, kind: string, environment: ProjectEnvironment, consume = false): Promise<Record<string, string> | null> {
+    if (!raw || raw.length !== 64) return null;
+    const hashed = await digest(raw);
+    const rows = this.ctx.storage.sql.exec<{ data: string }>('SELECT data FROM sessions WHERE token=? AND kind=? AND environment=? AND expires>?', hashed, kind, environment, Date.now()).toArray();
+    if (consume) this.ctx.storage.sql.exec('DELETE FROM sessions WHERE token=?', hashed);
+    return rows[0] ? JSON.parse(rows[0].data) : null;
+  }
+  private async databaseControl(request: Request, environment: ProjectEnvironment): Promise<Response> {
+    const url = new URL(request.url); const db = await this.ctx.storage.get<DatabaseResource>(`db:${environment}`);
+    if (!db) throw new RuntimeError('Create a release in this environment to provision a database.', 404);
+    const api = this.api();
+    if (url.pathname === '/database' && request.method === 'GET') {
+      const table = url.searchParams.get('table');
+      return Response.json(table ? await readDatabaseTable(api, db.id, table, Number(url.searchParams.get('offset') || 0)) : { tables: await api.query(db.id, "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '_cf_*' AND name NOT GLOB '_bh_*' ORDER BY name LIMIT 100") });
+    }
+    const prefix = `db-recovery:${environment}:`;
+    if (url.pathname === '/database/recovery' && request.method === 'GET') {
+      const points = [...(await this.ctx.storage.list<DatabaseRecoveryPoint>({ prefix })).values()].filter(point => point.databaseId === db.id && point.createdAt > Date.now() - 7 * 86400_000).sort((a, b) => b.createdAt - a.createdAt);
+      return Response.json({ points: points.map(({ id, label, createdAt }) => ({ id, label, createdAt })) });
+    }
+    if (request.method !== 'POST') throw new RuntimeError('Method not allowed.', 405);
+    if (active(await this.ctx.storage.get<StoredJob>('current'))) throw new RuntimeError('Wait for the running build or release before changing the database.', 409);
+    const body = await readJson(request, 256_000) as { label?: string; id?: string; confirm?: string; table?: string; rows?: unknown };
+    const migrations = await this.ctx.storage.get<MigrationReceipt[]>(`migrations:${environment}`) || [];
+    const savePoint = async (label: string) => {
+      const result = await api.request<{ bookmark: string }>(`/d1/database/${encodeURIComponent(db.id)}/time_travel/bookmark`);
+      if (typeof result.bookmark !== 'string' || !/^[a-f0-9-]{16,128}$/.test(result.bookmark)) throw new RuntimeError('Cloudflare did not return a recovery bookmark.', 502);
+      const point: DatabaseRecoveryPoint = { id: crypto.randomUUID(), label: label.slice(0, 100), bookmark: result.bookmark, databaseId: db.id, createdAt: Date.now(), migrations };
+      if (await this.ctx.storage.get('deleted')) throw new RuntimeError('Project deleted.', 410);
+      await this.ctx.storage.put(prefix + point.id, point);
+      const points = [...(await this.ctx.storage.list<DatabaseRecoveryPoint>({ prefix })).values()].sort((a, b) => b.createdAt - a.createdAt);
+      for (const old of points.slice(12)) await this.ctx.storage.delete(prefix + old.id);
+      return point;
+    };
+    if (url.pathname === '/database/recovery') {
+      const point = await savePoint(typeof body.label === 'string' && body.label.trim() ? body.label.trim() : 'Saved recovery point');
+      return Response.json({ point: { id: point.id, label: point.label, createdAt: point.createdAt } }, { status: 201 });
+    }
+    if (url.pathname === '/database/import') {
+      if (typeof body.table !== 'string') throw new RuntimeError('Choose an application table.');
+      const schema = await api.query(db.id, `PRAGMA table_info(${databaseIdentifier(body.table)})`);
+      const prepared = prepareRowImport(body.table, body.rows, schema.map(column => String(column.name)));
+      await savePoint('Before record import');
+      await api.query(db.id, prepared.sql, prepared.params);
+      await this.ctx.storage.delete(`verification:${environment}`);
+      return Response.json({ imported: prepared.count });
+    }
+    if (url.pathname === '/database/restore') {
+      if (body.confirm !== `RESTORE ${environment}` || typeof body.id !== 'string' || !/^[a-f0-9-]{36}$/.test(body.id)) throw new RuntimeError(`Type RESTORE ${environment} to confirm.`);
+      const point = await this.ctx.storage.get<DatabaseRecoveryPoint>(prefix + body.id);
+      if (!point || point.databaseId !== db.id || point.createdAt < Date.now() - 7 * 86400_000) throw new RuntimeError('This recovery point is unavailable or expired.', 404);
+      if (JSON.stringify(point.migrations) !== JSON.stringify(migrations)) throw new RuntimeError('This recovery point uses a different schema. Restore requires a reviewed migration plan.', 409);
+      const undo = await savePoint('Before database restore');
+      const result = await api.request<{ bookmark: string; previous_bookmark: string }>(`/d1/database/${encodeURIComponent(db.id)}/time_travel/restore?bookmark=${encodeURIComponent(point.bookmark)}`, 'POST');
+      // Cloudflare returns the exact pre-restore position, including writes that
+      // arrived after our safety point. Keep that position for a precise undo.
+      if (typeof result.previous_bookmark === 'string' && /^[a-f0-9-]{16,128}$/.test(result.previous_bookmark)) await this.ctx.storage.put(prefix + undo.id, { ...undo, bookmark: result.previous_bookmark });
+      await this.ctx.storage.delete(`verification:${environment}`);
+      return Response.json({ restored: true, undoId: undo.id });
+    }
+    throw new RuntimeError('Database action not found.', 404);
+  }
+
+  async appRequest(request: Request, environment: ProjectEnvironment): Promise<Response> {
+    const startedAt = Date.now(); let response: Response;
+    try {
+      if (this.databaseOperation) throw new RuntimeError('Database maintenance in progress. Please retry shortly.', 503);
+      response = await this.handleAppRequest(request, environment);
+    } catch (error) { response = Response.json({ error: error instanceof RuntimeError ? error.message : 'Application request failed.' }, { status: error instanceof RuntimeError ? error.status : 503 }); }
+    try { if (!await this.ctx.storage.get('deleted')) recordAppRequest(this.ctx.storage.sql, environment, request, response.status, startedAt); }
+    catch { console.warn('Request metrics unavailable'); }
+    return response;
+  }
+  private async handleAppRequest(request: Request, environment: ProjectEnvironment): Promise<Response> {
+    if (await this.ctx.storage.get<boolean>('deleted')) throw new RuntimeError('App not found.', 404);
+    // Removing the production release also disables hosted auth, mail and storage routes.
+    if (environment === 'production' && !await this.ctx.storage.get('active:production')) throw new RuntimeError('No app release is available.', 404);
+    requireAdmission(await this.ownerUsage().consumeUsage('requests'));
+    const url = new URL(request.url);
+    if (url.pathname === '/__brainhalf/open' && request.method === 'GET' && environment === 'development') {
+      const ticket = await this.session(url.searchParams.get('ticket') || undefined, 'ticket', environment, true);
+      if (!ticket) throw new RuntimeError('Preview link expired. Use Open running app in your workspace to get a new link.', 401);
+      let next = ticket.next === '/__brainhalf/auth' ? ticket.next : '/';
+      if (typeof ticket.mailId === 'string') next = this.emailActionPath((await this.services().mail.detail(environment, ticket.mailId)).text, environment);
+      const session = await this.createSession('preview', environment, {}, 3600);
+      return new Response(null, { status: 303, headers: { Location: next, 'Set-Cookie': secureCookie('__Host-bh_preview', session, 3600) } });
+    }
+    if (environment === 'development' && !await this.session(cookie(request, '__Host-bh_preview'), 'preview', environment)) throw new RuntimeError('Use Open running app in your BrainHalf workspace to access this private preview.', 401);
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw new RuntimeError('Untrusted app request origin.', 403);
+    await this.prepareServices(environment);
+    if (url.pathname === '/__brainhalf/auth' && request.method === 'GET') return authPage(this.services().store.settings(environment).appName);
+    if (url.pathname === '/api/storage' || url.pathname.startsWith('/api/storage/')) {
+      const user = await this.services().auth.user(request, environment);
+      return this.uploadRequest(request, environment, typeof user?.id === 'string' ? user.id : null);
+    }
+    if (url.pathname.startsWith('/api/auth/') || url.pathname === '/api/contact') return this.integrationRequest(request, environment);
+    const current = await this.ctx.storage.get<StoredJob>('current');
+    if (environment === 'development' && current?.node && current.kind === 'preview' && current.status === 'running' && current.step === 4) {
+      const headers = new Headers(request.headers);
+      for (const key of [...headers.keys()]) if (/^(?:x-bh-|x-brainhalf-|x-auth-|cf-access-)/i.test(key)) headers.delete(key);
+      const appCookies = headers.get('cookie')?.split(';').filter(value => !/^(?:__Host-bh_|bh_session)/.test(value.trim())).join(';');
+      headers.delete('cookie'); if (appCookies) headers.set('cookie', appCookies);
+      return this.sandbox(current).containerFetch(new Request(request, { headers }), 3000);
+    }
+    let release = await this.ctx.storage.get<ProjectRelease>(`active:${environment}`);
+    const verification = await this.session(cookie(request, '__Host-bh_verify'), 'verify', environment);
+    if (verification) release = await this.ctx.storage.get<ProjectRelease>(`test:${verification.jobId}`);
+    const headers = new Headers(request.headers);
+    for (const key of [...headers.keys()]) if (/^(?:x-bh-|x-brainhalf-|cf-access-)/i.test(key) || ['authorization', 'cookie'].includes(key)) headers.delete(key);
+    const user = await this.services().auth.user(request, environment);
+    if (typeof user?.id === 'string') headers.set('x-bh-user-id', user.id);
+    if (user?.role === 'user' || user?.role === 'admin') headers.set('x-bh-user-role', user.role);
+    const forwarded = new Request(request, { headers });
+    if (!release) throw new RuntimeError('No app release is available.', 404);
+    if (url.pathname.startsWith('/api/')) {
+      const response = await this.env.DISPATCHER.get(release.scriptName, {}, { limits: { cpuMs: 50, subRequests: 20 } }).fetch(forwarded);
+      const safe = new Response(response.body, response); safe.headers.delete('Set-Cookie'); return safe;
+    }
+    if (!['GET', 'HEAD'].includes(request.method)) throw new RuntimeError('Method not allowed.', 405);
+    const artifact = await this.artifact(release.artifactKey);
+    const asset = artifact.assets[url.pathname] || (!url.pathname.split('/').pop()?.includes('.') ? artifact.assets['/index.html'] : undefined);
+    if (!asset) throw new RuntimeError('File not found.', 404);
+    return new Response(request.method === 'HEAD' ? null : Uint8Array.from(atob(asset.content), character => character.charCodeAt(0)), { headers: { 'Content-Type': asset.type } });
+  }
+  private emailActionPath(text: string, environment: ProjectEnvironment): string {
+    const link = text.match(/https:\/\/[^\s]+\/__brainhalf\/auth\?mode=(?:verify|reset|magic)#token=[A-Za-z0-9_-]{43}/)?.[0];
+    if (!link) throw new RuntimeError('This message has no sign-in action.');
+    const target = new URL(link); const next = target.pathname + target.search + target.hash;
+    if (target.origin !== this.url(environment) || !authPath(next)) throw new RuntimeError('Invalid authentication link.');
+    return next;
+  }
+  private async assertServiceChangesAllowed(environment: ProjectEnvironment): Promise<void> {
+    if (environment !== 'production') return;
+    const job = await this.ctx.storage.get<StoredJob>('current');
+    if (active(job) && job.kind === 'publish') throw new RuntimeError('Wait for publishing to finish before changing production services.', 409);
+  }
+  private async servicesControl(request: Request, environment: ProjectEnvironment): Promise<Response> {
+    await this.prepareServices(environment);
+    const { store, mail, auth } = this.services(); const path = new URL(request.url).pathname;
+    const input = async () => {
+      const value = await readJson(request);
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RuntimeError('Invalid settings.');
+      return value as Record<string, unknown>;
+    };
+    if (path === '/services' && ['GET', 'PUT'].includes(request.method)) {
+      if (request.method === 'PUT') {
+        const value = await input();
+        await this.ctx.blockConcurrencyWhile(async () => {
+          await this.assertServiceChangesAllowed(environment);
+          store.saveSettings(environment, value);
+        });
+      }
+      return Response.json({ settings: store.settings(environment), providers: await store.readiness(environment),
+        userCount: store.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM managed_users WHERE environment=?', environment).toArray()[0].count,
+        mailCounts: mail.counts(environment), dailyEmailLimit: PILOT_LIMITS.dailyEmails });
+    }
+    if (path === '/services/users' && request.method === 'GET') return Response.json({ users: auth.users(environment) });
+    if (path.startsWith('/services/users/') && request.method === 'PATCH') return Response.json({ user: auth.updateUser(environment, decodeURIComponent(path.slice('/services/users/'.length)), await input()) });
+    if (path === '/services/templates' && request.method === 'GET') return Response.json({ templates: mail.templates(environment) });
+    if (path.startsWith('/services/templates/') && request.method === 'PUT') {
+      mail.saveTemplate(environment, path.slice('/services/templates/'.length), await input()); return Response.json({ templates: mail.templates(environment) });
+    }
+    if (path === '/services/messages' && request.method === 'GET') return Response.json({ messages: mail.list(environment) });
+    const message = path.match(/^\/services\/messages\/([a-zA-Z0-9-]+)(\/(?:retry|open))?$/);
+    if (message && request.method === 'GET' && !message[2]) return Response.json(await mail.detail(environment, message[1]));
+    if (message && request.method === 'POST' && message[2] === '/open' && environment === 'development') {
+      const detail = await mail.detail(environment, message[1]);
+      this.emailActionPath(detail.text, environment);
+      const ticket = await this.createSession('ticket', environment, { mailId: message[1] }, 60);
+      return Response.json({ url: `${this.url(environment)}/__brainhalf/open?ticket=${ticket}` });
+    }
+    if (message && request.method === 'POST' && message[2] === '/retry') { await mail.retry(environment, message[1]); return Response.json({ ok: true }); }
+    throw new RuntimeError('Service settings route not found.', 404);
+  }
+  async backendService(request: Request, environment: ProjectEnvironment): Promise<Response> {
+    if (await this.ctx.storage.get('deleted')) throw new RuntimeError('App not found.', 404);
+    if (request.method !== 'POST' || new URL(request.url).pathname !== '/email') throw new RuntimeError('Backend service route not found.', 404);
+    await this.prepareServices(environment);
+    const body = await readJson(request) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || !['welcome', 'order_receipt'].includes(String(body.template)) || typeof body.userId !== 'string' || typeof body.idempotencyKey !== 'string') throw new RuntimeError('Provide a verified app user, email template, and event key.');
+    const { store, mail } = this.services();
+    const user = store.user(environment, body.userId);
+    if (!user || !user.verified || user.disabled) throw new RuntimeError('A verified, active app user is required.', 403);
+    const input = body.variables;
+    if (input !== undefined && (!input || typeof input !== 'object' || Array.isArray(input))) throw new RuntimeError('Invalid email fields.');
+    const fields: Record<string, string> = { name: user.name || user.email };
+    for (const [key, value] of Object.entries(input || {})) {
+      if (!['orderId', 'amount', 'details'].includes(key) || typeof value !== 'string' || value.length > (key === 'details' ? 3000 : 200)) throw new RuntimeError('Invalid email fields.');
+      fields[key] = value;
+    }
+    const message = await mail.enqueue(environment, body.template as 'welcome' | 'order_receipt', user.email, fields, 'event:' + body.idempotencyKey);
+    return Response.json({ id: message.id, status: message.status }, { status: 202 });
+  }
+  private async integrationRequest(request: Request, environment: ProjectEnvironment, testDestination?: string): Promise<Response> {
+    await this.prepareServices(environment);
+    const { store, mail, auth } = this.services();
+    if (new URL(request.url).pathname.startsWith('/api/auth/')) return auth.handle(request, environment);
+    if (new URL(request.url).pathname !== '/api/contact' || request.method !== 'POST') throw new RuntimeError('Integration route not found.', 404);
+    const input = contactInput(await readJson(request));
+    store.limit(`contact:${environment}:${await digest(request.headers.get('CF-Connecting-IP') || 'unknown')}`, 5, 60_000);
+    const settings = store.settings(environment);
+    const config = settings.emailMode === 'custom' ? (await this.config(environment)).resend : undefined;
+    const providers = await store.readiness(environment);
+    const destination = testDestination || config?.contactTo || providers.ownerEmail || (environment === 'development' ? 'test@example.com' : '');
+    const key = request.headers.get('Idempotency-Key') || crypto.randomUUID();
+    const message = await mail.enqueue(environment, 'contact', destination, input, 'contact:' + key, input.email);
+    this.ctx.storage.sql.exec('INSERT OR IGNORE INTO inbox(id,environment,data,created) VALUES (?,?,?,?)', message.id, environment, JSON.stringify({ ...input, status: message.status }), Date.now());
+    this.ctx.storage.sql.exec('DELETE FROM inbox WHERE id NOT IN (SELECT id FROM inbox ORDER BY created DESC LIMIT 100)');
+    return Response.json({ ok: true, id: message.id, status: message.status, message: environment === 'development' ? 'Test message captured in the project inbox. No email was sent.' : 'Your message has been queued for delivery.' }, { status: 201 });
+  }
+  private async verify(job: StoredJob, snapshot: SourceSnapshot) {
+    const plan = verificationPlan(snapshot.files);
+    await this.assertRunning(job);
+    requireAdmission(await this.pilot().acquire(`browser-${job.id}`, 'browser', this.scope.projectId));
+    const artifact = await this.artifact(job.artifactKey!);
+    const database = await this.api().createDatabase(`bh-test-${job.id}`);
+    const release: ProjectRelease = { id: job.id, revision: job.revision, environment: 'development', scriptName: `bh-test-${job.id}`, createdAt: Date.now(), databaseId: database.uuid, migrations: [], artifactKey: job.artifactKey! };
+    await this.ctx.storage.put(`test:${job.id}`, release);
+    let browser: Awaited<ReturnType<typeof launch>> | undefined;
+    const report: VerificationReport = { jobId: job.id, revision: job.revision, environment: 'development', at: Date.now(), passed: false, checks: [] };
+    try {
+      await this.migrate(database.uuid, snapshot, job);
+      await this.assertRunning(job);
+      await this.api().upload(this.env.DISPATCH_NAMESPACE, release.scriptName, artifact.worker, database.uuid, await this.serviceBindings('development'));
+      await this.assertRunning(job);
+      const hostname = new URL(this.url('development')).hostname;
+      browser = await launch(this.env.BROWSER, { keep_alive: 60_000, guardrails: { allowedDomains: [hostname] } });
+      await this.ctx.storage.put('browser', browser.sessionId());
+      await this.assertRunning(job);
+      const context = await browser.newContext();
+      const sessionSeconds = Math.max(1, Math.ceil((PILOT_LIMITS.commandTimeoutMs - (Date.now() - job.createdAt)) / 1000));
+      const preview = await this.createSession('preview', 'development', {}, sessionSeconds);
+      const verify = await this.createSession('verify', 'development', { jobId: job.id }, sessionSeconds);
+      for (const prefix of ['test', 'other-test']) this.ctx.storage.sql.exec('INSERT OR IGNORE INTO managed_users (environment,id,email,name,verified,created) VALUES (?,?,?,?,1,?)', 'development', `${prefix}:${job.id}`, `${prefix}+${job.id}@example.invalid`, 'Verification user', Date.now());
+      const app = await this.createSession('app', 'development', { id: `test:${job.id}` }, sessionSeconds);
+      await context.addCookies([{ name: '__Host-bh_preview', value: preview, domain: hostname, path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }, { name: '__Host-bh_verify', value: verify, domain: hostname, path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }, { name: '__Host-bh_app', value: app, domain: hostname, path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }]);
+      const page = await context.newPage(); const errors: string[] = [];
+      const resourceErrors: string[] = [];
+      // Cloudflare injects this optional analytics script; its availability is
+      // independent of the application's own scripts and deployment health.
+      const optionalAnalytics = (value: string) => { const url = new URL(value); return url.hostname === 'static.cloudflareinsights.com' && /^\/beacon\.min\.js(?:\/|$)/.test(url.pathname); };
+      page.on('pageerror', error => errors.push(error.message));
+      page.on('response', response => {
+        if (optionalAnalytics(response.url())) return;
+        if (response.status() >= 400 && (['document', 'script', 'stylesheet'].includes(response.request().resourceType()) || (job.static && new URL(response.url()).pathname.startsWith('/api/')))) resourceErrors.push(`HTTP ${response.status()}: ${new URL(response.url()).pathname}`);
+      });
+      page.on('requestfailed', request => {
+        if (optionalAnalytics(request.url())) return;
+        if (['document', 'script', 'stylesheet'].includes(request.resourceType()) || (job.static && new URL(request.url()).pathname.startsWith('/api/'))) resourceErrors.push(`Request failed: ${new URL(request.url()).pathname}`);
+      });
+      const response = await page.goto(this.url('development'), { waitUntil: 'networkidle', timeout: 25_000 });
+      await this.assertRunning(job);
+      report.checks.push({ name: 'Page loads', passed: !!response?.ok(), detail: `HTTP ${response?.status()}` });
+      if (plan) {
+        const otherUser = await this.createSession('app', 'development', { id: `other-test:${job.id}` }, sessionSeconds);
+        const origin = this.url('development');
+        report.checks.push(...await runVerificationPlan(plan, {
+          assertRunning: () => this.assertRunning(job),
+          request: async step => {
+            const appToken = step.as === 'user' ? app : step.as === 'otherUser' ? otherUser : '';
+            const cookies = `__Host-bh_preview=${preview}; __Host-bh_verify=${verify}${appToken ? `; __Host-bh_app=${appToken}` : ''}`;
+            // Go through the real runtime identity boundary and the disposable Worker.
+            // Generated page JavaScript cannot fake these responses or inspect test tokens.
+            return this.appRequest(new Request(origin + step.path, {
+              method: step.method, headers: { Cookie: cookies, Origin: origin, 'Content-Type': 'application/json' },
+              body: step.body === undefined ? undefined : JSON.stringify(step.body), signal: AbortSignal.timeout(15_000),
+            }), 'development');
+          },
+          query: (sql, params) => this.api().query(database.uuid, sql, params),
+          browser: async step => {
+            if (step.action === 'goto') {
+              const result = await page.goto(origin + step.path!, { waitUntil: 'domcontentloaded', timeout: 10_000 });
+              if (!result?.ok()) throw new RuntimeError('The requested app page failed to load.');
+              return;
+            }
+            const locator = page.locator(step.selector!);
+            if (step.action === 'click') await locator.click({ timeout: 5_000 });
+            if (step.action === 'fill') await locator.fill(step.value!, { timeout: 5_000 });
+            if (step.action === 'expectVisible') await locator.waitFor({ state: 'visible', timeout: 5_000 });
+            if (step.action === 'expectText') await locator.filter({ hasText: step.value! }).waitFor({ state: 'visible', timeout: 5_000 });
+          },
+        }));
+      } else if (!job.static) {
+      const checks = await page.evaluate(async () => {
+        const signal = AbortSignal.timeout(15_000);
+        const health = await fetch('/api/health', { signal });
+        const created = await fetch('/api/items', { signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'BrainHalf verification item' }) });
+        const item = await created.json() as { item?: { id: string } };
+        const read = await fetch('/api/items', { signal }); const data = await read.json() as { items?: { id: string }[] };
+        const found = Array.isArray(data.items) && data.items.some((entry: { id: string }) => entry.id === item.item?.id);
+        const contact = await fetch('/api/contact', { signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'BrainHalf verification', email: 'test@example.com', message: 'Development contact form integration check.' }) });
+        const mail = await contact.json() as { status?: string };
+        return { itemId: item.item?.id, checks: [{ name: 'Backend health', passed: health.ok, detail: `HTTP ${health.status}` }, { name: 'API create and read', passed: created.ok && found, detail: 'Test record created and read back through the real app API.' }, { name: 'Contact API', passed: contact.ok && mail.status === 'captured', detail: 'Development message captured; no provider email sent.' }] };
+      });
+      await this.assertRunning(job);
+      const persisted = checks.itemId ? await this.api().query(database.uuid, 'SELECT id FROM items WHERE id=?', [checks.itemId]) : [];
+      const removed = checks.itemId ? await page.evaluate(async id => (await fetch(`/api/items/${encodeURIComponent(id)}`, { method: 'DELETE', signal: AbortSignal.timeout(15_000) })).ok, checks.itemId) : false;
+      const remaining = checks.itemId ? await this.api().query(database.uuid, 'SELECT id FROM items WHERE id=?', [checks.itemId]) : [];
+      report.checks.push(...checks.checks, { name: 'D1 persistence and deletion', passed: persisted.length === 1 && removed && remaining.length === 0, detail: 'Direct database inspection verifies the API wrote and removed the test record in disposable D1.' }, { name: 'Browser errors', passed: errors.length === 0, detail: errors.join('\n').slice(0, 2000) || 'No uncaught browser errors.' });
+      }
+      if (plan || job.static) report.checks.push({ name: 'Browser errors', passed: errors.length === 0, detail: errors.join('\n').slice(0, 2000) || 'No uncaught browser errors.' });
+      report.checks.push({ name: 'Frontend resources', passed: resourceErrors.length === 0, detail: resourceErrors.join('\n').slice(0, 2000) || 'The tested pages and their scripts loaded successfully.' });
+      report.screenshotKey = `${this.alias}/verification/${job.id}.png`;
+      await this.env.ARTIFACTS.put(report.screenshotKey, await page.screenshot({ fullPage: true }));
+      report.passed = report.checks.every(check => check.passed);
+    } catch (error) { report.checks.push({ name: 'Verification execution', passed: false, detail: error instanceof RuntimeError ? error.message : 'Browser verification could not finish.' }); }
+    finally {
+      await browser?.close(); await this.ctx.storage.delete('browser');
+      await Promise.allSettled([...this.pendingUploads]);
+      await this.uploads().removeForUsers([`test:${job.id}`, `other-test:${job.id}`]);
+    for (const id of [`test:${job.id}`, `other-test:${job.id}`]) { this.services().store.revoke('development', id); this.ctx.storage.sql.exec('DELETE FROM managed_users WHERE environment=? AND id=?', 'development', id); }
+      await this.ctx.storage.transaction(async txn => {
+        const current = await txn.get<StoredJob>('current');
+        if (current?.id === job.id && current.status === 'running') {
+          await txn.put('verification:development', report);
+          if (report.passed) await txn.put(`outcome:${job.id}:verification_passed`, { ...this.scope, id: job.id, kind: 'verification_passed', at: report.at, revision: job.revision } satisfies OutcomeEvent);
+        }
+      });
+      await this.pilot().release(`browser-${job.id}`);
+      await this.api().remove(`/workers/dispatch/namespaces/${encodeURIComponent(this.env.DISPATCH_NAMESPACE)}/scripts/${release.scriptName}`);
+      await this.api().remove(`/d1/database/${database.uuid}`);
+      await this.ctx.storage.delete(`test:${job.id}`);
+    }
+    if (!report.passed) throw new RuntimeError('Verification failed. Review the runtime check results before publishing.');
+  }
+}

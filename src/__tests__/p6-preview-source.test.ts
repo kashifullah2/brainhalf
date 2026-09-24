@@ -6,6 +6,8 @@ vi.mock('cloudflare:workers', () => ({
 vi.mock('agents', () => ({ Agent: class Agent {} }));
 
 import { ChatAgent } from '../agent';
+import { STARTER_MAIN_JSX } from '../lib/preview-templates';
+import { createTypeScriptStarter } from '../lib/project-starters';
 
 /**
  * The preview error card was extracted into a shared module constant and
@@ -24,6 +26,7 @@ describe('P6 the extracted preview error card survives into generated source', (
     agent.sql = (strings: TemplateStringsArray, ...values: any[]) => {
       const stmt = strings.join('?');
       if (/SELECT COUNT/i.test(stmt)) return [{ count: files.size }];
+      if (stmt.includes('VALUES (?, ?)')) { files.set(values[0], values[1]); return []; }
       // The seed writes the path as a statement literal and binds only the
       // content, so the path comes out of the text, not the bound values.
       const ins = stmt.match(/INSERT (?:OR IGNORE )?INTO project_files \(path, content\) VALUES \('([^']+)', \?\)/);
@@ -44,7 +47,8 @@ describe('P6 the extracted preview error card survives into generated source', (
 
     agent.seedStarterIfEmpty();
 
-    const main = files.get('/src/main.jsx') ?? files.get('src/main.jsx');
+    expect(Object.fromEntries(files)).toEqual(createTypeScriptStarter());
+    const main = STARTER_MAIN_JSX;
     expect(main).toBeTruthy();
 
     // The card markup itself.

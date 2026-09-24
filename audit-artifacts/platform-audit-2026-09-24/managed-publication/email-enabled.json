@@ -1,0 +1,14 @@
+{
+  "checkedAt": "2026-09-24T16:12:53.902Z",
+  "ownerVerified": true,
+  "config": {
+    "appName": "Brainhalf Task Board",
+    "passwordEnabled": true,
+    "magicLinkEnabled": true,
+    "googleEnabled": true,
+    "emailReady": true,
+    "googleReady": true,
+    "development": false
+  },
+  "emailSent": false
+}

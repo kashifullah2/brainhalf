@@ -1,0 +1,74 @@
+{
+  "projectId": "pilot-validation-20260923-hardening3",
+  "status": 200,
+  "checks": [
+    {
+      "name": "Disposable Workers development release builds and deploys",
+      "passed": true
+    },
+    {
+      "name": "New isolated database provisioned",
+      "passed": true
+    },
+    {
+      "name": "Application tables are listed",
+      "passed": true
+    },
+    {
+      "name": "Invalid identifiers rejected",
+      "passed": true
+    },
+    {
+      "name": "Parameterized import persists a record",
+      "passed": true
+    },
+    {
+      "name": "D1 recovery bookmark saved",
+      "passed": true
+    },
+    {
+      "name": "Second record imported",
+      "passed": true
+    },
+    {
+      "name": "Both database writes are visible",
+      "passed": true
+    },
+    {
+      "name": "Restore requires typed confirmation",
+      "passed": true
+    },
+    {
+      "name": "Cloudflare restores the saved database position",
+      "passed": true
+    },
+    {
+      "name": "Restore rewinds actual database records",
+      "passed": true
+    },
+    {
+      "name": "Undo recovers the exact pre-restore database",
+      "passed": true
+    },
+    {
+      "name": "Development recovery does not create a production database",
+      "passed": true
+    },
+    {
+      "name": "Real hosted API remains available after restore and undo",
+      "passed": true
+    },
+    {
+      "name": "Request metrics record hosted traffic",
+      "passed": true
+    },
+    {
+      "name": "Monitoring excludes query secrets",
+      "passed": true
+    },
+    {
+      "name": "Disposable project and database deleted",
+      "passed": true
+    }
+  ]
+}

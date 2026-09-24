@@ -7,7 +7,11 @@
  * the end is what keeps a crafted package name from breaking out of the inline
  * <script> tag it is embedded in.
  */
-import { isValidBareModuleSpecifier } from './utils';
+import { isValidBareModuleSpecifier } from './utils.ts';
+
+export function previewImportSpecifiers(source: string): string[] {
+  return Array.from(source.matchAll(/\b(?:from\s*|import\s*(?:\(\s*)?|require\s*\(\s*)['"]([^'"]+)['"]/g), match => match[1]);
+}
 
 export function isHarnessEntry(cleanPath: string): boolean {
   return (
@@ -31,8 +35,8 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
     'axios': 'https://esm.sh/axios@1.6.7',
     'date-fns': 'https://esm.sh/date-fns@3.3.1',
     '@tanstack/react-query': 'https://esm.sh/@tanstack/react-query@5.24.1?external=react',
-    'react-router-dom': 'https://esm.sh/react-router-dom@6.22.1?external=react,react-dom',
-    'react-router': 'https://esm.sh/react-router@6.22.1?external=react,react-dom',
+    'react-router-dom': 'https://esm.sh/react-router-dom@7.18.4?external=react,react-dom',
+    'react-router': 'https://esm.sh/react-router@7.18.4?external=react,react-dom',
     'recharts': 'https://esm.sh/recharts@2.12.2?external=react,react-dom',
     'react-hook-form': 'https://esm.sh/react-hook-form@7.50.1?external=react',
     'zod': 'https://esm.sh/zod@3.22.4',
@@ -61,9 +65,9 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
     'react-router-dom': KNOWN_PACKAGES['react-router-dom'],
     'react-router': KNOWN_PACKAGES['react-router'],
     'lucide-react': KNOWN_PACKAGES['lucide-react'],
-    'lucide-react/': 'https://esm.sh/lucide-react@0.344.0?external=react/',
+    'lucide-react/': 'https://esm.sh/lucide-react@0.344.0/',
     'react-icons': KNOWN_PACKAGES['react-icons'],
-    'react-icons/': 'https://esm.sh/react-icons@5.0.1?external=react/',
+    'react-icons/': 'https://esm.sh/react-icons@5.0.1/',
     'framer-motion': KNOWN_PACKAGES['framer-motion'],
     'clsx': KNOWN_PACKAGES['clsx'],
     'tailwind-merge': KNOWN_PACKAGES['tailwind-merge'],
@@ -71,11 +75,11 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
 
   // Parse package.json if it exists.
   let packageDeps: Record<string, string> = {};
-  const packageJsonFile = files.find(f => f.path === '/package.json');
+  const packageJsonFile = files.find(file => file.path.replace(/^\//, '') === 'package.json');
   if (packageJsonFile) {
     try {
       const pkg = JSON.parse(packageJsonFile.content);
-      if (pkg.dependencies && typeof pkg.dependencies === 'object') {
+      if (pkg.dependencies && typeof pkg.dependencies === 'object' && !Array.isArray(pkg.dependencies)) {
         packageDeps = pkg.dependencies;
       }
     } catch (e) {
@@ -84,25 +88,24 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
   }
 
   for (const file of files) {
-    if (!/\.(jsx?|tsx?)$/.test(file.path)) continue;
+    if (!/\.(?:[cm]?[jt]sx?|html)$/.test(file.path)) continue;
     // FIX: `importRegex` was declared once outside the loop with the /g flag
     // and reused across files. `lastIndex` carried over between iterations, so
     // imports near the start of a later file were skipped. It is now built per
     // file, which is also what makes the scan deterministic.
-    const importRegex = /from\s+['"]([a-zA-Z0-9@][^'"]*)['"]/g;
-    let match: RegExpExecArray | null;
-    while ((match = importRegex.exec(file.content)) !== null) {
-      const pkg = match[1];
-      if (importMap[pkg] || pkg.startsWith('react/') || pkg.startsWith('react-dom/') || pkg.startsWith('lucide-react/')) continue;
+    for (const pkg of previewImportSpecifiers(file.content)) {
 
       // The spec is model-authored and ends up both in an esm.sh URL and in an
       // inline <script> block. Reject anything that is not a bare npm
       // identifier rather than relying on escaping alone.
       if (!isValidBareModuleSpecifier(pkg)) continue;
 
+      const parts = pkg.split('/');
+      const packageName = parts.slice(0, pkg.startsWith('@') ? 2 : 1).join('/');
+      const subpath = pkg.slice(packageName.length);
       let version = '';
-      if (packageDeps[pkg]) {
-        version = '@' + String(packageDeps[pkg]).replace(/^[\^~]/, '');
+      if (packageDeps[packageName]) {
+        version = '@' + String(packageDeps[packageName]).replace(/^[\^~]/, '');
       }
       // A version string comes from a generated package.json — constrain it to
       // digits/dots/pre-release tags so it cannot carry a payload either.
@@ -111,9 +114,11 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
       if (KNOWN_PACKAGES[pkg] && !version) {
         importMap[pkg] = KNOWN_PACKAGES[pkg];
       } else if (!pkg.startsWith('.')) {
-        const hasReactDep = pkg.includes('react') || pkg.includes('radix') || pkg.includes('ui');
-        const suffix = hasReactDep ? '?external=react,react-dom' : '';
-        importMap[pkg] = `https://esm.sh/${pkg}${version}${suffix}`;
+        if (!version && KNOWN_PACKAGES[packageName]) {
+          version = new URL(KNOWN_PACKAGES[packageName]).pathname.slice(packageName.length + 1);
+        }
+        const suffix = packageName === 'react' ? '' : '?external=react,react-dom';
+        importMap[pkg] = `https://esm.sh/${packageName}${version}${subpath}${suffix}`;
       }
     }
   }
