@@ -140,10 +140,17 @@ export async function verifyPreviewSession(request: Request, env: RegistryEnv): 
   return verifySession(new Request(request.url, { headers }), env);
 }
 
-/** Registry DO singleton lookup (idFromName is stable per deployment). */
+/** Global registry DO singleton lookup (idFromName is stable per deployment). */
 export function getRegistry(env: RegistryEnv): DurableObjectStub {
   const id = env.REGISTRY.idFromName('auth');
   return env.REGISTRY.get(id);
+}
+
+/** User-partitioned DO lookup to prevent singleton bottlenecks on metadata (M08). */
+export async function getUserRegistry(env: RegistryEnv, userId: string): Promise<DurableObjectStub> {
+  const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(userId));
+  const hash = Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return env.REGISTRY.get(env.REGISTRY.idFromName('user-' + hash));
 }
 
 /* ------------------------------------------------------------------ */

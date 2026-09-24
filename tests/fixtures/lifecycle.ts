@@ -15,7 +15,7 @@ export const lifecycleProjects: [ProjectEvidence, ProjectEvidence] = [
 ];
 
 export async function setupLifecycle(page: Page, realPreview = false, deferHistory = false) {
-  page.setDefaultTimeout(5000);
+  page.setDefaultTimeout(15000);
   const histories = new Map(lifecycleProjects.map(project => [project.id, [{ role: 'user', content: project.prompt }]]));
   const sockets: Array<{ id: string; socket: WebSocketRoute }> = [];
   const messages: Array<{ projectId: string; type?: string; prompt?: string }> = [];

@@ -2197,7 +2197,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 <button type="button" className="studio-advanced-toggle" onClick={() => appEvents.emit('open-project-console', undefined)}>
                   Project console
                 </button>
-                <button type="button" className="studio-advanced-toggle" onClick={() => appEvents.emit('open-project-console', undefined)}>
+                <button type="button" className="studio-advanced-toggle" onClick={() => appEvents.emit('open-deploy-modal', undefined)}>
                   Hosting settings
                 </button>
                 <button type="button" className="studio-advanced-toggle" onClick={() => { setAgentToolsTab('connections'); setShowAgentTools(true); }}>
