@@ -5,6 +5,26 @@ import { sourceSnapshot } from '../runtime/source';
 import { publicationTarget } from '../runtime/publication';
 import type { RuntimeJob, RuntimeStatus, SourceFiles } from '../runtime/types';
 
+export const APP_SLUG_RE = /^[a-z][a-z0-9-]{2,38}[a-z0-9]$/;
+
+export function toAppSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+}
+
+export async function checkSlugAvailability(projectId: string, slug: string): Promise<{ available: boolean; reason?: string }> {
+  try {
+    return await runtimeRequest<{ available: boolean; reason?: string }>(projectId, `/slug/check?slug=${encodeURIComponent(slug)}`, 'production', { signal: AbortSignal.timeout(8_000) });
+  } catch {
+    return { available: false, reason: 'Could not check availability. Try again.' };
+  }
+}
+
+export async function setAppSlug(projectId: string, slug: string): Promise<{ slug: string; url: string }> {
+  return runtimeRequest<{ slug: string; url: string }>(projectId, '/slug', 'production', {
+    method: 'POST', body: JSON.stringify({ slug }), signal: AbortSignal.timeout(15_000),
+  });
+}
+
 /** One explicit user action, one pinned version, and at most one production job. */
 export async function publishProject(projectId: string, files: SourceFiles): Promise<RuntimeJob | null> {
   const scope = getProjectStorageScope();

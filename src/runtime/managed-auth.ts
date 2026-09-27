@@ -128,7 +128,9 @@ export class ManagedAuth {
     if (path === '/api/auth/login') {
       if (!settings.passwordEnabled) throw new RuntimeError('Password sign-in is disabled.', 403);
       const user = this.store.byEmail(environment, email);
-      const valid = isValidPassword(body.password) && user?.password_hash && await verifyPassword(body.password, user.password_hash);
+      const DUMMY_HASH = '$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012';
+      const hashToVerify = user?.password_hash || DUMMY_HASH;
+      const valid = isValidPassword(body.password) && await verifyPassword(body.password, hashToVerify) && user?.password_hash;
       if (!valid || !user || user.disabled) throw new RuntimeError('Email or password is incorrect.', 401);
       if (!user.verified) throw new RuntimeError('Verify your email before signing in.', 403);
       // A reset/disable may have happened while password hashing was pending.

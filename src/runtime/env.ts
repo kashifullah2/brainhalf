@@ -6,6 +6,7 @@ export interface RuntimeEnv extends Omit<RuntimeBindings, 'RUNTIME_ENABLED' | 'R
   DISPATCH_NAMESPACE: string;
   PILOT_OWNER_IDS: string;
   CF_API_TOKEN?: string;
+  CF_ZONE_ID?: string;
   PROJECT_SECRETS_KEY?: string;
   PLATFORM?: Fetcher;
   RUNTIME_SERVICE_NAME?: string;

@@ -4,7 +4,7 @@ import { runtimeRequest, useProjectRuntime } from '../lib/project-runtime-client
 import { projectPublication } from '../lib/auth-client';
 import { getProjects } from '../lib/project-store';
 import { usePlatformStatus } from '../lib/status-store';
-import { publishProject } from '../lib/publish-project';
+import { publishProject, checkSlugAvailability, setAppSlug, toAppSlug, APP_SLUG_RE } from '../lib/publish-project';
 import { appEvents } from '../lib/events';
 import { sourceSnapshot } from '../runtime/source';
 import { publicationTarget } from '../runtime/publication';
@@ -24,6 +24,11 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
   const [copied, setCopied] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [confirmOffline, setConfirmOffline] = useState(false);
+  const [slugStep, setSlugStep] = useState<'idle' | 'picking' | 'saving'>('idle');
+  const [slugInput, setSlugInput] = useState('');
+  const [slugError, setSlugError] = useState('');
+  const [slugChecking, setSlugChecking] = useState(false);
+  const slugCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef(false);
   const startedOnOpen = useRef(false);
   const filesRef = useRef(files); filesRef.current = files;
@@ -56,6 +61,45 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Publishing could not start. Try again.'); }
     finally { inFlight.current = false; setSubmitting(false); }
   };
+  const startPublish = (source = filesRef.current) => {
+    if (!release) {
+      const projectName = getProjects().find(p => p.id === projectId)?.name || '';
+      setSlugInput(toAppSlug(projectName) || '');
+      setSlugError('');
+      setSlugStep('picking');
+    } else {
+      void publish(source);
+    }
+  };
+  const confirmSlug = async () => {
+    const slug = slugInput.trim();
+    if (!APP_SLUG_RE.test(slug)) { setSlugError('Use 4–40 lowercase letters, numbers, or hyphens. Must start with a letter.'); return; }
+    setSlugStep('saving'); setSlugError('');
+    try {
+      await setAppSlug(projectId, slug);
+      setSlugStep('idle');
+      void publish();
+    } catch (cause) {
+      setSlugError(cause instanceof Error ? cause.message : 'Could not save app name. Try again.');
+      setSlugStep('picking');
+    }
+  };
+  const handleSlugChange = (value: string) => {
+    const cleaned = value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-{2,}/g, '-');
+    setSlugInput(cleaned);
+    setSlugError('');
+    if (slugCheckTimer.current) clearTimeout(slugCheckTimer.current);
+    if (APP_SLUG_RE.test(cleaned)) {
+      setSlugChecking(true);
+      slugCheckTimer.current = setTimeout(async () => {
+        const result = await checkSlugAvailability(projectId, cleaned);
+        setSlugChecking(false);
+        if (!result.available) setSlugError(result.reason || 'That name is already taken.');
+      }, 500);
+    } else {
+      setSlugChecking(false);
+    }
+  };
   useEffect(() => {
     if (!publishOnOpen || startedOnOpen.current) return;
     startedOnOpen.current = true;
@@ -79,10 +123,52 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
     finally { setActionBusy(false); }
   };
 
+  const runtimeDomain = (runtime.status as (typeof runtime.status & { productionUrl?: string }))?.productionUrl?.replace(/https?:\/\/[^.]+\./, '') || 'apps.brainhalf.com';
+
+  if (slugStep === 'picking' || slugStep === 'saving') {
+    const slugValid = APP_SLUG_RE.test(slugInput.trim()) && !slugError;
+    return <section className="publication-controls" aria-label="Choose app name">
+      <div className="slug-picker">
+        <h3>Choose your app's URL</h3>
+        <p>Pick a name for your app. This becomes its public address — you can change it later from project settings.</p>
+        <div className="slug-picker-field">
+          <label htmlFor="pub-slug-input">App name</label>
+          <div className="slug-input-row">
+            <input
+              id="pub-slug-input"
+              type="text"
+              value={slugInput}
+              onChange={e => handleSlugChange(e.target.value)}
+              placeholder="my-app-name"
+              maxLength={40}
+              autoFocus
+              spellCheck={false}
+              aria-describedby="slug-preview"
+              disabled={slugStep === 'saving'}
+            />
+            {slugChecking && <Loader2 size={15} className="publication-spinner" />}
+            {slugValid && !slugChecking && <Check size={15} style={{ color: 'var(--color-success)' }} />}
+          </div>
+          <p id="slug-preview" className="slug-preview">
+            {slugInput.trim() ? <><span className="slug-domain">{slugInput.trim()}.{runtimeDomain}</span></> : <span className="slug-placeholder">your-name.{runtimeDomain}</span>}
+          </p>
+          {slugError && <p className="publication-error" role="alert">{slugError}</p>}
+          <p className="slug-rules">4–40 characters · lowercase letters, numbers, and hyphens · must start with a letter</p>
+        </div>
+        <div className="slug-picker-actions">
+          <button type="button" className="button-primary" disabled={!slugValid || slugChecking || slugStep === 'saving'} onClick={() => void confirmSlug()}>
+            {slugStep === 'saving' ? <><Loader2 size={15} className="publication-spinner" />Saving…</> : 'Continue to publish'}
+          </button>
+          <button type="button" className="button-ghost" disabled={slugStep === 'saving'} onClick={() => { setSlugStep('idle'); void publish(); }}>
+            Skip — use default URL
+          </button>
+        </div>
+      </div>
+    </section>;
+  }
+
   return <section className="publication-controls" aria-label="Project publication">
     <p>Publish a complete, tested version of your app. BrainHalf builds your frontend and backend, prepares the production database, and checks the release before it goes live.</p>
-    {!ready && <p role="status" className="publication-notice">{runtime.error || status?.availability?.message || 'Checking hosting availability…'}</p>}
-    {runtime.error && <button type="button" className="button-ghost" onClick={runtime.refresh}>Retry connection</button>}
     {sourceError && <p role="alert" className="publication-error">{sourceError}</p>}
     {sourceError.includes('Workers deployment entry') && <button type="button" className="button-ghost" disabled={busy || generating || !!active} onClick={prepareBackend}>Prepare backend for publishing</button>}
     {generating && <p role="status">Wait for the app to finish generating before publishing.</p>}
@@ -109,7 +195,7 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
       </div>}
     </div>}
     <div className="publication-actions">
-      <button type="button" className="button-primary" disabled={!ready || !revision || busy || (!!active && !canReplacePreview) || generating || currentIsLive} onClick={() => void publish()}>{submitting || publishing ? 'Publishing…' : currentIsLive ? 'Up to date' : release ? 'Publish changes' : 'Publish app'}</button>
+      <button type="button" className="button-primary" disabled={!ready || !revision || busy || (!!active && !canReplacePreview) || generating || currentIsLive} onClick={() => startPublish()}>{submitting || publishing ? 'Publishing…' : currentIsLive ? 'Up to date' : release ? 'Publish changes' : 'Publish app'}</button>
       {onManage && <button type="button" className="button-ghost" onClick={onManage}>Manage services</button>}
       {publishing && <button type="button" className="button-ghost" disabled={submitting || actionBusy} onClick={() => void stopJob(job)}>Cancel publishing</button>}
     </div>

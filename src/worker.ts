@@ -231,7 +231,13 @@ export default {
     }
     if (url.pathname === '/preview-runtime.js') {
       const asset = await env.ASSETS.fetch(request);
-      return new Response(asset.body, { status: asset.status, headers: {
+      if (!asset.ok) {
+        return new Response('console.error("[BrainHalf] Preview runtime asset missing from deployment. Redeploy to fix.");', {
+          status: 503,
+          headers: { 'Content-Type': 'application/javascript', 'Access-Control-Allow-Origin': '*', 'Retry-After': '30' },
+        });
+      }
+      return new Response(asset.body, { status: 200, headers: {
         'Content-Type': 'application/javascript', 'Access-Control-Allow-Origin': '*',
         'Cross-Origin-Resource-Policy': 'cross-origin', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff',
       } });

@@ -36,12 +36,14 @@
     "@ai-sdk/amazon-bedrock": "^5.0.81",
     "@ai-sdk/anthropic": "^4.0.53",
     "@ai-sdk/openai": "^4.0.65",
+    "@axe-core/playwright": "^4.13.0",
     "@cloudflare/playwright": "1.3.6",
     "@cloudflare/sandbox": "0.13.0-next.769.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@monaco-editor/react": "^4.7.0",
     "agents": "^0.22.0",
     "ai": "^7.0.97",
+    "eslint": "^10.11.0",
     "jszip": "^3.10.2",
     "lucide-react": "^1.43.0",
     "pdfjs-dist": "^5.7.284",
@@ -69,7 +71,7 @@
     "wrangler": "4.135.0",
     "ws": "^8.21.3"
   },
-  "overridesNotes": "// is not supported inside npm overrides; the dompurify override exists because monaco-editor 0.56.0 pins dompurify@3.4.8, which carries four advisories (GHSA-c2j3-45gr-mqc4 et al.) fixed in 3.4.13+ \u2014 all patch releases. Drop the override once monaco re-pins.",
+  "overridesNotes": "// is not supported inside npm overrides; the dompurify override exists because monaco-editor 0.56.0 pins dompurify@3.4.8, which carries four advisories (GHSA-c2j3-45gr-mqc4 et al.) fixed in 3.4.13+ — all patch releases. Drop the override once monaco re-pins.",
   "overrides": {
     "dompurify": "^3.4.15"
   }

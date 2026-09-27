@@ -57,7 +57,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     await this.ctx.storage.put({ scope, alias });
     return !await this.ctx.storage.get<boolean>('deleted');
   }
-  private api() { return new CloudflareAPI(this.env.CF_ACCOUNT_ID, this.env.CF_API_TOKEN); }
+  private api() { return new CloudflareAPI(this.env.CF_ACCOUNT_ID, this.env.CF_API_TOKEN, this.env.CF_ZONE_ID); }
   private url(environment: ProjectEnvironment) { return `https://${runtimeHost(this.alias, environment, this.env.RUNTIME_DOMAIN)}`; }
   private pilot() { return this.env.PILOT.getByName('pilot'); }
   private ownerUsage() { return this.env.PILOT.getByName(`usage:${this.scope.ownerId}`); }
@@ -175,7 +175,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         const db = await this.ctx.storage.get<DatabaseResource>(`db:${env}`);
         if (db) await this.api().remove(`/d1/database/${db.id}`);
       }
-      while (true) {
+      for (let pass = 0; pass < 50; pass++) {
         const objects = await this.env.ARTIFACTS.list({ prefix: `${this.alias}/`, limit: 100 });
         if (!objects.objects.length) break;
         await this.env.ARTIFACTS.delete(objects.objects.map(object => object.key));
@@ -252,6 +252,71 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         this.services().store.saveSettings(environment, { [provider === 'google' ? 'googleMode' : 'emailMode']: value ? 'custom' : 'managed' });
       });
       return Response.json({ integrations: await this.integrations(environment) });
+    }
+    if (path === '/domain' && request.method === 'GET') {
+      const stored = await this.ctx.storage.get<{ hostname: string; cfId: string; status?: string; verificationRecord?: { type: string; name: string; value: string } }>('custom-domain');
+      if (!stored) return Response.json({ domain: null });
+      try {
+        const info = await this.api().getCustomHostname(stored.cfId);
+        const domain = { hostname: stored.hostname, cfId: stored.cfId, status: info.status, ssl: info.ssl?.status, verificationRecord: info.ownership_verification, verificationErrors: info.verification_errors };
+        await this.ctx.storage.put('custom-domain', { ...stored, status: info.status });
+        return Response.json({ domain });
+      } catch {
+        return Response.json({ domain: { hostname: stored.hostname, cfId: stored.cfId, status: 'unknown' } });
+      }
+    }
+    if (path === '/domain' && request.method === 'POST') {
+      const body = await readJson(request) as { hostname: string };
+      const hostname = typeof body?.hostname === 'string' ? body.hostname.trim().toLowerCase() : '';
+      if (!hostname || !/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(hostname)) throw new RuntimeError('Enter a valid domain name (e.g. myapp.example.com).', 400);
+      if (hostname === this.env.RUNTIME_DOMAIN || hostname.endsWith('.' + this.env.RUNTIME_DOMAIN)) throw new RuntimeError(`That domain is already a ${this.env.RUNTIME_DOMAIN} address.`, 400);
+      const existing = await this.ctx.storage.get<{ hostname: string; cfId: string }>('custom-domain');
+      if (existing?.hostname === hostname) {
+        const info = await this.api().getCustomHostname(existing.cfId);
+        return Response.json({ domain: { hostname, cfId: existing.cfId, status: info.status, ssl: info.ssl?.status, verificationRecord: info.ownership_verification, verificationErrors: info.verification_errors } });
+      }
+      if (existing) {
+        await this.api().deleteCustomHostname(existing.cfId).catch(() => {});
+        await this.pilot().unregisterCustomHostname(existing.hostname, this.scope).catch(() => {});
+        await this.ctx.storage.delete('custom-domain');
+      }
+      const fallbackOrigin = `${this.alias || this.scope.projectId}.${this.env.RUNTIME_DOMAIN}`;
+      const info = await this.api().addCustomHostname(hostname, fallbackOrigin);
+      await this.ctx.storage.put('custom-domain', { hostname, cfId: info.id, status: info.status });
+      await this.pilot().registerCustomHostname(hostname, this.scope);
+      return Response.json({ domain: { hostname, cfId: info.id, status: info.status, ssl: info.ssl?.status, verificationRecord: info.ownership_verification } });
+    }
+    if (path === '/domain' && request.method === 'DELETE') {
+      const stored = await this.ctx.storage.get<{ hostname: string; cfId: string }>('custom-domain');
+      if (stored) {
+        await this.api().deleteCustomHostname(stored.cfId).catch(() => {});
+        await this.pilot().unregisterCustomHostname(stored.hostname, this.scope).catch(() => {});
+        await this.ctx.storage.delete('custom-domain');
+      }
+      return Response.json({ ok: true });
+    }
+    if (path === '/slug' && request.method === 'POST') {
+      const body = await readJson(request) as { slug: string };
+      const slug = typeof body?.slug === 'string' ? body.slug.toLowerCase().trim() : '';
+      if (!/^[a-z][a-z0-9-]{2,38}[a-z0-9]$/.test(slug)) throw new RuntimeError('App name must be 4–40 lowercase letters, numbers, or hyphens, and start with a letter.', 400);
+      if (slug === this.alias) return Response.json({ slug, url: this.url('production') });
+      await this.withControlLock(async () => {
+        const taken = await this.pilot().lookup(slug);
+        if (taken && (taken.ownerId !== this.scope.ownerId || taken.projectId !== this.scope.projectId)) throw new RuntimeError('That name is already taken. Try a different one.', 409);
+        const previous = this.alias;
+        this.alias = slug;
+        await this.ctx.storage.put('alias', slug);
+        requireAdmission(await this.pilot().register(slug, this.scope));
+        if (previous && previous !== slug) await this.pilot().unregister(previous, this.scope).catch(() => {});
+      });
+      return Response.json({ slug, url: this.url('production') });
+    }
+    if (path === '/slug/check' && request.method === 'GET') {
+      const slug = (url.searchParams.get('slug') || '').toLowerCase().trim();
+      if (!/^[a-z][a-z0-9-]{2,38}[a-z0-9]$/.test(slug)) return Response.json({ available: false, reason: 'Invalid format.' });
+      if (slug === this.alias) return Response.json({ available: true });
+      const taken = await this.pilot().lookup(slug);
+      return Response.json({ available: !taken || (taken.ownerId === this.scope.ownerId && taken.projectId === this.scope.projectId) });
     }
     if (path === '/preview-ticket' && request.method === 'POST') {
       const body = await request.json().catch(() => ({})) as { path?: string };
@@ -624,7 +689,8 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       assertSafeMigration(sql);
       if (/_bh_migrations/i.test(sql)) throw new RuntimeError('Migration metadata is reserved.');
       const receipt = { name, checksum, appliedAt: Date.now() };
-      await this.api().query(databaseId, `${sql}\n; INSERT INTO _bh_migrations(name,checksum,appliedAt) VALUES ('${name}','${checksum}',${receipt.appliedAt});`);
+      await this.api().query(databaseId, sql);
+      await this.api().query(databaseId, 'INSERT INTO _bh_migrations(name,checksum,appliedAt) VALUES (?,?,?)', [name, checksum, receipt.appliedAt]);
       receipts.push(receipt);
     }
     return receipts;

@@ -30,3 +30,19 @@
 @keyframes publication-spin { to { transform: rotate(360deg); } }
 @media (max-width: 480px) { .publication-dialog { padding: 20px; } .publication-dialog-backdrop { padding: 12px; } }
 @media (prefers-reduced-motion: reduce) { .publication-spinner { animation: none; } }
+
+/* App name / slug picker */
+.slug-picker { display: flex; flex-direction: column; gap: 0; }
+.slug-picker h3 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.slug-picker > p { margin: 0 0 24px; color: var(--text-muted); }
+.slug-picker-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
+.slug-picker-field label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.slug-input-row { display: flex; align-items: center; gap: 10px; }
+.slug-input-row input { flex: 1; min-height: 44px; padding: 10px 13px; border: 1px solid var(--border-medium); border-radius: 10px; background: var(--bg-card); color: var(--text-primary); font-size: 16px; font-family: var(--font-mono); outline: none; }
+.slug-input-row input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+.slug-preview { margin: 4px 0 0; font-size: 13px; font-family: var(--font-mono); }
+.slug-domain { color: var(--accent-primary); font-weight: 500; }
+.slug-placeholder { color: var(--text-muted); }
+.slug-rules { margin: 2px 0 0; font-size: 11px; color: var(--text-muted); }
+.slug-picker-actions { display: flex; flex-direction: column; gap: 10px; }
+.slug-picker-actions .button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }

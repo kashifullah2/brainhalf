@@ -1,14 +1,27 @@
 import { RuntimeError } from './types';
 import { readBoundedJson } from '../lib/http-body';
 
+export interface CustomHostname {
+  id: string;
+  hostname: string;
+  status: 'active' | 'pending' | 'active_redeploying' | 'deleted' | 'pending_deletion' | 'blocked' | 'error';
+  ssl: { status: 'active' | 'pending_validation' | 'pending_issuance' | 'pending_deployment' | 'expired' | 'initializing' | 'deleted' | 'error'; validation_errors?: Array<{ message: string }> };
+  ownership_verification?: { type: string; name: string; value: string };
+  ownership_verification_http?: { http_url: string; http_body: string };
+  verification_errors?: string[];
+}
+
 /** Only the control Worker holds this token. It is never bound to generated apps. */
 export class CloudflareAPI {
-  constructor(private accountId: string, private token: string | undefined) {}
-  async request<T>(path: string, method = 'GET', data?: unknown): Promise<T> {
+  constructor(private accountId: string, private token: string | undefined, private zoneId?: string) {}
+  async request<T>(path: string, method = 'GET', data?: unknown, base?: string): Promise<T> {
     if (!this.accountId || !this.token) throw new RuntimeError('Cloudflare resource provisioning is not configured.', 503);
     const headers = new Headers({ Authorization: `Bearer ${this.token}` });
     if (data && !(data instanceof FormData)) headers.set('Content-Type', 'application/json');
-    const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(this.accountId)}${path}`, {
+    const url = base
+      ? `https://api.cloudflare.com/client/v4/${base}${path}`
+      : `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(this.accountId)}${path}`;
+    const response = await fetch(url, {
       method, headers, body: data instanceof FormData ? data : data === undefined ? undefined : JSON.stringify(data),
       signal: AbortSignal.timeout(30_000), redirect: 'manual',
     });
@@ -17,6 +30,32 @@ export class CloudflareAPI {
     const body = await readBoundedJson<{ success?: boolean; result: T }>(response, 8_000_000);
     if (!response.ok || body.success === false) throw new RuntimeError(`Cloudflare ${method} failed (${response.status}). Check the runtime token permissions and account limits.`, 502);
     return body.result;
+  }
+
+  private zoneRequest<T>(path: string, method = 'GET', data?: unknown): Promise<T> {
+    if (!this.zoneId) throw new RuntimeError('Custom domain support is not configured for this account.', 503);
+    return this.request<T>(path, method, data, `zones/${encodeURIComponent(this.zoneId)}`);
+  }
+
+  async addCustomHostname(hostname: string, fallbackOrigin: string): Promise<CustomHostname> {
+    return this.zoneRequest<CustomHostname>('/custom_hostnames', 'POST', {
+      hostname,
+      ssl: { method: 'http', type: 'dv', settings: { min_tls_version: '1.2' } },
+      custom_origin_server: fallbackOrigin,
+    });
+  }
+
+  async getCustomHostname(id: string): Promise<CustomHostname> {
+    return this.zoneRequest<CustomHostname>(`/custom_hostnames/${encodeURIComponent(id)}`);
+  }
+
+  async deleteCustomHostname(id: string): Promise<void> {
+    await this.zoneRequest(`/custom_hostnames/${encodeURIComponent(id)}`, 'DELETE');
+  }
+
+  async findCustomHostname(hostname: string): Promise<CustomHostname | null> {
+    const results = await this.zoneRequest<CustomHostname[]>(`/custom_hostnames?hostname=${encodeURIComponent(hostname)}`).catch(() => null);
+    return results?.find(h => h.hostname === hostname) || null;
   }
   async createDatabase(name: string) {
     const lookup = async () => (await this.request<Array<{ uuid: string; name: string }>>(`/d1/database?name=${encodeURIComponent(name)}&per_page=100`)).find(database => database.name === name);

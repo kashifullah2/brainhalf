@@ -6,6 +6,7 @@ compatibility_flags = [ "nodejs_compat" ]
 [vars]
 REQUIRED_MODEL_PROVIDERS = "cloudflare"
 REQUIRED_PUBLIC_SERVICES = "email,google"
+ADMIN_EMAILS = "kashifullah919@gmail.com"
 
 [[routes]]
 pattern = "brainhalf.com"

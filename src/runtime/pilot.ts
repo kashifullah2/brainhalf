@@ -86,6 +86,23 @@ export class PilotCoordinator extends DurableObject<RuntimeEnv> {
     }));
   }
   lookup(alias: string) { return this.ctx.storage.get<ProjectScope>(`project:${alias}`); }
+  lookupCustomHostname(hostname: string) { return this.ctx.storage.get<ProjectScope>(`custom-hostname:${hostname}`); }
+  async registerCustomHostname(hostname: string, scope: ProjectScope): Promise<void> {
+    await this.ctx.storage.transaction(async txn => {
+      const existing = await txn.get<ProjectScope>(`custom-hostname:${hostname}`);
+      if (existing) {
+        if (existing.ownerId === scope.ownerId && existing.projectId === scope.projectId) return; // idempotent
+        throw new RuntimeError('This domain is already registered to another project.', 409);
+      }
+      await txn.put(`custom-hostname:${hostname}`, scope);
+    });
+  }
+  async unregisterCustomHostname(hostname: string, scope: ProjectScope): Promise<void> {
+    const existing = await this.ctx.storage.get<ProjectScope>(`custom-hostname:${hostname}`);
+    if (existing && existing.ownerId === scope.ownerId && existing.projectId === scope.projectId) {
+      await this.ctx.storage.delete(`custom-hostname:${hostname}`);
+    }
+  }
   async unregister(alias: string, scope: ProjectScope) {
     await this.ctx.storage.transaction(async txn => {
       const existing = await txn.get<ProjectScope>(`project:${alias}`);

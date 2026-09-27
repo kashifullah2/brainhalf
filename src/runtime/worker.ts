@@ -77,13 +77,24 @@ export default {
     try {
       if (env.RUNTIME_ENABLED !== 'true') throw new RuntimeError('Runtime is temporarily unavailable.', 503);
       const url = new URL(request.url);
+      const pilot = env.PILOT.getByName('pilot');
       const suffix = `.${env.RUNTIME_DOMAIN}`;
-      if (!url.hostname.endsWith(suffix)) throw new RuntimeError('Unknown app.', 404);
-      let alias = url.hostname.slice(0, -suffix.length);
-      const environment = alias.startsWith('dev-') ? 'development' : 'production';
-      if (environment === 'development') alias = alias.slice(4);
-      if (!/^[a-f0-9]{32}$/.test(alias)) throw new RuntimeError('Unknown app.', 404);
-      const scope = await env.PILOT.getByName('pilot').lookup(alias);
+
+      let scope: ReturnType<typeof pilot.lookup> extends Promise<infer T> ? T : never;
+      let environment: 'development' | 'production' = 'production';
+
+      if (url.hostname.endsWith(suffix)) {
+        // *.apps.brainhalf.com — standard BrainHalf subdomain routing
+        let alias = url.hostname.slice(0, -suffix.length);
+        environment = alias.startsWith('dev-') ? 'development' : 'production';
+        if (environment === 'development') alias = alias.slice(4);
+        if (!/^([a-f0-9]{32}|[a-z][a-z0-9-]{2,38}[a-z0-9])$/.test(alias)) throw new RuntimeError('Unknown app.', 404);
+        scope = await pilot.lookup(alias);
+      } else {
+        // Custom domain — look up by hostname in pilot
+        scope = await pilot.lookupCustomHostname(url.hostname);
+      }
+
       if (!scope || !runtimeOwnerAllowed(env, scope.ownerId)) throw new RuntimeError('Unknown app.', 404);
       const response = await env.PROJECTS.getByName(scope.projectId).appRequest(request, environment);
       const safe = new Response(response.body, response);
