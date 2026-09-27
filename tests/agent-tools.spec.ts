@@ -49,7 +49,7 @@ test('an image can be sent without text and failed uploads preserve the draft', 
   state.sockets[0].socket.send(JSON.stringify({ type: 'stream', chunk: { response: 'Received.', done: true } }));
   await page.getByLabel('Message to the app builder').fill('Keep my draft');
   await page.getByLabel('Attach file or screenshot').setInputFiles({ name: 'bad.pdf', mimeType: 'application/pdf', buffer: Buffer.from('not a PDF') });
-  await expect(page.locator('.composer-upload-status[role=alert]')).toBeVisible(); await expect(page.getByLabel('Message to the app builder')).toHaveValue('Keep my draft');
+  await expect(page.locator('.composer-upload-status[role=alert]')).toBeVisible({ timeout: 15000 }); await expect(page.getByLabel('Message to the app builder')).toHaveValue('Keep my draft');
 });
 test('image uploads recognize their bytes despite misleading or missing MIME labels', async ({ page }) => {
   const state = await toolsFixture(page);
@@ -67,8 +67,14 @@ test('image uploads recognize their bytes despite misleading or missing MIME lab
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 test('MCP selection, skill import and focus work without a project settings screen', async ({ page }) => {
-  const state = await toolsFixture(page); await openAdvanced(page); const trigger = page.getByRole('button', { name: 'Agent tools', exact: true }); await trigger.click();
+  const state = await toolsFixture(page); await openAdvanced(page);
+  // Open agent tools via + menu → Upload skills
+  const trigger = page.getByRole('button', { name: 'Add and configure options', exact: true });
+  await trigger.click();
+  await page.getByRole('menuitem', { name: 'Upload skills', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Agent tools', exact: true }); await expect(dialog).toBeVisible();
+  // Switch to MCP connections tab
+  await dialog.getByRole('button', { name: 'MCP connections', exact: true }).click();
   await dialog.getByLabel('Name', { exact: true }).fill('Inventory'); await dialog.getByLabel('Server URL').fill('https://inventory.example.com/mcp'); await dialog.getByLabel('Bearer token').fill('private-browser-token');
   await dialog.getByRole('button', { name: 'Connect and discover tools' }).click(); await expect.poll(() => state.servers.length).toBe(1);
   await expect(dialog.getByLabel('Enabled for the agent')).toBeDisabled(); await dialog.getByText('0 of 1 tools selected').click(); await dialog.getByLabel('lookup', { exact: false }).check();
@@ -83,8 +89,10 @@ test('MCP selection, skill import and focus work without a project settings scre
 test('a pending tool selection stays checked and rolls back when saving fails', async ({ page }) => {
   const state = await toolsFixture(page);
   await openAdvanced(page);
-  await page.getByRole('button', { name: 'Agent tools', exact: true }).click();
+  await page.getByRole('button', { name: 'Add and configure options', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Upload skills', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Agent tools', exact: true });
+  await dialog.getByRole('button', { name: 'MCP connections', exact: true }).click();
   await dialog.getByLabel('Name', { exact: true }).fill('Inventory');
   await dialog.getByLabel('Server URL').fill('https://inventory.example.com/mcp');
   await dialog.getByRole('button', { name: 'Connect and discover tools' }).click();

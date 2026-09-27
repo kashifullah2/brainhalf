@@ -45,10 +45,12 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
     expect(m!.maxTokens).toBe(64000);
   });
 
-  it('offers GLM 5.3 Flash under its exact Cloudflare identity', () => {
+  it('resolves GLM 5.3 Flash server-side but does not offer it in the picker', () => {
     const id = '@cf/zai-org/glm-5.3-flash';
-    expect(FRONTEND_CATALOG).toContain(id);
-    expect(resolveModel(id, 'cloudflare')).toMatchObject({ id, provider: 'cloudflare', maxTokens: 8192 });
+    // Disabled in picker (times out on all generation levels) but still resolvable
+    // so saved sessions that previously used it do not get a hard error.
+    expect(FRONTEND_CATALOG).not.toContain(id);
+    expect(resolveModel(id, 'cloudflare')).toMatchObject({ id, provider: 'cloudflare', maxTokens: 8192, clientSelectable: false });
     expect(resolveModel(id, 'aws')).toBeNull();
     expect(resolveModel('@cf/zai-org/glm-5.3')).toBeNull();
   });

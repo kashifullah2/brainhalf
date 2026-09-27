@@ -94,7 +94,7 @@ test('dashboard and dashboard project links survive reload', async ({ page }) =>
   await page.reload();
   await expect(page.locator('.recent-projects')).toBeVisible();
   await page.getByRole('button', { name: 'Open Zeta analytics', exact: true }).click();
-  await expect(page).toHaveURL(/\/dashboard\?project=recent-0/);
+  await expect(page).toHaveURL(/\?project=recent-0/);
   await page.reload();
   await expect(page.getByLabel('Message to the app builder')).toBeVisible();
   await expect(page.locator('.recent-projects')).toHaveCount(0);

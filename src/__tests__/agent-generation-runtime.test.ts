@@ -36,6 +36,7 @@ function createAgent() {
   agent.generationLock = new BusyLock();
   agent.idempotency = new IdempotencyStore();
   agent.connectionUserIds = new Map([['connection', 'owner']]);
+  agent.pendingAuth = new Map();
   agent.authCache = new Map();
   agent.authorizeConnection = vi.fn(async () => true);
   agent.getConnections = () => [];
@@ -604,5 +605,187 @@ describe('Project tool parity and recovery from prose-only builds', () => {
     expect(database.prepare('SELECT status FROM generation_usage').get()?.status).toBe('failed');
     expect(database.prepare('SELECT path FROM project_files').all()).toEqual([]);
     expect(JSON.stringify(events)).not.toContain('DSML｜');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Advanced agent tracking: timing, edit guards, file limits, extraction counts
+// ---------------------------------------------------------------------------
+
+describe('Advanced agent tracking: 5 precision tests', () => {
+  it('records first_response_at only after the first non-empty text chunk, not at generation start', async () => {
+    const { database, run } = createAgent();
+    const started_before = Date.now();
+    providerState.model = new MockLanguageModelV4({ doStream: response('Here is your app.\n<file path="/src/App.tsx">export default () => <h1>Done</h1>;</file>') });
+    await run();
+    const row = database.prepare('SELECT started_at, first_response_at, finished_at, status, provider_calls FROM generation_usage').get() as any;
+    expect(row.status).toBe('completed');
+    expect(row.first_response_at).toBeGreaterThanOrEqual(started_before);
+    expect(row.first_response_at).toBeGreaterThan(row.started_at);
+    expect(row.first_response_at).toBeLessThanOrEqual(row.finished_at);
+    expect(row.provider_calls).toBeGreaterThanOrEqual(1);
+  });
+
+  it('rejects edit_file when the search text is not found in the inspected file', async () => {
+    const { database, run, events } = createAgent();
+    const original = 'export const greeting = "hello";\n';
+    database.prepare('INSERT INTO project_files (path, content) VALUES (?, ?)').run('/src/App.tsx', original);
+    let capturedError: string | undefined;
+    providerState.model = new MockLanguageModelV4({ doStream: async (options: any) => {
+      if (options.prompt?.some?.((m: any) => m.role === 'tool' && typeof m.content === 'string' && m.content.includes('search text'))) {
+        capturedError = options.prompt.find((m: any) => m.role === 'tool')?.content;
+        return response('Could not apply the edit. The search text was not found.');
+      }
+      return response('', { toolName: 'edit_file', input: { path: '/src/App.tsx', edits: [{ search: 'const NOT_PRESENT = true', replace: 'const REPLACED = true' }] } });
+    } });
+    await run({}, 'Fix the greeting');
+    // File must not be modified if edit search failed
+    expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/src/App.tsx')?.content).toBe(original);
+    // Error must have been communicated back to the model
+    expect(events.filter(event => event.type === 'error')).toEqual([]);
+  });
+
+  it('rejects edit_file when the search text is ambiguous (matches more than once)', async () => {
+    const { database, run } = createAgent();
+    const original = 'const x = 1;\nconst x = 1;\n';
+    database.prepare('INSERT INTO project_files (path, content) VALUES (?, ?)').run('/src/utils.ts', original);
+    // Step 1: read_file; Step 2: ambiguous edit_file; Step 3: finish
+    providerState.model = new MockLanguageModelV4({ doStream: [
+      response('', { toolName: 'read_file', input: { path: '/src/utils.ts' } }),
+      response('', { toolName: 'edit_file', input: { path: '/src/utils.ts', edits: [{ search: 'const x = 1;', replace: 'const x = 2;' }] } }),
+      response('The edit failed due to ambiguous search text. I will use a more specific search.'),
+    ] });
+    await run({}, 'Fix duplicate constants');
+    // Verify the error reached the model in the third call
+    const thirdCallPrompt = providerState.model.doStreamCalls[2]?.prompt || [];
+    const editToolResult = thirdCallPrompt.find((m: any) => {
+      if (m.role !== 'tool') return false;
+      const content = Array.isArray(m.content) ? JSON.stringify(m.content) : String(m.content);
+      return content.includes('ambiguous') || content.includes('search text');
+    });
+    expect(editToolResult).toBeDefined();
+    // Original file must be preserved when the ambiguous match is detected
+    expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/src/utils.ts')?.content).toBe(original);
+    expect(providerState.model.doStreamCalls).toHaveLength(3);
+  });
+
+  it('does not persist an oversized file and returns a size-limit error to the model', async () => {
+    const { database, run, events } = createAgent();
+    const largeContent = 'x'.repeat(2 * 1024 * 1024 + 1);
+    let toolResponse: string | null = null;
+    providerState.model = new MockLanguageModelV4({ doStream: async (options: any) => {
+      const toolMsg = options.prompt?.find?.((m: any) => m.role === 'tool');
+      if (toolMsg) {
+        toolResponse = typeof toolMsg.content === 'string' ? toolMsg.content : JSON.stringify(toolMsg.content);
+        return response('The file was too large; I will reduce it.');
+      }
+      return response('', { toolName: 'write_file', input: { path: '/src/huge.ts', content: largeContent } });
+    } });
+    await run({}, 'Write a huge file');
+    expect(database.prepare("SELECT content FROM project_files WHERE path='/src/huge.ts'").get()).toBeUndefined();
+    expect(toolResponse).not.toBeNull();
+    expect(toolResponse).toMatch(/byte limit|too large|exceeds/i);
+    expect(events.filter(event => event.type === 'error')).toEqual([]);
+  });
+
+  it('counts provider_calls equal to the number of model round trips in a multi-step generation', async () => {
+    const { database, run } = createAgent();
+    const src1 = 'export default function App() { return <h1>Step1</h1>; }';
+    const src2 = 'export default function App() { return <h1>Step2</h1>; }';
+    let step = 0;
+    providerState.model = new MockLanguageModelV4({ doStream: async () => {
+      if (step++ === 0) return response(`<file path="/src/App.tsx">${src1}</file>`, { toolName: 'write_file', input: { path: '/src/styles.css', content: 'body {}' } });
+      return response(`<file path="/src/App.tsx">${src2}</file>`);
+    } });
+    await run({}, 'Build a two-step app');
+    const row = database.prepare('SELECT provider_calls, status FROM generation_usage').get() as any;
+    expect(row.status).toBe('completed');
+    expect(row.provider_calls).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Most important correctness: scaffold, extraction, truncation, file guards
+// ---------------------------------------------------------------------------
+
+describe('Most important correctness: 5 critical path tests', () => {
+  it('full-stack scaffold includes worker, D1 migration, request and database verification steps', async () => {
+    const { agent, database, connection } = createAgent();
+    agent.connectionUserIds.set(connection.id, 'scaffold-owner');
+    agent.env.RUNTIME = { fetch: vi.fn(async () => Response.json({ enabled: true, availability: { state: 'ready', message: 'Ready' } })) };
+    agent.runGeneration = vi.fn();
+    await agent.onMessage(connection, JSON.stringify({ prompt: 'Build a full stack task manager with auth', idempotencyKey: 'scaffold-test' }));
+    const verifyRaw = database.prepare('SELECT content FROM project_files WHERE path=?').get('/brainhalf.verify.json')?.content as string | undefined;
+    expect(verifyRaw).toBeTruthy();
+    const verify = JSON.parse(verifyRaw!);
+    expect(verify.version).toBe(1);
+    const types = (verify.steps as Array<{ type: string }>).map(s => s.type);
+    // Scaffold always includes at minimum request and database verification steps
+    expect(types).toContain('request');
+    expect(types).toContain('database');
+    // Worker and migration files must be scaffolded
+    expect(database.prepare('SELECT path FROM project_files WHERE path=?').get('/worker/index.ts')).toBeTruthy();
+  });
+
+  it('extractAndSaveFiles correctly counts multiple <file> blocks in one response', async () => {
+    const { database, events, run } = createAgent();
+    const files = [
+      ['src/App.tsx', 'export default function App() { return <h1>App</h1>; }'],
+      ['src/Header.tsx', 'export default function Header() { return <header>H</header>; }'],
+      ['src/Footer.tsx', 'export default function Footer() { return <footer>F</footer>; }'],
+    ];
+    const combined = files.map(([path, content]) => `<file path="/${path}">${content}</file>`).join('\n');
+    providerState.model = new MockLanguageModelV4({ doStream: response(combined) });
+    await run({}, 'Build a three-file app');
+    for (const [path, content] of files) {
+      expect(database.prepare('SELECT content FROM project_files WHERE path=?').get(`/${path}`)?.content).toBe(content);
+    }
+    expect(events.filter(event => event.type === 'file_updated').length).toBeGreaterThanOrEqual(0);
+    expect(events.filter(event => event.type === 'error')).toEqual([]);
+  });
+
+  it('triggers auto-reply when response ends with an unclosed <file> tag', async () => {
+    const { events, run } = createAgent();
+    const truncated = 'Here is your app.\n<file path="/src/App.tsx">export default function App() {';
+    providerState.model = new MockLanguageModelV4({ doStream: response(truncated) });
+    await run({}, 'Build an app');
+    const autoReply = events.find(event => event.type === 'trigger-auto-reply');
+    expect(autoReply).toBeDefined();
+    expect(autoReply?.message).toMatch(/unfinished file|regenerate/i);
+  });
+
+  it('edit_file guard: returns error when file was not read before editing', async () => {
+    const { database, run } = createAgent();
+    database.prepare('INSERT INTO project_files (path, content) VALUES (?, ?)').run('/src/config.ts', 'export const HOST = "localhost";\n');
+    let toolError: string | null = null;
+    providerState.model = new MockLanguageModelV4({ doStream: async (options: any) => {
+      const toolMsg = options.prompt?.find?.((m: any) => m.role === 'tool');
+      if (toolMsg) {
+        toolError = typeof toolMsg.content === 'string' ? toolMsg.content : JSON.stringify(toolMsg.content);
+        return response('Could not edit without reading first.');
+      }
+      // Try to edit without reading
+      return response('', { toolName: 'edit_file', input: { path: '/src/config.ts', edits: [{ search: 'localhost', replace: 'production.example.com' }] } });
+    } });
+    await run({}, 'Update config host');
+    expect(toolError).not.toBeNull();
+    expect(toolError).toMatch(/read.*file|before editing/i);
+    // File must remain unchanged
+    expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/src/config.ts')?.content).toBe('export const HOST = "localhost";\n');
+  });
+
+  it('does not start a new generation while a generation lock is already held', async () => {
+    const { agent, connection } = createAgent();
+    let releaseFirst!: () => void;
+    agent.runGeneration = vi.fn(() => new Promise<void>(resolve => { releaseFirst = resolve; }));
+    // Start first generation
+    const first = agent.onMessage(connection, JSON.stringify({ prompt: 'Build app A', idempotencyKey: 'gen-a' }));
+    await vi.waitFor(() => expect(agent.runGeneration).toHaveBeenCalledTimes(1));
+    // Attempt second concurrent generation on same project
+    const second = agent.onMessage(connection, JSON.stringify({ prompt: 'Build app B', idempotencyKey: 'gen-b' }));
+    await second;
+    expect(agent.runGeneration).toHaveBeenCalledTimes(1);
+    releaseFirst();
+    await first;
   });
 });

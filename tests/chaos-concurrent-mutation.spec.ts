@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
-const BASE_URL = 'https://brainhalf.com';
-const ARTIFACT_DIR = '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
 
 // Helper: collect console errors
 function collectConsoleErrors(page: Page): string[] {
@@ -77,9 +77,9 @@ test.describe('Chaos: Concurrent AI Agent Mutation Tests', () => {
       }
     }
 
-    // Select Llama 3.3 70B model for reliable generation
-    const modelSelect = page.locator('select').first();
-    await modelSelect.selectOption('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    // Select model via custom dropdown picker
+    await page.locator('[data-testid="model-picker-btn"]').first().click();
+    await page.locator('[data-testid="model-option"]').first().click();
 
     // Send complex SaaS prompt
     await sendPrompt(page, 'Build a responsive SaaS analytics dashboard with sidebar navigation, dashboard metrics cards, a data table, search bar, and dark mode toggle. Use inline styles and lucide-react icons.');
@@ -98,7 +98,7 @@ test.describe('Chaos: Concurrent AI Agent Mutation Tests', () => {
     await previewTab.click();
     await page.waitForTimeout(500);
 
-    const consoleTab = page.locator('[role="tablist"] button[role="tab"]').filter({ hasText: 'Console' }).first();
+    const consoleTab = page.locator('[role="tablist"] button[role="tab"]').filter({ hasText: 'Build' }).first();
     await consoleTab.click();
     await page.waitForTimeout(500);
 

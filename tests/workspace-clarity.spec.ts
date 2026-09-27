@@ -145,7 +145,7 @@ test('file progress follows writing, saved and stopped events before an app entr
   await expect(page.getByTestId('model-status-pill')).toHaveText('Stopped');
   const footer = page.getByLabel('Build information');
   await expect(footer).toContainText('files');
-  await expect(footer.getByRole('button', { name: 'Console' })).toBeVisible();
+  await expect(footer.getByRole('button', { name: 'Build' })).toBeVisible();
   await expect(footer.getByRole('button', { name: 'Activity' })).toBeVisible();
   const count = await footer.locator('span').innerText();
   await expect(page.locator('.studio-build-progress summary')).toContainText(count.replace(' files', ' project files'));
@@ -191,7 +191,7 @@ for (const theme of ['light', 'dark'] as const) {
     await mkdir('audit-artifacts/2026-09-22/workspace-clarity', { recursive: true });
     await page.screenshot({ path: `audit-artifacts/2026-09-22/workspace-clarity/${theme}-mobile-chat.png` });
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
-    await expect(page.getByLabel('Build information').getByRole('button', { name: 'Console' })).toBeVisible();
+    await expect(page.getByLabel('Build information').getByRole('button', { name: 'Build' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Mobile view (375px)' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `audit-artifacts/2026-09-22/workspace-clarity/${theme}-mobile-preview.png` });
@@ -238,11 +238,6 @@ test('project and conversation menus consolidate actions and restore keyboard fo
   await page.keyboard.press('Escape');
   await expect(actions).toBeFocused();
   await openAdvanced(page);
-  const tools = page.getByRole('button', { name: 'Agent tools', exact: true });
-  await tools.click();
-  await expect(page.getByRole('dialog', { name: 'Agent tools', exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(tools).toBeFocused();
   await page.getByRole('button', { name: 'User profile and menu' }).click();
   await expect(page.getByRole('menuitem', { name: /Export|Project settings|Reset/ })).toHaveCount(0);
   await page.keyboard.press('Escape');
@@ -333,15 +328,8 @@ test('returning from a small screen preserves the chosen desktop chat width', as
   await expect(divider).toHaveAttribute('aria-valuenow', '450');
 });
 
-test('beginner composer chooses defaults and keeps model and hosting controls under Advanced', async ({ page }) => {
+test('composer always shows model, agent tools, and hosting controls', async ({ page }) => {
   await setupLifecycle(page);
-  await expect(page.getByTestId('model-picker-btn')).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Agent tools', exact: true })).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Hosting settings', exact: true })).toBeHidden();
-  await openAdvanced(page);
-  await expect(page.getByTestId('model-picker-btn')).toContainText('DeepSeek V4 Pro');
-  await expect(page.getByRole('button', { name: 'Hosting settings', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Advanced', exact: true }).click();
-  await expect(page.getByTestId('model-picker-btn')).toBeHidden();
+  await expect(page.getByTestId('model-picker-btn')).toBeVisible();
   await expect(page.getByLabel('Message to the app builder')).toBeVisible();
 });

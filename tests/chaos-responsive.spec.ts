@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
-const BASE_URL = 'https://brainhalf.com';
-const ARTIFACT_DIR = '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
 
 const VIEWPORTS = [
   { name: 'mobile', width: 375, height: 812 },

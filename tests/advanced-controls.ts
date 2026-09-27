@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-export async function openAdvanced(page: Page) {
-  const advanced = page.getByRole('button', { name: 'Advanced', exact: true });
-  if (await advanced.getAttribute('aria-expanded') !== 'true') await advanced.click();
-}
+// Advanced controls (Model, Agent tools, Hosting settings) are always visible —
+// no toggle button needed. This helper is kept as a no-op so existing call sites
+// continue to compile and run without changes.
+export async function openAdvanced(_page: Page) {}

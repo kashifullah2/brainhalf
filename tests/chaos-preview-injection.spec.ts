@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
-const BASE_URL = 'https://brainhalf.com';
-const ARTIFACT_DIR = '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
 
 function collectConsoleErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -37,7 +37,8 @@ test.describe('Chaos: Preview Runtime & Error Injection Tests', () => {
     expect(projectId).toBeTruthy();
 
     // Select fast model
-    await page.locator('select').first().selectOption('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    await page.locator('[data-testid="model-picker-btn"]').first().click();
+    await page.locator('[data-testid="model-option"]').first().click();
 
     // STEP 1: Generate a working app
     await sendPrompt(page, 'Create a simple stopwatch with start, stop, and reset buttons. Show elapsed time in MM:SS format. Use inline styles with a dark background.');
@@ -88,7 +89,7 @@ test.describe('Chaos: Preview Runtime & Error Injection Tests', () => {
     await page.screenshot({ path: `${ARTIFACT_DIR}/chaos_preview_after_edit.png` });
 
     // STEP 6: Check console for errors
-    const consoleTabCheck = page.locator('[role="tablist"] button[role="tab"]').filter({ hasText: 'Console' }).first();
+    const consoleTabCheck = page.locator('[role="tablist"] button[role="tab"]').filter({ hasText: 'Build' }).first();
     await consoleTabCheck.click();
     await page.waitForTimeout(1000);
     await page.screenshot({ path: `${ARTIFACT_DIR}/chaos_preview_console.png` });

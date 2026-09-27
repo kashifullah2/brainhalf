@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
-const BASE_URL = 'https://brainhalf.com';
-const ARTIFACT_DIR = '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
 
 function collectConsoleErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -34,7 +34,8 @@ test.describe('Chaos: Race Condition Tests', () => {
     await page.waitForTimeout(1000);
 
     // Select fast model
-    await page.locator('select').first().selectOption('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    await page.locator('[data-testid="model-picker-btn"]').first().click();
+    await page.locator('[data-testid="model-option"]').first().click();
 
     // Fill prompt
     const textarea = page.locator('textarea').first();
@@ -68,7 +69,8 @@ test.describe('Chaos: Race Condition Tests', () => {
     await page.locator('button[aria-label="Create New Project"]').first().click();
     await page.waitForTimeout(1000);
 
-    await page.locator('select').first().selectOption('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    await page.locator('[data-testid="model-picker-btn"]').first().click();
+    await page.locator('[data-testid="model-option"]').first().click();
 
     // Send first prompt
     await sendPrompt(page, 'Create a todo list app with add, delete, and mark as done features.');
@@ -111,7 +113,8 @@ test.describe('Chaos: Race Condition Tests', () => {
     await page.waitForTimeout(1000);
     const projectAId = new URL(page.url()).searchParams.get('project');
 
-    await page.locator('select').first().selectOption('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    await page.locator('[data-testid="model-picker-btn"]').first().click();
+    await page.locator('[data-testid="model-option"]').first().click();
     await sendPrompt(page, 'Create a simple clock app.');
 
     // Wait briefly for generation to start
@@ -152,7 +155,8 @@ test.describe('Chaos: Race Condition Tests', () => {
     await page.locator('button[aria-label="Create New Project"]').first().click();
     await page.waitForTimeout(1000);
 
-    await page.locator('select').first().selectOption('@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    await page.locator('[data-testid="model-picker-btn"]').first().click();
+    await page.locator('[data-testid="model-option"]').first().click();
     await sendPrompt(page, 'Create a colorful gradient background app with a centered title.');
 
     // Wait for generation to begin

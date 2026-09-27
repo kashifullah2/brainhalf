@@ -23,6 +23,7 @@ describe('WebSocket session and ownership revocation', () => {
     await agent.onMessage(connection, '{"type":"ping"}');
     expect(connection.send).toHaveBeenCalledWith('{"type":"pong"}');
     connection.send.mockClear(); revoke();
+    agent.authCache.clear();
     await agent.onMessage(connection, '{"type":"ping"}');
     expect(connection.send).not.toHaveBeenCalled(); expect(connection.close).toHaveBeenCalledWith(4401, expect.any(String));
     expect(agent.connectionUserIds.size).toBe(0);

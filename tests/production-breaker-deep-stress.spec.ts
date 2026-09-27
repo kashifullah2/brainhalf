@@ -384,7 +384,7 @@ test.describe('BrainHalf Production Breaker: Deep Stress & Adversarial Suite', (
     await auditBtn('Code Editor Copy', 'button[aria-label="Copy full file code"]');
 
     // 12. Console Tab Actions (Clear Output)
-    const consoleTab = page.locator('[role="tablist"] button[role="tab"]:has-text("Console")').first();
+    const consoleTab = page.locator('[role="tablist"] button[role="tab"]:has-text("Build")').first();
     await consoleTab.click();
     await page.waitForTimeout(300);
     await auditBtn('Console Clear Output', 'button:has-text("Clear Output")');

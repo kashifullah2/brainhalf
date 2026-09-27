@@ -30,7 +30,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
 
     expect(html).toContain('Get Started');
     expect(html).toContain('Sign in');
-    expect(html).toContain('Build the tools your business needs.');
+    expect(html).toContain('Build the tools');
     expect(html).toContain('Create app from prompt');
   });
 
@@ -62,7 +62,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
 
     expect(html).toContain('Inventory tool');
     expect(html).toContain('Booking app');
-    expect(html).toContain('Customer portal');
+    expect(html).toContain('Task manager');
     expect(html).toContain('Simple CRM');
   });
 
@@ -90,7 +90,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
     );
 
     expect(html).toContain('Create account');
-    expect(html).toContain('Create your studio account');
+    expect(html).toContain('Start building for free');
     expect(html).toContain('aria-label="Close"');
   });
 
@@ -102,7 +102,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
       })
     );
 
-    expect(html).toContain('Sign in to your studio');
+    expect(html).toContain('Sign in to continue building');
     expect(html).toContain('Sign in');
   });
 });

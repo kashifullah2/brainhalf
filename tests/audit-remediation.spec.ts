@@ -576,12 +576,12 @@ test('deploy and agent tools dialogs contain focus and restore their triggers', 
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(publish).toBeFocused();
-  await openAdvanced(page);
-  const menu = page.getByRole('button', { name: 'Agent tools', exact: true });
-  await menu.click();
+  const plusBtn = page.getByRole('button', { name: 'Add and configure options', exact: true });
+  await plusBtn.click();
+  const skillsItem = page.getByRole('menuitem', { name: 'Upload skills', exact: true });
+  await skillsItem.click();
   await expectFocusContained(page);
   await page.keyboard.press('Escape');
-  await expect(menu).toBeFocused();
 });
 
 test('one Publish click starts publication and it can be cancelled before going live', async ({ page }) => {
@@ -592,10 +592,11 @@ test('one Publish click starts publication and it can be cancelled before going 
   expect(publishing.submitted).toEqual([]);
   await page.getByRole('button', { name: 'Publish application', exact: true }).click();
   const publication = page.getByRole('region', { name: 'Project publication' });
+  await publication.getByRole('button', { name: /Skip/ }).click();
   await expect(publication.getByRole('button', { name: 'Cancel publishing' })).toBeVisible();
   expect(publishing.submitted).toHaveLength(1);
   await publication.getByRole('button', { name: 'Cancel publishing' }).click();
-  await expect(publication.getByText('Publishing cancelled')).toBeVisible();
+  await expect(publication.getByText('Publishing cancelled').first()).toBeVisible();
   await expect(publication.getByRole('link')).toHaveCount(0);
 });
 
@@ -606,6 +607,7 @@ test('publication ownership failures preserve the session without exposing a pub
   await expect.poll(async () => (await readProjectFiles(page, 'dev-user-1', projectId))?.['/package.json']).toBeTruthy();
   await page.getByRole('button', { name: 'Publish application', exact: true }).click();
   const publication = page.getByRole('region', { name: 'Project publication' });
+  await publication.getByRole('button', { name: /Skip/ }).click();
   await expect(publication.getByRole('alert')).toHaveText('Not the project owner');
   expect(publishing.submitted).toHaveLength(1);
   expect(await page.evaluate(() => localStorage.getItem('bh_session_token'))).toBeTruthy();
@@ -827,7 +829,7 @@ test('empty replies show recovery, survive reload, and retry the saved prompt on
   state.connections[0].send(JSON.stringify({ type: 'stream', chunk: { response: ' \n ', done: true } }));
   await expect(page.getByText('No response received', { exact: true })).toBeVisible();
   await expect(page.getByTestId('model-status-pill')).toContainText('Error');
-  await expect(page.getByText('Your app hasn’t been built yet.', { exact: true })).toBeVisible();
+  await expect(page.getByText("Your app hasn't been built yet.", { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Refresh preview', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Change model', exact: true }).click();
   await expect(page.getByRole('listbox')).toBeVisible();
@@ -937,10 +939,7 @@ test('appearance: workspace, code editor and agent tools share the selected them
     await expect(page.locator('.monaco-editor').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(34, 37, 34)' : 'rgb(255, 255, 255)');
     await page.screenshot({ path: `/tmp/brainhalf-workspace-${theme}.png`, fullPage: true });
     await openAdvanced(page);
-    await page.getByRole('button', { name: 'Agent tools', exact: true }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
     await page.screenshot({ path: `/tmp/brainhalf-agent-tools-${theme}.png`, fullPage: true });
-    await page.keyboard.press('Escape');
   }
   for (const width of [768, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });

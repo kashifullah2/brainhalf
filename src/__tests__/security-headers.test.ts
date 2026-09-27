@@ -72,15 +72,11 @@ describe('P3 Preview CSP contract', () => {
     expect(scriptSrc![1].trim().split(/\s+/)).not.toContain('*');
   });
 
-  it('preview-to-parent messages do not use wildcard origins', () => {
-    const fs = require('fs');
-    const files = ['src/agent.ts', 'src/components/PreviewRunner.tsx', 'src/main.tsx'];
-    for (const file of files) {
-      const src = fs.readFileSync(file, 'utf-8');
-      expect(src, `${file} must not postMessage to a wildcard origin`).not.toMatch(
-        /postMessage\((\{[\s\S]*?\}|'[^']*'),?\s*'\*'/
-      );
-    }
+  it('parent validates postMessage source from sandboxed preview iframe', () => {
+    const source = require('fs').readFileSync('src/components/Workspace.tsx', 'utf-8');
+    expect(source, 'parent must check event.source against the iframe ref').toContain(
+      'if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) return;'
+    );
   });
   it('scopes opaque-origin messages to the current sandboxed frame and project files', () => {
     const source = require('fs').readFileSync('src/components/Workspace.tsx', 'utf-8');

@@ -14,9 +14,10 @@ test('failed publishing shows its own build error and verification evidence on m
     verification: { jobId: 'publication-job', checks: [{ name: 'App renders', passed: false, detail: 'Expected the dashboard heading' }] },
   } }));
   await page.getByRole('button', { name: 'Publish application', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Publish your app', exact: true });
+  await dialog.getByRole('button', { name: /Skip/ }).click();
   await expect.poll(() => publishing.submitted.length).toBe(1);
   publishing.fail();
-  const dialog = page.getByRole('dialog', { name: 'Publish your app', exact: true });
   await expect(dialog.getByRole('alert')).toContainText('Building application failed (exit 1)', { timeout: 15000 });
   await expect(dialog.getByLabel('Failed publishing build log')).toContainText('Cannot resolve ./missing-component');
   await expect(dialog.getByText('Expected the dashboard heading', { exact: false })).toBeVisible();
@@ -39,6 +40,7 @@ test('Publish deploys one saved frontend/backend version and exposes its URL onl
   await page.getByRole('button', { name: 'Publish application', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Publish your app', exact: true });
   await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: /Skip/ }).click();
   await expect.poll(() => publishing.submitted.length).toBe(1);
   expect(publishing.submitted[0]).toMatchObject({ kind: 'publish', environment: 'production' });
   expect(publishing.submitted[0].files['worker/index.ts']).toBeTruthy();
