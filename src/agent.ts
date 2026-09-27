@@ -1370,21 +1370,40 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               }
               const cleanPath = normalizePath(path);
               if (this.isHarnessEntry(cleanPath)) return { success: false, error: 'This entry point is owned by the preview.' };
-              // Enforce frontend-first write order: block backend AND component files until
-              // App.tsx is written. Prevents the agent from writing components or backend files
-              // first and running out of context before App.tsx exists — leaving the user with
-              // an empty placeholder. On edits to an existing app (App.tsx is real content),
-              // the check is skipped so targeted component edits work normally.
+              // Enforce frontend-first write order:
+              // (1) Block backend/component writes until App.tsx is written.
+              // (2) Block backend writes if any already-written frontend file has an
+              //     unresolved local component import — the agent must write those files first.
+              // On edits to an existing real app the checks are skipped so normal edits work.
               if (!plannerMode) {
                 const isBackendPath = /^\/(?:worker|migrations|shared)\//i.test(cleanPath);
                 const isComponentPath = /^\/src\/components\//i.test(cleanPath) && !/AppBoundary\.tsx$/i.test(cleanPath);
                 const appTsxWrittenByTool = toolWrittenPaths.has('/src/App.tsx') || toolWrittenPaths.has('src/App.tsx');
-                if ((isBackendPath || isComponentPath) && !appTsxWrittenByTool) {
-                  // Allow component edits when an existing real (non-starter) App.tsx is in place.
-                  const existingAppTsx = this.runSql`SELECT content FROM project_files WHERE path = '/src/App.tsx'`[0]?.content ?? '';
-                  const appTsxIsStarter = !existingAppTsx || isStarterApp(existingAppTsx);
-                  if (appTsxIsStarter) {
-                    return { success: false, error: `Write /src/App.tsx before writing ${cleanPath}. Per the MANDATORY WRITE ORDER rule, the frontend entry point must be saved first so the preview is never left empty if context runs out.` };
+                const existingAppTsx = this.runSql`SELECT content FROM project_files WHERE path = '/src/App.tsx'`[0]?.content ?? '';
+                const appTsxIsStarter = !existingAppTsx || isStarterApp(existingAppTsx);
+                // Rule 1: App.tsx must be written before any other component or backend file.
+                if ((isBackendPath || isComponentPath) && !appTsxWrittenByTool && appTsxIsStarter) {
+                  return { success: false, error: `Write /src/App.tsx before writing ${cleanPath}. Per the MANDATORY WRITE ORDER rule, the frontend entry point must be saved first so the preview is never left empty if context runs out.` };
+                }
+                // Rule 2: When trying to write a backend file during fresh generation, check that
+                // all local component imports in written frontend files are already resolved.
+                if (isBackendPath && appTsxIsStarter) {
+                  const allFrontendPaths = [...toolWrittenPaths].filter(p => /^\/src\//i.test(p));
+                  const unresolvedImports: string[] = [];
+                  for (const frontendPath of allFrontendPaths) {
+                    const src = this.runSql`SELECT content FROM project_files WHERE path = ${frontendPath}`[0]?.content ?? '';
+                    const dir = frontendPath.replace(/\/[^/]+$/, '');
+                    const localImports = [...src.matchAll(/from\s+['"](\.[^'"]+)['"]/g)].map(m => m[1]);
+                    for (const imp of localImports) {
+                      const resolved = normalizePath(`${dir}/${imp}`);
+                      const withExt = [resolved, `${resolved}.tsx`, `${resolved}.ts`, `${resolved}.jsx`, `${resolved}.js`];
+                      const exists = withExt.some(p => toolWrittenPaths.has(p) || this.runSql`SELECT 1 FROM project_files WHERE path = ${p}`.length > 0);
+                      if (!exists) unresolvedImports.push(`${imp} (imported by ${frontendPath})`);
+                    }
+                  }
+                  if (unresolvedImports.length > 0) {
+                    const list = unresolvedImports.slice(0, 3).join(', ');
+                    return { success: false, error: `Write missing component files before writing backend: ${list}. Per MANDATORY WRITE ORDER, ALL /src/components/*.tsx files must be written before any backend file.` };
                   }
                 }
               }
