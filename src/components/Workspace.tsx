@@ -4,7 +4,7 @@ import { useTheme } from '../lib/theme';
 import { authFetch } from '../lib/auth-client';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  Code2, Monitor, Loader2,
+  Code2, Columns2, Monitor, Loader2,
   Terminal, Copy, Check, FolderCode, Download,
   WrapText, ListFilter,
   Server, Eye, MoreHorizontal, RotateCcw,
@@ -335,6 +335,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const [undoLoading, setUndoLoading] = useState(false);
 
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [splitView, setSplitView] = useState(false);
 
   const theme = useTheme();
   const [readOnlyProjectId, setReadOnlyProjectId] = useState<string | null>(null);
@@ -1290,8 +1291,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           {mobileTab === undefined && <button type="button" onClick={() => selectTab('preview')} aria-pressed={resolvedActiveTab === 'preview'} className={resolvedActiveTab === 'preview' ? 'active' : ''}><Monitor size={15} />Preview</button>}
           {mobileTab === undefined && <button type="button" onClick={() => selectTab('code')} aria-pressed={resolvedActiveTab === 'code'} className={resolvedActiveTab === 'code' ? 'active' : ''}><Code2 size={15} />Code</button>}
           {mobileTab === undefined && <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'} className={resolvedActiveTab === 'console' ? 'active' : ''}><Terminal size={15} />Build</button>}
+          {mobileTab === undefined && viewportWidth >= 900 && <button type="button" onClick={() => { setSplitView(v => !v); if (!splitView) setActiveTab('code'); }} aria-pressed={splitView} className={splitView ? 'active' : ''} title={splitView ? 'Exit split view' : 'Split view: code + preview'}><Columns2 size={15} /></button>}
           {mobileTab !== undefined && <span className="studio-mobile-workspace-label">{isEditorTab ? 'Project files' : resolvedActiveTab === 'console' ? 'Build' : resolvedActiveTab === 'logs' ? 'Activity' : 'Your app'}</span>}
-          {isEditorTab && <button type="button" className="studio-files-toggle" onClick={() => setFileExplorerOverride(!showFileExplorer)} aria-pressed={showFileExplorer} title={showFileExplorer ? 'Hide project files' : 'Show project files'} aria-label={showFileExplorer ? 'Hide project files' : 'Show project files'}><PanelLeft size={14} /></button>}
+          {(isEditorTab || splitView) && <button type="button" className="studio-files-toggle" onClick={() => setFileExplorerOverride(!showFileExplorer)} aria-pressed={showFileExplorer} title={showFileExplorer ? 'Hide project files' : 'Show project files'} aria-label={showFileExplorer ? 'Hide project files' : 'Show project files'}><PanelLeft size={14} /></button>}
         </div>
 
         <div className="studio-workspace-actions">
@@ -1371,7 +1373,94 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       {/* Content */}
       {publishDialog?.projectId === activeProjectId && <PublishDialog key={activeProjectId} projectId={activeProjectId} files={files} publishOnOpen={publishDialog.files} onClose={() => setPublishDialog(null)} onManage={() => { setPublishDialog(null); selectTab('console'); }} />}
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-        {isEditorTab ? (
+        {splitView ? (
+          <div style={{ display: 'flex', width: '100%', height: '100%', minWidth: 0 }}>
+            {showFileExplorer && <FileExplorer
+              files={files}
+              activeFile={activeFile}
+              onSelectFile={setActiveFile}
+              headerTitle="Project files"
+            />}
+            <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden', borderRight: '1px solid var(--border-subtle)' }}>
+              <div className="studio-file-tabs" style={{
+                minHeight: '36px', background: 'var(--bg-surface)',
+                borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center',
+                overflowX: 'auto', padding: '0 4px', gap: '2px', flexShrink: 0
+              }}>
+                {visibleFiles.map(filePath => {
+                  const isActive = filePath === activeFile;
+                  const isServer = isServerPath(filePath);
+                  return (
+                    <button
+                      key={filePath}
+                      onClick={() => setActiveFile(filePath)}
+                      className={`studio-file-tab${isActive ? ' active' : ''}`}
+                      title={filePath}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px',
+                        background: isActive ? 'var(--bg-code-editor)' : 'transparent',
+                        border: isActive ? '1px solid var(--border-subtle)' : '1px solid transparent',
+                        borderBottom: isActive ? '1px solid var(--bg-code-editor)' : '1px solid transparent',
+                        borderRadius: '6px 6px 0 0', cursor: 'pointer',
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                        fontSize: '11.5px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                        flexShrink: 0, minHeight: '32px'
+                      }}
+                    >
+                      {isServer && <Server size={11} strokeWidth={2} style={{ color: 'var(--color-code-violet)', opacity: isActive ? 1 : 0.6, flexShrink: 0 }} />}
+                      <span>{filePath.split('/').pop()}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+                {monacoReady ? (
+                  <Editor
+                    key={`split-editor-${activeProjectId}`}
+                    theme={theme === 'dark' ? 'brainhalf-studio-dark' : 'brainhalf-studio'}
+                    language={editorLanguage}
+                    path={activeFile}
+                    value={files[activeFile] || ''}
+                    onChange={handleEditorChange}
+                    options={{ minimap: { enabled: false }, fontSize: 13, lineHeight: 22, fontFamily: 'var(--font-mono)', tabSize: 2, wordWrap: wordWrap, scrollBeyondLastLine: false, padding: { top: 12, bottom: 12 }, renderLineHighlight: 'line', smoothScrolling: true, cursorSmoothCaretAnimation: 'on', bracketPairColorization: { enabled: true }, readOnly: isReadOnlyProject }}
+                    loading={<div style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%', color: 'var(--text-muted)' }}>Loading editor…</div>}
+                  />
+                ) : (
+                  <div style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%', color: 'var(--text-muted)' }}>Loading editor…</div>
+                )}
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-preview-canvas)', position: 'relative', overflow: 'hidden' }}>
+              {status === 'Generating' && (
+                <GenerationProgress files={Object.keys(files)} progress={fileProgress} />
+              )}
+              <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
+                {backend.liveUrl ? (
+                  <iframe
+                    key={`split-live-${activeProjectId}-${backend.liveUrl}`}
+                    src={backend.liveUrl}
+                    sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-modals allow-downloads"
+                    style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'var(--bg-card)' }}
+                    title="Live App Preview"
+                  />
+                ) : previewSessionReady ? <iframe
+                  ref={iframeRef}
+                  key={`split-preview-${activeProjectId}-${edgeRefreshCounter}`}
+                  src={`/preview/${activeProjectId}/index.html`}
+                  sandbox={PREVIEW_SANDBOX}
+                  onLoad={() => {
+                    iframeRef.current?.contentWindow?.postMessage(
+                      { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
+                      previewTargetOrigin
+                    );
+                  }}
+                  style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'white' }}
+                  title="Design Preview"
+                /> : null}
+              </PreviewCanvas>
+            </div>
+          </div>
+        ) : isEditorTab ? (
           <div style={{ display: 'flex', width: '100%', height: '100%', minWidth: 0 }}>
             {showFileExplorer && <FileExplorer
               files={files}
