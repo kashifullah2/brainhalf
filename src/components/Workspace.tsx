@@ -13,10 +13,11 @@ import { basicReactTemplate } from '../lib/templates';
 import { appEvents } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
 import { exportToGitHub } from '../lib/github-export';
+import { PREVIEW_LOAD_TIMEOUT, PREVIEW_SYNC_DEBOUNCE } from '../lib/timeouts';
 import { normalizePath } from '../lib/utils';
-import { selectAppEntry, isStarterApp } from '../lib/preview-entry';
+import { selectAppEntry, selectHtmlEntry, isStarterApp } from '../lib/preview-entry';
 import { previewFiles, PREVIEW_SANDBOX } from '../lib/preview-isolation';
-import { setPreviewStatus } from '../lib/status-store';
+import { setPreviewStatus, setPlatformStatus } from '../lib/status-store';
 import { bindProjectStore } from '../lib/project-store';
 import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
 import { diagnosePreviewError } from '../lib/preview-diagnostics';
@@ -128,10 +129,17 @@ function hasGeneratedAppCode(files: FileMap): boolean {
   if (!files) return false;
   const entry = selectAppEntry(files);
   const app = entry ? files[entry] : null;
-  if (!app) return false;
+  if (app && !isStarterApp(app)) return true;
 
-  // Utility files alone do not replace the starter screen with a generated app.
-  return !isStarterApp(app);
+  const htmlEntry = selectHtmlEntry(files);
+  if (htmlEntry) {
+    const html = files[htmlEntry];
+    const body = html?.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? '';
+    const stripped = body.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<div\s+id="root"\s*\/?>(<\/div>)?/gi, '').trim();
+    if (stripped.length > 100) return true;
+  }
+
+  return false;
 }
 
 function timestamp(): string {
@@ -197,6 +205,15 @@ function useViewportWidth(): number {
   return width;
 }
 
+const GENERATION_TIPS = [
+  'Your agent writes components, styles, and logic together.',
+  'Simple apps take 15–30 seconds. Complex full-stack apps may take a few minutes.',
+  "You can ask the agent to change anything once it's built.",
+  'Try describing a real workflow you do manually right now.',
+  'Your app is saved automatically as each file is built.',
+  'The agent reads your project files before writing — planning takes a moment.',
+];
+
 const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSelectMobileTab }) => {
   const { isCurrent, getProjectFiles, getProjectFilesAsync, saveProjectFiles, saveProjectFilesDebounced, flushProjectFileWrites, forkProject, setActiveProjectId } = useMemo(bindProjectStore, []);
   const [files, setFiles] = useState<FileMap>(() => migrateStarter(getProjectFiles(activeProjectId) || baselineFiles()));
@@ -216,6 +233,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [previewSessionReady, setPreviewSessionReady] = useState(false);
+  useEffect(() => { setPreviewSessionReady(false); }, [activeProjectId]);
   const previewTargetOrigin = useMemo(() => previewMessageTargetOrigin(), []);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
@@ -230,8 +248,30 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   // than once (StrictMode, a re-mount), so that wrote to storage during render.
   // It now only computes; the effect below owns persistence.
   const [status, setStatus] = useState<GenerationStatus>(() => (getProjectFiles(activeProjectId) ? 'Ready' : 'Idle'));
-  const [fileProgress, setFileProgress] = useState<FileProgress>({});
+  const fileProgressKey = `bh_fileprogress_${activeProjectId}`;
+  const [fileProgress, setFileProgress] = useState<FileProgress>(() => {
+    try {
+      const stored = sessionStorage.getItem(`bh_fileprogress_${activeProjectId}`);
+      if (stored) return JSON.parse(stored) as FileProgress;
+    } catch {}
+    return {};
+  });
+  const persistFileProgress = useCallback((next: FileProgress) => {
+    try { sessionStorage.setItem(fileProgressKey, JSON.stringify(next)); } catch {}
+  }, [fileProgressKey]);
   const generationActiveRef = useRef(false);
+  const attemptedKey = `bh_genstarted_${activeProjectId}`;
+  const generationEverAttempted = (() => { try { return !!sessionStorage.getItem(`bh_genstarted_${activeProjectId}`); } catch { return false; } })();
+  const touchedKey = `bh_touched_${activeProjectId}`;
+  const generationTouchedRef = useRef<Set<string>>(
+    (() => {
+      try {
+        const stored = sessionStorage.getItem(`bh_touched_${activeProjectId}`);
+        if (stored) return new Set(JSON.parse(stored) as string[]);
+      } catch {}
+      return new Set<string>();
+    })()
+  );
   const isWaitingForFirstApp = !hasGeneratedApp;
   const openChat = () => {
     onSelectMobileTab?.('chat');
@@ -241,9 +281,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const [monacoReady, setMonacoReady] = useState(false);
 
   const [consoleLogs, setConsoleLogs] = useState<string[]>(['Preview ready.', 'Waiting for changes...']);
-  const [buildLogs, setBuildLogs] = useState<BuildLogItem[]>([
-    { id: 'init', time: timestamp(), text: 'Workspace ready.', type: 'info' }
-  ]);
+  const buildLogKey = `bh_buildlog_${activeProjectId}`;
+  const [buildLogs, setBuildLogs] = useState<BuildLogItem[]>(() => {
+    try {
+      const stored = sessionStorage.getItem(buildLogKey);
+      if (stored) return JSON.parse(stored) as BuildLogItem[];
+    } catch {}
+    return [{ id: 'init', time: timestamp(), text: 'Workspace ready.', type: 'info' }];
+  });
   const [copiedCode, setCopiedCode] = useState(false);
 
   // GitHub export
@@ -253,10 +298,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   useEffect(() => { try { sessionStorage.removeItem('brainhalf_github_pat'); localStorage.removeItem('brainhalf_github_pat'); } catch {} }, []);
   useEffect(() => { if (!showGithubModal) setGithubToken(''); }, [showGithubModal]);
   const [githubStatus, setGithubStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
+  useEffect(() => { if (showGithubModal) setGithubStatus({ loading: false }); }, [showGithubModal]);
 
   const theme = useTheme();
   const [readOnlyProjectId, setReadOnlyProjectId] = useState<string | null>(null);
   const isReadOnlyProject = readOnlyProjectId === activeProjectId;
+
+  const [tipIndex, setTipIndex] = useState(0);
+  useEffect(() => {
+    if (status !== 'Generating') return;
+    const id = setInterval(() => setTipIndex(i => (i + 1) % GENERATION_TIPS.length), 5000);
+    return () => clearInterval(id);
+  }, [status]);
 
   useEffect(() => {
     let active = true;
@@ -367,11 +420,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const resolvedActiveTab: WorkspaceTab = mobileTab && mobileTab !== 'chat' ? mobileTab : activeTab;
 
   const addBuildLog = useCallback((text: string, type: BuildLogItem['type'] = 'info') => {
-    setBuildLogs(prev => [
-      ...prev.slice(-(MAX_LOG_ENTRIES - 1)),
-      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, time: timestamp(), text, type }
-    ]);
-  }, []);
+    setBuildLogs(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.text === text && last.type === type) return prev;
+      const next = [
+        ...prev.slice(-(MAX_LOG_ENTRIES - 1)),
+        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, time: timestamp(), text, type }
+      ];
+      try { sessionStorage.setItem(buildLogKey, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [buildLogKey]);
 
   const addConsoleLog = useCallback((text: string) => {
     setConsoleLogs(prev => [...prev.slice(-(MAX_LOG_ENTRIES - 1)), text]);
@@ -391,7 +450,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         setStatus('Error');
         setPreviewStatus(activeProjectId, 'Error');
         appEvents.emit('preview-state', { projectId: activeProjectId, state: 'error', error: message });
-      }, 15_000);
+      }, PREVIEW_LOAD_TIMEOUT);
       return;
     }
 
@@ -462,24 +521,42 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
 
   // Keep filesRef in step with any state update that did not go through
   // commitFiles, and stream only the changed preview files to the iframe.
+  // Debounced during generation to avoid spamming the preview with every
+  // streaming chunk — only the final complete files reach the iframe.
+  const previewSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     filesRef.current = files;
-    const frameWindow = iframeRef.current?.contentWindow;
-    if (!frameWindow) return;
+    const syncToPreview = () => {
+      const frameWindow = iframeRef.current?.contentWindow;
+      if (!frameWindow) return;
 
-    const nextPreviewFiles = previewFiles(files, true);
-    const previousPreviewFiles = syncedPreviewFilesRef.current;
-    if (Object.keys(previousPreviewFiles).length === 0) {
-      frameWindow.postMessage({ type: 'sync-files', projectId: activeProjectId, files: nextPreviewFiles }, previewTargetOrigin);
-      syncedPreviewFilesRef.current = nextPreviewFiles;
-      return;
-    }
+      const nextPreviewFiles = previewFiles(files, true);
+      const previousPreviewFiles = syncedPreviewFilesRef.current;
+      if (Object.keys(previousPreviewFiles).length === 0) {
+        frameWindow.postMessage({ type: 'sync-files', projectId: activeProjectId, files: nextPreviewFiles }, previewTargetOrigin);
+        syncedPreviewFilesRef.current = nextPreviewFiles;
+        return;
+      }
 
-    const { changed, removed } = computeFileDelta(previousPreviewFiles, nextPreviewFiles);
-    if (Object.keys(changed).length > 0 || removed.length > 0) {
-      frameWindow.postMessage({ type: 'sync-files-delta', projectId: activeProjectId, changed, removed }, previewTargetOrigin);
-      syncedPreviewFilesRef.current = nextPreviewFiles;
+      const { changed, removed } = computeFileDelta(previousPreviewFiles, nextPreviewFiles);
+      if (Object.keys(changed).length > 0 || removed.length > 0) {
+        frameWindow.postMessage({ type: 'sync-files-delta', projectId: activeProjectId, changed, removed }, previewTargetOrigin);
+        syncedPreviewFilesRef.current = nextPreviewFiles;
+      }
+    };
+
+    if (generationActiveRef.current) {
+      if (previewSyncTimerRef.current) clearTimeout(previewSyncTimerRef.current);
+      previewSyncTimerRef.current = setTimeout(syncToPreview, PREVIEW_SYNC_DEBOUNCE);
+    } else {
+      syncToPreview();
     }
+    return () => {
+      if (previewSyncTimerRef.current) {
+        clearTimeout(previewSyncTimerRef.current);
+        previewSyncTimerRef.current = null;
+      }
+    };
   }, [activeProjectId, files]);
 
   // FIX: consoleEndRef and a logs anchor were rendered but nothing ever scrolled
@@ -625,6 +702,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       setFiles(fresh);
       setStatus('Idle');
       setFileProgress({});
+      try { sessionStorage.removeItem(fileProgressKey); sessionStorage.removeItem(touchedKey); sessionStorage.removeItem(attemptedKey); } catch {}
       setPreviewLoadState('idle');
       setPreviewLoadError('');
       if (previewLoadTimerRef.current) {
@@ -650,6 +728,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     const handleGenerationStatus = ({ status: newStatus, detail, file, error, projectId }: any) => {
       if (projectId && projectId !== activeProjectId) return;
       if (newStatus === 'Generating') {
+        if (!generationActiveRef.current) {
+          generationTouchedRef.current = new Set();
+          setFileProgress({});
+          try { sessionStorage.removeItem(fileProgressKey); sessionStorage.removeItem(touchedKey); sessionStorage.setItem(attemptedKey, '1'); } catch {}
+        }
         generationActiveRef.current = true;
         setStatus('Generating');
         if (detail) {
@@ -657,7 +740,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           addConsoleLog(`[ai] ${detail}`);
         }
         if (file) {
-          setFileProgress(current => ({ ...current, [normalizePath(file)]: 'writing' }));
+          const normalized = normalizePath(file);
+          generationTouchedRef.current.add(normalized);
+          try { sessionStorage.setItem(touchedKey, JSON.stringify([...generationTouchedRef.current])); } catch {}
+          setFileProgress(current => { const next = { ...current, [normalized]: 'writing' as const }; persistFileProgress(next); return next; });
           addBuildLog(`Generating: ${file}`, 'info');
         }
         return;
@@ -698,7 +784,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           }
           setPreviewLoadState('idle');
           setPreviewLoadError('');
-          appEvents.emit('preview-state', { projectId: activeProjectId, state: 'ready' });
+          if (completedGeneration) {
+            setPlatformStatus('Stopped', 'Generation did not produce frontend files', activeProjectId);
+          } else {
+            appEvents.emit('preview-state', { projectId: activeProjectId, state: 'ready' });
+          }
           return;
         }
         setStatus('Connecting');
@@ -716,7 +806,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
 
       if (newStatus === 'Stopped') {
         generationActiveRef.current = false;
-        setFileProgress(current => Object.fromEntries(Object.entries(current).map(([path, state]) => [path, state === 'writing' ? 'partial' : state])));
+        setFileProgress(current => { const next = Object.fromEntries(Object.entries(current).map(([path, state]) => [path, state === 'writing' ? 'partial' : state])) as FileProgress; persistFileProgress(next); return next; });
         setStatus('Stopped');
         const detailMsg = detail || 'Generation stopped by user';
         addBuildLog(detailMsg, 'warn');
@@ -739,7 +829,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     const handleFileGenerated = ({ path, content, isComplete, projectId }: { path: string; content: string; isComplete?: boolean; projectId?: string }) => {
       if (!isCurrent() || (projectId && projectId !== activeProjectId) || typeof content !== 'string') return;
       const cleanPath = normalizePath(path);
-      setFileProgress(current => ({ ...current, [cleanPath]: isComplete ? 'saved' : 'writing' }));
+      if (generationActiveRef.current) {
+        generationTouchedRef.current.add(cleanPath);
+        if (isComplete) try { sessionStorage.setItem(touchedKey, JSON.stringify([...generationTouchedRef.current])); } catch {}
+      }
+      setFileProgress(current => { const next = { ...current, [cleanPath]: isComplete ? 'saved' : 'writing' } as FileProgress; if (isComplete) persistFileProgress(next); return next; });
       if (filesRef.current[cleanPath] === content) return;
 
       // Streaming chunks arrive many times per file, so only the completed file
@@ -758,7 +852,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     const handleFileDeleted = ({ path, projectId }: { path: string; projectId?: string }) => {
       if (!isCurrent() || (projectId && projectId !== activeProjectId)) return;
       const cleanPath = normalizePath(path);
-      setFileProgress(current => { const next = { ...current }; delete next[cleanPath]; return next; });
+      setFileProgress(current => { const next = { ...current }; delete next[cleanPath]; persistFileProgress(next); return next; });
       const next = { ...filesRef.current };
       delete next[cleanPath];
       commitFiles(next, { sync: false });
@@ -854,6 +948,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     };
   }, [startBackend, activeProjectId, addBuildLog, addConsoleLog, commitFiles, markPreviewState, selectTab]);
 
+  useEffect(() => {
+    if (status !== 'Generating') return;
+    let elapsed = 0;
+    const id = setInterval(() => {
+      elapsed += 15;
+      if (generationActiveRef.current) {
+        addBuildLog(`The app builder is working… ${elapsed}s elapsed`, 'info');
+      }
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [status, addBuildLog]);
+
   /* ---------------- Preview iframe messages ---------------- */
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
@@ -916,6 +1022,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       }
       if (type === 'request-preview-revision') {
         iframeRef.current?.contentWindow?.postMessage({ type: 'preview-revision', revision: syncedRevisionRef.current }, previewTargetOrigin);
+      }
+
+      if (type === 'request-reload') {
+        // The sandboxed iframe (opaque origin) asked the parent to reload it.
+        // Doing the navigation from here keeps sec-fetch-site:same-origin so
+        // the bh_session cookie is sent and the worker accepts the request.
+        setEdgeRefreshCounter(c => c + 1);
       }
     };
 
@@ -1022,7 +1135,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           setShowResetConfirm(false);
         }}
       />
-      {shareFallback && <ConfirmModal isOpen title="Copy project link" message={`Copy this link: ${shareFallback}`} confirmLabel="Done" cancelLabel="Close" isDestructive={false} onConfirm={() => setShareFallback(null)} onCancel={() => setShareFallback(null)} />}
+      {shareFallback && <ConfirmModal isOpen title="Copy personal project link" message={`This link opens your project when you're logged in to BrainHalf:\n\n${shareFallback}`} confirmLabel="Done" cancelLabel="Close" isDestructive={false} onConfirm={() => setShareFallback(null)} onCancel={() => setShareFallback(null)} />}
       {/* Header. minHeight rather than height, and the nav scrolls rather than
           overflowing, so the tabs never collide with the status area on narrow
           viewports. */}
@@ -1030,7 +1143,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         <div className="studio-workspace-tabs" aria-label="Workspace view" data-mobile={mobileTab !== undefined || undefined}>
           {mobileTab === undefined && <button type="button" onClick={() => selectTab('preview')} aria-pressed={resolvedActiveTab === 'preview'} className={resolvedActiveTab === 'preview' ? 'active' : ''}><Monitor size={15} />Preview</button>}
           {mobileTab === undefined && <button type="button" onClick={() => selectTab('code')} aria-pressed={resolvedActiveTab === 'code'} className={resolvedActiveTab === 'code' ? 'active' : ''}><Code2 size={15} />Code</button>}
-          {mobileTab !== undefined && <span className="studio-mobile-workspace-label">{isEditorTab ? 'Project files' : resolvedActiveTab === 'console' ? 'Console' : resolvedActiveTab === 'logs' ? 'Activity' : 'Your app'}</span>}
+          {mobileTab === undefined && <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'} className={resolvedActiveTab === 'console' ? 'active' : ''}><Terminal size={15} />Build</button>}
+          {mobileTab !== undefined && <span className="studio-mobile-workspace-label">{isEditorTab ? 'Project files' : resolvedActiveTab === 'console' ? 'Build' : resolvedActiveTab === 'logs' ? 'Activity' : 'Your app'}</span>}
           {isEditorTab && <button type="button" className="studio-files-toggle" onClick={() => setFileExplorerOverride(!showFileExplorer)} aria-pressed={showFileExplorer} title={showFileExplorer ? 'Hide project files' : 'Show project files'} aria-label={showFileExplorer ? 'Hide project files' : 'Show project files'}><PanelLeft size={14} /></button>}
         </div>
 
@@ -1068,7 +1182,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               alignItems: 'center',
               gap: '6px'
             }}
-            title="Share project link"
+            title="Copy personal project link (requires your login to open)"
             aria-label="Share project link"
           >
             <Share2 size={14} strokeWidth={1.8} />
@@ -1084,8 +1198,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
             className="studio-publish-button"
             disabled={!hasGeneratedApp}
             style={{
-              background: hasGeneratedApp ? 'var(--accent-secondary)' : 'rgba(36, 60, 75, 0.04)',
-              color: hasGeneratedApp ? 'var(--text-primary)' : 'var(--text-muted)',
+              background: hasGeneratedApp ? 'var(--accent-primary)' : 'rgba(36, 60, 75, 0.04)',
+              color: hasGeneratedApp ? 'var(--text-on-accent)' : 'var(--text-muted)',
               border: hasGeneratedApp ? 'none' : '1px solid rgba(36, 60, 75, 0.08)',
               borderRadius: '8px',
               padding: '5px 14px',
@@ -1095,7 +1209,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: 'none',
+              boxShadow: hasGeneratedApp ? '0 2px 8px var(--focus-ring)' : 'none',
               transition: 'all 0.15s ease'
             }}
             title={hasGeneratedApp ? "Publish application" : "Generate an app in chat before publishing"}
@@ -1177,7 +1291,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
                   }}>
                     {isServerPath(activeFile)
-                      ? <><Server size={12} strokeWidth={2} />Node.js / Express</>
+                      ? <><Server size={12} strokeWidth={2} />{/^\/?(?:worker|migrations)\//.test(activeFile) ? 'Workers / D1' : 'Node.js / Express'}</>
                       : <><Code2 size={12} strokeWidth={2} />React / Vite</>}
                   </span>
                   <span style={{
@@ -1371,26 +1485,31 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
             )}
 
             {/* Canvas Area with Responsive Viewport Chassis */}
-            {hasGeneratedApp && status === 'Generating' && <BuildProgress files={Object.keys(files)} progress={fileProgress} building compact />}
+            {hasGeneratedApp && status === 'Generating' && <BuildProgress files={Object.keys(files)} progress={fileProgress} building compact agentTouched={generationTouchedRef.current} />}
             <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
               {/* Keep fresh, building and failed projects distinct without showing a fake app. */}
               {isWaitingForFirstApp && previewLoadState !== 'error' && (
                 <div className={`studio-preview-empty${status === 'Error' ? ' has-error' : ''}`} role="status" aria-live="polite">
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
-                  <span className="studio-eyebrow-label">{status === 'Error' ? 'LET’S GET YOU BACK ON TRACK' : status === 'Stopped' ? 'BUILD PAUSED' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
-                  <h2>{status === 'Error' ? 'Your app hasn’t been built yet.' : status === 'Stopped' ? 'Continue when you’re ready.' : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : 'A place for your next idea.'}</h2>
-                  <p>{status === 'Error' ? 'The last request couldn’t finish. Open the conversation to retry or choose another model.' : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? 'Your agent is working on the first version. The preview will appear here as it’s built.' : status === 'Connecting' ? 'Your files are ready. We are loading the preview runtime now.' : 'Describe what you want to make in the chat. Build it together, then try it right here.'}</p>
+                  <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'GENERATION INCOMPLETE' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
+                  <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The frontend wasn't finished." : 'A place for your next idea.'}</h2>
+                  <p>{status === 'Error' ? "The last request couldn't finish. Open the conversation to retry or choose another model." : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "Your agent is working on the first version. The preview will appear here as it's built." : status === 'Connecting' ? "Your files are ready. We are loading the preview runtime now." : (status === 'Ready' && generationEverAttempted) ? 'The agent set up backend files but ran out of context before writing the app interface. Ask it to build the frontend.' : 'Describe what you want to make in the chat. Build it together, then try it right here.'}</p>
                   {(status === 'Generating' || status === 'Connecting')
-                    ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} /> Building your preview</div>
-                    : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />{status === 'Error' || status === 'Stopped' ? 'Open chat' : 'Describe your app'}<ArrowUpRight size={16} /></button>}
-                  {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} />}
+                    ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Building your preview'}</div>
+                    : status === 'Error' || status === 'Stopped'
+                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
+                    : (status === 'Ready' && generationEverAttempted)
+                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask agent to build the UI<ArrowUpRight size={16} /></button>
+                    : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app<ArrowUpRight size={16} /></button>
+                  }
+                  {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                 </div>
               )}
               {previewLoadState === 'error' && (
                 <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                   <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
-                  <h2>We couldn’t open your latest preview.</h2>
+                  <h2>We couldn't open your latest preview.</h2>
                   <p>{previewLoadError || previewIssue?.error || 'The build completed but the preview output could not be loaded.'}</p>
                   <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
                 </div>
@@ -1434,7 +1553,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   </div>
                 </div>
               )}
-              {isFullStackProject(files) && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Design preview</strong> · Use the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}{backend.ready && <button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button>}</div>}
+              {isFullStackProject(files) && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Use the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}{backend.ready && <button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button>}</div>}
               <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && previewLoadState !== 'error'} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined}>
                   {previewSessionReady ? <iframe
                     ref={iframeRef}
@@ -1446,7 +1565,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                         { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
                         previewTargetOrigin
                       );
-                      markPreviewState('ready');
                     }}
                     onError={() => {
                       const message = 'Preview iframe failed to load. Refresh, then run Build app again.';
@@ -1467,8 +1585,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
 
       <footer className="studio-workspace-footer">
         <div className="studio-build-meta" aria-label="Build information">
-        <span><FolderCode size={12} />{Object.keys(files).length} files</span>
-        <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Terminal size={14} />Console</button><button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
+          <span>{Object.keys(files).length} files</span>
+          <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Terminal size={13} />Build</button>
+          <button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
         </div>
       </footer>
 

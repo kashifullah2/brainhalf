@@ -86,7 +86,7 @@ function PreviewErrorPanel({
     if (window.parent && window.parent !== window) {
       window.parent.postMessage(
         { type: 'preview-auto-fix', layer, error: message },
-        window.location.origin
+        '*'
       );
     }
   };
@@ -172,7 +172,7 @@ interface ErrorBoundaryState {
 
 function PreviewReadySignal() {
   useEffect(() => {
-    if (window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
+    if (window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, '*');
   }, []);
   return null;
 }
@@ -221,7 +221,12 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   });
   const currentFiles = useRef(files);
   currentFiles.current = files;
-  const [waitingForFiles, setWaitingForFiles] = useState(window.parent !== window);
+  // Only wait for the parent's sync-files when no embedded files were supplied.
+  // If initialFiles is present (server-embedded snapshot), render immediately
+  // so the preview isn't stuck on "Preparing…" if the postMessage is delayed.
+  const [waitingForFiles, setWaitingForFiles] = useState(
+    () => window.parent !== window && (!initialFiles || Object.keys(initialFiles).length === 0)
+  );
   const waitingForFilesRef = useRef(waitingForFiles);
 
   // Listen for file sync messages from the parent window. Only messages from
@@ -236,7 +241,15 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
       const previous = currentFiles.current;
       if (Object.keys(previous).length === Object.keys(next).length && Object.keys(previous).every(path => previous[path] === next[path])) return;
       if (!initialSync && selectHtmlEntry(previous)) {
-        window.location.reload();
+        // Ask the parent to reload the iframe so the navigation comes from the
+        // same-origin parent context. A reload initiated here (opaque-origin
+        // sandbox) would have sec-fetch-site:cross-site, which causes the worker
+        // to treat it as untrusted and block the bh_session cookie — 401.
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'request-reload', projectId }, '*');
+        } else {
+          window.location.reload();
+        }
         return;
       }
       currentFiles.current = next;
@@ -270,7 +283,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
     window.addEventListener('message', handleMessage);
 
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'request-preview-files', projectId }, window.location.origin);
+      window.parent.postMessage({ type: 'request-preview-files', projectId }, '*');
     }
 
     return () => window.removeEventListener('message', handleMessage);
@@ -288,24 +301,54 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
     error?: string;
   } | null>(null);
 
+  const depLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastImportKeyRef = useRef('');
+
   useEffect(() => {
     if (waitingForFiles) return;
     let active = true;
-    loadPreviewDependencies(files, builtinLibraries)
-      .then((libraries) => {
-        if (active) setDependencies({ files, libraries });
+
+    const doLoad = () => {
+      loadPreviewDependencies(files, builtinLibraries)
+        .then((libraries) => {
+          if (active) setDependencies({ files, libraries });
+        })
+        .catch((error) => {
+          if (active) {
+            setDependencies({
+              files,
+              libraries: {},
+              error: `Dependency loading failed: ${error instanceof Error ? error.message : String(error)}`,
+            });
+          }
+        });
+    };
+
+    // Build a fingerprint of the import specifiers to avoid reloading
+    // dependencies when only file content (not imports) changed.
+    const importKey = Object.entries(files)
+      .filter(([path]) => /\.(?:[cm]?[jt]sx?|html)$/.test(path))
+      .flatMap(([, content]) => {
+        const matches = content.match(/\b(?:from|import)\s+['"]([^'"]+)['"]/g);
+        return matches || [];
       })
-      .catch((error) => {
-        if (active) {
-          setDependencies({
-            files,
-            libraries: {},
-            error: `Dependency loading failed: ${error instanceof Error ? error.message : String(error)}`,
-          });
-        }
-      });
+      .sort()
+      .join('\n');
+
+    if (importKey !== lastImportKeyRef.current || !dependencies) {
+      lastImportKeyRef.current = importKey;
+      if (depLoadTimerRef.current) clearTimeout(depLoadTimerRef.current);
+      depLoadTimerRef.current = setTimeout(doLoad, dependencies ? 300 : 0);
+    } else if (dependencies && dependencies.files !== files) {
+      setDependencies({ ...dependencies, files });
+    }
+
     return () => {
       active = false;
+      if (depLoadTimerRef.current) {
+        clearTimeout(depLoadTimerRef.current);
+        depLoadTimerRef.current = null;
+      }
     };
   }, [files, waitingForFiles]);
 
@@ -314,7 +357,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   // this component never leaks a global patch.
   useLayoutEffect(() => {
     window.fetch = createPreviewFetch(nativeFetch, files, store, window.location.origin, (error) => {
-      if (window.parent !== window) window.parent.postMessage({ type: 'preview-error', layer: 'backend', error, file: '/server/index.js' }, window.location.origin);
+      if (window.parent !== window) window.parent.postMessage({ type: 'preview-error', layer: 'backend', error, file: '/server/index.js' }, '*');
     });
     return () => { window.fetch = nativeFetch; };
   }, [files, store]);
@@ -322,7 +365,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const reportRuntimeError = useCallback((error: string) => {
     setRuntimeError(error);
-    if (window.parent !== window) window.parent.postMessage({ type: 'preview-error', layer: 'frontend', error }, window.location.origin);
+    if (window.parent !== window) window.parent.postMessage({ type: 'preview-error', layer: 'frontend', error }, '*');
   }, []);
 
   useLayoutEffect(() => {
@@ -397,7 +440,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
 
   useEffect(() => {
     if (buildError && window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'preview-error', error: buildError }, window.location.origin);
+      window.parent.postMessage({ type: 'preview-error', error: buildError }, '*');
     }
   }, [buildError]);
 
@@ -426,7 +469,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
         onError={(err) => {
           if (window.parent && window.parent !== window) {
             const { layer } = classifyError(err.message || '');
-            window.parent.postMessage({ type: 'preview-error', layer, error: err.message }, window.location.origin);
+            window.parent.postMessage({ type: 'preview-error', layer, error: err.message }, '*');
           }
         }}
       >

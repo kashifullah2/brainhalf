@@ -106,6 +106,11 @@ async function setupIsolatedPreview(page: Page, files: Record<string, string>, d
       if (event.source !== iframe.contentWindow) return;
       (window as any).__previewMessages.push(event.data);
       if (event.data?.type === 'request-preview-files') iframe.contentWindow!.postMessage({ type: 'sync-files', projectId: 'isolated-fixture', files: (window as any).__fixtureFiles }, '*');
+      if (event.data?.type === 'request-reload') {
+        // Re-navigate the iframe from the parent (same-origin) context so
+        // the reload request carries the session cookie.
+        iframe.contentWindow!.location.href = iframe.src;
+      }
     });
     document.body.append(iframe);
   }, files);
