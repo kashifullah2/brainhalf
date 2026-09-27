@@ -868,7 +868,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               recordModelOutcome(generationModelIdRef.current, 'failure', errMsg, getReliabilityScope());
               setModels(rankModelsByReliability(MODEL_CATALOG, getReliabilityScope()));
             }
-            appEvents.emit('generation-status', { status: 'Error', error: errMsg, projectId: activeProjectId });
+            appEvents.emit('generation-status', { status: isRateLimited ? 'Ready' : 'Error', error: isRateLimited ? undefined : errMsg, projectId: activeProjectId });
             const displayErrMsg = isRateLimited
               ? `⏳ ${errMsg}\n\nWait for one of your running apps to finish, then send your message again.`
               : `⚠️ ${errMsg}`;

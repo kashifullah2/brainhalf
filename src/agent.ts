@@ -24,7 +24,7 @@ import { BusyLock, IdempotencyStore, WriteEpoch, dedupeAdjacent } from './lib/co
 import { RateLimiter } from './lib/rate-limit';
 import { AGENT_MIGRATIONS, runMigrations } from './lib/migrations';
 import { MAX_SNAPSHOT_TOTAL_BYTES } from './lib/file-snapshot';
-import { relativeProjectImport, selectAppEntry } from './lib/preview-entry';
+import { isStarterApp, relativeProjectImport, selectAppEntry } from './lib/preview-entry';
 import { getAppSessionToken } from './lib/app-session';
 import { isPublicPreviewFile, isPublicPreviewRead, PREVIEW_ACCESS_HEADER } from './lib/project-access';
 import { isolatedPreviewHtml, previewFiles } from './lib/preview-isolation';
@@ -1370,14 +1370,22 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               }
               const cleanPath = normalizePath(path);
               if (this.isHarnessEntry(cleanPath)) return { success: false, error: 'This entry point is owned by the preview.' };
-              // Enforce frontend-first write order: block backend files until App.tsx is written.
-              // The agent must write /src/App.tsx before any worker/, migrations/, or shared/ file
-              // so the preview always has a visible UI even if context runs out mid-generation.
+              // Enforce frontend-first write order: block backend AND component files until
+              // App.tsx is written. Prevents the agent from writing components or backend files
+              // first and running out of context before App.tsx exists — leaving the user with
+              // an empty placeholder. On edits to an existing app (App.tsx is real content),
+              // the check is skipped so targeted component edits work normally.
               if (!plannerMode) {
                 const isBackendPath = /^\/(?:worker|migrations|shared)\//i.test(cleanPath);
-                const appTsxDone = toolWrittenPaths.has('/src/App.tsx') || toolWrittenPaths.has('src/App.tsx');
-                if (isBackendPath && !appTsxDone) {
-                  return { success: false, error: `Write /src/App.tsx before writing ${cleanPath}. Per the MANDATORY WRITE ORDER rule, the frontend entry point must be saved first so the preview is never left empty if context runs out.` };
+                const isComponentPath = /^\/src\/components\//i.test(cleanPath) && !/AppBoundary\.tsx$/i.test(cleanPath);
+                const appTsxWrittenByTool = toolWrittenPaths.has('/src/App.tsx') || toolWrittenPaths.has('src/App.tsx');
+                if ((isBackendPath || isComponentPath) && !appTsxWrittenByTool) {
+                  // Allow component edits when an existing real (non-starter) App.tsx is in place.
+                  const existingAppTsx = this.runSql`SELECT content FROM project_files WHERE path = '/src/App.tsx'`[0]?.content ?? '';
+                  const appTsxIsStarter = !existingAppTsx || isStarterApp(existingAppTsx);
+                  if (appTsxIsStarter) {
+                    return { success: false, error: `Write /src/App.tsx before writing ${cleanPath}. Per the MANDATORY WRITE ORDER rule, the frontend entry point must be saved first so the preview is never left empty if context runs out.` };
+                  }
                 }
               }
               const existing = this.runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`[0]?.content;
