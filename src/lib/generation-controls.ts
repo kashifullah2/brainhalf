@@ -10,7 +10,7 @@ export interface ReliabilityControls {
 export const DEFAULT_RELIABILITY: Readonly<ReliabilityControls> = {
   fastMode: true,
   maxTokens: 16384,
-  maxSteps: 6,
+  maxSteps: 10,
   timeoutMs: AI_TIMEOUT_MS,
 };
 
@@ -25,7 +25,7 @@ export function normalizeReliabilityControls(input: unknown): ReliabilityControl
   return {
     fastMode: typeof value.fastMode === 'boolean' ? value.fastMode : DEFAULT_RELIABILITY.fastMode,
     maxTokens: bounded(value.maxTokens, 300, MAX_OUTPUT_TOKENS, DEFAULT_RELIABILITY.maxTokens),
-    maxSteps: bounded(value.maxSteps, 1, 10, DEFAULT_RELIABILITY.maxSteps),
+    maxSteps: bounded(value.maxSteps, 1, 20, DEFAULT_RELIABILITY.maxSteps),
     timeoutMs: bounded(value.timeoutMs, 15_000, AI_TIMEOUT_MS, DEFAULT_RELIABILITY.timeoutMs),
   };
 }
