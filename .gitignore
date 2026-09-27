@@ -44,6 +44,14 @@ worker-configuration.d.ts
 scratch/
 scratch_test_sql.ts
 assest/
+tmp-*/
+qa-audit/
+
+# Claude Code config (local per-machine)
+.claude/
+
+# Editor lock files
+.~lock.*
 
 # Local wrangler dev secrets (never commit)
 .dev.vars
