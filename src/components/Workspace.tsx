@@ -1,6 +1,7 @@
 import { useAutomaticBackend } from '../lib/automatic-backend';
 import { useAutomaticBuildFix } from '../lib/automatic-build-fix';
 import { useTheme } from '../lib/theme';
+import { authFetch } from '../lib/auth-client';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Code2, Monitor, Loader2,
@@ -302,14 +303,35 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   });
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // GitHub export
+  // GitHub export / auto-sync
   const [showGithubModal, setShowGithubModal] = useState(false);
   const [githubRepo, setGithubRepo] = useState('');
   const [githubToken, setGithubToken] = useState('');
+  // Repo name persisted per project; token stays in React state only (never on disk)
+  const [savedGithubRepo, setSavedGithubRepo] = useState('');
+  const [githubSyncing, setGithubSyncing] = useState(false);
+  const [githubLastSynced, setGithubLastSynced] = useState<Date | null>(null);
+  // Clear legacy keys that accidentally stored the PAT
   useEffect(() => { try { sessionStorage.removeItem('brainhalf_github_pat'); localStorage.removeItem('brainhalf_github_pat'); } catch {} }, []);
-  useEffect(() => { if (!showGithubModal) setGithubToken(''); }, [showGithubModal]);
+  // On project switch: load persisted repo name, clear session token, clear undo state
+  useEffect(() => {
+    if (!activeProjectId) return;
+    setGithubToken('');
+    setGithubLastSynced(null);
+    setGithubSyncing(false);
+    setUndoCheckpoint(null);
+    try {
+      const saved = localStorage.getItem(`bh_github_repo:${activeProjectId}`) || '';
+      setSavedGithubRepo(saved);
+      setGithubRepo(saved);
+    } catch { setSavedGithubRepo(''); setGithubRepo(''); }
+  }, [activeProjectId]);
   const [githubStatus, setGithubStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
   useEffect(() => { if (showGithubModal) setGithubStatus({ loading: false }); }, [showGithubModal]);
+
+  // Undo last AI change — quick restore to the most recent "Before agent changes" checkpoint
+  const [undoCheckpoint, setUndoCheckpoint] = useState<{ id: string; revision: number } | null>(null);
+  const [undoLoading, setUndoLoading] = useState(false);
 
   const theme = useTheme();
   const [readOnlyProjectId, setReadOnlyProjectId] = useState<string | null>(null);
@@ -643,14 +665,72 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     setGithubStatus({ loading: true });
     try {
       await exportToGitHub(filesRef.current, githubRepo.trim(), githubToken.trim());
-      setGithubToken('');
-      setGithubStatus({ loading: false, success: `Pushed to GitHub: ${githubRepo.trim()}` });
+      // Persist repo name (never the token); token stays in state to enable auto-sync
+      try { localStorage.setItem(`bh_github_repo:${activeProjectId}`, githubRepo.trim()); } catch {}
+      setSavedGithubRepo(githubRepo.trim());
+      setGithubLastSynced(new Date());
+      setGithubStatus({ loading: false, success: `Synced to ${githubRepo.trim()} — auto-sync enabled for this session.` });
       addBuildLog(`Pushed codebase to GitHub: ${githubRepo.trim()}`, 'success');
     } catch (err: any) {
       setGithubStatus({ loading: false, error: err?.message || 'Failed to export to GitHub' });
       addBuildLog(`GitHub export failed: ${err?.message || err}`, 'error');
     }
-  }, [githubRepo, githubToken, addBuildLog]);
+  }, [githubRepo, githubToken, addBuildLog, activeProjectId]);
+
+  const autoSyncGitHub = useCallback(async () => {
+    if (!githubToken || !savedGithubRepo) return;
+    setGithubSyncing(true);
+    try {
+      await exportToGitHub(filesRef.current, savedGithubRepo, githubToken);
+      setGithubLastSynced(new Date());
+      addBuildLog(`Auto-synced to GitHub: ${savedGithubRepo}`, 'success');
+    } catch (err: any) {
+      addBuildLog(`GitHub auto-sync failed: ${err?.message || err}`, 'warn');
+    } finally {
+      setGithubSyncing(false);
+    }
+  }, [githubToken, savedGithubRepo, addBuildLog]);
+
+  const refreshUndoCheckpoint = useCallback(async () => {
+    if (!activeProjectId) return;
+    try {
+      const origin = ['localhost', '127.0.0.1'].includes(location.hostname)
+        ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+      const base = `${origin}/agents/chat-agent/${encodeURIComponent(activeProjectId)}/checkpoints`;
+      const resp = await authFetch(base, { signal: AbortSignal.timeout(8_000), headers: { 'Content-Type': 'application/json' } });
+      const data = await resp.json() as { checkpoints?: Array<{ id: string; label: string }>; revision?: number };
+      if (Array.isArray(data.checkpoints) && typeof data.revision === 'number') {
+        const cp = data.checkpoints.find(c => c.label === 'Before agent changes');
+        if (cp) setUndoCheckpoint({ id: cp.id, revision: data.revision });
+      }
+    } catch { /* silent — undo button just won't appear */ }
+  }, [activeProjectId]);
+
+  const quickUndo = useCallback(async () => {
+    if (!undoCheckpoint || !activeProjectId) return;
+    setUndoLoading(true);
+    try {
+      const origin = ['localhost', '127.0.0.1'].includes(location.hostname)
+        ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+      const base = `${origin}/agents/chat-agent/${encodeURIComponent(activeProjectId)}/checkpoints`;
+      const resp = await authFetch(`${base}/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(undoCheckpoint),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error || 'Undo failed');
+      }
+      setUndoCheckpoint(null);
+      addBuildLog('Restored to pre-generation checkpoint', 'info');
+    } catch (err: any) {
+      addBuildLog(`Undo failed: ${err?.message || err}`, 'error');
+    } finally {
+      setUndoLoading(false);
+    }
+  }, [undoCheckpoint, activeProjectId, addBuildLog]);
 
   const runReadinessAudit = useCallback(() => {
     const files = filesRef.current;
@@ -741,6 +821,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     const handleGenerationStatus = ({ status: newStatus, detail, file, error, projectId }: any) => {
       if (projectId && projectId !== activeProjectId) return;
       if (newStatus === 'Generating') {
+        setUndoCheckpoint(null);
         if (!generationActiveRef.current) {
           generationTouchedRef.current = new Set();
           setFileProgress({});
@@ -814,6 +895,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           'success'
         );
         if (completedGeneration) addConsoleLog('[validation] Generation complete; project typecheck, build and tests have not been run by this preview.');
+        if (completedGeneration) void autoSyncGitHub();
+        if (completedGeneration) void refreshUndoCheckpoint();
         return;
       }
 
@@ -1386,16 +1469,21 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   <button
                     onClick={(e) => { githubTriggerRef.current = e.currentTarget; setShowGithubModal(true); }}
                     className="hover-bright"
-                    title="Export to GitHub"
-                    aria-label="Export to GitHub"
+                    title={savedGithubRepo ? `GitHub: ${savedGithubRepo}${githubToken ? ' · auto-sync on' : ''}` : 'Export to GitHub'}
+                    aria-label={savedGithubRepo ? `GitHub: ${savedGithubRepo}` : 'Export to GitHub'}
                     style={{
-                      background: 'transparent', border: 'none', color: 'var(--text-muted)',
+                      background: 'transparent', border: 'none',
+                      color: savedGithubRepo ? 'var(--color-success, #22c55e)' : 'var(--text-muted)',
                       padding: '6px 8px', minHeight: '32px', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'inherit'
                     }}
                   >
-                    <FolderCode size={16} strokeWidth={1.75} />
-                    {!compactToolbar && <span>GitHub</span>}
+                    {githubSyncing
+                      ? <Loader2 size={16} strokeWidth={1.75} className="lucide-spin" />
+                      : <FolderCode size={16} strokeWidth={1.75} />}
+                    {!compactToolbar && (
+                      <span>{savedGithubRepo ? savedGithubRepo : 'GitHub'}</span>
+                    )}
                   </button>
 
                   <button
@@ -1412,6 +1500,27 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     <Download size={16} strokeWidth={1.75} />
                     {!compactToolbar && <span>ZIP</span>}
                   </button>
+
+                  {undoCheckpoint && (
+                    <button
+                      onClick={() => void quickUndo()}
+                      disabled={undoLoading || status === 'Generating'}
+                      className="hover-bright"
+                      title="Undo last AI change — restore to before the last generation"
+                      aria-label="Undo last AI change"
+                      style={{
+                        background: 'transparent', border: '1px solid var(--color-warning, #f59e0b)',
+                        color: 'var(--color-warning, #f59e0b)', borderRadius: '4px',
+                        padding: '6px 8px', minHeight: '32px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'inherit'
+                      }}
+                    >
+                      {undoLoading
+                        ? <Loader2 size={16} strokeWidth={1.75} className="lucide-spin" />
+                        : <RotateCcw size={16} strokeWidth={1.75} />}
+                      {!compactToolbar && <span>Undo</span>}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1664,11 +1773,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           >
             <h3 id="github-export-title" style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <FolderCode size={20} />
-              Export to GitHub
+              {savedGithubRepo && githubToken ? 'GitHub auto-sync' : 'Export to GitHub'}
             </h3>
 
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-              New repositories are private. Existing repositories keep their default branch and newer commits are protected.
+              {savedGithubRepo && githubToken
+                ? `Auto-syncing to ${savedGithubRepo} after each generation.${githubLastSynced ? ` Last synced ${githubLastSynced.toLocaleTimeString()}.` : ''}`
+                : 'New repositories are private. Existing repositories keep their default branch and newer commits are protected.'}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1708,7 +1819,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                 }}
               />
               <span style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                Use a fine-grained token with Contents read/write for the selected repository, or a classic token with repo scope. It is sent directly to GitHub and cleared when this dialog closes.
+                Use a fine-grained token with Contents read/write, or a classic token with repo scope. Kept in memory this session only — never written to disk — to enable auto-sync after generation.
               </span>
 
             </div>
@@ -1726,6 +1837,25 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
             )}
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px', flexWrap: 'wrap' }}>
+              {savedGithubRepo && (
+                <button
+                  onClick={() => {
+                    try { localStorage.removeItem(`bh_github_repo:${activeProjectId}`); } catch {}
+                    setSavedGithubRepo('');
+                    setGithubRepo('');
+                    setGithubToken('');
+                    setGithubLastSynced(null);
+                    setShowGithubModal(false);
+                  }}
+                  style={{
+                    padding: '10px 16px', minHeight: '44px', background: 'transparent',
+                    border: '1px solid var(--border-color)', color: 'var(--color-error, #ef4444)',
+                    borderRadius: '6px', cursor: 'pointer', fontSize: '13px', marginRight: 'auto'
+                  }}
+                >
+                  Disconnect
+                </button>
+              )}
               <button
                 onClick={() => { setShowGithubModal(false); setGithubStatus({ loading: false }); }}
                 style={{
@@ -1748,7 +1878,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                 }}
               >
                 {githubStatus.loading && <Loader2 size={14} className="lucide-spin" />}
-                {githubStatus.loading ? 'Exporting...' : 'Export project'}
+                {githubStatus.loading ? 'Syncing...' : savedGithubRepo ? 'Sync now' : 'Export & enable auto-sync'}
               </button>
             </div>
           </div>
