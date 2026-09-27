@@ -20,7 +20,7 @@ import { COLLECT_ARTIFACT, COLLECT_STATIC_ARTIFACT, validateArtifact, type Build
 import { publicationTarget, assertProductionServices, productionHealthPath } from './publication';
 import { digest, sourceSnapshot, projectManifest, migrationFiles, assertSafeMigration } from './source';
 import { openSecret, sealSecret, validateIntegration, redactSecrets } from './secrets';
-import { contactInput, token, cookie, secureCookie, readJson, readStreamJson } from './integrations';
+import { contactInput, token, cookie, secureCookie, embeddedPreviewCookie, readJson, readStreamJson } from './integrations';
 import { PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport } from './types';
 
 interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean }
@@ -319,13 +319,14 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       return Response.json({ available: !taken || (taken.ownerId === this.scope.ownerId && taken.projectId === this.scope.projectId) });
     }
     if (path === '/preview-ticket' && request.method === 'POST') {
-      const body = await request.json().catch(() => ({})) as { path?: string };
+      const body = await request.json().catch(() => ({})) as { path?: string; embed?: boolean };
       const next = body.path === '/__brainhalf/auth' ? body.path : '/';
       const ticket = await this.withControlLock(async () => {
         requireAdmission(await this.pilot().register(this.alias, this.scope));
         return this.createSession('ticket', 'development', { next }, 60);
       });
-      return Response.json({ url: `${this.url('development')}/__brainhalf/open?ticket=${ticket}` });
+      const params = `ticket=${ticket}${body.embed ? '&embed=1' : ''}`;
+      return Response.json({ url: `${this.url('development')}/__brainhalf/open?${params}` });
     }
     if (path === '/heartbeat' && request.method === 'POST') {
       await this.ctx.storage.transaction(async txn => {
@@ -786,7 +787,11 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       let next = ticket.next === '/__brainhalf/auth' ? ticket.next : '/';
       if (typeof ticket.mailId === 'string') next = this.emailActionPath((await this.services().mail.detail(environment, ticket.mailId)).text, environment);
       const session = await this.createSession('preview', environment, {}, 3600);
-      return new Response(null, { status: 303, headers: { Location: next, 'Set-Cookie': secureCookie('__Host-bh_preview', session, 3600) } });
+      const embed = url.searchParams.get('embed') === '1';
+      const cookieValue = embed
+        ? embeddedPreviewCookie('__Host-bh_preview', session, 3600)
+        : secureCookie('__Host-bh_preview', session, 3600);
+      return new Response(null, { status: 303, headers: { Location: next, 'Set-Cookie': cookieValue } });
     }
     if (environment === 'development' && !await this.session(cookie(request, '__Host-bh_preview'), 'preview', environment)) throw new RuntimeError('Use Open running app in your BrainHalf workspace to access this private preview.', 401);
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw new RuntimeError('Untrusted app request origin.', 403);

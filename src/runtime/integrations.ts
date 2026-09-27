@@ -13,6 +13,10 @@ export function cookie(request: Request, name: string): string | undefined {
 export function secureCookie(name: string, value: string, seconds: number): string {
   return `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${seconds}`;
 }
+/** Partitioned (CHIPS) variant for preview sessions embedded as iframes on brainhalf.com. */
+export function embeddedPreviewCookie(name: string, value: string, seconds: number): string {
+  return `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=${seconds}`;
+}
 export async function readJson(request: Request, max = 16_000, options: { allowEmpty?: boolean } = {}): Promise<unknown> {
   if (Number(request.headers.get('content-length') || 0) > max) throw new RuntimeError('Request is too large.', 413);
   return readStreamJson(request.body, max, options);

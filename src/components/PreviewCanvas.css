@@ -4,6 +4,9 @@
 .preview-canvas-tools { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .preview-canvas-tools select { max-width: 98px; min-height: 32px; padding: 4px 5px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-secondary); background: var(--bg-card); font: 11px var(--font-sans); cursor: pointer; }
 .preview-canvas-tools button:disabled { opacity: .35; cursor: default; }
+.studio-preview-inspect { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; min-width: 32px; border-radius: 6px; border: 1px solid var(--border-subtle); background: transparent; color: var(--text-secondary); cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s; }
+.studio-preview-inspect:hover:not(:disabled) { background: var(--bg-hover, rgba(54,89,217,0.08)); color: var(--accent-primary, #3659D9); border-color: var(--accent-primary, #3659D9); }
+.studio-preview-inspect.active { background: rgba(54,89,217,0.15); color: #3659D9; border-color: #3659D9; }
 .preview-canvas-scroll { flex: 1; min-height: 0; min-width: 0; display: flex; padding: 20px; overflow: auto; }
 .preview-device-space { position: relative; flex: 0 0 auto; margin: auto; }
 .preview-device { box-sizing: border-box; border: 6px solid var(--bg-panel); outline: 1px solid var(--border-medium); border-radius: 16px; background: white; overflow: hidden; transform-origin: top left; box-shadow: 0 12px 30px #0000001a; }

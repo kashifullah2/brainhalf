@@ -180,7 +180,7 @@ export function shellSecurityHeaders(): Record<string, string> {
     `font-src 'self' data: https://fonts.gstatic.com`,
     `connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com`,
     `worker-src 'self' blob:`,
-    `frame-src 'self'`,
+    `frame-src 'self' https://*.apps.brainhalf.com`,
     `manifest-src 'self'`,
     `frame-ancestors 'none'`,
     `form-action 'self'`,

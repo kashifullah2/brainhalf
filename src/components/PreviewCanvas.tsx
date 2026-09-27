@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowUpRight, Monitor, RotateCcw, Smartphone, Tablet } from 'lucide-react';
+import { ArrowUpRight, Monitor, MousePointer2, RotateCcw, Smartphone, Tablet } from 'lucide-react';
 import './PreviewCanvas.css';
 
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 
-export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, ready, openReady = ready, children }: {
+export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, ready, openReady = ready, onInspect, inspectActive = false, children }: {
   mode: ViewportMode;
   onModeChange: (mode: ViewportMode) => void;
   onRefresh: () => void;
   onOpen: () => void;
   ready: boolean;
   openReady?: boolean;
+  onInspect?: () => void;
+  inspectActive?: boolean;
   children: ReactNode;
 }) {
   const canvas = useRef<HTMLDivElement>(null);
@@ -52,6 +54,7 @@ export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, r
           <option value="fit">Fit · {Math.round(fitScale * 100)}%</option>
           <option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option>
         </select>}
+        {onInspect && <button type="button" className={`studio-preview-inspect${inspectActive ? ' active' : ''}`} title={inspectActive ? 'Cancel element selection' : 'Click an element to edit it'} aria-label={inspectActive ? 'Cancel element selection' : 'Select element to edit'} aria-pressed={inspectActive} disabled={!ready} onClick={onInspect}><MousePointer2 size={16} /></button>}
         <button type="button" className="studio-preview-refresh" title="Refresh preview" aria-label="Refresh preview" disabled={!ready} onClick={onRefresh}><RotateCcw size={16} /></button>
         <button type="button" className="studio-preview-popout" title="Open preview in a new tab" aria-label="Open preview in a new tab" disabled={!openReady} onClick={onOpen}><ArrowUpRight size={18} /></button>
       </div>

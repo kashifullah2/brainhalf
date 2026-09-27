@@ -29,6 +29,7 @@ import ActionMenu from './ActionMenu';
 import FileExplorer from './FileExplorer';
 import ConfirmModal from './ConfirmModal';
 import BuildProgress, { type FileProgress } from './BuildProgress';
+import GenerationProgress from './GenerationProgress';
 import ProjectConsole from './ProjectConsole';
 import PublishDialog from './PublishDialog';
 
@@ -412,6 +413,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     }
   }, [activeProjectId]);
   const [previewFixRequest, setPreviewFixRequest] = useState<{ projectId: string; error: string; file: string; layer: string } | null>(null);
+  const [inspectModeActive, setInspectModeActive] = useState(false);
+  useEffect(() => setInspectModeActive(false), [activeProjectId]);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareFallback, setShareFallback] = useState<string | null>(null);
@@ -1024,6 +1027,32 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         return;
       }
 
+      if (type === 'element-selected' || type === 'element-context-action') {
+        if (type === 'element-selected') setInspectModeActive(false);
+        const { tagName, id, className, text } = event.data as { tagName?: string; id?: string; className?: string; text?: string };
+        const parts: string[] = [tagName || 'element'];
+        if (id) parts.push(`#${id}`);
+        else if (className) {
+          const cls = String(className).split(/\s+/).filter(Boolean).slice(0, 2).join('.');
+          if (cls) parts.push(`.${cls}`);
+        }
+        const label = parts.join('');
+        const snippet = text ? ` "${text.slice(0, 60)}"` : '';
+        if (type === 'element-context-action') {
+          const action = (event.data as { action?: string }).action;
+          const prompts: Record<string, string> = {
+            'change-text': `Change the text of the ${label}${snippet} to: `,
+            'change-style': `Change the style of the ${label}${snippet}: `,
+            'change-color': `Change the color of the ${label}${snippet} to: `,
+            'remove': `Remove the ${label}${snippet} from the page`,
+          };
+          appEvents.emit('insert-prompt-draft', { prompt: prompts[action ?? ''] ?? `Edit the ${label}${snippet}: ` });
+        } else {
+          appEvents.emit('insert-prompt-draft', { prompt: `Edit the ${label}${snippet}: ` });
+        }
+        return;
+      }
+
       if (type === 'request-preview-files') {
         iframeRef.current?.contentWindow?.postMessage(
           { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
@@ -1045,6 +1074,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     window.addEventListener('message', handleWindowMessage);
     return () => window.removeEventListener('message', handleWindowMessage);
   }, [activeProjectId, addBuildLog, addConsoleLog, markPreviewState, previewLoadState, previewTargetOrigin, status]);
+
+  const handleInspectToggle = useCallback(() => {
+    const next = !inspectModeActive;
+    setInspectModeActive(next);
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'set-inspect-mode', enabled: next, projectId: activeProjectId },
+      previewTargetOrigin
+    );
+  }, [inspectModeActive, activeProjectId, previewTargetOrigin]);
 
   const handleEditorChange = useCallback((value: string | undefined) => {
     if (value === undefined) return;
@@ -1479,23 +1517,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               minWidth: 0
             }}
           >
-            {/* Browser Chrome Toolbar */}
-            {/* Indeterminate progress bar when generating */}
+            {/* Generation progress: determinate rail + animated filename strip */}
             {status === 'Generating' && (
-              <div
-                role="progressbar"
-                aria-label="Generating"
-                style={{ height: '2px', width: '100%', background: 'rgba(36, 60, 75, 0.05)', position: 'relative', overflow: 'hidden', flexShrink: 0 }}
-              >
-                <div className="bh-indeterminate-bar" style={{
-                  height: '100%', width: '35%', background: 'var(--color-info)',
-                  boxShadow: 'none'
-                }} />
-              </div>
+              <GenerationProgress files={Object.keys(files)} progress={fileProgress} />
             )}
 
             {/* Canvas Area with Responsive Viewport Chassis */}
-            {hasGeneratedApp && status === 'Generating' && <BuildProgress files={Object.keys(files)} progress={fileProgress} building compact agentTouched={generationTouchedRef.current} />}
             <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
               {/* Keep fresh, building and failed projects distinct without showing a fake app. */}
               {isWaitingForFirstApp && previewLoadState !== 'error' && (
@@ -1563,9 +1590,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   </div>
                 </div>
               )}
-              {isFullStackProject(files) && !isWaitingForFirstApp && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Use the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}{backend.ready && <button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button>}</div>}
-              <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && previewLoadState !== 'error'} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined}>
-                  {previewSessionReady ? <iframe
+              {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Start the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}</div>}
+              {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open in new tab <ArrowUpRight size={13} /></button></div>}
+              <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
+                  {backend.liveUrl ? (
+                    <iframe
+                      key={`live-preview-${activeProjectId}-${backend.liveUrl}`}
+                      src={backend.liveUrl}
+                      sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-modals allow-downloads"
+                      style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'var(--bg-card)' }}
+                      title="Live App Preview"
+                    />
+                  ) : previewSessionReady ? <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
                     src={`/preview/${activeProjectId}/index.html`}

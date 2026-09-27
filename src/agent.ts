@@ -2619,16 +2619,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           `img-src 'self' data: https:`,
           `font-src 'self' data: https://fonts.gstatic.com`,
           `connect-src 'self' https://cdn.jsdelivr.net`,
-          `frame-ancestors 'self'${isDevOrigin ? ' http://localhost:* http://127.0.0.1:*' : ''}`,
+          `frame-ancestors 'self' https://brainhalf.com${isDevOrigin ? ' http://localhost:* http://127.0.0.1:*' : ''}`,
           `base-uri 'self'`,
           `form-action 'self'`,
         ].join('; '),
         'X-Content-Type-Options': 'nosniff',
-        // FIX: 'allowall' is not a valid X-Frame-Options value — browsers treat
-        // an unrecognised value as DENY, which broke the dev-origin preview
-        // exactly where it was meant to help. frame-ancestors above is the real
-        // control; this header is only a legacy fallback, so omit it in dev.
-        ...(isDevOrigin ? {} : { 'X-Frame-Options': 'SAMEORIGIN' }),
         'Referrer-Policy': 'no-referrer',
       };
     })();

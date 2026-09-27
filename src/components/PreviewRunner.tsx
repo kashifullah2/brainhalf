@@ -380,6 +380,107 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
     };
   }, [files, reportRuntimeError]);
 
+  const [inspectMode, setInspectMode] = useState(false);
+  const [hoveredRect, setHoveredRect] = useState<DOMRect | null>(null);
+  const inspectOverlayRef = useRef<HTMLDivElement>(null);
+
+  const [contextMenu, setContextMenu] = useState<{
+    x: number; y: number;
+    tagName: string; id?: string; className?: string; text?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      if (inspectMode) return;
+      e.preventDefault();
+      const el = e.target as Element;
+      const rawClass = typeof el.className === 'string' ? el.className.trim() : '';
+      setContextMenu({
+        x: e.clientX, y: e.clientY,
+        tagName: el.tagName.toLowerCase(),
+        id: el.id || undefined,
+        className: rawClass || undefined,
+        text: el.textContent?.trim().replace(/\s+/g, ' ').slice(0, 80) || undefined,
+      });
+    };
+    document.addEventListener('contextmenu', handleContextMenu);
+    return () => document.removeEventListener('contextmenu', handleContextMenu);
+  }, [inspectMode]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = (e: MouseEvent) => {
+      const menu = document.getElementById('bh-ctx-menu');
+      if (menu && menu.contains(e.target as Node)) return;
+      setContextMenu(null);
+    };
+    window.addEventListener('mousedown', dismiss, true);
+    return () => window.removeEventListener('mousedown', dismiss, true);
+  }, [contextMenu]);
+
+  const sendContextAction = useCallback((action: string) => {
+    if (!contextMenu) return;
+    const { x: _x, y: _y, ...info } = contextMenu;
+    setContextMenu(null);
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'element-context-action', action, ...info }, '*');
+    }
+  }, [contextMenu]);
+
+  useEffect(() => {
+    const handle = (e: MessageEvent) => {
+      if (e.source !== window.parent || !isAllowedOrigin(e.origin)) return;
+      if (e.data?.type === 'set-inspect-mode' && e.data.projectId === projectId) {
+        setInspectMode(!!e.data.enabled);
+        if (!e.data.enabled) setHoveredRect(null);
+      }
+    };
+    window.addEventListener('message', handle);
+    return () => window.removeEventListener('message', handle);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!inspectMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setInspectMode(false); setHoveredRect(null); }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [inspectMode]);
+
+  const handleInspectMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const overlay = inspectOverlayRef.current;
+    if (!overlay) return;
+    overlay.style.pointerEvents = 'none';
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    overlay.style.pointerEvents = 'all';
+    if (el && el !== overlay) setHoveredRect(el.getBoundingClientRect());
+  }, []);
+
+  const handleInspectClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const overlay = inspectOverlayRef.current;
+    if (!overlay) return;
+    overlay.style.pointerEvents = 'none';
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    overlay.style.pointerEvents = 'all';
+    setInspectMode(false);
+    setHoveredRect(null);
+    if (!el || el === overlay) return;
+    const id = el.id || undefined;
+    const rawClass = typeof el.className === 'string' ? el.className.trim() : '';
+    const text = el.textContent?.trim().replace(/\s+/g, ' ').slice(0, 80) || undefined;
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: 'element-selected',
+        tagName: el.tagName.toLowerCase(),
+        id,
+        className: rawClass || undefined,
+        text,
+      }, '*');
+    }
+  }, []);
+
   const htmlEntry = useMemo(() => selectHtmlEntry(files), [files]);
 
   const stylesCode = useMemo(() => {
@@ -476,6 +577,78 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
         {RenderedComponent ? <RenderedComponent /> : null}
         {RenderedComponent ? <PreviewReadySignal /> : null}
       </PreviewErrorBoundary>
+      {inspectMode && (
+        <>
+          {hoveredRect && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'fixed',
+                top: hoveredRect.top,
+                left: hoveredRect.left,
+                width: hoveredRect.width,
+                height: hoveredRect.height,
+                outline: '2px solid #3659D9',
+                background: 'rgba(54,89,217,0.08)',
+                pointerEvents: 'none',
+                zIndex: 999998,
+                boxSizing: 'border-box',
+              }}
+            />
+          )}
+          <div
+            ref={inspectOverlayRef}
+            role="presentation"
+            aria-label="Click an element to select it for editing"
+            style={{ position: 'fixed', inset: 0, zIndex: 999999, cursor: 'crosshair' }}
+            onMouseMove={handleInspectMouseMove}
+            onMouseLeave={() => setHoveredRect(null)}
+            onClick={handleInspectClick}
+          />
+        </>
+      )}
+      {contextMenu && (
+        <div
+          id="bh-ctx-menu"
+          role="menu"
+          aria-label="Element quick actions"
+          style={{
+            position: 'fixed',
+            top: Math.min(contextMenu.y, window.innerHeight - 200),
+            left: Math.min(contextMenu.x, window.innerWidth - 180),
+            zIndex: 1000000,
+            background: '#1c2b36',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 8,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            padding: '4px',
+            minWidth: 164,
+            userSelect: 'none',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+          }}
+        >
+          {contextMenu.text && (
+            <div style={{ padding: '5px 10px 6px', color: '#657580', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 152, borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 2 }}>
+              {contextMenu.tagName}{contextMenu.id ? `#${contextMenu.id}` : ''}
+            </div>
+          )}
+          {([
+            ['change-text', 'Change text'],
+            ['change-style', 'Change style'],
+            ['change-color', 'Change color'],
+            ['remove', 'Remove element'],
+          ] as const).map(([action, label]) => (
+            <button
+              key={action}
+              role="menuitem"
+              onClick={() => sendContextAction(action)}
+              style={{ display: 'block', width: '100%', padding: '7px 10px', textAlign: 'left', background: 'transparent', border: 'none', color: '#c8d6e0', cursor: 'pointer', fontSize: 13, borderRadius: 4 }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
     </>
   );
 };

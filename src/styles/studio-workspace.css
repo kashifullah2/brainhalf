@@ -131,6 +131,20 @@
 .studio-preview-empty:has(.studio-build-progress) .studio-empty-window { display: none; }
 .studio-preview-empty:has(.studio-build-progress) h2 { font-size: 28px; margin: 12px 0; }
 .studio-preview-empty:has(.studio-build-progress) .studio-preview-empty-note { margin-top: 14px; }
+/* Inline generation progress strip (replaces compact BuildProgress during generation) */
+.bh-gen-progress { flex-shrink: 0; width: 100%; display: flex; flex-direction: column; }
+.bh-gen-progress-rail { height: 2px; width: 100%; background: rgba(36,60,75,0.07); position: relative; overflow: hidden; flex-shrink: 0; }
+.bh-gen-progress-fill { height: 100%; background: var(--accent-primary); transition: width 0.4s ease; }
+.bh-gen-indeterminate { position: absolute; inset: 0; height: 100%; width: 35%; background: var(--accent-primary); }
+.bh-gen-progress-strip { display: flex; align-items: center; gap: 10px; padding: 0 12px; height: 32px; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); font-size: 11.5px; overflow: hidden; }
+.bh-gen-progress-label { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); flex: 1; min-width: 0; overflow: hidden; }
+.bh-gen-filename { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 11px; }
+@keyframes bh-gen-slide-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.bh-gen-filename-anim { animation: bh-gen-slide-in 0.15s ease; }
+.bh-gen-progress-flash { display: flex; align-items: center; gap: 8px; color: var(--color-success, #22c55e); flex-shrink: 0; }
+.bh-gen-flash-item { display: flex; align-items: center; gap: 3px; font-family: var(--font-mono); font-size: 10.5px; white-space: nowrap; animation: bh-gen-slide-in 0.15s ease; opacity: 0.85; }
+.bh-gen-progress-count { color: var(--text-muted); font-size: 11px; flex-shrink: 0; white-space: nowrap; margin-left: auto; }
+
 .studio-workspace .browser-chrome { min-height: 48px !important; background: var(--bg-topnav); border-bottom: 1px solid var(--border-subtle); box-shadow: none; gap: 9px !important; }
 .studio-workspace .browser-chrome-center { justify-content: flex-start !important; }
 .studio-workspace .browser-url-pill { display: flex; align-items: center; gap: 8px; min-height: 29px; max-width: 100%; padding: 5px 10px; border: 1px solid var(--border-subtle); border-radius: 5px; color: var(--text-muted); background: var(--bg-card); font-family: var(--font-sans); font-size: 12px; box-shadow: none; }
