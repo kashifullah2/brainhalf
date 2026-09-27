@@ -33,6 +33,7 @@ import BuildProgress, { type FileProgress } from './BuildProgress';
 import GenerationProgress from './GenerationProgress';
 import ProjectConsole from './ProjectConsole';
 import PublishDialog from './PublishDialog';
+import CommandPalette from './CommandPalette';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
@@ -333,6 +334,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const [undoCheckpoint, setUndoCheckpoint] = useState<{ id: string; revision: number } | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
 
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+
   const theme = useTheme();
   const [readOnlyProjectId, setReadOnlyProjectId] = useState<string | null>(null);
   const isReadOnlyProject = readOnlyProjectId === activeProjectId;
@@ -625,6 +628,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [showGithubModal]);
+
+  // Cmd+K / Ctrl+K opens the command palette
+  useEffect(() => {
+    const handleCmdK = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCmdPaletteOpen(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handleCmdK);
+    return () => document.removeEventListener('keydown', handleCmdK);
+  }, []);
 
   // Modal focus management: move focus in on open, restore it on close, and keep
   // Tab inside the dialog while it is up.
@@ -1884,6 +1899,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           </div>
         </div>
       )}
+
+      <CommandPalette
+        open={cmdPaletteOpen}
+        onClose={() => setCmdPaletteOpen(false)}
+        files={files}
+        onSelectFile={(path) => { setActiveFile(path); selectTab('code'); }}
+        onSwitchTab={selectTab}
+        onExportZip={() => void handleExportZip()}
+        onOpenGithub={() => { githubTriggerRef.current = document.activeElement as HTMLElement; setShowGithubModal(true); }}
+        onPublish={() => setPublishDialog({ projectId: activeProjectId })}
+        onUndo={undoCheckpoint ? () => void quickUndo() : undefined}
+      />
     </div>
   );
 };
