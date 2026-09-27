@@ -1686,9 +1686,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
           const isStaged = !plannerMode && !isConversationalPrompt(actualPrompt) && !fileOutputRetry && !actualPrompt.includes('<edit ') && !(typeof process !== 'undefined' && process.env?.VITEST);
           const pipelineStages = isStaged ? [
-            { stageId: 'architecture', notice: 'Step 1 of 3: Architecture & Schema', extraPrompt: '\n\nSTAGE 1 INSTRUCTION: Generate ONLY the core architecture, database schema, types, and project structure (e.g. package.json, schema.sql). Do NOT generate UI components or routes yet.' },
-            { stageId: 'layout', notice: 'Step 2 of 3: Core layout & UI', extraPrompt: '\n\nSTAGE 2 INSTRUCTION: Using the architecture defined, generate the core layout, main navigation, and primary UI components. Do NOT implement backend routes or detailed feature logic yet.' },
-            { stageId: 'features', notice: 'Step 3 of 3: Feature modules & backend', extraPrompt: '\n\nSTAGE 3 INSTRUCTION: Complete the application by generating detailed feature modules, backend API routes, and wiring everything together.' }
+            { stageId: 'architecture', notice: 'Step 1 of 3: Architecture & Schema', extraPrompt: '\n\nSTAGE 1 INSTRUCTION: Write ONLY schema/migration files, shared contract types, and config files (e.g. migrations/*.sql, shared/*.ts, package.json). Do NOT write App.tsx, any /src/components/*.tsx files, or worker/index.ts yet.' },
+            { stageId: 'layout', notice: 'Step 2 of 3: Frontend components', extraPrompt: '\n\nSTAGE 2 INSTRUCTION: Write ALL frontend files. Start with /src/App.tsx FIRST (mandatory write order), then write EVERY component file it imports — all /src/components/*.tsx. Write every sub-import too. Do NOT write worker/index.ts or backend routes yet.' },
+            { stageId: 'features', notice: 'Step 3 of 3: Backend & finish', extraPrompt: '\n\nSTAGE 3 INSTRUCTION: Write the backend: worker/index.ts routes and any remaining files. All frontend files must already be written before this stage.' }
           ] : [
             { stageId: 'single', notice: 'The app builder is working…', extraPrompt: '' }
           ];
