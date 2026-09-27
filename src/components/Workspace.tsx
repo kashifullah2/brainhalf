@@ -1,4 +1,5 @@
 import { useAutomaticBackend } from '../lib/automatic-backend';
+import { useAutomaticBuildFix } from '../lib/automatic-build-fix';
 import { useTheme } from '../lib/theme';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
@@ -248,6 +249,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   // than once (StrictMode, a re-mount), so that wrote to storage during render.
   // It now only computes; the effect below owns persistence.
   const [status, setStatus] = useState<GenerationStatus>(() => (getProjectFiles(activeProjectId) ? 'Ready' : 'Idle'));
+  useAutomaticBuildFix(activeProjectId, runtime, status === 'Generating');
   const fileProgressKey = `bh_fileprogress_${activeProjectId}`;
   const [fileProgress, setFileProgress] = useState<FileProgress>(() => {
     try {
