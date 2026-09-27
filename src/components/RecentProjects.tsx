@@ -89,7 +89,6 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
   }, [projects, snapshot]);
   const results = useMemo(() => selectRecentProjects(entries, search, filter, sort), [entries, search, filter, sort]);
   const loaded = results.slice(0, limit);
-  const shown = loaded.filter(entry => !collapsed.has(entry.dateGroup)).length;
 
   const resetResults = () => {
     setLimit(PROJECT_PAGE_SIZE);
@@ -101,11 +100,12 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
     menuButtonRef.current?.focus();
   };
 
+  const showFullControls = projects.length >= 5;
+
   return (
     <section className="recent-projects landing-projects-section" aria-labelledby={`${id}-heading`}>
       <div className="recent-projects-heading">
-        <div><h2 id={`${id}-heading`}>Recent projects <span>{projects.length}</span></h2><p>Pick up where you left off.</p></div>
-        <span className="recent-projects-sort-note">Sorted within date groups</span>
+        <div><h2 id={`${id}-heading`}>Projects</h2><p>{projects.length === 1 ? '1 project' : `${projects.length} projects`} · pick up where you left off.</p></div>
       </div>
       <div className="recent-projects-controls">
         <label className="recent-projects-search">
@@ -113,13 +113,15 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
           <input type="search" aria-label="Search projects" placeholder="Search projects…" value={search} onChange={event => { setSearch(event.target.value); resetResults(); }} />
           {search && <button type="button" aria-label="Clear project search" onClick={() => { setSearch(''); resetResults(); }}><X size={16} /></button>}
         </label>
-        <label className="recent-projects-select"><span>Status</span><select aria-label="Filter projects by status" value={filter} onChange={event => { setFilter(event.target.value as typeof filter); resetResults(); }}>
-          <option value="all">All statuses</option>
-          {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select><ChevronDown size={15} aria-hidden="true" /></label>
-        <label className="recent-projects-select"><span>Sort</span><select aria-label="Sort projects" value={sort} onChange={event => { setSort(event.target.value as ProjectSort); resetResults(); }}>
-          <option value="updated">Recently updated</option><option value="name">Name</option><option value="status">Status</option>
-        </select><ChevronDown size={15} aria-hidden="true" /></label>
+        {showFullControls && <>
+          <label className="recent-projects-select"><span>Status</span><select aria-label="Filter projects by status" value={filter} onChange={event => { setFilter(event.target.value as typeof filter); resetResults(); }}>
+            <option value="all">All statuses</option>
+            {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select><ChevronDown size={15} aria-hidden="true" /></label>
+          <label className="recent-projects-select"><span>Sort</span><select aria-label="Sort projects" value={sort} onChange={event => { setSort(event.target.value as ProjectSort); resetResults(); }}>
+            <option value="updated">Recently updated</option><option value="name">Name</option><option value="status">Status</option>
+          </select><ChevronDown size={15} aria-hidden="true" /></label>
+        </>}
       </div>
 
       {PROJECT_DATE_GROUPS.map(group => {
@@ -167,10 +169,13 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
         </div>;
       })}
       {results.length === 0 && <div className="recent-projects-empty"><Search size={24} aria-hidden="true" /><h3>No matching projects</h3><p>Try another name or choose a different status.</p><button type="button" onClick={() => { setSearch(''); setFilter('all'); resetResults(); }}>Clear filters</button></div>}
-      <div className="recent-projects-pagination">
-        <p role="status">Showing {shown} of {results.length} {search.trim() || filter !== 'all' ? 'matching ' : ''}projects</p>
-        {results.length > limit && <button type="button" onClick={() => { setLimit(value => value + PROJECT_PAGE_SIZE); setCollapsed(new Set()); }}>Show more <span>({results.length - loaded.length})</span><ChevronDown size={16} aria-hidden="true" /></button>}
-      </div>
+      {(results.length > limit || search.trim() || filter !== 'all') && (
+        <div className="recent-projects-pagination">
+          {results.length > loaded.length && <p role="status">Showing {loaded.length} of {results.length} projects</p>}
+          {!(results.length > loaded.length) && (search.trim() || filter !== 'all') && <p role="status">{results.length} matching project{results.length !== 1 ? 's' : ''}</p>}
+          {results.length > limit && <button type="button" onClick={() => { setLimit(value => value + PROJECT_PAGE_SIZE); setCollapsed(new Set()); }}>Show more <span>({results.length - loaded.length})</span><ChevronDown size={16} aria-hidden="true" /></button>}
+        </div>
+      )}
     </section>
   );
 }

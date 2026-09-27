@@ -2467,21 +2467,51 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   border-color: var(--border-accent);
 }
 
-.studio-advanced-controls {
-  padding: 10px 0;
-  border-top: 1px solid var(--border-primary);
-}
 
-.studio-advanced-controls p {
-  margin: 0 0 8px;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
+/* ==========================================================================
+   Light Mode Theme Overrides
+   Activated when JS calls document.documentElement.dataset.theme = 'light'
+   ========================================================================== */
+:root[data-theme='light'] {
+  --bg-canvas: #f8fafc;
+  --bg-sidebar: #f1f5f9;
+  --bg-topnav: #ffffff;
+  --bg-chat-panel: #f8fafc;
+  --bg-workspace: #f1f5f9;
+  --bg-file-explorer: #f1f5f9;
+  --bg-code-editor: #ffffff;
+  --bg-preview-canvas: #ffffff;
+  --bg-surface: #f8fafc;
+  --bg-surface-hover: #e2e8f0;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f5f9;
 
-.studio-advanced-controls>div {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  --border-subtle: #e2e8f0;
+  --border-medium: #cbd5e1;
+  --border-strong: #94a3b8;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+
+  --macos-bg-window: #f8fafc;
+  --macos-bg-sidebar: #f1f5f9;
+  --macos-bg-toolbar: #ffffff;
+  --macos-bg-panel: #f8fafc;
+
+  --color-success: #055035;
+  --color-success-bg: #dcfce7;
+  --color-success-border: #86efac;
+
+  --color-warning: #78350f;
+  --color-warning-bg: #fef3c7;
+  --color-warning-border: #fde047;
+
+  --color-error: #7f1d1d;
+  --color-error-bg: #fee2e2;
+  --color-error-border: #fca5a5;
+
+  --color-info: #0c4a6e;
+  --color-info-bg: #e0f2fe;
+  --color-info-border: #7dd3fc;
 }

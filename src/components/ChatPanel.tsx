@@ -1,6 +1,8 @@
 import { GenerationClock } from '../lib/generation-timing';
 import { acceptsImageInput } from '../lib/models';
+import { PENDING_REQUEST_TIMEOUT, WS_SNAPSHOT_SYNC_TIMEOUT, WS_RECONNECT_BACKOFF_CAP, WS_MAX_RECONNECT_ATTEMPTS, COMPOSER_UNLOCK_DELAY } from '../lib/timeouts';
 import AgentTools from './AgentTools';
+import AgentTracker from './AgentTracker';
 import { builderRequest } from '../lib/builder-client';
 import { readUpload } from '../lib/read-upload';
 import { MAX_TURN_ATTACHMENTS, type AttachmentSummary } from '../lib/builder-attachments';
@@ -8,7 +10,7 @@ import { RepairBudget } from '../lib/repair-budget';
 import AssistantMarkdown from './AssistantMarkdown';
 import ActionMenu from './ActionMenu';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Wrench, Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, ArrowDown, Plus, Copy, Check, ArrowUp, AlertCircle, RotateCcw, ChevronDown, MoreHorizontal, Upload, FileUp } from 'lucide-react';
+import { Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, ArrowDown, Plus, Copy, Check, ArrowUp, AlertCircle, RotateCcw, ChevronDown, MoreHorizontal, Upload, FileUp, Server, Activity, Loader2 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, parseMessageSegmentsMemoized, type ParseResult } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
@@ -184,7 +186,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   });
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [composerUnlocked, setComposerUnlocked] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copyErrorIndex, setCopyErrorIndex] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -206,17 +207,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const [uploadError, setUploadError] = useState('');
   const [showAgentTools, setShowAgentTools] = useState(false);
   const [agentToolsTab, setAgentToolsTab] = useState<'connections' | 'skills' | 'files'>('connections');
+  const [showAgentTracker, setShowAgentTracker] = useState(false);
   const uploadEpoch = useRef(0);
   const uploadBusy = useRef(false);
   useEffect(() => {
     uploadEpoch.current++; uploadBusy.current = false;
-    setAttachments([]); setUploading(false); setUploadError(''); setShowAgentTools(false); setShowAdvanced(false);
+    setAttachments([]); setUploading(false); setUploadError(''); setShowAgentTools(false); setShowAgentTracker(false);
     return () => { uploadEpoch.current++; };
   }, [activeProjectId]);
 
   useEffect(() => {
     setComposerUnlocked(false);
-    const timer = window.setTimeout(() => setComposerUnlocked(true), 300);
+    const timer = window.setTimeout(() => setComposerUnlocked(true), COMPOSER_UNLOCK_DELAY);
     return () => window.clearTimeout(timer);
   }, [activeProjectId]);
 
@@ -295,9 +297,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     (selected || picker?.querySelector<HTMLButtonElement>('[data-model-option="true"]'))?.focus();
   }, [showModelPicker]);
 
-  useEffect(() => {
-    if (!showAdvanced) setShowModelPicker(false);
-  }, [showAdvanced]);
 
   useEffect(() => {
     if (!showModelPicker) return;
@@ -473,6 +472,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         isGeneratingRef.current = false;
       }
       appEvents.emit('workspace-sync-error', { projectId: activeProjectId, error });
+      if (!workspaceReadyRef.current && isMounted && isCurrent()) {
+        setTimeout(() => {
+          if (isMounted && isCurrent() && !workspaceReadyRef.current) connectRef.current?.();
+        }, 3000);
+      }
     };
     const sendSnapshotRequest = (request: FileSnapshotRequest) => {
       if (!isMounted || !isCurrent() || !ws || ws.readyState !== WebSocket.OPEN) {
@@ -480,7 +484,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         return;
       }
       if (snapshotTimer) clearTimeout(snapshotTimer);
-      snapshotTimer = setTimeout(() => reportSnapshotError('Workspace synchronization timed out; existing files were preserved.'), 30000);
+      snapshotTimer = setTimeout(() => reportSnapshotError('Workspace synchronization timed out; existing files were preserved.'), WS_SNAPSHOT_SYNC_TIMEOUT);
       try { ws.send(JSON.stringify(request)); }
       catch { reportSnapshotError('Workspace synchronization could not be sent; existing files were preserved.'); }
     };
@@ -859,17 +863,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               const prompt = [...messagesRef.current].reverse().find(message => message.role === 'user')?.content;
               if (prompt) setExportPrompt({ notice: errMsg, resume: () => { if (isCurrent()) handleSendMessageRef.current?.(prompt); } });
             }
-            if (wasGenerating && data.code !== 'hosting_unavailable' && generationModelIdRef.current) {
+            const isRateLimited = data.code === 'rate_limited';
+            if (wasGenerating && data.code !== 'hosting_unavailable' && !isRateLimited && generationModelIdRef.current) {
               recordModelOutcome(generationModelIdRef.current, 'failure', errMsg, getReliabilityScope());
               setModels(rankModelsByReliability(MODEL_CATALOG, getReliabilityScope()));
             }
             appEvents.emit('generation-status', { status: 'Error', error: errMsg, projectId: activeProjectId });
+            const displayErrMsg = isRateLimited
+              ? `⏳ ${errMsg}\n\nWait for one of your running apps to finish, then send your message again.`
+              : `⚠️ ${errMsg}`;
             const current = [...messagesRef.current];
             if (wasGenerating && current[current.length - 1]?.role === 'ai') {
               const partialContent = aiMessageRef.current.trim();
-              current[current.length - 1] = { role: 'ai', content: `${partialContent ? `${partialContent}\n\n` : ''}⚠️ ${errMsg}`, timestamp: Date.now() };
+              current[current.length - 1] = { role: 'ai', content: `${partialContent ? `${partialContent}\n\n` : ''}${displayErrMsg}`, timestamp: Date.now() };
             } else {
-              current.push({ role: 'ai', content: `⚠️ ${errMsg}`, timestamp: Date.now() });
+              current.push({ role: 'ai', content: displayErrMsg, timestamp: Date.now() });
             }
             messagesRef.current = current;
             setMessages(current);
@@ -990,7 +998,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     writeInFlight = false;
                     workspaceWritePendingRef.current = false;
                     reportSnapshotError('Saving local files timed out; local files were preserved. Reconnect before continuing.');
-                  }, 30000);
+                  }, WS_SNAPSHOT_SYNC_TIMEOUT);
                 };
                 if (restoringConnection && initialWorkspaceEmpty && reconciled.hasLocalChanges) {
                   initialWorkspaceEmpty = false;
@@ -1027,7 +1035,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         workspaceReadyRef.current = false;
         workspaceWritePendingRef.current = false;
         setIsConnected(false);
-        setHistoryLoaded(false);
+        // Keep historyLoaded true on transient disconnects so the composer
+        // stays visible while the socket reconnects. It only resets when the
+        // component remounts (project switch).
         if (isGeneratingRef.current) {
           // A transport interruption is not a model failure. The server may
           // still finish the request, which the next connection resumes.
@@ -1079,8 +1089,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           return;
         }
         connectAttempts++;
-        if (connectAttempts > 10) {
+        if (connectAttempts > WS_MAX_RECONNECT_ATTEMPTS) {
           console.warn(`WS connection failed after ${connectAttempts - 1} attempts; stopping reconnect loop.`);
+          setHistoryLoaded(true);
           appEvents.emit('generation-status', {
             status: 'Error',
             error: 'Connection to workspace session lost. Please refresh the page.',
@@ -1089,7 +1100,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           return;
         }
         // Use capped exponential backoff (1s, 2s, 4s, 8s … 30s max)
-        const backoffMs = Math.min(1000 * Math.pow(2, connectAttempts - 1), 30_000);
+        const backoffMs = Math.min(1000 * Math.pow(2, connectAttempts - 1), WS_RECONNECT_BACKOFF_CAP);
         console.warn(`WS closed (attempt ${connectAttempts}), retrying in ${Math.round(backoffMs / 1000)}s…`);
         reconnectTimer = setTimeout(connect, backoffMs);
       };
@@ -1359,7 +1370,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     const pendingRequest = new PendingChatRequest();
     pendingRequestRef.current = pendingRequest;
     generationClockRef.current = new GenerationClock(activeProjectId, pendingRequest.idempotencyKey);
-    pendingRequest.expireAfter(30_000, () => {
+    pendingRequest.expireAfter(PENDING_REQUEST_TIMEOUT, () => {
       if (!belongsToProject() || pendingRequestRef.current !== pendingRequest) return;
       pendingSendRef.current = null;
       setIsGenerating(false); isGeneratingRef.current = false;
@@ -1538,8 +1549,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         resume?.();
       }} />
       {showAgentTools && <AgentTools key={activeProjectId} projectId={activeProjectId} initialTab={agentToolsTab} onClose={() => setShowAgentTools(false)} onAttach={attachExisting} />}
+      {showAgentTracker && <AgentTracker projectId={activeProjectId} onClose={() => setShowAgentTracker(false)} />}
       <header className="studio-agent-header">
-        <div className="studio-agent-identity"><span className="studio-agent-mark"><BrainHalfLogo size={20} color="currentColor" /></span><div><h1>Build with BrainHalf</h1><p>Your conversation</p></div></div>
+        <div className="studio-agent-identity"><span className="studio-agent-mark"><BrainHalfLogo size={20} color="currentColor" /></span><div><h1>BrainHalf</h1></div></div>
         <div className="studio-agent-header-actions">
               {/* One live status for the active conversation. */}
               <div
@@ -1807,6 +1819,26 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                                   content={seg.content}
                                   isStreaming={seg.isStreaming}
                                 />
+                              );
+                            } else if (seg.type === 'thought') {
+                              return (
+                                <details key={sIdx} className="agent-thought-block" open={seg.isStreaming} style={{
+                                  padding: '8px 12px',
+                                  background: 'var(--bg-surface-2)',
+                                  border: '1px solid var(--border-color)',
+                                  borderRadius: '6px',
+                                  fontSize: '13px',
+                                  color: 'var(--text-secondary)'
+                                }}>
+                                  <summary style={{ cursor: 'pointer', fontWeight: 500, outline: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {seg.isStreaming && <Loader2 size={13} className="lucide-spin" />}
+                                    {seg.isStreaming ? 'Agent is thinking...' : 'Thought Process'}
+                                    {seg.isStreaming && <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>{elapsedSeconds}s</span>}
+                                  </summary>
+                                  <div style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: '12px', maxHeight: '200px', overflow: 'auto' }}>
+                                    {seg.content}
+                                  </div>
+                                </details>
                               );
                             }
                             return null;
@@ -2095,46 +2127,35 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             {/* Left Controls: Plus, Model pill, Status */}
             <div className="studio-composer-options">
               <ActionMenu
-                label="Upload and skills menu"
+                label="Add and configure options"
                 className="icon-btn"
                 items={[
                   { label: 'Upload files', icon: <Upload size={15} />, onSelect: () => fileInputRef.current?.click(), disabled: isGenerating || uploading },
-                  { label: 'Upload skills', icon: <FileUp size={15} />, onSelect: () => { setAgentToolsTab('skills'); setShowAgentTools(true); }, separator: true },
-                  { label: 'Agent tools', icon: <Wrench size={15} />, onSelect: () => { setAgentToolsTab('connections'); setShowAgentTools(true); } },
+                  { label: 'Upload skills', icon: <FileUp size={15} />, onSelect: () => { setAgentToolsTab('skills'); setShowAgentTools(true); } },
+                  { label: 'Agent tracker', icon: <Activity size={15} />, onSelect: () => setShowAgentTracker(true) },
+                  { label: 'Project console', icon: <Server size={15} />, onSelect: () => appEvents.emit('open-project-console', undefined), separator: true },
                 ]}
               >
                 <Plus size={16} strokeWidth={2} />
               </ActionMenu>
 
-              {showAdvanced && (
-                <button
-                  ref={modelPickerButtonRef}
-                  type="button"
-                  onClick={() => setShowModelPicker(prev => !prev)}
-                  aria-haspopup="dialog"
-                  aria-expanded={showModelPicker}
-                  aria-controls={modelPickerListId}
-                  className="studio-composer-model"
-                  title="Change AI model"
-                  aria-label="Change AI model"
-                  data-testid="model-picker-btn"
-                >
-                  <span className="studio-model-caption">Model</span>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {(models.find(m => m.id === selectedModelId)?.name ?? selectedModelId).replace(/\s*\([^)]*\)/g, '')}
-                  </span>
-                  <ChevronDown size={14} aria-hidden="true" style={{ flexShrink: 0 }} />
-                </button>
-              )}
-
               <button
+                ref={modelPickerButtonRef}
                 type="button"
-                className="studio-advanced-toggle"
-                aria-expanded={showAdvanced}
-                aria-controls={`advanced-controls-${activeProjectId}`}
-                onClick={() => setShowAdvanced(value => !value)}
+                onClick={() => setShowModelPicker(prev => !prev)}
+                aria-haspopup="dialog"
+                aria-expanded={showModelPicker}
+                aria-controls={modelPickerListId}
+                className="studio-composer-model"
+                title="Change AI model"
+                aria-label="Change AI model"
+                data-testid="model-picker-btn"
               >
-                Advanced
+                <span className="studio-model-caption">Model</span>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {(models.find(m => m.id === selectedModelId)?.name ?? selectedModelId).replace(/\s*\([^)]*\)/g, '')}
+                </span>
+                <ChevronDown size={14} aria-hidden="true" style={{ flexShrink: 0 }} />
               </button>
             </div>
 
@@ -2191,21 +2212,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             </div>
           </div>
 
-          {showAdvanced && (
-            <div id={`advanced-controls-${activeProjectId}`} className="studio-advanced-controls">
-              <div>
-                <button type="button" className="studio-advanced-toggle" onClick={() => appEvents.emit('open-project-console', undefined)}>
-                  Project console
-                </button>
-                <button type="button" className="studio-advanced-toggle" onClick={() => appEvents.emit('open-deploy-modal', undefined)}>
-                  Hosting settings
-                </button>
-                <button type="button" className="studio-advanced-toggle" onClick={() => { setAgentToolsTab('connections'); setShowAgentTools(true); }}>
-                  Agent tools
-                </button>
-              </div>
-            </div>
-          )}
         </div>
         <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{isGenerating ? 'Draft now. Send when the agent finishes.' : 'Your changes start here.'}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
       </div>

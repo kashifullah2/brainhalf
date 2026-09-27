@@ -25,3 +25,22 @@
 .dashboard-rename > div { display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 1200px) { .dashboard-main { margin-inline: 40px; } }
 @media (max-width: 640px) { .dashboard-header { min-height: 68px; padding-inline: 20px; } .dashboard-main { margin-inline: 20px; padding-top: 24px; } .dashboard-welcome { align-items: stretch; flex-direction: column; padding: 32px 0 28px; } .dashboard-new-project { width: 100%; } .dashboard-page .recent-projects { margin-top: 28px; } .dashboard-account-usage { max-width: 220px; font-size: 10px; } }
+@keyframes skeleton-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.dashboard-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.dashboard-notice { margin: 8px 0 0; padding: 10px 14px; background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-radius: 8px; color: var(--color-warning); font-size: 13px; }
+.dashboard-skeleton-card {
+  height: 130px;
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  background: linear-gradient(90deg, var(--bg-surface) 25%, var(--bg-surface-hover) 50%, var(--bg-surface) 75%);
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.4s infinite linear;
+}

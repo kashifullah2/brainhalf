@@ -4,9 +4,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowRight,
   ChevronDown,
-  Code2,
-  Monitor,
-  MessageCircle,
   Plus,
   ArrowUpRight,
   LogOut,
@@ -15,6 +12,9 @@ import {
   ShoppingCart,
   MessageSquare,
   Check,
+  Zap,
+  Menu,
+  X,
 } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import LandingFooter from './LandingFooter';
@@ -33,7 +33,7 @@ interface LandingPageProps {
   onOpenDashboard?: () => void;
 }
 
-const SUGGESTIONS = BUSINESS_APPS;
+const IDEA_ICONS = [ShoppingCart, LayoutGrid, BarChart3, MessageSquare];
 
 const HOW_IT_WORKS = [
   { step: '01', title: 'Put your idea into words', detail: 'Describe one job: tracking stock, booking appointments, or following up with customers.' },
@@ -51,10 +51,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const [promptText, setPromptText] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const userMenuButtonRef = useRef<HTMLButtonElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const input = textareaRef.current;
@@ -63,7 +65,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
   }, [promptText]);
 
-  // Close menus on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
@@ -81,10 +82,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         setShowUserMenu(false);
         userMenuButtonRef.current?.focus();
       }
+      if (showMobileMenu) setShowMobileMenu(false);
     };
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [showUserMenu]);
+  }, [showUserMenu, showMobileMenu]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+        setShowMobileMenu(false);
+      }
+    };
+    if (showMobileMenu) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMobileMenu]);
 
   const handlePromptSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -129,22 +141,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <button
             type="button"
             className="landing-brand-group"
-            onClick={() => window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })}
+            onClick={() => { setShowMobileMenu(false); window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }}
             aria-label="BrainHalf home"
           >
             <div className="landing-brand-logo">
               <BrainHalfLogo size={27} strokeWidth={1.6} color="currentColor" />
             </div>
             <span className="landing-brand-text">BrainHalf</span>
-            <span className="landing-brand-descriptor">Tools for your business</span>
           </button>
-
         </div>
 
-        <nav className="studio-navigation" aria-label="Main navigation"><a href="#examples">Examples</a><a href="#how-it-works">How it works</a><a href="#questions">FAQs</a></nav>
+        <nav className="studio-navigation" aria-label="Main navigation">
+          <a href="#possibilities">Examples</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#questions">FAQs</a>
+        </nav>
 
         <div className="landing-header-right">
-          {currentUser && <button className="landing-get-started-btn" onClick={onOpenDashboard}>Dashboard <ArrowRight size={14} /></button>}
+          <button
+            type="button"
+            className="landing-mobile-menu-btn"
+            aria-label={showMobileMenu ? 'Close menu' : 'Open menu'}
+            aria-expanded={showMobileMenu}
+            aria-controls="mobile-nav"
+            onClick={() => setShowMobileMenu(prev => !prev)}
+          >
+            {showMobileMenu ? <X size={20} /> : <Menu size={20} />}
+          </button>
+          {currentUser && <button className="landing-get-started-btn landing-dashboard-btn" onClick={onOpenDashboard}>Dashboard <ArrowRight size={14} /></button>}
           <ThemeToggle />
           {currentUser ? (
             <div className="landing-user-menu-anchor" ref={userMenuRef}>
@@ -208,20 +232,31 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </header>
 
+      {/* Mobile nav dropdown */}
+      {showMobileMenu && (
+        <div className="landing-mobile-nav" id="mobile-nav" ref={mobileMenuRef} role="dialog" aria-label="Navigation menu">
+          <nav aria-label="Mobile navigation">
+            <a href="#possibilities" onClick={() => setShowMobileMenu(false)}>Examples</a>
+            <a href="#how-it-works" onClick={() => setShowMobileMenu(false)}>How it works</a>
+            <a href="#questions" onClick={() => setShowMobileMenu(false)}>FAQs</a>
+          </nav>
+        </div>
+      )}
+
       {/* Hero */}
       <main className="landing-main-content" id="main-content" tabIndex={-1}>
         <section className="landing-hero-shell" aria-labelledby="hero-heading">
           <div className="landing-hero-copy">
-            <p className="landing-hero-eyebrow"><span aria-hidden="true" /> AI app builder for small businesses</p>
-            <h1 id="hero-heading" aria-label="Build the tools your business needs.">Less busywork.<br /><span>Your own tools.</span></h1>
-            <p className="landing-hero-description">Track stock, manage bookings, or keep customers organised. Describe the tool your business needs, try it, and publish it from one workspace.</p>
+            <p className="landing-hero-eyebrow"><Zap size={12} aria-hidden="true" /> AI app builder for small businesses</p>
+            <h1 id="hero-heading">Build the tools<br /><span>your business needs.</span></h1>
+            <p className="landing-hero-description">Describe what you want, watch it come to life, and publish it — all from one workspace. No coding required.</p>
             <form className="landing-prompt-box" id="start-building" onSubmit={handlePromptSubmit}>
               <label htmlFor="app-idea" className="landing-input-label">Describe your app</label>
               <textarea
                 id="app-idea"
                 ref={textareaRef}
                 className="landing-prompt-textarea"
-                placeholder="I run a small business and need a tool to track…"
+                placeholder="Describe what you need to build…"
                 aria-describedby="prompt-help"
                 value={promptText}
                 onChange={event => setPromptText(event.target.value)}
@@ -229,7 +264,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 rows={3}
               />
               <div className="landing-prompt-actions">
-                <span><MessageCircle size={14} aria-hidden="true" /> Start with a simple idea</span>
+                <span id="prompt-help"><Check size={13} aria-hidden="true" /> Free to start &nbsp;·&nbsp; No coding required</span>
                 <button
                   type="submit"
                   className="landing-submit-btn"
@@ -237,69 +272,80 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   title="Create app from prompt (Enter)"
                   aria-label="Create app from prompt"
                 >
-                  <span>{creatingProject ? 'Creating project…' : 'Build my app'}</span><ArrowRight size={17} aria-hidden="true" />
+                  <span>{creatingProject ? 'Creating…' : 'Start building'}</span><ArrowRight size={16} aria-hidden="true" />
                 </button>
               </div>
             </form>
-            <p className="landing-prompt-help" id="prompt-help"><span><Check size={14} aria-hidden="true" /> Free to start</span><span><Check size={14} aria-hidden="true" /> No coding required</span></p>
-            <p className="landing-starter-link">Need a starting point? <a href="#possibilities">Explore app ideas <ArrowRight size={13} aria-hidden="true" /></a></p>
           </div>
           <LandingShowcase onUsePrompt={handleExamplePrompt} />
         </section>
 
-        <div className="studio-promise-strip" aria-label="What you can do with BrainHalf">
-          <span>YOUR IDEA, FROM<br />FIRST WORD TO FIRST VERSION.</span>
-          <div><MessageCircle size={16} /> Build by conversation</div>
-          <div><Monitor size={16} /> See every change</div>
-          <div><Code2 size={16} /> Keep your source code</div>
-        </div>
-
         <section className="studio-ideas-section" id="possibilities" aria-labelledby="ideas-heading">
           <div className="studio-section-intro">
             <div><p className="studio-section-label">A LITTLE INSPIRATION</p><h2 id="ideas-heading">What will you make first?</h2></div>
-            <p>Pick an idea to fill in your first prompt.<br />Change anything before you build.</p>
+            <p>Pick an idea to fill in your first prompt.<br />{' '}Change anything before you build.</p>
           </div>
           <div className="studio-idea-list">
-            {SUGGESTIONS.map((suggestion, index) => {
-              const Icon = [ShoppingCart, LayoutGrid, BarChart3, Check, MessageSquare][index];
-              return <button key={suggestion.label} type="button" className={`studio-idea-card idea-tone-${index}`} onClick={() => handleExamplePrompt(suggestion.prompt)}>
-                <span className="studio-idea-icon"><Icon size={25} strokeWidth={1.5} /></span>
-                <strong>{suggestion.label}</strong><span>{suggestion.detail}</span><ArrowUpRight className="studio-idea-arrow" size={18} />
-              </button>;
+            {BUSINESS_APPS.slice(0, 4).map((suggestion, index) => {
+              const Icon = IDEA_ICONS[index] ?? ShoppingCart;
+              return (
+                <button key={suggestion.label} type="button" className={`studio-idea-card idea-tone-${index}`} onClick={() => handleExamplePrompt(suggestion.prompt)}>
+                  <span className="studio-idea-icon"><Icon size={24} strokeWidth={1.5} /></span>
+                  <strong>{suggestion.label}</strong>
+                  <span>{suggestion.detail}</span>
+                  <ArrowUpRight className="studio-idea-arrow" size={18} />
+                </button>
+              );
             })}
           </div>
         </section>
 
         <section className="studio-workflow-section" id="how-it-works" aria-labelledby="workflow-heading">
-          <div className="studio-workflow-intro"><p className="studio-section-label">THE WAY FROM IDEA TO APP</p><h2 id="workflow-heading">Less setup.<br />More possibility.</h2><p>BrainHalf is your AI building partner. You set the direction, make the decisions, and stay close to what you’re creating.</p><a href="#start-building" onClick={focusComposer}>Let’s make something <ArrowRight size={16} /></a></div>
+          <div className="studio-workflow-intro">
+            <p className="studio-section-label">THE WAY FROM IDEA TO APP</p>
+            <h2 id="workflow-heading">Less setup.<br />More building.</h2>
+            <p>You set the direction, make the decisions, and stay close to what you're creating.</p>
+            <a href="#start-building" onClick={focusComposer}>Start building <ArrowRight size={16} /></a>
+          </div>
           <ol className="landing-how-it-works" aria-label="How it works" role="list">
-            {HOW_IT_WORKS.map(item => <li key={item.step} className="landing-how-card"><span className="landing-how-step" aria-hidden="true">{item.step}</span><div><h3 className="landing-how-title">{item.title}</h3><p className="landing-how-detail">{item.detail}</p></div></li>)}
+            {HOW_IT_WORKS.map(item => (
+              <li key={item.step} className="landing-how-card">
+                <span className="landing-how-step" aria-hidden="true">{item.step}</span>
+                <div><h3 className="landing-how-title">{item.title}</h3><p className="landing-how-detail">{item.detail}</p></div>
+              </li>
+            ))}
           </ol>
+          <a href="/guides/build-an-app-with-ai" className="landing-guide-link">How to build an app with AI</a>
         </section>
 
         <section className="studio-faq-section" id="questions" aria-labelledby="faq-heading">
-          <div><p className="studio-section-label">GOOD TO KNOW</p><h2 id="faq-heading">Before you begin.</h2><p className="studio-content-updated">Product information updated<br /><time dateTime={HOME_MODIFIED}>{formatContentDate(HOME_MODIFIED)}</time></p></div>
+          <div>
+            <p className="studio-section-label">GOOD TO KNOW</p>
+            <h2 id="faq-heading">Before you begin.</h2>
+            <p className="studio-content-updated">Updated <time dateTime={HOME_MODIFIED}>{formatContentDate(HOME_MODIFIED)}</time></p>
+          </div>
           <div className="studio-faq-list">
-            {HOME_FAQS.map((faq, index) => <details key={faq.id} id={faq.id} open={index === 0}><summary><h3>{faq.question}<Plus size={17} aria-hidden="true" /></h3></summary><p>{faq.answer}</p></details>)}
+            {HOME_FAQS.map((faq, index) => (
+              <details key={faq.id} id={faq.id} open={index === 0}>
+                <summary><h3>{faq.question}<Plus size={17} aria-hidden="true" /></h3></summary>
+                <p>{faq.answer}</p>
+              </details>
+            ))}
           </div>
         </section>
-        <section className="studio-resource-section" aria-labelledby="resources-heading">
-          <p className="studio-section-label">FROM A CLEAR BRIEF TO A WORKING PROJECT</p>
-          <h2 id="resources-heading">Get more from your AI app builder.</h2>
-          <div className="studio-resource-links">
-            <a href="/guides/build-an-app-with-ai">How to build an app with AI <ArrowUpRight size={17} /></a>
-            <a href="/use-cases/ai-dashboard-builder">Build a custom dashboard <ArrowUpRight size={17} /></a>
-            <a href="/use-cases/ai-website-builder">Create a website with AI <ArrowUpRight size={17} /></a>
-            <a href="/use-cases/ai-inventory-app-builder">Plan an inventory app <ArrowUpRight size={17} /></a>
-            <a href="/guides/ai-appointment-app-example">See a tested appointment-app example <ArrowUpRight size={17} /></a>
-            <a href="/guides/full-stack-apps">Add saved data and sign-in <ArrowUpRight size={17} /></a>
+
+        <section className="studio-closing" aria-labelledby="closing-heading">
+          <div>
+            <p className="studio-section-label">READY WHEN YOU ARE</p>
+            <h2 id="closing-heading">Your idea deserves<br />a real home.</h2>
+            <p>Start with a sentence. See where it takes you.</p>
           </div>
+          <a href="#start-building" className="studio-closing-link" onClick={focusComposer}>Build your app <ArrowUpRight size={18} /></a>
+          <div className="studio-closing-mark" aria-hidden="true"><BrainHalfLogo size={240} color="currentColor" /></div>
         </section>
-        <section className="studio-closing" aria-labelledby="closing-heading"><div><p className="studio-section-label">YOU’VE ALREADY GOT THE FIRST INGREDIENT.</p><h2 id="closing-heading">Give that idea<br />somewhere to go.</h2><p>Start with a sentence. See where it takes you.</p></div><a href="#start-building" className="studio-closing-link" onClick={focusComposer}>Let’s build your app <ArrowUpRight size={18} /></a><div className="studio-closing-mark" aria-hidden="true"><BrainHalfLogo size={240} color="currentColor" /></div></section>
       </main>
 
       <LandingFooter />
-
     </div>
   );
 };

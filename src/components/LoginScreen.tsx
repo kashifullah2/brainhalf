@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, X } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
-import ThemeToggle from './ThemeToggle';
 import { login, signup, startGoogleSignIn, type SessionUser } from '../lib/auth-client';
 import { useModalFocus } from '../lib/use-modal-focus';
+import ThemeToggle from './ThemeToggle';
 import './LoginScreen.css';
 
 interface LoginScreenProps {
@@ -56,18 +56,44 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     try { onGoogleStart?.(); await startGoogleSignIn(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Google sign-in could not start. Please try again.'); setBusy(null); }
   };
+  const handleForgotPassword = async () => {
+    const trimmed = email.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Enter your email address first.'); return; }
+    if (busy) return;
+    setBusy('email'); setError(null);
+    try {
+      const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: trimmed }) });
+      const body = await res.json().catch(() => ({}));
+      setNotice(body.message || 'If that account exists, a reset link has been sent.');
+    } catch { setNotice('If that account exists, a reset link has been sent.'); }
+    finally { setBusy(null); }
+  };
+  const _handleResendVerification = async () => {
+    const trimmed = email.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Enter your email address first.'); return; }
+    if (busy) return;
+    setBusy('email'); setError(null);
+    try {
+      const res = await fetch('/api/auth/resend-verification', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: trimmed }) });
+      const body = await res.json().catch(() => ({}));
+      setNotice(body.message || 'If that account exists, a verification email has been sent.');
+    } catch { setNotice('If that account exists, a verification email has been sent.'); }
+    finally { setBusy(null); }
+  };
 
   return <div className={`login-screen ${onClose ? 'is-modal' : 'is-page'}`} role="dialog" aria-modal="true" aria-labelledby="login-title"
     ref={dialogRef} tabIndex={-1} onClick={event => { if (event.target === event.currentTarget) onClose?.(); }}>
     <div className="studio-auth-card">
       <div className="studio-auth-topline">
-        <div className="studio-auth-brand"><BrainHalfLogo size={25} strokeWidth={1.6} color="currentColor" /><span>BrainHalf</span></div>
-        <div className="studio-auth-controls"><ThemeToggle />{onClose && <button type="button" className="studio-auth-close" onClick={onClose} aria-label="Close"><X size={18} /></button>}</div>
+        <div className="studio-auth-brand"><BrainHalfLogo size={24} strokeWidth={1.6} color="currentColor" /><span>BrainHalf</span></div>
+        <div className="studio-auth-topline-actions">
+          <ThemeToggle />
+          {onClose && <button type="button" className="studio-auth-close" onClick={onClose} aria-label="Close"><X size={18} /></button>}
+        </div>
       </div>
       <div className="studio-auth-heading">
-        <span className="studio-auth-eyebrow">A space for your next idea.</span>
-        <h1 id="login-title">{mode === 'login' ? 'Welcome back.' : 'Bring your idea to life.'}</h1>
-        <p>{mode === 'login' ? 'Sign in to your studio' : 'Create your studio account'}</p>
+        <h1 id="login-title">{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
+        <p>{mode === 'login' ? 'Sign in to continue building' : 'Start building for free'}</p>
       </div>
       <div className="studio-auth-tabs" role="tablist" aria-label="Authentication mode">
         {(['login', 'signup'] as Mode[]).map((item, index) => <button type="button" key={item} id={`auth-tab-${item}`} role="tab" aria-controls="auth-panel" aria-selected={mode === item} tabIndex={mode === item ? 0 : -1} disabled={!!busy}
@@ -86,11 +112,10 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
           <label htmlFor="login-password">Password<input id="login-password" type="password" aria-label="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder="At least 8 characters" required minLength={8} disabled={!!busy} /></label>
           {error && <div className="studio-auth-error" role="alert">{error}</div>}
           {notice && <div className="account-notice" role="status">{notice}</div>}
-          <div className="account-links"><a href="/forgot-password">Forgot password?</a><a href="/resend-verification">Resend verification email</a></div>
+          {mode === 'login' && <div className="account-links"><button type="button" disabled={!!busy} onClick={() => void handleForgotPassword()}>Forgot password?</button></div>}
           <button type="submit" className="studio-auth-submit" disabled={!!busy}>{busy === 'email' ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}<ArrowRight size={17} /></button>
         </form>
       </div>
-      <p className="studio-auth-note">{mode === 'login' ? 'Pick up where you left off. Your projects are saved to your account.' : 'One place to build, preview, and keep your projects.'}</p>
     </div>
   </div>;
 }

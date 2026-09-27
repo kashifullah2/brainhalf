@@ -39,12 +39,14 @@ function dedupe(projects: Project[]) {
 
 export default function DashboardPage({ currentUser, onOpenProject, onCreateProject, creatingProject = false, onGoHome, onLogout }: DashboardPageProps) {
   const [projects, setProjects] = useState<Project[]>(() => dedupe(getProjects()));
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   const [projectToRename, setProjectToRename] = useState<Project | null>(null);
   const [renamedName, setRenamedName] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  const [cleanupStatus, setCleanupStatus] = useState<Array<{ project_id: string; completed_at: number | null; attempts: number }>>([]);
+  const [_cleanupStatus, setCleanupStatus] = useState<Array<{ project_id: string; completed_at: number | null; attempts: number }>>([]);
   const [cleanupError, setCleanupError] = useState('');
   useEffect(() => {
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>;
@@ -163,8 +165,16 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
         <div><p className="studio-section-label">YOUR WORKSPACE</p><h1 id="dashboard-title">Projects</h1><p>Start something new or continue where you left off.</p></div>
         <button className="dashboard-new-project" type="button" onClick={onCreateProject} disabled={creatingProject}><Plus size={18} /> {creatingProject ? 'Creating…' : 'New project'}</button>
       </section>
-      {(cleanupStatus.length > 0 || cleanupError) && <details className="settings-card"><summary>Project deletion status</summary>{cleanupError && <p role="status">{cleanupError}</p>}<ul>{cleanupStatus.map(job => <li key={job.project_id}><code>{job.project_id}</code>: {job.completed_at ? 'Storage cleanup completed' : job.attempts ? 'Cleanup pending; retrying automatically' : 'Access revoked; cleanup queued'}</li>)}</ul></details>}
-      {projects.length > 0 ? <RecentProjects projects={projects} onOpenProject={onOpenProject} onRenameProject={project => { setProjectToRename(project); setRenamedName(project.name); }} onDeleteProject={setProjectToDelete} /> : <section className="dashboard-empty"><span><Plus size={22} /></span><h2>Create your first project</h2><p>Open a blank workspace and describe the app you want to make.</p><button type="button" onClick={onCreateProject} disabled={creatingProject}>{creatingProject ? 'Creating…' : 'Create new project'}</button></section>}
+      {cleanupError && <p className="dashboard-notice" role="status">{cleanupError}</p>}
+      {!hydrated ? (
+        <div className="dashboard-skeleton-grid" aria-busy="true" aria-label="Loading projects">
+          {[0, 1, 2, 3].map(i => <div key={i} className="dashboard-skeleton-card" />)}
+        </div>
+      ) : projects.length > 0 ? (
+        <RecentProjects projects={projects} onOpenProject={onOpenProject} onRenameProject={project => { setProjectToRename(project); setRenamedName(project.name); }} onDeleteProject={setProjectToDelete} />
+      ) : (
+        <section className="dashboard-empty"><span><Plus size={22} /></span><h2>Create your first project</h2><p>Open a blank workspace and describe the app you want to make.</p><button type="button" onClick={onCreateProject} disabled={creatingProject}>{creatingProject ? 'Creating…' : 'Create new project'}</button></section>
+      )}
     </main>
     {projectToDelete && <ConfirmModal isOpen title="Delete Project" message="Delete this project, its app deployments, and databases? Access is revoked immediately. Local files and conversation history are removed after the request is accepted; server source, attachments, credentials and backups are erased by an automatically retried cleanup job. Track completion on the dashboard." confirmLabel={deleting ? 'Deleting…' : 'Delete Project'} pending={deleting} error={deleteError} isDestructive onConfirm={handleDelete} onCancel={() => { if (!deletionPending.current) { setProjectToDelete(null); setDeleteError(''); } }} />}
     {projectToRename && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rename-title" ref={renameDialogRef} tabIndex={-1} onClick={() => setProjectToRename(null)}><div className="modal-card dashboard-rename" onClick={event => event.stopPropagation()}><h2 id="rename-title">Rename project</h2><label htmlFor="project-rename-input">Project name</label><input id="project-rename-input" className="text-input" value={renamedName} onChange={event => setRenamedName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveRename(); }} /><div><button className="button-secondary" type="button" onClick={() => setProjectToRename(null)}>Cancel</button><button className="button-primary" type="button" onClick={saveRename}>Save</button></div></div></div>}

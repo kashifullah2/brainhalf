@@ -25,7 +25,9 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
       if (current !== epoch.current) return;
       if (!status.enabled || status.availability?.state !== 'ready') {
         pending.current = null;
+        setFault(true);
         setNotice(status.availability?.message || 'Backend source is ready. Managed hosting is currently unavailable; check the project console for details.');
+        refresh();
         return;
       }
       const files = pending.current;
@@ -76,7 +78,7 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   const showJobMessage = latestJob && (['queued', 'running', 'failed'].includes(latestJob.status) || (!ready && latestJob.status === 'stopped'));
   const message = openError || (fault ? notice : showJobMessage ? latestJob.message : ready ? 'App preview is running. Update it to use your latest changes.' : notice);
   const available = runtime.status?.enabled && runtime.status.availability?.state === 'ready';
-  return { start, open, message, ready,
+  return { start, open, message, ready, fault,
     canStart: Boolean(available && !busy && !activeJob && !ready),
     canUpdate: Boolean(available && !busy && ready && (!activeJob || (latestJob?.kind === 'preview' && latestJob.previewReady && latestJob.status === 'running'))),
   };

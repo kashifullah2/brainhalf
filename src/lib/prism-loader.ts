@@ -8,9 +8,13 @@ if (typeof globalThis !== 'undefined') {
   (globalThis as any).Prism = Prism;
 }
 
-// Dynamically import extensions so global Prism is guaranteed in browser/worker runtimes
-if (typeof window !== 'undefined') {
-  Promise.all([
+// Language components are loaded on first highlight call, not at module init,
+// so they don't contribute to the initial JS parse cost.
+let _langLoadPromise: Promise<void> | null = null;
+function ensureLanguagesLoaded(): Promise<void> {
+  if (_langLoadPromise) return _langLoadPromise;
+  if (typeof window === 'undefined') return Promise.resolve();
+  _langLoadPromise = Promise.all([
     // @ts-ignore
     import('prismjs/components/prism-jsx'),
     // @ts-ignore
@@ -19,7 +23,8 @@ if (typeof window !== 'undefined') {
     import('prismjs/components/prism-tsx'),
     // @ts-ignore
     import('prismjs/components/prism-json')
-  ]).catch(() => {});
+  ]).then(() => {}).catch(() => {});
+  return _langLoadPromise;
 }
 
 export function getLanguageFromPath(filePath: string): string {
@@ -49,6 +54,7 @@ export function getLanguageFromPath(filePath: string): string {
 }
 
 export function highlightCodeToLines(code: string, language: string): string[] {
+  ensureLanguagesLoaded();
   const langGrammar = Prism.languages[language] || Prism.languages.javascript || Prism.languages.markup;
   const rawHtml = Prism.highlight(code, langGrammar, language);
   

@@ -231,8 +231,6 @@ export class InMemoryDataStore {
   }
 }
 
-// Global data store singleton for browser preview sessions
-export const globalPreviewStore = new InMemoryDataStore();
 
 /**
  * Removes credentials a generated app has no reason to receive in a response.
@@ -307,7 +305,7 @@ function backendError(status: number, message: string): BackendResponse {
 export async function executeBackendRequest(
   files: ProjectFiles,
   req: BackendRequestOptions,
-  store: InMemoryDataStore = globalPreviewStore
+  store: InMemoryDataStore
 ): Promise<BackendResponse> {
   const method = req.method.toUpperCase();
   const urlObj = new URL(req.url, 'http://localhost');
@@ -373,7 +371,7 @@ export async function executeBackendRequest(
     }
 
     const passwordDigest = await hashPassword(password);
-    if (store.findAll('users').some(user => (user.email || '').toLowerCase() === userEmail)) {
+    if (store.findAll('users').some(u => (u.email || '').toLowerCase() === userEmail)) {
       return backendError(409, 'Email already registered');
     }
 
@@ -1016,10 +1014,9 @@ export async function executeBackendRequest(
       return {
         status,
         headers: { 'Content-Type': 'application/json' },
-        body: { error: dbErr.message, layer: 'backend', details: dbErr.stack },
+        body: { error: dbErr.message, layer: 'backend' },
         layer: 'backend',
-        error: dbErr.message,
-        details: dbErr.stack
+        error: dbErr.message
       };
     }
   }

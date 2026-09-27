@@ -1,6 +1,6 @@
 import ThemeToggle from './ThemeToggle';
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home } from 'lucide-react';
+import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, Pencil } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import ActionMenu from './ActionMenu';
@@ -110,7 +110,7 @@ const TopNav: React.FC<TopNavProps> = ({
               <button onClick={handleSaveName} title="Save name" aria-label="Save name"><Check size={15} /></button>
             </div>
           ) : (
-            <span className="studio-control-tooltip-anchor"
+            <span className="studio-control-tooltip-anchor studio-project-rename-anchor"
               onMouseEnter={() => setShowProjectTooltip(projectTitleTruncated)}
               onMouseLeave={() => setShowProjectTooltip(false)}
               onFocus={() => setShowProjectTooltip(projectTitleTruncated)}
@@ -123,9 +123,10 @@ const TopNav: React.FC<TopNavProps> = ({
                 aria-label={`Rename project ${projectName}`}
                 aria-describedby={showProjectTooltip && projectTitleTruncated ? projectTooltipId : undefined}
                 onClick={() => { setIsEditing(true); setEditedName(projectName); }}
-                title="Click to rename project"
+                title="Click to rename"
               >
                 {projectName}
+                <Pencil size={11} className="top-nav-rename-hint" aria-hidden="true" />
               </button>
               {showProjectTooltip && projectTitleTruncated && (
                 <span role="tooltip" id={projectTooltipId} className="studio-control-tooltip">

@@ -63,6 +63,8 @@ export class AuthRegistry {
   private state: DurableObjectState;
   private initialized = false;
   private cleanupRun: Promise<void> | null = null;
+  // Cached once per DO instance lifetime for ai-budget:* instances.
+  private adminUnlimited: boolean | null = null;
 
   constructor(state: DurableObjectState, private env: any) {
     this.state = state;
@@ -265,6 +267,27 @@ export class AuthRegistry {
         if (method !== 'POST') return this.json(405, { error: 'Method not allowed' });
         const body = await request.json() as { id?: unknown; lease?: unknown; maxTokens?: unknown };
         if (!body || typeof body.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(body.id)) return this.json(400, { error: 'Invalid AI reservation' });
+        // Check admin status once per DO lifetime (cached in-memory). Admin
+        // accounts are exempt from all AI budget limits.
+        if (this.adminUnlimited === null) {
+          this.adminUnlimited = false;
+          const adminEmails = String(this.env.ADMIN_EMAILS || '').split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+          if (adminEmails.length) {
+            try {
+              const doName = (this.state.id as any).name as string | undefined;
+              const ownerId = doName?.startsWith('ai-budget:') ? doName.slice('ai-budget:'.length) : '';
+              if (ownerId) {
+                const authDo = this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth'));
+                const res = await authDo.fetch(`https://registry/admin/managed-owner?ownerId=${encodeURIComponent(ownerId)}`);
+                if (res.ok) {
+                  const data = await res.json() as { email?: string };
+                  this.adminUnlimited = adminEmails.includes((data.email || '').toLowerCase());
+                }
+              }
+            } catch { /* fail closed — non-admin on error */ }
+          }
+        }
+        if (this.adminUnlimited) return this.json(200, { ok: true });
         if (path === '/ai/start') ledger.start(body.id);
         else if (path === '/ai/end') ledger.end(body.id);
         else if (path === '/ai/reserve' && typeof body.lease === 'string' && typeof body.maxTokens === 'number') ledger.reserve(body.lease, body.id, body.maxTokens);
@@ -579,15 +602,22 @@ export class AuthRegistry {
           .toArray() as Array<{ live: number; total: number }>;
         const live = Number(counts[0]?.live ?? 0);
         const total = Number(counts[0]?.total ?? 0);
-        if (live >= MAX_PROJECTS_PER_USER) {
-          return this.json(409, {
-            error: `You have reached the ${MAX_PROJECTS_PER_USER}-project limit. Delete a project to create another.`,
-          });
-        }
-        if (total >= MAX_PROJECT_ROWS_PER_USER) {
-          return this.json(409, {
-            error: `You have reached the project limit. Deleting projects keeps their ids reserved; contact support to reclaim them.`,
-          });
+        const adminEmails = String(this.env.ADMIN_EMAILS || '').split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+        const isAdminUser = adminEmails.length > 0 && (() => {
+          const rows = this.sql.exec('SELECT email FROM users WHERE id = ?', body.userId as string).toArray();
+          return rows.length > 0 && adminEmails.includes(String(rows[0].email).toLowerCase());
+        })();
+        if (!isAdminUser) {
+          if (live >= MAX_PROJECTS_PER_USER) {
+            return this.json(409, {
+              error: `You have reached the ${MAX_PROJECTS_PER_USER}-project limit. Delete a project to create another.`,
+            });
+          }
+          if (total >= MAX_PROJECT_ROWS_PER_USER) {
+            return this.json(409, {
+              error: `You have reached the project limit. Deleting projects keeps their ids reserved; contact support to reclaim them.`,
+            });
+          }
         }
 
         this.sql.exec(

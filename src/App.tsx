@@ -1,12 +1,15 @@
 import './styles/studio-workspace.css';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { GripVertical } from 'lucide-react';
-import TopNav from './components/TopNav';
-import ChatPanel from './components/ChatPanel';
-import Workspace from './components/Workspace';
-import LoginScreen from './components/LoginScreen';
 import LandingPage from './components/LandingPage';
-import DashboardPage from './components/DashboardPage';
+import LoginScreen from './components/LoginScreen';
+import { ErrorBoundary, SectionErrorBoundary } from './components/ErrorBoundary';
+import { WORKSPACE_EXIT_TIMEOUT, WORKSPACE_EXIT_ATTEMPTS } from './lib/timeouts';
+
+const TopNav = lazy(() => import('./components/TopNav'));
+const ChatPanel = lazy(() => import('./components/ChatPanel'));
+const Workspace = lazy(() => import('./components/Workspace'));
+const DashboardPage = lazy(() => import('./components/DashboardPage'));
 import { BrainHalfLogo } from './components/BrainHalfLogo';
 import ConfirmModal from './components/ConfirmModal';
 import { appEvents } from './lib/events';
@@ -26,7 +29,14 @@ function App() {
   // No session is rendered until the server confirms the token is valid
   // (signature + expiry + revocation). Fail closed on the client too.
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [authChecked, setAuthChecked] = useState<boolean>(() => !getToken() && !new URLSearchParams(window.location.search).has('google'));
+  const [authChecked, setAuthChecked] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('google')) return false;
+    // If a token exists, always wait for server verification to avoid
+    // a flash of the unauthenticated landing page.
+    if (getToken()) return false;
+    return true;
+  });
   const [authError, setAuthError] = useState<string | null>(null);
   const [activeProjectId, setActiveId] = useState<string>(getActiveProjectId());
   const [currentView, setCurrentView] = useState<'landing' | 'dashboard' | 'workspace'>(() => {
@@ -236,6 +246,7 @@ function App() {
     setActiveId(id);
     if (typeof window !== 'undefined' && window.history?.pushState) {
       const url = new URL(window.location.href);
+      url.pathname = '/';
       url.searchParams.set('project', id);
       window.history.pushState({}, '', url.toString());
     }
@@ -439,8 +450,8 @@ function App() {
     appEvents.emit('stop-generation-request', { projectId: activeProjectId });
     try {
       let stopped = false;
-      for (let attempt = 0; attempt < 3 && !stopped; attempt++) {
-        const response = await authFetch(runtimeBase(activeProjectId).replace(/\/runtime$/, '/stop'), { method: 'POST', signal: AbortSignal.timeout(20_000) });
+      for (let attempt = 0; attempt < WORKSPACE_EXIT_ATTEMPTS && !stopped; attempt++) {
+        const response = await authFetch(runtimeBase(activeProjectId).replace(/\/runtime$/, '/stop'), { method: 'POST', signal: AbortSignal.timeout(WORKSPACE_EXIT_TIMEOUT) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Could not confirm shutdown. Try again.');
         stopped = result.ok === true;
@@ -453,10 +464,18 @@ function App() {
   };
 
   if (currentView === 'dashboard') {
-    return <DashboardPage currentUser={user} onOpenProject={handleOpenProject} onCreateProject={handleCreateNewProject} creatingProject={creatingProject} onGoHome={handleGoHome} onLogout={handleLogout} />;
+    return (
+      <ErrorBoundary>
+      <Suspense fallback={<div className="studio-session-loading" aria-busy="true" aria-label="Loading dashboard"><div><BrainHalfLogo size={28} strokeWidth={1.5} color="currentColor" /></div></div>}>
+        <DashboardPage currentUser={user} onOpenProject={handleOpenProject} onCreateProject={handleCreateNewProject} creatingProject={creatingProject} onGoHome={handleGoHome} onLogout={handleLogout} />
+      </Suspense>
+      </ErrorBoundary>
+    );
   }
 
   return (
+    <ErrorBoundary>
+    <Suspense fallback={<div className="studio-session-loading" aria-busy="true" aria-label="Loading workspace"><div><BrainHalfLogo size={28} strokeWidth={1.5} color="currentColor" /></div></div>}>
     <div className="app-container studio-workspace">
       <div className="main-content">
         <TopNav
@@ -473,6 +492,7 @@ function App() {
         />
         <div className={`workspace-area ${isMobile ? 'is-mobile' : ''}`}>
           <div style={{ display: !isMobile || mobileTab === 'chat' ? 'contents' : 'none' }}>
+            <SectionErrorBoundary name="Chat">
             <ChatPanel
               key={`chat-${user.id}-${activeProjectId}`}
               activeProjectId={activeProjectId}
@@ -480,6 +500,7 @@ function App() {
               initialPrompt={pendingInitialPrompt?.projectId === activeProjectId ? pendingInitialPrompt.prompt : null}
               onInitialPromptConsumed={() => setPendingInitialPrompt(null)}
             />
+            </SectionErrorBoundary>
           </div>
           {!isMobile && (
             <div 
@@ -517,7 +538,9 @@ function App() {
             ><GripVertical size={16} aria-hidden="true" /></div>
           )}
           <div style={{ display: !isMobile || mobileTab !== 'chat' ? 'contents' : 'none' }}>
+            <SectionErrorBoundary name="Workspace">
             <Workspace key={`workspace-${user.id}-${activeProjectId}`} activeProjectId={activeProjectId} mobileTab={isMobile ? mobileTab : undefined} onSelectMobileTab={isMobile ? setMobileTab : undefined} />
+            </SectionErrorBoundary>
           </div>
         </div>
       </div>
@@ -534,6 +557,8 @@ function App() {
         onCancel={() => setPendingWorkspaceExit(null)}
       />
     </div>
+    </Suspense>
+    </ErrorBoundary>
   );
 }
 

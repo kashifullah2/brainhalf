@@ -83,7 +83,7 @@ export function HtmlPreview({ files, entry, libraries, onError }: {
       if (!active || failed) return;
       document.dispatchEvent(new Event('DOMContentLoaded'));
       window.dispatchEvent(new Event('load'));
-      if (!failed && window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
+      if (!failed && window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, '*');
     };
     void execute().catch(error => { if (active) onError(error instanceof Error ? error.message : String(error)); });
     return () => {

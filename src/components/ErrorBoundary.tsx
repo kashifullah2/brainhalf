@@ -159,3 +159,56 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+
+interface SectionProps {
+  children: ReactNode;
+  name: string;
+}
+
+export class SectionErrorBoundary extends Component<SectionProps, State> {
+  public state: State = { hasError: false, error: null };
+
+  public static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error(`[${this.props.name}] Uncaught error:`, error, errorInfo);
+  }
+
+  private handleRetry = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '24px', height: '100%', minHeight: '120px', gap: '12px',
+          color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center',
+        }}>
+          <AlertTriangle size={20} style={{ color: 'var(--color-error)' }} />
+          <span>{this.props.name} encountered an error.</span>
+          {this.state.error?.message && (
+            <code style={{ fontSize: '11px', color: 'var(--color-error)', maxWidth: '300px', wordBreak: 'break-word' }}>
+              {this.state.error.message.slice(0, 150)}
+            </code>
+          )}
+          <button
+            onClick={this.handleRetry}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              background: 'var(--accent-primary)', color: 'var(--text-on-accent)',
+              border: 'none', borderRadius: '6px', padding: '6px 14px',
+              fontSize: '12px', cursor: 'pointer',
+            }}
+          >
+            <RefreshCw size={14} /> Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}

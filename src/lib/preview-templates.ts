@@ -24,7 +24,7 @@ export const PREVIEW_ERROR_CARD_SRC = `<div style={{ padding: '24px', fontFamily
                           type: 'preview-auto-fix',
                           file: 'src/App.jsx',
                           error: this.state.error?.message || 'A render error occurred.'
-                        }, window.location.origin);
+                        }, '*');
                       }
                     } catch (_) {}
                   }} style={{ padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>
@@ -270,14 +270,14 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string, appEntry = '
         const loadedRevision = ${Number.isSafeInteger(revision) && revision >= 0 ? revision : 0};
         let reloadTimer;
         window.addEventListener('message', event => {
-          if (event.origin !== window.location.origin || event.source !== window.parent) return;
+          if (event.source !== window.parent || event.origin !== window.location.origin) return;
           const message = event.data;
           if (message?.type !== 'preview-revision' || !Number.isSafeInteger(message.revision) || message.revision <= loadedRevision) return;
           clearTimeout(reloadTimer);
           reloadTimer = setTimeout(() => window.location.reload(), 350);
         });
         window.addEventListener('pagehide', () => clearTimeout(reloadTimer), { once: true });
-        if (window.parent !== window) window.parent.postMessage({ type: 'request-preview-revision' }, window.location.origin);
+        if (window.parent !== window) window.parent.postMessage({ type: 'request-preview-revision' }, '*');
       }
     </script>
     <script type="importmap">
@@ -292,48 +292,13 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string, appEntry = '
         } catch (_) {
           return originalFetch(...args);
         }
-        if (urlObj.pathname.startsWith('/api/')) {
-          try {
-            let apiModule;
-            try { apiModule = await import('./src/api.mock.js'); } catch (_) {}
-            if (apiModule && (apiModule.default || apiModule.mockApi)) {
-              const handler = apiModule.default || apiModule.mockApi;
-              const req = new Request(...args);
-              const res = await handler(req);
-              if (res instanceof Response) return res;
-            }
-
-            const res = await originalFetch(...args);
-            if (!res.ok) {
-              try {
-                const clone = res.clone();
-                const data = await clone.json();
-                if (data && (data.layer === 'backend' || data.error)) {
-                  if (window.parent !== window) {
-                    window.parent.postMessage({
-                      type: 'preview-error',
-                      layer: 'backend',
-                      error: data.error || ('Backend ' + res.status + ': ' + res.statusText),
-                      file: data.file || 'server/index.js'
-                    }, window.location.origin);
-                  }
-                }
-              } catch (_) {}
-            }
-            return res;
-          } catch (e) {
-            console.error('Backend API Fetch Error:', e);
-            if (window.parent !== window) {
-              window.parent.postMessage({
-                type: 'preview-error',
-                layer: 'backend',
-                error: '[Backend Error] Failed to connect to API server: ' + (e.message || String(e)),
-                file: 'server/index.js'
-              }, window.location.origin);
-            }
-            throw e;
-          }
+        if (urlObj.pathname.startsWith('/api/') || urlObj.pathname.match(/\\/preview\\/[^/]+\\/api\\//) || urlObj.pathname.includes('/api/')) {
+          return new Response(JSON.stringify({ code: 'BACKEND_NOT_RUNNING', error: 'Backend is not running in this environment' }), {
+            status: 501,
+            headers: { 'Content-Type': 'application/json' }
+          });
         }
+
         return originalFetch(...args);
       };
     </script>
@@ -369,7 +334,7 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string, appEntry = '
 
       const post = (payload) => {
         try {
-          if (window.parent !== window) window.parent.postMessage(payload, window.location.origin);
+          if (window.parent !== window) window.parent.postMessage(payload, '*');
         } catch (_) {}
       };
 
@@ -471,7 +436,7 @@ import * as AppModule from ${JSON.stringify(appImport)};
 
 function PreviewReadySignal() {
   React.useEffect(() => {
-    if (window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
+    if (window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, '*');
   }, []);
   return null;
 }

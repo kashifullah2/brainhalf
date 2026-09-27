@@ -112,7 +112,7 @@ export function isPublicIp(ip: string): boolean {
   if (first === 0) return false;                                // ::/128, ::1
   if ((first & 0xffc0) === 0xfc00) return false;                // unique-local fd00::/8
   if ((first & 0xff00) === 0xfe00) return false;                // link-local fe80::/10
-  if (first === 0xff00) return false;                           // multicast
+  if ((first & 0xff00) === 0xff00) return false;                // multicast ff00::/8
   if (first === 0x2001 && parseInt(groups[1], 16) === 0xdb8) return false; // documentation
   return true;
 }

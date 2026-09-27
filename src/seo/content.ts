@@ -2,8 +2,8 @@ import { GROWTH_PAGES } from './growth-pages';
 
 export const SITE_URL = 'https://brainhalf.com';
 export const SOCIAL_IMAGE = `${SITE_URL}/images/brainhalf-social.png`;
-export const HOME_TITLE = 'BrainHalf — AI App Builder for Small Business';
-export const HOME_DESCRIPTION = 'Build inventory tools, booking apps, CRMs and customer portals with BrainHalf. Describe your workflow, test your app and publish with managed hosting. Start free.';
+export const HOME_TITLE = 'AI App Builder for Small Business — BrainHalf';
+export const HOME_DESCRIPTION = 'Build AI-powered inventory tools, booking apps, CRMs and customer portals with BrainHalf. Describe your workflow, test your app and publish with managed hosting. Start free.';
 // Editorial dates reflect meaningful content, public UI, or structured-data changes.
 // Keep these stable on rebuilds; update only the pages affected by a real change.
 export const HOME_MODIFIED = '2026-09-24';

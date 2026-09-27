@@ -1,3 +1,4 @@
+import { AUTH_CACHE_TTL, BACKEND_READY_POSITIVE_TTL, BACKEND_READY_NEGATIVE_TTL, DISCONNECT_STOP_DELAY } from './lib/timeouts';
 import { recordProductOutcome, type OutcomeEvent } from './lib/product-outcomes';
 import { prepareCapabilities, sdkCapabilities, imageMessages, cfImageMessages, acceptsImageInput, runCapabilityLoop, capabilitiesFromTools, type AgentCapabilities } from './lib/agent-capabilities';
 import type { BuilderAttachment } from './lib/builder-attachments';
@@ -34,7 +35,7 @@ import { generationControls, generationContextLimits } from './lib/generation-co
 import { needsBackend, hostingAvailability } from './lib/generation-target';
 import { managedAppScaffold } from './lib/managed-app-scaffold';
 import type { RuntimeStatus } from './runtime/types';
-import { AiBudget, meteredModel } from './lib/ai-budget';
+import { AiBudget, AiBudgetError, meteredModel } from './lib/ai-budget';
 import { sourceSnapshot } from './runtime/source';
 import { SourceHistory, sourceChanges } from './lib/source-history';
 import { readJson } from './runtime/integrations';
@@ -198,7 +199,22 @@ function safeOrigin(value: string | null): string | null {
   }
 }
 
-export class ChatAgent extends Agent {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export interface ChatAgentEnv {
+  AI: any;
+  RUNTIME: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
+  PROJECT_BACKUPS: any;
+  REGISTRY: any;
+  SESSION_SECRET: string;
+  REQUIRED_MODEL_PROVIDERS?: string;
+  REQUIRED_PUBLIC_SERVICES?: string;
+  BRAINHALF_SERVICES?: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
+  BRAINHALF_SERVICE_TOKEN?: string;
+  [key: string]: unknown;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+export class ChatAgent extends Agent<ChatAgentEnv> {
   private erasing = false;
   private pendingBackups = new Set<Promise<void>>();
   private activeBudget: AiBudget | null = null;
@@ -214,7 +230,7 @@ export class ChatAgent extends Agent {
 
   private prewarmBackendReadiness(userId: string) {
     if (this.backendReadyCache && this.backendReadyCache.expiresAt > Date.now()) return;
-    const runtime = (this as any).env?.RUNTIME;
+    const runtime = this.env?.RUNTIME;
     if (!runtime) return;
     runtime.fetch(new Request('https://runtime/status?environment=development&readiness=1', {
       headers: { 'x-bh-project': this.name, 'x-bh-owner': userId },
@@ -222,7 +238,7 @@ export class ChatAgent extends Agent {
     })).then(async (res: Response) => {
       const ready = !!res?.ok && hostingAvailability(await res.json() as RuntimeStatus).state === 'ready';
       const now = Date.now();
-      this.backendReadyCache = { ready, expiresAt: now + (ready ? 60_000 : 5_000) };
+      this.backendReadyCache = { ready, expiresAt: now + (ready ? BACKEND_READY_POSITIVE_TTL : BACKEND_READY_NEGATIVE_TTL) };
     }).catch(() => {});
   }
 
@@ -305,7 +321,7 @@ export class ChatAgent extends Agent {
 
   /** Runs `closure` inside the DO's synchronous storage transaction. */
   private transact<R>(closure: () => R): R {
-    return (this as any).ctx.storage.transactionSync(closure);
+    return this.ctx.storage.transactionSync(closure);
   }
 
   /**
@@ -328,7 +344,7 @@ export class ChatAgent extends Agent {
   }
 
   private builderService(ownerId: string) {
-    return new BuilderService((sql, ...params) => this.runSql(sql.split('?') as unknown as TemplateStringsArray, ...params), this.name, ownerId, (this as any).env.SESSION_SECRET || '', work => this.transact(work));
+    return new BuilderService((sql, ...params) => this.runSql(sql.split('?') as unknown as TemplateStringsArray, ...params), this.name, ownerId, this.env.SESSION_SECRET || '', work => this.transact(work));
   }
 
   private sourceHistory() {
@@ -376,20 +392,20 @@ export class ChatAgent extends Agent {
     let truncated = false;
     for (const r of rows) {
       const path = String(r.path);
+      nextOffset += 1;
       if (!includeSecrets && isBlockedSecretFile(path)) {
-        nextOffset += 1;
         continue;
       }
       const content = String(r.content ?? '');
       const fileBytes = new TextEncoder().encode(JSON.stringify({ [path]: content })).length;
       if (fileBytes + 1024 > MAX_SNAPSHOT_BYTES) throw new Error(`File ${path} exceeds the snapshot page size`);
       if (bytes + fileBytes > MAX_SNAPSHOT_BYTES) {
+        nextOffset -= 1;
         truncated = true;
         break;
       }
       bytes += fileBytes;
       files[path] = content;
-      nextOffset += 1;
     }
     return { files, total, truncated, nextOffset, hasMore: nextOffset < total };
   }
@@ -585,7 +601,7 @@ export class ChatAgent extends Agent {
   }
 
   private backupKey(): string {
-    const id = (this as any).name || (this as any).ctx?.id?.toString?.() || (this as any).ctx?.id || 'default';
+    const id = this.name || this.ctx?.id?.toString?.() || 'default';
     return `backup-${id}.json`;
   }
 
@@ -608,7 +624,7 @@ export class ChatAgent extends Agent {
   }
   private async writeBackup(ownerId?: string) {
     try {
-      const r2 = (this as any).env.PROJECT_BACKUPS;
+      const r2 = this.env.PROJECT_BACKUPS;
       if (!r2) return;
       // The backup is the one reader that keeps secrets: a restore that drops
       // /server/.env silently breaks the user's app. It never leaves R2.
@@ -637,7 +653,7 @@ export class ChatAgent extends Agent {
 
   private async restoreFromR2(currentUserId: string | null) {
     try {
-      const r2 = (this as any).env.PROJECT_BACKUPS;
+      const r2 = this.env.PROJECT_BACKUPS;
       if (!r2) return;
 
       const countRows = [...this.sql`SELECT COUNT(*) as count FROM project_files`];
@@ -778,11 +794,13 @@ export class ChatAgent extends Agent {
 
   async onClose(connection: Connection) {
     this.connectionUserIds.delete(connection.id);
+    this.pendingAuth.delete(connection.id);
+    this.authCache.delete(connection.id);
     if (this.connectionUserIds.size === 0) {
       clearTimeout(this.disconnectStopTimer);
       this.disconnectStopTimer = setTimeout(() => {
         if (this.connectionUserIds.size === 0) this.abortGeneration();
-      }, 10_000);
+      }, DISCONNECT_STOP_DELAY);
     }
   }
 
@@ -807,12 +825,21 @@ export class ChatAgent extends Agent {
   }
 
   private pendingAuth = new Map<string, Promise<boolean>>();
+  private authCache = new Map<string, { ok: boolean; ts: number }>();
 
   /** Recheck the originating session and current ACL, including after hibernation. */
-  private authorizeConnection(connection: Connection): Promise<boolean> {
+  private authorizeConnection(connection: Connection, forceRefresh = false): Promise<boolean> {
+    const cached = this.authCache.get(connection.id);
+    if (!forceRefresh && cached && cached.ok && Date.now() - cached.ts < AUTH_CACHE_TTL) {
+      return Promise.resolve(true);
+    }
     const existing = this.pendingAuth.get(connection.id);
     if (existing) return existing;
-    const promise = this.doAuthorizeConnection(connection).finally(() => {
+    const promise = this.doAuthorizeConnection(connection).then((ok) => {
+      if (ok) this.authCache.set(connection.id, { ok, ts: Date.now() });
+      else this.authCache.delete(connection.id);
+      return ok;
+    }).finally(() => {
       this.pendingAuth.delete(connection.id);
     });
     this.pendingAuth.set(connection.id, promise);
@@ -827,8 +854,8 @@ export class ChatAgent extends Agent {
       const sessionHash = state?.sessionHash || uri?.searchParams.get(SESSION_HASH_QUERY_PARAM);
       if (userId && sessionHash && /^[a-f0-9]{64}$/.test(sessionHash)) {
         const [sessionRes, ownerOk] = await Promise.all([
-          getRegistry((this as any).env).fetch(`https://registry/sessions/${sessionHash}`),
-          isProjectOwner((this as any).env, this.name, userId),
+          getRegistry(this.env).fetch(`https://registry/sessions/${sessionHash}`),
+          isProjectOwner(this.env, this.name, userId),
         ]);
         if (sessionRes.ok && (await sessionRes.json() as { userId?: string }).userId === userId && ownerOk) {
           this.connectionUserIds.set(connection.id, userId);
@@ -845,6 +872,9 @@ export class ChatAgent extends Agent {
     const requestEpoch = this.writeEpoch.value;
     try {
       if (this.erasing) return;
+      // Ping doubles as an auth liveness check — bypass the cache so logout
+      // revocation is reflected on the next heartbeat without a 30-second lag.
+      if (message === '{"type":"ping"}') this.authCache.delete(connection.id);
       if (!await this.authorizeConnection(connection)) return;
       if (this.erasing) return;
       let data: any;
@@ -1057,7 +1087,7 @@ export class ChatAgent extends Agent {
         if (this.backendReadyCache && this.backendReadyCache.expiresAt > now) {
           ready = this.backendReadyCache.ready;
         } else {
-          const runtime = (this as any).env?.RUNTIME;
+          const runtime = this.env?.RUNTIME;
           // 3 s timeout: prewarmBackendReadiness fires on connect, so this is
           // normally a cache hit. If the prewarm hasn't landed yet, 3 s is enough
           // for the runtime to respond without blocking the user noticeably.
@@ -1066,7 +1096,7 @@ export class ChatAgent extends Agent {
           // Cache positive results for 60 s (the runtime won't vanish that fast).
           // Cache negative results for only 5 s so a user who retries after the
           // runtime comes online is not rejected by stale state for a full minute.
-          this.backendReadyCache = { ready, expiresAt: now + (ready ? 60_000 : 5_000) };
+          this.backendReadyCache = { ready, expiresAt: now + (ready ? BACKEND_READY_POSITIVE_TTL : BACKEND_READY_NEGATIVE_TTL) };
         }
         if (this.erasing || this.writeEpoch.value !== requestEpoch) return;
         if (!ready) {
@@ -1107,17 +1137,11 @@ export class ChatAgent extends Agent {
       // The lock has a timeout so a generation that never settles cannot hold
       // the project hostage — the user can always prompt again.
       let lockResult: any;
+      let generationStarted = false;
       try {
         lockResult = await this.generationLock.run(`generate:${actualPrompt.slice(0, 60)}`, async () => {
-          // This generation's writes are valid only while it holds the newest
-          // epoch. A stop-then-reprompt bumps the epoch, so a slow first
-          // generation's late writes are discarded rather than clobbering the
-          // new app.
           const epoch = this.writeEpoch.begin();
           if (!plannerMode) {
-            // The checkpoint must run synchronously *before* prepareManagedApp:
-            // it captures the workspace state before the generation modifies it,
-            // and both paths use transactionSync which cannot overlap safely.
             try { this.saveCheckpoint('Before agent changes'); }
             catch { console.warn('Automatic source checkpoint could not be saved'); }
             this.prepareManagedApp(connection, actualPrompt, executionTarget, epoch);
@@ -1131,13 +1155,13 @@ export class ChatAgent extends Agent {
             }),
             plannerMode, executionTarget,
           });
+          generationStarted = true;
           return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode);
         }, GENERATION_LOCK_TIMEOUT_MS);
       } catch (genErr) {
-        // FIX: a failed generation used to leave the idempotency key claimed
-        // forever, so the client's legitimate retry of the same message was
-        // rejected as a duplicate. Release it on failure.
-        this.idempotency.release?.(requestKey);
+        // runGeneration's finally releases when !completed. If we never reached
+        // runGeneration (e.g. prepareManagedApp threw), release here instead.
+        if (!generationStarted) this.idempotency.release?.(requestKey);
         throw genErr;
       }
 
@@ -1191,7 +1215,7 @@ export class ChatAgent extends Agent {
     const work = (async () => {
       const events = this.runSql`SELECT id,event FROM product_outbox ORDER BY rowid LIMIT 20`;
       for (const row of events) {
-        if (this.erasing || !await recordProductOutcome((this as any).env, JSON.parse(String(row.event)))) return;
+        if (this.erasing || !await recordProductOutcome(this.env, JSON.parse(String(row.event)))) return;
         this.runSql`DELETE FROM product_outbox WHERE id=${row.id}`;
       }
       if (!this.runSql`SELECT id FROM product_outbox LIMIT 1`.length) {
@@ -1243,7 +1267,7 @@ export class ChatAgent extends Agent {
         const connections = [...this.getConnections()];
         // Parallel: the previous sequential for-await added N×registry-RTT of
         // stutter every 10 s for users with multiple tabs open.
-        await Promise.all(connections.map(sub => this.authorizeConnection(sub)));
+        await Promise.all(connections.map(sub => this.authorizeConnection(sub, true)));
         if (!this.connectionUserIds.size) this.abortGeneration();
       } catch { this.abortGeneration(); }
       finally { checkingAccess = false; }
@@ -1264,15 +1288,15 @@ export class ChatAgent extends Agent {
 
     const terminalEvents: Array<() => void> = [];
     const deferTerminal = (event: () => void) => { terminalEvents.push(event); };
-    const sendError = (msg: string) => {
-      const payload = JSON.stringify({ type: 'error', error: msg });
+    const sendError = (msg: string, code?: string) => {
+      const payload = JSON.stringify(code ? { type: 'error', code, error: msg } : { type: 'error', error: msg });
       deferTerminal(() => {
         try { connection.send(payload); } catch { }
         try { this.broadcast(payload, [connection.id]); } catch { }
       });
     };
 
-    const budget = new AiBudget((this as any).env, this.connectionUserIds.get(connection.id) || '', abortController.signal);
+    const budget = new AiBudget(this.env, this.connectionUserIds.get(connection.id) || '', abortController.signal);
     try {
       connection.send(JSON.stringify({ type: 'generation_notice', message: 'Preparing your app request…', stage: 'accepted', requestId: data.idempotencyKey }));
       const maxReserveTokens = Math.min(controls.maxTokens * (maxSteps + 1), 65536);
@@ -1292,13 +1316,13 @@ export class ChatAgent extends Agent {
         await tracing.enterSpan('chat', async (_chatSpan: any) => {
           let aiModel: any = null;
 
-          const env = (this as any).env;
+          const env = this.env;
           validateRuntimeProviders(env);
           const anthropicApiKey = credential(env, 'ANTHROPIC_API_KEY');
           const bedrockApiKey = bedrockBearer(env);
           const awsKey = credential(env, 'AWS_ACCESS_KEY_ID');
           const awsSecret = credential(env, 'AWS_SECRET_ACCESS_KEY');
-          const awsRegion = env.AWS_REGION || 'us-east-1';
+          const awsRegion = (typeof env.AWS_REGION === 'string' && env.AWS_REGION) || 'us-east-1';
 
           const requestedModel = data.model || DEFAULT_MODEL_ID;
 
@@ -1346,6 +1370,16 @@ export class ChatAgent extends Agent {
               }
               const cleanPath = normalizePath(path);
               if (this.isHarnessEntry(cleanPath)) return { success: false, error: 'This entry point is owned by the preview.' };
+              // Enforce frontend-first write order: block backend files until App.tsx is written.
+              // The agent must write /src/App.tsx before any worker/, migrations/, or shared/ file
+              // so the preview always has a visible UI even if context runs out mid-generation.
+              if (!plannerMode) {
+                const isBackendPath = /^\/(?:worker|migrations|shared)\//i.test(cleanPath);
+                const appTsxDone = toolWrittenPaths.has('/src/App.tsx') || toolWrittenPaths.has('src/App.tsx');
+                if (isBackendPath && !appTsxDone) {
+                  return { success: false, error: `Write /src/App.tsx before writing ${cleanPath}. Per the MANDATORY WRITE ORDER rule, the frontend entry point must be saved first so the preview is never left empty if context runs out.` };
+                }
+              }
               const existing = this.runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`[0]?.content;
               if (typeof existing === 'string' && inspectedFiles.get(cleanPath) !== existing) {
                 return { success: false, error: 'Read the complete current file before changing it. It may have changed since your last read.' };
@@ -1475,10 +1509,10 @@ export class ChatAgent extends Agent {
                 inputSchema: z.object({ prompt: z.string().max(500), filename: z.string().regex(/^[a-z0-9_-]+$/).max(60) }),
                 execute: async ({ prompt, filename }: { prompt: string; filename: string }) => {
                   abortController.signal.throwIfAborted();
-                  const ai = (this as any).env?.AI;
+                  const ai = this.env?.AI;
                   if (!ai) return { error: 'Image generation is not available in this environment.' };
                   try {
-                    const result = await ai.run('@cf/black-forest-labs/flux-1-schnell', { prompt, num_steps: 4 }, { signal: AbortSignal.timeout(30_000) }) as ReadableStream | ArrayBuffer | Uint8Array;
+                    const result = await ai.run('@cf/black-forest-labs/flux-1-schnell', { prompt, num_steps: 4 }, { signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(30_000)]) }) as ReadableStream | ArrayBuffer | Uint8Array;
                     abortController.signal.throwIfAborted();
                     let bytes: Uint8Array;
                     if (result instanceof ReadableStream) {
@@ -1499,15 +1533,14 @@ export class ChatAgent extends Agent {
                       bytes = result;
                     }
                     if (!bytes.length) return { error: 'Image generation returned empty result.' };
-                    const base64 = btoa(String.fromCharCode(...bytes));
+                    let binary = '';
+                    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                    const base64 = btoa(binary);
                     const dataUrl = `data:image/png;base64,${base64}`;
                     const modulePath = `/src/assets/${filename}.js`;
                     const moduleContent = `// Generated image: ${prompt.slice(0, 80).replace(/[`\\$]/g, '')}\nexport default ${JSON.stringify(dataUrl)};\n`;
                     const saved = await saveToolFile(modulePath, moduleContent);
                     if (saved && typeof saved === 'object' && 'success' in saved && !saved.success) return saved;
-                    toolWrittenPaths.add(modulePath);
-                    const event = JSON.stringify({ type: 'file_updated', path: modulePath, content: moduleContent });
-                    try { connection.send(event); this.broadcast(event, [connection.id]); } catch {}
                     return { path: modulePath, usage: `Import the default URL from ${modulePath} and use it as an <img src={...} /> or CSS background. The image is a small PNG.` };
                   } catch (e: any) {
                     if (abortController.signal.aborted) throw e;
@@ -1655,7 +1688,8 @@ export class ChatAgent extends Agent {
               const stage = pipelineStages[stageIdx];
               const isLastStage = stageIdx === pipelineStages.length - 1;
               const stageSystemPrompt = systemPrompt + stage.extraPrompt;
-              
+              const stageToolWrittenPaths = new Set(toolWrittenPaths);
+
               let streamErrorCaught: any = null;
               let stageCompleted = false;
 
@@ -1745,18 +1779,16 @@ export class ChatAgent extends Agent {
                   const text = streamedText || finalText;
                   if (!streamedText) sendDisplay(transcript.push(finalText));
                   sendDisplay(transcript.push('', true));
-                  if (!text.trim() && (plannerMode || isConversationalPrompt(actualPrompt)) && toolWrittenPaths.size === 0) throw new Error('The model returned no response. Please retry.');
-                  
+                  const stageNewPaths = new Set([...toolWrittenPaths].filter(p => !stageToolWrittenPaths.has(p)));
+                  if (!text.trim() && (plannerMode || isConversationalPrompt(actualPrompt)) && stageNewPaths.size === 0) throw new Error('The model returned no response. Please retry.');
+
                   const extraction = this.extractAndSaveFiles(text, connection, epoch);
-                  extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...toolWrittenPaths])];
+                  extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...stageNewPaths])];
                   extraction.writtenCount = extraction.writtenPaths.length;
-                  
-                  // Only save turn if it's the last stage, OR save partial turns? 
-                  // It's better to just save the overall turn at the end or save each stage.
-                  // We'll save the turn for each stage to keep context accurate in history.
-                  this.saveTurn(stageIdx === 0 ? actualPrompt : 'Continue to the next stage.', displayContent || (toolWrittenPaths.size ? `Updated ${[...toolWrittenPaths].join(', ')}.` : ''));
-                  
-                  if (toolWrittenPaths.size > 0) {
+
+                  this.saveTurn(stageIdx === 0 ? actualPrompt : 'Continue to the next stage.', displayContent || (stageNewPaths.size ? `Updated ${[...stageNewPaths].join(', ')}.` : ''));
+
+                  if (stageNewPaths.size > 0) {
                     const changed = JSON.stringify({ type: 'files_changed' });
                     try { connection.send(changed); } catch { }
                     try { this.broadcast(changed, [connection.id]); } catch { }
@@ -1817,7 +1849,15 @@ export class ChatAgent extends Agent {
       }
       console.error('Error handling message in ChatAgent:', err);
       let cleanError = (err?.message || 'Failed to process AI generation.').replace(/^undefined:\s*/i, '');
-      sendError(cleanError);
+      if (err instanceof AiBudgetError && err.status === 429) {
+        // Preserve the user's prompt in the server-side conversation history even
+        // when the concurrent generation limit is exceeded, so it survives a
+        // page reload and cross-device sessions.
+        try { this.saveTurn(actualPrompt, cleanError); } catch { }
+        sendError(cleanError, 'rate_limited');
+      } else {
+        sendError(cleanError);
+      }
     } finally {
       clearTimeout(genTimeout);
       clearInterval(accessTimer);
@@ -1868,7 +1908,7 @@ export class ChatAgent extends Agent {
     const abortController = this.currentAbortController ?? new AbortController();
     const ownsController = !this.currentAbortController;
     try {
-      const env = (this as any).env;
+      const env = this.env;
       if (!env || !env.AI) return false;
       const accounting = this.activeAccounting;
       // Budget was already reserved once at the start of runGeneration.
@@ -2492,7 +2532,7 @@ export class ChatAgent extends Agent {
     if (url.pathname === '/internal/erase' && request.method === 'POST') {
       const projectId = request.headers.get('x-bh-project');
       if (!projectId || (this.name && this.name !== projectId)) return Response.json({ error: 'Invalid cleanup scope' }, { status: 403 });
-      const identity = await getRegistry((this as any).env).fetch(`https://registry/projects/deletion-owner?projectId=${encodeURIComponent(projectId)}`);
+      const identity = await getRegistry(this.env).fetch(`https://registry/projects/deletion-owner?projectId=${encodeURIComponent(projectId)}`);
       if (!identity.ok || (await identity.json() as { ownerId?: string }).ownerId !== getRequestUserId(request)) return Response.json({ error: 'Deletion has not been authorized' }, { status: 403 });
       this.erasing = true;
       this.abortGeneration();

@@ -5,10 +5,12 @@ export const EMPTY_RESPONSE_MESSAGE = 'The model didn’t return a response. Try
 /** Judge the content the person can actually see, including file and tool cards. */
 export function isEmptyAssistantResponse(content: string): boolean {
   const text = content.trim();
-  return !text || text === EMPTY_RESPONSE_MESSAGE
+  if (!text || text === EMPTY_RESPONSE_MESSAGE
     || text === 'Response contained no visible text.'
-    || text.includes('Model completed without generating response text.')
-    || parseMessageSegmentsMemoized(text, true).segments.length === 0;
+    || text.includes('Model completed without generating response text.')) return true;
+  const { segments } = parseMessageSegmentsMemoized(text, true);
+  // A response that contains only <thought> blocks has no user-visible content.
+  return segments.length === 0 || segments.every(s => s.type === 'thought');
 }
 
 export function completeAssistantResponse(content: string, filesChanged: boolean) {

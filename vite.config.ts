@@ -1,9 +1,37 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
-import { readFile } from 'node:fs/promises'
+import { readFile, access } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import { isolatedPreviewHtml, previewSecurityHeaders } from './src/lib/preview-isolation.ts'
 import { isAllowedOrigin } from './src/lib/allowed-origins.ts'
+
+// Ensure preview-runtime.js is built before the dev server needs it.
+// This lets `vite` work even when the user didn't run the full `npm run dev`.
+const previewRuntimePath = path.resolve('dist/preview-runtime.js');
+let previewRuntimeBuildPromise: Promise<void> | null = null;
+async function ensurePreviewRuntime(): Promise<void> {
+  try { await access(previewRuntimePath); return; } catch { /* need to build */ }
+  if (!previewRuntimeBuildPromise) {
+    previewRuntimeBuildPromise = new Promise((resolve, reject) => {
+      console.log('[brainhalf] Building preview-runtime.js...');
+      const child = spawn(process.execPath, ['node_modules/.bin/vite', 'build', '--config', 'vite.preview.config.ts'], { stdio: 'inherit' });
+      child.on('close', code => code === 0 ? resolve() : reject(new Error(`preview runtime build exited ${code}`)));
+    }).finally(() => { previewRuntimeBuildPromise = null; });
+  }
+  return previewRuntimeBuildPromise;
+}
+
+// Module-level store so all dev API requests share the same in-memory state
+// and the store is not recreated (and thus reset) on every request.
+let _devStore: any = null;
+async function getDevStore() {
+  if (!_devStore) {
+    const { InMemoryDataStore } = await import('./src/lib/backend-runner.ts');
+    _devStore = new InMemoryDataStore();
+  }
+  return _devStore;
+}
 
 function backendDevPlugin() {
   return {
@@ -53,10 +81,11 @@ function backendDevPlugin() {
           res.setHeader('Content-Type', 'application/javascript');
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-          try { res.end(await readFile(path.resolve('dist/preview-runtime.js'))); }
-          catch {
-            // A parallel production build replaces dist. Keep the dev server
-            // alive and return a retryable response while the preview rebuilds.
+          try {
+            await ensurePreviewRuntime();
+            res.end(await readFile(previewRuntimePath));
+          } catch {
+            // Build failed or a parallel production build is replacing dist.
             res.statusCode = 503;
             res.setHeader('Retry-After', '2');
             res.end('console.warn("Preview runtime is rebuilding. Refresh the preview shortly.");');
@@ -103,9 +132,10 @@ function backendDevPlugin() {
                 return;
               }
             } catch (err: any) {
+              console.error('[dev auth]', err.message);
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ error: err.message, layer: 'dev-auth' }));
+              res.end(JSON.stringify({ error: 'Internal error', layer: 'dev-auth' }));
               return;
             }
             next();
@@ -130,12 +160,13 @@ function backendDevPlugin() {
 
             try {
               const { executeBackendRequest } = await import('./src/lib/backend-runner.ts');
+              const store = await getDevStore();
               const backendRes = await executeBackendRequest({}, {
                 method: req.method || 'GET',
                 url: req.url,
                 headers: req.headers,
                 body: bodyData
-              });
+              }, store);
 
               res.statusCode = backendRes.status;
               res.setHeader('Content-Type', 'application/json');
@@ -144,9 +175,10 @@ function backendDevPlugin() {
               }
               res.end(JSON.stringify(backendRes.body));
             } catch (err: any) {
+              console.error('[dev backend]', err.message);
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ error: err.message, layer: 'backend' }));
+              res.end(JSON.stringify({ error: 'Internal error', layer: 'backend' }));
             }
           });
           return;

@@ -17,8 +17,8 @@ export function isHarnessEntry(cleanPath: string): boolean {
   return (
     cleanPath === '/src/main.jsx' ||
     cleanPath === 'src/main.jsx' ||
-    cleanPath.endsWith('/main.jsx') ||
-    cleanPath.endsWith('/main.tsx')
+    cleanPath === '/src/main.tsx' ||
+    cleanPath === 'src/main.tsx'
   );
 }
 

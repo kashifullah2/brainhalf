@@ -17,10 +17,11 @@ import ProjectConnections from './ProjectConnections';
 import ProjectGrowthHub from './ProjectGrowthHub';
 import ConfirmModal from './ConfirmModal';
 import PublicationControls from './PublicationControls';
+import CustomDomainSettings from './CustomDomainSettings';
 import { pushUsageEvent, setOnboardingState } from '../lib/project-growth';
 import './ProjectConsole.css';
 
-const sections = ['Build & publish', 'Database', 'Uploaded files', 'Authentication & email', 'Source history', 'Monitoring', 'AI usage', 'Project settings'] as const;
+const sections = ['Build & publish', 'Database', 'Uploaded files', 'Authentication & email', 'Source history', 'Monitoring', 'AI usage', 'Custom domain', 'Project settings'] as const;
 type Section = typeof sections[number];
 
 export function currentVerification(report: VerificationReport | null | undefined, revision: string): boolean {
@@ -127,6 +128,7 @@ export default function ProjectConsole({ projectId, files, onClose }: { projectI
       {hostingReady && section === 'Monitoring' && <ProjectMonitor key={environment} projectId={projectId} environment={environment} />}
       {section === 'Source history' && <ProjectHistory projectId={projectId} />}
       {section === 'AI usage' && <ProjectAgentUsage projectId={projectId} />}
+      {section === 'Custom domain' && <CustomDomainSettings projectId={projectId} productionUrl={production.status?.productionUrl} />}
       {section === 'Project settings' && <ProjectGrowthHub projectId={projectId} />}
     </main>
     <ConfirmModal isOpen={!!confirmation} title="Restore this release?" message="This changes the active release. Database records stay as they are; incompatible schema changes are rejected." confirmLabel="Restore release" pending={busy} error={error || undefined} onCancel={() => { if (!busy) setConfirmation(null); }} onConfirm={() => void perform(async () => {

@@ -12,4 +12,4 @@ export function setSimulatedApi(files: Record<string, string>, enabled: boolean)
   return { ...files, [path]: JSON.stringify({ ...manifest, brainhalf: { ...previous, previewApi: enabled ? 'simulated' : 'disabled' } }, null, 2) + '\n' };
 }
 
-export const BACKEND_NOT_RUNNING = 'This is the design preview. To use sign-in or saved data, select Start app preview, then Open app preview in BrainHalf. If these controls are missing, ask the builder to connect your backend.';
+export const BACKEND_NOT_RUNNING = 'The backend is not running in design preview mode. Start the app preview to connect.';
