@@ -694,7 +694,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   }, [githubRepo, githubToken, addBuildLog, activeProjectId]);
 
   const autoSyncGitHub = useCallback(async () => {
-    if (!githubToken || !savedGithubRepo) return;
+    if (!githubToken || !savedGithubRepo || !isCurrent()) return;
     setGithubSyncing(true);
     try {
       await exportToGitHub(filesRef.current, savedGithubRepo, githubToken);
@@ -705,10 +705,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     } finally {
       setGithubSyncing(false);
     }
-  }, [githubToken, savedGithubRepo, addBuildLog]);
+  }, [githubToken, savedGithubRepo, addBuildLog, isCurrent]);
 
   const refreshUndoCheckpoint = useCallback(async () => {
-    if (!activeProjectId) return;
+    if (!activeProjectId || !isCurrent()) return;
     try {
       const origin = ['localhost', '127.0.0.1'].includes(location.hostname)
         ? import.meta.env.VITE_BACKEND_HOST || '' : '';
@@ -720,7 +720,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         if (cp) setUndoCheckpoint({ id: cp.id, revision: data.revision });
       }
     } catch { /* silent — undo button just won't appear */ }
-  }, [activeProjectId]);
+  }, [activeProjectId, isCurrent]);
 
   const quickUndo = useCallback(async () => {
     if (!undoCheckpoint || !activeProjectId) return;
@@ -1330,11 +1330,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               alignItems: 'center',
               gap: '6px'
             }}
-            title="Copy personal project link (requires your login to open)"
-            aria-label="Share project link"
+            title="Copy link to this project (opens when you're logged in)"
+            aria-label="Copy project link"
           >
             <Share2 size={14} strokeWidth={1.8} />
-            <span aria-live="polite">{shareCopied ? 'Copied' : 'Share'}</span>
+            <span aria-live="polite">{shareCopied ? 'Copied!' : 'Copy link'}</span>
           </button>
 
           <button
@@ -1430,34 +1430,82 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                 )}
               </div>
             </div>
-            <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-preview-canvas)', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-preview-canvas)', position: 'relative', overflow: 'hidden', containerType: 'inline-size' }}>
               {status === 'Generating' && (
                 <GenerationProgress files={Object.keys(files)} progress={fileProgress} />
               )}
-              <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
-                {backend.liveUrl ? (
-                  <iframe
-                    key={`split-live-${activeProjectId}-${backend.liveUrl}`}
-                    src={backend.liveUrl}
-                    sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-modals allow-downloads"
+              <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+                {isWaitingForFirstApp && previewLoadState !== 'error' && (
+                  <div className={`studio-preview-empty${status === 'Error' ? ' has-error' : ''}`} role="status" aria-live="polite">
+                    <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
+                    <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'GENERATION INCOMPLETE' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
+                    <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The frontend wasn't finished." : 'A place for your next idea.'}</h2>
+                    <p>{status === 'Error' ? "The last request couldn't finish. Open the conversation to retry or choose another model." : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "Your agent is working on the first version. The preview will appear here as it's built." : status === 'Connecting' ? "Your files are ready. We are loading the preview runtime now." : (status === 'Ready' && generationEverAttempted) ? 'The agent set up backend files but ran out of context before writing the app interface. Ask it to build the frontend.' : 'Describe what you want to make in the chat. Build it together, then try it right here.'}</p>
+                    {(status === 'Generating' || status === 'Connecting')
+                      ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Building your preview'}</div>
+                      : status === 'Error' || status === 'Stopped'
+                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
+                      : (status === 'Ready' && generationEverAttempted)
+                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask agent to build the UI<ArrowUpRight size={16} /></button>
+                      : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app<ArrowUpRight size={16} /></button>
+                    }
+                    {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
+                  </div>
+                )}
+                {previewLoadState === 'error' && (
+                  <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
+                    <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
+                    <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
+                    <h2>We couldn't open your latest preview.</h2>
+                    <p>{previewLoadError || previewIssue?.error || 'The build completed but the preview output could not be loaded.'}</p>
+                    <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
+                  </div>
+                )}
+                {isReadOnlyProject && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%)', borderBottom: '1px solid rgba(56, 189, 248, 0.25)', fontSize: '12px', color: 'var(--text-primary)', zIndex: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Eye size={14} style={{ color: 'var(--color-info)' }} />
+                      <span><strong>Read-Only Preview</strong> — Clone a copy to edit.</span>
+                    </div>
+                    <button onClick={handleForkProject} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 500, background: '#0ea5e9', color: 'var(--text-on-accent)', border: 'none', cursor: 'pointer' }}>
+                      <GitBranch size={13} /><span>Clone</span>
+                    </button>
+                  </div>
+                )}
+                {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Start the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}</div>}
+                {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open in new tab <ArrowUpRight size={13} /></button></div>}
+                <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
+                  {backend.liveUrl ? (
+                    <iframe
+                      key={`live-preview-${activeProjectId}-${backend.liveUrl}`}
+                      src={backend.liveUrl}
+                      sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-modals allow-downloads"
+                      style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'var(--bg-card)' }}
+                      title="Live App Preview"
+                    />
+                  ) : previewSessionReady ? <iframe
+                    ref={iframeRef}
+                    key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
+                    src={`/preview/${activeProjectId}/index.html`}
+                    sandbox={PREVIEW_SANDBOX}
+                    onLoad={() => {
+                      iframeRef.current?.contentWindow?.postMessage(
+                        { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
+                        previewTargetOrigin
+                      );
+                    }}
+                    onError={() => {
+                      const message = 'Preview iframe failed to load. Refresh, then run Build app again.';
+                      setStatus('Error');
+                      setPreviewStatus(activeProjectId, 'Error');
+                      markPreviewState('error', message);
+                    }}
                     style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'var(--bg-card)' }}
-                    title="Live App Preview"
-                  />
-                ) : previewSessionReady ? <iframe
-                  ref={iframeRef}
-                  key={`split-preview-${activeProjectId}-${edgeRefreshCounter}`}
-                  src={`/preview/${activeProjectId}/index.html`}
-                  sandbox={PREVIEW_SANDBOX}
-                  onLoad={() => {
-                    iframeRef.current?.contentWindow?.postMessage(
-                      { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
-                      previewTargetOrigin
-                    );
-                  }}
-                  style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'white' }}
-                  title="Design Preview"
-                /> : null}
-              </PreviewCanvas>
+                    title="Application Preview"
+                  /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
+                </PreviewCanvas>
+                {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span>{previewIssue.error.slice(0, 180)}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask agent to fix</button></div>}
+              </div>
             </div>
           </div>
         ) : isEditorTab ? (

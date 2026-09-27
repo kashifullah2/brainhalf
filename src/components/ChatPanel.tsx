@@ -178,7 +178,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       projectScope.active = false;
     };
   }, [projectScope]);
-  const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID);
+  const [selectedModelId, setSelectedModelId] = useState(() => {
+    try { return localStorage.getItem('bh_selected_model') || DEFAULT_MODEL_ID; } catch { return DEFAULT_MODEL_ID; }
+  });
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = getProjectMessages(activeProjectId);
     if (saved && saved.length > 0) return saved;
@@ -2089,6 +2091,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     aria-label={`Select model ${m.name}`}
                     onClick={() => {
                       setSelectedModelId(m.id);
+                      try { localStorage.setItem('bh_selected_model', m.id); } catch {}
                       setShowModelPicker(false);
                       modelPickerButtonRef.current?.focus();
                     }}
