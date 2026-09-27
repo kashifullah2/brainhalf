@@ -61,7 +61,7 @@ export interface RuntimeStatus {
   previewUrl: string; productionUrl: string;
 }
 export const PILOT_LIMITS = {
-  projects: 3, sandboxes: 2, browsers: 1, commandTimeoutMs: 600_000,
+  projects: 10, sandboxes: 2, browsers: 1, commandTimeoutMs: 600_000,
   idleTimeoutMs: 300_000, leaseMs: 45_000, sourceBytes: 4_000_000,
   sourceFiles: 500, logBytes: 64_000, artifactBytes: 12_000_000,
   dailyJobs: 30, dailyEmails: 20,
