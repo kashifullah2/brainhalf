@@ -261,7 +261,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   }, [fileProgressKey]);
   const generationActiveRef = useRef(false);
   const attemptedKey = `bh_genstarted_${activeProjectId}`;
-  const generationEverAttempted = (() => { try { return !!sessionStorage.getItem(`bh_genstarted_${activeProjectId}`); } catch { return false; } })();
+  const generationEverAttempted = (() => {
+    try { if (sessionStorage.getItem(`bh_genstarted_${activeProjectId}`)) return true; } catch { }
+    // Derive from file state so a page reload doesn't lose this signal. Any
+    // non-baseline component file or backend file means generation ran even if
+    // App.tsx is still the starter placeholder (agent ran out of context).
+    const paths = Object.keys(files);
+    return paths.some(p => /^\/(worker|migrations|shared)\//.test(p)) ||
+      paths.some(p => /^\/src\/components\//.test(p) && !/AppBoundary\.tsx$/.test(p));
+  })();
   const touchedKey = `bh_touched_${activeProjectId}`;
   const generationTouchedRef = useRef<Set<string>>(
     (() => {
