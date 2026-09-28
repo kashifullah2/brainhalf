@@ -17,7 +17,7 @@ import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
 import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, type AllowedModel } from './lib/models';
 import { safeFetchText } from './lib/ssrf';
-import { atriaConfiguration, bedrockBearer, credential, dahlConfiguration, validateRuntimeProviders } from './lib/runtime-config';
+import { atriaConfiguration, bedrockBearer, credential, validateRuntimeProviders } from './lib/runtime-config';
 import { buildDynamicImportMap as buildDynamicImportMapModule, isHarnessEntry as isHarnessEntryModule } from './lib/preview-import-map';
 import { buildSystemPrompt as buildSystemPromptModule } from './lib/system-prompt';
 import { BusyLock, IdempotencyStore, WriteEpoch, dedupeAdjacent } from './lib/concurrency';
@@ -1660,20 +1660,6 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               compatibility: 'compatible',
             } as any);
             aiModel = atria.chat(model.id);
-            maxTokensForModel = model.maxTokens;
-          } else if (model.provider === 'dahl') {
-            const { apiKey: dahlApiKey, baseURL: dahlBaseUrl } = dahlConfiguration(env);
-            if (!dahlApiKey) {
-              sendError('Dahl credentials are not configured');
-              return;
-            }
-            const dahl = createOpenAI({
-              name: 'dahl',
-              apiKey: dahlApiKey,
-              baseURL: dahlBaseUrl,
-              compatibility: 'compatible',
-            } as any);
-            aiModel = dahl.chat(model.id);
             maxTokensForModel = model.maxTokens;
           }
 

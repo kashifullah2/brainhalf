@@ -1,6 +1,0 @@
-Error: locator.waitFor: Target page, context or browser has been closed
-Call log:
-[2m  - waiting for getByRole('button', { name: 'Dashboard', exact: true }) to be visible[22m
-[2m    - waiting for "https://accounts.google.com/o/oauth2/v2/auth?client_id=645594415031-qvf264s8235c1ahueop2ker2idcoda23.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fbrainhalf.com%2Fapi%2Fauth%2Fgoogle%2Fcallba…" navigation to finish...[22m
-[2m    - navigated to "https://accounts.google.com/v3/signin/identifier?opparams=%253F&dsh=S-2143583039%3A1790185962117112&client_id=645594415031-qvf264s8235c1ahueop2ker2idcoda23.apps.googleusercontent.com&code_challenge=E…"[22m
-

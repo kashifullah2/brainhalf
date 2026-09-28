@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { atriaConfiguration, bedrockBearer, credential, dahlConfiguration, PROVIDER_CREDENTIALS, providerAvailable, requiredProviders, validSessionSecret, validateRuntimeProviders } from '../lib/runtime-config';
+import { atriaConfiguration, bedrockBearer, credential, PROVIDER_CREDENTIALS, providerAvailable, requiredProviders, validSessionSecret, validateRuntimeProviders } from '../lib/runtime-config';
 
 describe('Runtime configuration', () => {
   it('requires a durable signing secret with at least 32 non-padding characters', () => {
@@ -47,11 +47,7 @@ describe('Runtime configuration', () => {
     }
   });
 
-  it('validates Dahl endpoint and key wiring', () => {
-    expect(dahlConfiguration({ DAHL_API_KEY: 'key' })).toEqual({ apiKey: 'key', baseURL: 'https://inference.dahl.global/v1' });
-    expect(dahlConfiguration({ DAHL_BASE_URL: 'inference.dahl.global/v1' }).baseURL).toBe('https://inference.dahl.global/v1');
-    for (const baseURL of ['legacy-secret', 'http://example.test', 'https://user:pass@example.test', 'https://example.test?key=secret', 'https://example.test#fragment']) {
-      expect(() => dahlConfiguration({ DAHL_BASE_URL: baseURL })).toThrow('DAHL_BASE_URL');
-    }
+  it('rejects the removed Dahl provider', () => {
+    expect(() => requiredProviders('cloudflare,dahl')).toThrow('unsupported provider');
   });
 });

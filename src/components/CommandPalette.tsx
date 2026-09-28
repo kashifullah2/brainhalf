@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Code2, Download, Eye, FileText, GitBranch, Monitor,
-  RotateCcw, Search, Server, Terminal, Upload,
+  Code2, Download, FileText, GitBranch, Monitor,
+  RotateCcw, Search, Terminal, Upload,
 } from 'lucide-react';
 import './CommandPalette.css';
 
@@ -147,7 +147,7 @@ export default function CommandPalette({
           {fileResults.length > 0 && (
             <>
               <div className="cmd-palette-section-header">Files</div>
-              {fileResults.map((item, i) => {
+              {fileResults.map((item) => {
                 const globalIdx = filtered.indexOf(item);
                 return (
                   <button

@@ -17,6 +17,7 @@ vi.mock('ai', () => ({
 }));
 
 import { ChatAgent } from '../agent';
+import { DEFAULT_RELIABILITY } from '../lib/generation-controls';
 
 describe('Agent tool wiring', () => {
   it('passes defined tools and step policy into streamText', async () => {
@@ -40,7 +41,7 @@ describe('Agent tool wiring', () => {
     const options = (stream as any).mock.calls[0]?.[0] as Record<string, any>;
     expect(options).toBeTruthy();
     expect(options.toolChoice).toBe('auto');
-    expect(options.stopWhen).toEqual({ count: 7 });
+    expect(options.stopWhen).toEqual({ count: DEFAULT_RELIABILITY.maxSteps + 1 });
     expect(options.tools.write_file.inputSchema).toBeDefined();
     expect(Object.keys(options.tools || {})).toEqual(expect.arrayContaining([
       'read_file',

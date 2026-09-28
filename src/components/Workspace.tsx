@@ -14,7 +14,7 @@ import Editor, { loader } from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
 import { appEvents } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
-import { exportToGitHub } from '../lib/github-export';
+import { exportToGitHub, importFromGitHub, type GitHubImport } from '../lib/github-export';
 import { PREVIEW_LOAD_TIMEOUT, PREVIEW_SYNC_DEBOUNCE } from '../lib/timeouts';
 import { normalizePath } from '../lib/utils';
 import { selectAppEntry, selectHtmlEntry, isStarterApp } from '../lib/preview-entry';
@@ -310,6 +310,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const [githubToken, setGithubToken] = useState('');
   // Repo name persisted per project; token stays in React state only (never on disk)
   const [savedGithubRepo, setSavedGithubRepo] = useState('');
+  const [githubOwner, setGithubOwner] = useState('');
+  const [githubImport, setGithubImport] = useState<GitHubImport | null>(null);
   const [githubSyncing, setGithubSyncing] = useState(false);
   const [githubLastSynced, setGithubLastSynced] = useState<Date | null>(null);
   // Clear legacy keys that accidentally stored the PAT
@@ -325,7 +327,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       const saved = localStorage.getItem(`bh_github_repo:${activeProjectId}`) || '';
       setSavedGithubRepo(saved);
       setGithubRepo(saved);
-    } catch { setSavedGithubRepo(''); setGithubRepo(''); }
+      setGithubOwner(localStorage.getItem(`bh_github_owner:${activeProjectId}`) || '');
+    } catch { setSavedGithubRepo(''); setGithubRepo(''); setGithubOwner(''); }
   }, [activeProjectId]);
   const [githubStatus, setGithubStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
   useEffect(() => { if (showGithubModal) setGithubStatus({ loading: false }); }, [showGithubModal]);
@@ -710,7 +713,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     if (!githubRepo.trim() || !githubToken.trim()) return;
     setGithubStatus({ loading: true });
     try {
-      await exportToGitHub(filesRef.current, githubRepo.trim(), githubToken.trim());
+      await exportToGitHub(filesRef.current, githubRepo.trim(), githubToken.trim(), githubOwner.trim() || undefined);
       // Persist repo name (never the token); token stays in state to enable auto-sync
       try { localStorage.setItem(`bh_github_repo:${activeProjectId}`, githubRepo.trim()); } catch {}
       setSavedGithubRepo(githubRepo.trim());
@@ -721,13 +724,53 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       setGithubStatus({ loading: false, error: err?.message || 'Failed to export to GitHub' });
       addBuildLog(`GitHub export failed: ${err?.message || err}`, 'error');
     }
-  }, [githubRepo, githubToken, addBuildLog, activeProjectId]);
+  }, [githubRepo, githubToken, githubOwner, addBuildLog, activeProjectId]);
+
+  const handleImportGitHub = useCallback(async () => {
+    if (!githubRepo.trim() || !githubToken.trim()) return;
+    setGithubStatus({ loading: true });
+    setGithubImport(null);
+    try {
+      const input = githubRepo.trim();
+      const slash = input.indexOf('/');
+      const owner = slash > 0 ? input.slice(0, slash) : undefined;
+      const repo = slash > 0 ? input.slice(slash + 1) : input;
+      const result = await importFromGitHub(repo, githubToken.trim(), owner);
+      setGithubImport(result);
+      setGithubStatus({ loading: false });
+    } catch (err: any) {
+      setGithubStatus({ loading: false, error: err?.message || 'Failed to import from GitHub' });
+      addBuildLog(`GitHub import failed: ${err?.message || err}`, 'error');
+    }
+  }, [githubRepo, githubToken, addBuildLog]);
+
+  const confirmImportGitHub = useCallback(() => {
+    if (!githubImport) return;
+    commitFiles(githubImport.files, { replaceAll: true });
+    const input = githubRepo.trim();
+    const slash = input.indexOf('/');
+    const owner = slash > 0 ? input.slice(0, slash) : '';
+    const repo = slash > 0 ? input.slice(slash + 1) : input;
+    try {
+      localStorage.setItem(`bh_github_repo:${activeProjectId}`, repo);
+      if (owner) localStorage.setItem(`bh_github_owner:${activeProjectId}`, owner);
+      else localStorage.removeItem(`bh_github_owner:${activeProjectId}`);
+    } catch {}
+    setSavedGithubRepo(repo);
+    setGithubRepo(repo);
+    setGithubOwner(owner);
+    setGithubLastSynced(new Date());
+    const count = Object.keys(githubImport.files).length;
+    addBuildLog(`Imported ${count} files from GitHub: ${githubImport.repoUrl} (${githubImport.branch})`, 'success');
+    setGithubImport(null);
+    setGithubStatus({ loading: false, success: `Imported ${count} files from ${repo} — auto-sync enabled for this session.` });
+  }, [githubImport, githubRepo, activeProjectId, commitFiles, addBuildLog]);
 
   const autoSyncGitHub = useCallback(async () => {
     if (!githubToken || !savedGithubRepo || !isCurrent()) return;
     setGithubSyncing(true);
     try {
-      await exportToGitHub(filesRef.current, savedGithubRepo, githubToken);
+      await exportToGitHub(filesRef.current, savedGithubRepo, githubToken, githubOwner.trim() || undefined);
       setGithubLastSynced(new Date());
       addBuildLog(`Auto-synced to GitHub: ${savedGithubRepo}`, 'success');
     } catch (err: any) {
@@ -735,7 +778,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     } finally {
       setGithubSyncing(false);
     }
-  }, [githubToken, savedGithubRepo, addBuildLog, isCurrent]);
+  }, [githubToken, savedGithubRepo, githubOwner, addBuildLog, isCurrent]);
 
   const refreshUndoCheckpoint = useCallback(async () => {
     if (!activeProjectId || !isCurrent()) return;
@@ -750,7 +793,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         if (cp) setUndoCheckpoint({ id: cp.id, revision: data.revision });
       }
     } catch { /* silent — undo button just won't appear */ }
-  }, [activeProjectId, isCurrent]);
+  }, [activeProjectId, isCurrent, setUndoCheckpoint]);
 
   const quickUndo = useCallback(async () => {
     if (!undoCheckpoint || !activeProjectId) return;
@@ -776,7 +819,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     } finally {
       setUndoLoading(false);
     }
-  }, [undoCheckpoint, activeProjectId, addBuildLog]);
+  }, [undoCheckpoint, activeProjectId, addBuildLog, setUndoCheckpoint, setUndoLoading]);
 
   const runReadinessAudit = useCallback(() => {
     const files = filesRef.current;
@@ -1983,7 +2026,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
               {savedGithubRepo && githubToken
                 ? `Auto-syncing to ${savedGithubRepo} after each generation.${githubLastSynced ? ` Last synced ${githubLastSynced.toLocaleTimeString()}.` : ''}`
-                : 'New repositories are private. Existing repositories keep their default branch and newer commits are protected.'}
+                : 'New repositories are private. Existing repositories keep their default branch and newer commits are protected. Enter owner/repo to pull from another account with Import.'}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -2040,14 +2083,45 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               </div>
             )}
 
+            {githubImport && (
+              <div role="alertdialog" aria-label="Confirm GitHub import" style={{ padding: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <span>
+                  Import <strong>{Object.keys(githubImport.files).length} files</strong> from <strong>{githubImport.repoUrl}</strong> ({githubImport.branch})?
+                  This replaces the current project files.
+                </span>
+                {githubImport.skipped.length > 0 && (
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    Skipped: {githubImport.skipped.slice(0, 4).join(', ')}{githubImport.skipped.length > 4 ? ` and ${githubImport.skipped.length - 4} more` : ''}
+                  </span>
+                )}
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setGithubImport(null)}
+                    style={{ padding: '8px 14px', minHeight: '44px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+                  >
+                    Cancel import
+                  </button>
+                  <button
+                    onClick={confirmImportGitHub}
+                    style={{ padding: '8px 14px', minHeight: '44px', background: 'var(--color-warning, #d97706)', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                  >
+                    Replace project files
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px', flexWrap: 'wrap' }}>
               {savedGithubRepo && (
                 <button
                   onClick={() => {
                     try { localStorage.removeItem(`bh_github_repo:${activeProjectId}`); } catch {}
+                    try { localStorage.removeItem(`bh_github_owner:${activeProjectId}`); } catch {}
                     setSavedGithubRepo('');
+                    setGithubOwner('');
                     setGithubRepo('');
                     setGithubToken('');
+                    setGithubImport(null);
                     setGithubLastSynced(null);
                     setShowGithubModal(false);
                   }}
@@ -2061,7 +2135,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                 </button>
               )}
               <button
-                onClick={() => { setShowGithubModal(false); setGithubStatus({ loading: false }); }}
+                onClick={() => { setShowGithubModal(false); setGithubStatus({ loading: false }); setGithubImport(null); }}
                 style={{
                   padding: '10px 16px', minHeight: '44px', background: 'transparent',
                   border: '1px solid var(--border-color)', color: 'var(--text-primary)',
@@ -2069,6 +2143,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                 }}
               >
                 Cancel
+              </button>
+              <button
+                onClick={handleImportGitHub}
+                disabled={githubStatus.loading || !!githubImport || !githubRepo.trim() || !githubToken.trim()}
+                style={{
+                  padding: '10px 16px', minHeight: '44px', background: 'transparent',
+                  border: '1px solid var(--color-primary, #3b82f6)', color: 'var(--color-primary, #3b82f6)',
+                  borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
+                  opacity: (githubStatus.loading || !!githubImport || !githubRepo.trim() || !githubToken.trim()) ? 0.5 : 1
+                }}
+              >
+                {githubStatus.loading ? 'Working…' : 'Import'}
               </button>
               <button
                 onClick={handleExportGitHub}

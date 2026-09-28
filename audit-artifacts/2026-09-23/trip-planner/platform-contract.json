@@ -1,5 +1,0 @@
-{
-  "managedRuntime": "workers",
-  "buildScript": "tsc --noEmit && node build.js",
-  "migrationCompatible": true
-}

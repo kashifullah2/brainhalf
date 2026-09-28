@@ -1,8 +1,0 @@
-{
-  "create": true,
-  "complete": true,
-  "activeFilter": true,
-  "completedFilter": true,
-  "delete": true,
-  "accessibility": "Checkbox and filter tabs are clickable divs without keyboard semantics"
-}

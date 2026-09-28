@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { prepareProjectExport } from '../lib/project-export';
-import { exportToGitHub } from '../lib/github-export';
+import { exportToGitHub, importFromGitHub } from '../lib/github-export';
 import { isBlockedSecretFile } from '../lib/secret-files';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -66,5 +66,70 @@ describe('GitHub export concurrency and privacy', () => {
   it.each([401, 403, 500])('does not create a repository after HTTP %s', async failure => {
     const calls = github({ failure }); await expect(exportToGitHub({}, 'app', 'token')).rejects.toThrow();
     expect(calls.some(call => call.method === 'POST')).toBe(false);
+  });
+});
+
+function githubImportMock({ missing = false, truncated = false } = {}) {
+  const blobs: Record<string, unknown> = {
+    ['1'.repeat(40)]: 'export default function App() { return <h1>Hi</h1>; }',
+    ['2'.repeat(40)]: 'DATABASE_URL=should-not-be-imported',
+    ['3'.repeat(40)]: 'body { margin: 0; }',
+  };
+  const fetch = vi.fn(async (url: string) => {
+    const path = new URL(url).pathname;
+    if (path === '/user') return Response.json({ login: 'owner' });
+    if (path === '/repos/owner/app') return missing
+      ? Response.json({ message: 'Not Found' }, { status: 404 })
+      : Response.json({ default_branch: 'main', size: 10 });
+    if (path === '/repos/owner/app/git/trees/main' || path === '/repos/owner/app/git/trees/main?recursive=1') {
+      return Response.json({
+        truncated,
+        tree: [
+          { path: 'src/App.tsx', type: 'blob', sha: '1'.repeat(40), size: 48 },
+          { path: '.env', type: 'blob', sha: '2'.repeat(40), size: 32 },
+          { path: 'styles.css', type: 'blob', sha: '3'.repeat(40), size: 18 },
+          { path: 'node_modules/pkg/index.js', type: 'blob', sha: '4'.repeat(40), size: 10 },
+          { path: 'assets', type: 'tree', sha: '5'.repeat(40) },
+        ],
+      });
+    }
+    const blob = path.match(/\/git\/blobs\/([a-f0-9]{40})$/)?.[1];
+    if (blob && blobs[blob] !== undefined) {
+      return Response.json({ encoding: 'base64', content: btoa(String(blobs[blob])) });
+    }
+    throw new Error('Unexpected request ' + path);
+  });
+  vi.stubGlobal('fetch', fetch);
+  return fetch;
+}
+
+describe('GitHub import', () => {
+  it('pulls default-branch source while skipping secret and vendored files', async () => {
+    githubImportMock();
+    const result = await importFromGitHub('app', 'token');
+    expect(result.repoUrl).toBe('https://github.com/owner/app');
+    expect(result.branch).toBe('main');
+    expect(result.files['/src/App.tsx']).toContain('<h1>Hi</h1>');
+    expect(result.files['/styles.css']).toBe('body { margin: 0; }');
+    expect(Object.keys(result.files)).toHaveLength(2);
+    expect(result.skipped).toContain('/.env');
+    expect(result.skipped.some(path => path.includes('node_modules'))).toBe(true);
+    expect(JSON.stringify(result.files)).not.toContain('should-not-be-imported');
+  });
+  it('reports a missing repository without reading any blobs', async () => {
+    const fetch = githubImportMock({ missing: true });
+    await expect(importFromGitHub('app', 'token')).rejects.toThrow('not found');
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('/git/blobs/'))).toBe(false);
+  });
+  it('refuses repositories whose listing GitHub truncated', async () => {
+    githubImportMock({ truncated: true });
+    await expect(importFromGitHub('app', 'token')).rejects.toThrow('too large');
+  });
+  it('validates repo, owner and token before any network request', async () => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    await expect(importFromGitHub('../evil', 'token')).rejects.toThrow('repository name');
+    await expect(importFromGitHub('app', 'bad\ntoken')).rejects.toThrow('token');
+    await expect(importFromGitHub('app', 'token', 'not valid!')).rejects.toThrow('owner');
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type JSX } from 'react';
 import { ChevronDown, ChevronRight, Clock, FileMinus, FilePlus, FileText, History, RotateCcw, Save, Zap } from 'lucide-react';
 import { authFetch } from '../lib/auth-client';
 import type { SourceCheckpoint } from '../lib/source-history';

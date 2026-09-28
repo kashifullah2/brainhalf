@@ -60,6 +60,13 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
     expect(resolveModel('claude-sonnet-6')).not.toBeNull();
   });
 
+  it('resolves claude-sonnet-6 to the native Anthropic transport without offering it twice in the picker', () => {
+    expect(resolveModel('claude-sonnet-6', 'anthropic')).toMatchObject({ provider: 'anthropic', id: 'claude-sonnet-4-6', clientSelectable: false });
+    // Without a provider hint the first declared match wins, which must stay Bedrock.
+    expect(resolveModel('claude-sonnet-6')?.provider).toBe('aws');
+    expect(FRONTEND_CATALOG.filter(name => name === 'claude-sonnet-6')).toHaveLength(1);
+  });
+
   it('rejects unknown, prefix-extended and suffix-extended ids', () => {
     expect(resolveModel('@cf/openai/gpt-oss-120b.evil.example')).toBeNull();
     expect(resolveModel('evil.example/@cf/openai/gpt-oss-120b')).toBeNull();

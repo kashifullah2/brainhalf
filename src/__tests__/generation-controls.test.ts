@@ -24,7 +24,7 @@ describe('Generation performance controls', () => {
 
   it('bounds hostile control fields on the server', () => {
     expect(generationControls({ max_tokens: 1e9, max_steps: 100, timeout_ms: 1e12, fast_mode: 'true' })).toEqual({
-      fastMode: DEFAULT_RELIABILITY.fastMode, maxTokens: MAX_OUTPUT_TOKENS, maxSteps: 10, timeoutMs: AI_TIMEOUT_MS,
+      fastMode: DEFAULT_RELIABILITY.fastMode, maxTokens: MAX_OUTPUT_TOKENS, maxSteps: 20, timeoutMs: AI_TIMEOUT_MS,
     });
   });
 

@@ -11,7 +11,7 @@
  * model to the UI means adding it here too — the two are a contract.
  */
 
-export type ModelProvider = 'cloudflare' | 'anthropic' | 'aws' | 'atria' | 'dahl';
+export type ModelProvider = 'cloudflare' | 'anthropic' | 'aws' | 'atria';
 
 export interface AllowedModel {
   /** Client-visible model name, matched exactly (case-sensitive). */
@@ -64,7 +64,10 @@ const CF_MODELS: AllowedModel[] = [
 ];
 
 const ANTHROPIC_MODELS: AllowedModel[] = [
-  // Intentionally empty: current catalog uses Cloudflare/AWS/Atria only.
+  // Same client-visible identity as the Bedrock entry below. Not shown in the
+  // picker: the agent selects this transport only when ANTHROPIC_API_KEY is
+  // configured and no Bedrock credential is available (see agent.ts).
+  { name: 'claude-sonnet-6', provider: 'anthropic', id: 'claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
 ];
 
 const BEDROCK_MODELS: AllowedModel[] = [

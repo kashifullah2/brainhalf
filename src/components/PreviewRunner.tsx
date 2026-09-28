@@ -455,7 +455,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
     const el = document.elementFromPoint(e.clientX, e.clientY);
     overlay.style.pointerEvents = 'all';
     if (el && el !== overlay) setHoveredRect(el.getBoundingClientRect());
-  }, []);
+  }, [setHoveredRect]);
 
   const handleInspectClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -479,7 +479,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
         text,
       }, '*');
     }
-  }, []);
+  }, [setInspectMode, setHoveredRect]);
 
   const htmlEntry = useMemo(() => selectHtmlEntry(files), [files]);
 

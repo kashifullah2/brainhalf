@@ -1,5 +1,5 @@
 import { assertNodeVersion, deploymentTarget, isMain, runWrangler } from './wrangler.mjs';
-import { atriaConfiguration, dahlConfiguration, MIN_SESSION_SECRET_LENGTH, PROVIDER_CREDENTIALS, providerAvailable, requiredProviders, validSessionSecret } from '../src/lib/runtime-config.ts';
+import { atriaConfiguration, MIN_SESSION_SECRET_LENGTH, PROVIDER_CREDENTIALS, providerAvailable, requiredProviders, validSessionSecret } from '../src/lib/runtime-config.ts';
 import { isValidEmail } from '../src/lib/crypto.ts';
 
 const PUBLIC_SERVICES = {
@@ -54,7 +54,6 @@ export function validateDeployment(config, present, environment = process.env) {
       throw new Error(`Required provider ${provider} is not configured: ${requirement}`);
     }
     if (provider === 'atria' && config.vars?.ATRIA_BASE_URL !== undefined) atriaConfiguration(config.vars);
-    if (provider === 'dahl' && config.vars?.DAHL_BASE_URL !== undefined) dahlConfiguration(config.vars);
   }
   validatePublicServices(config, present);
   return providers;

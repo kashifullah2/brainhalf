@@ -1,1 +1,0 @@
-Error: Sign-in was not confirmed by both the server and an authenticated BrainHalf page. No app generation was started. Run the command again and finish sign-in or email verification in the Chrome window it opens; the runner closes that window when it exits.

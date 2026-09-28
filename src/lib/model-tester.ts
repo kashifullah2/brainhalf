@@ -1,7 +1,7 @@
 import { AiBudget, meteredModel } from './ai-budget';
 import { transform } from 'sucrase';
 import { authorizeProject, isAllowedOrigin, USER_ID_HEADER } from './auth';
-import { atriaConfiguration, bedrockBearer, credential, dahlConfiguration, validateRuntimeProviders } from './runtime-config';
+import { atriaConfiguration, bedrockBearer, credential, validateRuntimeProviders } from './runtime-config';
 import {
   MODEL_ALLOWLIST,
   MODEL_TEST_TIMEOUT_MS,
@@ -545,34 +545,6 @@ export async function handleModelTest(
       } as any);
       const stream = streamText({
         model: meteredModel(atria.chat(resolved.id)),
-        messages: [{ role: 'user', content: prompt }],
-        abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
-        onError: ({ error }) => { errorMsg = error instanceof Error ? error.message : String(error); },
-      });
-
-      for await (const chunk of stream.textStream) {
-        if (!firstTokenTime) {
-          firstTokenTime = Date.now() - startTime;
-        }
-        outputContent += chunk;
-      }
-    } else if (resolved.provider === 'dahl') {
-      const { apiKey: dahlApiKey, baseURL: dahlBaseUrl } = dahlConfiguration(env);
-
-      if (!dahlApiKey) {
-        throw new Error(`DAHL_API_KEY is not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
-      }
-
-      const { createOpenAI } = await import('@ai-sdk/openai');
-      const { streamText } = await import('ai');
-      const dahl = createOpenAI({
-        name: 'dahl',
-        apiKey: dahlApiKey,
-        baseURL: dahlBaseUrl,
-        compatibility: 'compatible',
-      } as any);
-      const stream = streamText({
-        model: meteredModel(dahl.chat(resolved.id)),
         messages: [{ role: 'user', content: prompt }],
         abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
         onError: ({ error }) => { errorMsg = error instanceof Error ? error.message : String(error); },

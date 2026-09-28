@@ -12,7 +12,6 @@ export const PROVIDER_CREDENTIALS = {
     ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'],
   ],
   atria: [['ATRIA_API_KEY']],
-  dahl: [['DAHL_API_KEY']],
 } as const;
 
 export type ConfiguredProvider = 'cloudflare' | keyof typeof PROVIDER_CREDENTIALS;
@@ -45,7 +44,6 @@ export function validateRuntimeProviders(env: Record<string, unknown>): void {
       throw new Error(`Required provider ${provider} is not configured`);
     }
     if (provider === 'atria') atriaConfiguration(env);
-    if (provider === 'dahl') dahlConfiguration(env);
   }
 }
 
@@ -75,31 +73,6 @@ export function atriaConfiguration(env: Record<string, unknown>): { apiKey: stri
   const hostLooksPublic = host.includes('.') || host === 'localhost' || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(':');
   if (!hostLooksPublic) {
     throw new Error('ATRIA_BASE_URL must be an HTTPS URL');
-  }
-  return { apiKey, baseURL };
-}
-
-export function dahlConfiguration(env: Record<string, unknown>): { apiKey: string | undefined; baseURL: string } {
-  const apiKey = credential(env, 'DAHL_API_KEY');
-  const rawBaseURL = credential(env, 'DAHL_BASE_URL');
-  const hasScheme = Boolean(rawBaseURL && /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(rawBaseURL));
-  const normalizedBaseURL = rawBaseURL && !hasScheme
-    ? `https://${rawBaseURL}`
-    : rawBaseURL;
-  const baseURL = normalizedBaseURL || 'https://inference.dahl.global/v1';
-  let endpoint: URL;
-  try {
-    endpoint = new URL(baseURL);
-  } catch {
-    throw new Error('DAHL_BASE_URL must be an HTTPS URL');
-  }
-  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
-    throw new Error('DAHL_BASE_URL must be an HTTPS URL without credentials, query or fragment');
-  }
-  const host = endpoint.hostname.toLowerCase();
-  const hostLooksPublic = host.includes('.') || host === 'localhost' || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(':');
-  if (!hostLooksPublic) {
-    throw new Error('DAHL_BASE_URL must be an HTTPS URL');
   }
   return { apiKey, baseURL };
 }

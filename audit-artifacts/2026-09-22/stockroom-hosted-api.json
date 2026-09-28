@@ -1,7 +1,0 @@
-{
-  "status": 501,
-  "body": {
-    "error": "The browser preview does not run backend servers. Export and run this project with its configured database, or explicitly enable the temporary demo API.",
-    "code": "BACKEND_NOT_RUNNING"
-  }
-}

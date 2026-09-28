@@ -769,13 +769,14 @@ it('applies the hosted project limit per account, including old registrations an
   const c = context();
   c.map.set('project:legacy', { projectId: 'legacy', ownerId: 'alice' });
   const coordinator = new PilotCoordinator(c.ctx, {} as any);
-  expect(await coordinator.register('alice-2', { projectId: 'a2', ownerId: 'alice' })).toEqual({ ok: true });
-  expect(await coordinator.register('alice-3', { projectId: 'a3', ownerId: 'alice' })).toEqual({ ok: true });
-  expect(await coordinator.register('alice-4', { projectId: 'a4', ownerId: 'alice' })).toMatchObject({ status: 429 });
+  for (let slot = 2; slot <= 10; slot++) {
+    expect(await coordinator.register(`alice-${slot}`, { projectId: `a${slot}`, ownerId: 'alice' })).toEqual({ ok: true });
+  }
+  expect(await coordinator.register('alice-11', { projectId: 'a11', ownerId: 'alice' })).toMatchObject({ status: 429 });
   expect(await coordinator.register('bob-1', { projectId: 'b1', ownerId: 'bob' })).toEqual({ ok: true });
   await expect(coordinator.unregister('legacy', { projectId: 'legacy', ownerId: 'bob' })).rejects.toThrow('scope mismatch');
   await coordinator.unregister('legacy', { projectId: 'legacy', ownerId: 'alice' });
-  expect(await coordinator.register('alice-4', { projectId: 'a4', ownerId: 'alice' })).toEqual({ ok: true });
+  expect(await coordinator.register('alice-11', { projectId: 'a11', ownerId: 'alice' })).toEqual({ ok: true });
   expect(await coordinator.lookup('bob-1')).toMatchObject({ ownerId: 'bob' });
 });
 
