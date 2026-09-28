@@ -667,6 +667,36 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     return () => node.removeEventListener('keydown', onKeyDown);
   }, [showGithubModal]);
 
+  const handleCreateFile = useCallback((path: string) => {
+    if (!path || files[path] !== undefined) return;
+    commitFiles({ ...filesRef.current, [path]: '' });
+    setActiveFile(path);
+    selectTab('code');
+    addBuildLog(`Created file: ${path}`, 'info');
+  }, [files, commitFiles, selectTab, addBuildLog]);
+
+  const handleRenameFile = useCallback((oldPath: string, newPath: string) => {
+    if (!oldPath || !newPath || oldPath === newPath || files[newPath] !== undefined) return;
+    const next = { ...filesRef.current };
+    next[newPath] = next[oldPath];
+    delete next[oldPath];
+    commitFiles(next);
+    if (activeFile === oldPath) setActiveFile(newPath);
+    addBuildLog(`Renamed: ${oldPath} → ${newPath}`, 'info');
+  }, [files, activeFile, commitFiles, addBuildLog]);
+
+  const handleDeleteFile = useCallback((path: string) => {
+    if (!path || files[path] === undefined) return;
+    const next = { ...filesRef.current };
+    delete next[path];
+    commitFiles(next, { replaceAll: true });
+    if (activeFile === path) {
+      const remaining = Object.keys(next);
+      setActiveFile(selectAppEntry(next) || remaining[0] || '/src/App.tsx');
+    }
+    addBuildLog(`Deleted file: ${path}`, 'warn');
+  }, [files, activeFile, commitFiles, addBuildLog]);
+
   const handleExportZip = useCallback(async () => {
     try {
       await exportProjectAsZip(filesRef.current, activeProjectId || 'brainhalf-project');
@@ -1380,6 +1410,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               activeFile={activeFile}
               onSelectFile={setActiveFile}
               headerTitle="Project files"
+              onCreateFile={!isReadOnlyProject ? handleCreateFile : undefined}
+              onRenameFile={!isReadOnlyProject ? handleRenameFile : undefined}
+              onDeleteFile={!isReadOnlyProject ? handleDeleteFile : undefined}
+              readOnly={isReadOnlyProject}
             />}
             <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden', borderRight: '1px solid var(--border-subtle)' }}>
               <div className="studio-file-tabs" style={{
@@ -1515,6 +1549,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               activeFile={activeFile}
               onSelectFile={setActiveFile}
               headerTitle="Project files"
+              onCreateFile={!isReadOnlyProject ? handleCreateFile : undefined}
+              onRenameFile={!isReadOnlyProject ? handleRenameFile : undefined}
+              onDeleteFile={!isReadOnlyProject ? handleDeleteFile : undefined}
+              readOnly={isReadOnlyProject}
             />}
 
             <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden' }}>

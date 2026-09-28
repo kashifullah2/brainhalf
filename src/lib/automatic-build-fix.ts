@@ -62,7 +62,7 @@ export function useAutomaticBuildFix(projectId: string, runtime: Runtime, isGene
           onAccepted: () => {},
         });
       })
-      .catch(() => {});
+      .catch((err: unknown) => { console.warn('[auto-fix] Failed to fetch build logs:', err); });
 
     return () => controller.abort();
   }, [projectId, runtime.status, isGenerating]);
