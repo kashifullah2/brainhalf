@@ -1237,6 +1237,30 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
   }, [activeProjectId, backend.ready, backend.open]);
 
+  // When the design preview iframe loads, send files — and quickly detect
+  // expired sessions (which return JSON, not HTML) to show a clear error
+  // instead of waiting for the 45-second load timeout.
+  const handlePreviewIframeLoad = useCallback(() => {
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
+      previewTargetOrigin
+    );
+    // Fast-path: detect expired session by fetching the preview URL and
+    // checking Content-Type. JSON → expired; any other error → swallow.
+    void fetch(`/preview/${activeProjectId}/index.html`, { credentials: 'include', signal: AbortSignal.timeout(5_000) })
+      .then(res => {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json') || ct.includes('text/plain')) {
+          const message = 'Preview session expired. Refresh the page to start a new session.';
+          setPreviewLoadState('error');
+          setPreviewLoadError(message);
+          setStatus('Error');
+          setPreviewStatus(activeProjectId, 'Error');
+        }
+      })
+      .catch(() => { /* network error — timeout will handle it */ });
+  }, [activeProjectId, previewTargetOrigin]);
+
   useEffect(() => { handleRefreshRef.current = handleRefresh; }, [handleRefresh]);
 
   useEffect(() => () => {
@@ -1522,12 +1546,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
                     src={`/preview/${activeProjectId}/index.html`}
                     sandbox={PREVIEW_SANDBOX}
-                    onLoad={() => {
-                      iframeRef.current?.contentWindow?.postMessage(
-                        { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
-                        previewTargetOrigin
-                      );
-                    }}
+                    onLoad={handlePreviewIframeLoad}
                     onError={() => {
                       const message = 'Preview iframe failed to load. Refresh, then run Build app again.';
                       setStatus('Error');
@@ -1905,12 +1924,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
                     src={`/preview/${activeProjectId}/index.html`}
                     sandbox={PREVIEW_SANDBOX}
-                    onLoad={() => {
-                      iframeRef.current?.contentWindow?.postMessage(
-                        { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
-                        previewTargetOrigin
-                      );
-                    }}
+                    onLoad={handlePreviewIframeLoad}
                     onError={() => {
                       const message = 'Preview iframe failed to load. Refresh, then run Build app again.';
                       setStatus('Error');
