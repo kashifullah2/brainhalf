@@ -22,7 +22,7 @@ const SECRET = 'worker-test-secret-must-be-32-chars-or-more';
 
 describe('Worker runtime configuration gate', () => {
   it('serves only an empty public prefetch ruleset to opaque previews without authentication', async () => {
-    const response = await worker.fetch(new Request('https://brainhalf.com/preview-rules.json', { headers: { Origin: 'null' } }), {}, {} as any);
+    const response = await worker.fetch(new Request('https://brainhalf.com/preview-rules.json', { headers: { Origin: 'null' } }), {} as unknown as import('../worker').PlatformEnv, {} as any);
     expect(response.status).toBe(200);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
     expect(response.headers.get('Content-Type')).toBe('application/speculationrules+json');
@@ -31,7 +31,7 @@ describe('Worker runtime configuration gate', () => {
   it.each(['/api/auth/signup', '/api/auth/login', '/api/auth/session', '/api/projects', '/agents/chat-agent/project', '/preview/project/index.html', '/p/project/'])('returns an explicit uncached 503 before accessing bindings: %s', async path => {
     const response = await worker.fetch(new Request(`https://brainhalf.com${path}`, {
       headers: { origin: 'https://brainhalf.com' },
-    }), { SESSION_SECRET: 'do-not-echo-this-value' }, {} as any);
+    }), { SESSION_SECRET: 'do-not-echo-this-value' } as unknown as import('../worker').PlatformEnv, {} as any);
     expect(response.status).toBe(503);
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://brainhalf.com');
@@ -39,11 +39,11 @@ describe('Worker runtime configuration gate', () => {
   });
 
   it('keeps preflight and the static shell available without valid auth configuration', async () => {
-    const preflight = await worker.fetch(new Request('https://brainhalf.com/api/projects', { method: 'OPTIONS' }), {}, {} as any);
+    const preflight = await worker.fetch(new Request('https://brainhalf.com/api/projects', { method: 'OPTIONS' }), {} as unknown as import('../worker').PlatformEnv, {} as any);
     expect(preflight.status).toBe(204);
     const shell = await worker.fetch(new Request('https://brainhalf.com/'), {
       ASSETS: { fetch: async () => new Response('shell') },
-    }, {} as any);
+    } as unknown as import('../worker').PlatformEnv, {} as any);
     expect(shell.status).toBe(200);
     expect(await shell.text()).toBe('shell');
   });
@@ -97,8 +97,22 @@ async function authenticatedRequest(url: string, init: RequestInit = {}) {
 }
 
 function envWith(registry: any, extra: Record<string, any> = {}) {
-  return { SESSION_SECRET: SECRET, REGISTRY: registry, ...extra };
+  // Tests stub only the bindings each route touches.
+  return { SESSION_SECRET: SECRET, REGISTRY: registry, ...extra } as unknown as import('../worker').PlatformEnv;
 }
+
+describe('Canonical host and navigational redirects', () => {
+  it('permanently redirects www.brainhalf.com to the apex, preserving path and query', async () => {
+    const response = await worker.fetch(new Request('https://www.brainhalf.com/guides/build-an-app-with-ai?ref=email'), {} as unknown as import('../worker').PlatformEnv, {} as any);
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe('https://brainhalf.com/guides/build-an-app-with-ai?ref=email');
+  });
+  it.each(['/sign-in', '/login'])('redirects the modal-only auth URL to the homepage: %s', async path => {
+    const response = await worker.fetch(new Request(`https://brainhalf.com${path}`), {} as unknown as import('../worker').PlatformEnv, {} as any);
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe('https://brainhalf.com/');
+  });
+});
 
 describe('Cloudflare Worker Gateway & Routing', () => {
   it('fails closed when the inference rate-limit store is unavailable', async () => {
@@ -131,7 +145,7 @@ describe('Cloudflare Worker Gateway & Routing', () => {
   });
   it('serves dashboard navigation with the app shell and private indexing headers', async () => {
     const assets = vi.fn(async (request: Request) => new URL(request.url).pathname === '/index.html' ? Response.redirect('https://brainhalf.com/', 307) : new Response(new URL(request.url).pathname));
-    const response = await worker.fetch(new Request('https://brainhalf.com/dashboard?project=abc'), { ASSETS: { fetch: assets } }, {} as any);
+    const response = await worker.fetch(new Request('https://brainhalf.com/dashboard?project=abc'), { ASSETS: { fetch: assets } } as unknown as import('../worker').PlatformEnv, {} as any);
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('/');
     expect(response.headers.get('X-Robots-Tag')).toContain('noindex');
@@ -216,6 +230,39 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     expect(forwarded.headers.get('x-auth-user-id')).toBe('user-1');
     expect(await res.text()).toContain('Preview Content');
     expect(res.headers.get('Content-Security-Policy')).toContain('sandbox allow-scripts allow-forms;');
+  });
+
+  it('rate-limits preview traffic and returns 429 with Retry-After', async () => {
+    const mockDoFetch = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    const registry = mockRegistry({
+      onRateLimitCheck: bucket => bucket.startsWith('preview') ? { ok: false, retryAfter: 42 } : { ok: true, retryAfter: 0 },
+    });
+    const env = envWith(registry, {
+      ChatAgent: { idFromName: vi.fn().mockReturnValue('id'), get: vi.fn().mockReturnValue({ fetch: mockDoFetch }) },
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-alpha/src/App.jsx');
+    const res = await worker.fetch(request, env, {} as any);
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('42');
+    expect(mockDoFetch).not.toHaveBeenCalled();
+  });
+
+  it('fails open for previews when the rate-limit service is unavailable', async () => {
+    const mockDoFetch = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    const registry = mockRegistry();
+    const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/rate-limit/check') return new Response('down', { status: 503 });
+      return original(input, init);
+    });
+    const env = envWith(registry, {
+      ChatAgent: { idFromName: vi.fn().mockReturnValue('id'), get: vi.fn().mockReturnValue({ fetch: mockDoFetch }) },
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-alpha/src/App.jsx');
+    const res = await worker.fetch(request, env, {} as any);
+    expect(res.status).toBe(200);
+    expect(mockDoFetch).toHaveBeenCalled();
   });
 
   it('routes agent API and websocket requests via routeAgentRequest', async () => {
@@ -509,5 +556,71 @@ describe('product outcome access', () => {
       return original(input, init);
     });
     expect((await worker.fetch(request, envWith(registry, { PRODUCT_METRICS_OWNER_IDS: 'user-1' }), {} as any)).status).toBe(200);
+  });
+});
+
+describe('Gallery remix orchestration', () => {
+  const remixRegistry = (deleted: string[]) => {
+    const registry = mockRegistry();
+    const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/projects/remix') return Response.json({ projectId: 'copy-1', name: 'Inventory Tracker (remix)' }, { status: 201 });
+      if (url.pathname === '/projects/copy-1' && (init?.method === 'DELETE' || (input instanceof Request && input.method === 'DELETE'))) { deleted.push('copy-1'); return Response.json({ ok: true }); }
+      return original(input, init);
+    });
+    return registry;
+  };
+  const remixAgents = (options: { exportOk?: boolean; importOk?: boolean } = {}) => {
+    const importedBodies: string[] = [];
+    const fetch = vi.fn(async (request: Request) => {
+      if (new URL(request.url).pathname === '/internal/remix-export') {
+        return options.exportOk === false ? new Response('denied', { status: 403 }) : Response.json({ files: { '/src/App.tsx': 'export default function App() {}' } });
+      }
+      if (new URL(request.url).pathname === '/internal/remix-import') {
+        importedBodies.push(await request.text());
+        return options.importOk === false ? Response.json({ error: 'too large' }, { status: 413 }) : Response.json({ ok: true, revision: 3 });
+      }
+      return new Response('unexpected', { status: 500 });
+    });
+    return { binding: { idFromName: (id: string) => id, get: () => ({ fetch }) }, fetch, importedBodies };
+  };
+
+  it('copies the showcased source into the caller’s new project', async () => {
+    const deleted: string[] = [];
+    const agents = remixAgents();
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/source-app/remix', { method: 'POST' });
+    const response = await worker.fetch(request, envWith(remixRegistry(deleted), { ChatAgent: agents.binding }), {} as any);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ projectId: 'copy-1', name: 'Inventory Tracker (remix)' });
+    expect(agents.importedBodies).toHaveLength(1);
+    expect(JSON.parse(agents.importedBodies[0])).toEqual({ files: { '/src/App.tsx': 'export default function App() {}' } });
+    expect(deleted).toHaveLength(0);
+  });
+
+  it('cleans up the new project when the file copy fails', async () => {
+    const deleted: string[] = [];
+    const agents = remixAgents({ importOk: false });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/source-app/remix', { method: 'POST' });
+    const response = await worker.fetch(request, envWith(remixRegistry(deleted), { ChatAgent: agents.binding }), {} as any);
+    expect(response.status).toBe(502);
+    expect(deleted).toEqual(['copy-1']);
+  });
+
+  it('requires a session and refuses when the registry rejects the remix', async () => {
+    const agents = remixAgents();
+    const anonymous = await worker.fetch(new Request('https://brainhalf.com/api/projects/source-app/remix', { method: 'POST' }), envWith(mockRegistry(), { ChatAgent: agents.binding }), {} as any);
+    expect(anonymous.status).toBe(401);
+    const registry = mockRegistry();
+    const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/projects/remix') return Response.json({ error: 'This app is not listed in the gallery' }, { status: 404 });
+      return original(input, init);
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/source-app/remix', { method: 'POST' });
+    const denied = await worker.fetch(request, envWith(registry, { ChatAgent: agents.binding }), {} as any);
+    expect(denied.status).toBe(404);
+    expect(agents.fetch).not.toHaveBeenCalled();
   });
 });

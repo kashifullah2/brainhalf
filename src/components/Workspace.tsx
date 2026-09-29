@@ -14,7 +14,7 @@ import Editor, { loader } from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
 import { appEvents } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
-import { exportToGitHub, importFromGitHub, type GitHubImport } from '../lib/github-export';
+import { useGithubSync } from './GithubSyncModal';
 import { PREVIEW_LOAD_TIMEOUT, PREVIEW_SYNC_DEBOUNCE } from '../lib/timeouts';
 import { normalizePath } from '../lib/utils';
 import { selectAppEntry, selectHtmlEntry, isStarterApp } from '../lib/preview-entry';
@@ -233,6 +233,21 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     setActiveTab(tab);
     onSelectMobileTab?.(tab);
   }, [onSelectMobileTab]);
+  // Resizing across the mobile breakpoint must not hide a pane the user
+  // explicitly opened (console, logs, code): the app shell hides the workspace
+  // when the mobile tab is 'chat'. The default 'preview' tab is not pushed —
+  // mobile intentionally lands on the chat.
+  const mobileModeRef = useRef<{ mobile: boolean; tab: typeof mobileTab }>({ mobile: mobileTab !== undefined, tab: mobileTab });
+  useEffect(() => {
+    const previous = mobileModeRef.current;
+    const mobile = mobileTab !== undefined;
+    if (mobile && !previous.mobile && activeTab !== 'preview') {
+      onSelectMobileTab?.(activeTab);
+    } else if (!mobile && previous.mobile && previous.tab && previous.tab !== 'chat' && previous.tab !== activeTab) {
+      setActiveTab(previous.tab);
+    }
+    mobileModeRef.current = { mobile, tab: mobileTab };
+  }, [mobileTab, activeTab, onSelectMobileTab]);
   useEffect(() => appEvents.on('open-project-console', () => selectTab('console')), [selectTab]);
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
@@ -304,38 +319,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   });
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // GitHub export / auto-sync
-  const [showGithubModal, setShowGithubModal] = useState(false);
-  const [githubRepo, setGithubRepo] = useState('');
-  const [githubToken, setGithubToken] = useState('');
-  // Repo name persisted per project; token stays in React state only (never on disk)
-  const [savedGithubRepo, setSavedGithubRepo] = useState('');
-  const [githubOwner, setGithubOwner] = useState('');
-  const [githubImport, setGithubImport] = useState<GitHubImport | null>(null);
-  const [githubSyncing, setGithubSyncing] = useState(false);
-  const [githubLastSynced, setGithubLastSynced] = useState<Date | null>(null);
-  // Clear legacy keys that accidentally stored the PAT
-  useEffect(() => { try { sessionStorage.removeItem('brainhalf_github_pat'); localStorage.removeItem('brainhalf_github_pat'); } catch {} }, []);
-  // On project switch: load persisted repo name, clear session token, clear undo state
-  useEffect(() => {
-    if (!activeProjectId) return;
-    setGithubToken('');
-    setGithubLastSynced(null);
-    setGithubSyncing(false);
-    setUndoCheckpoint(null);
-    try {
-      const saved = localStorage.getItem(`bh_github_repo:${activeProjectId}`) || '';
-      setSavedGithubRepo(saved);
-      setGithubRepo(saved);
-      setGithubOwner(localStorage.getItem(`bh_github_owner:${activeProjectId}`) || '');
-    } catch { setSavedGithubRepo(''); setGithubRepo(''); setGithubOwner(''); }
-  }, [activeProjectId]);
-  const [githubStatus, setGithubStatus] = useState<{ loading: boolean; error?: string; success?: string }>({ loading: false });
-  useEffect(() => { if (showGithubModal) setGithubStatus({ loading: false }); }, [showGithubModal]);
-
   // Undo last AI change — quick restore to the most recent "Before agent changes" checkpoint
   const [undoCheckpoint, setUndoCheckpoint] = useState<{ id: string; revision: number } | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
+
+  // On project switch, clear undo state (GitHub state resets inside useGithubSync)
+  useEffect(() => { setUndoCheckpoint(null); }, [activeProjectId]);
 
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [splitView, setSplitView] = useState(false);
@@ -382,22 +371,25 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       monaco.editor.defineTheme('brainhalf-studio-dark', {
         base: 'vs-dark', inherit: true,
         rules: [
-          { token: 'comment', foreground: 'A3AAA0', fontStyle: 'italic' },
-          { token: 'keyword', foreground: 'C8B8CA' },
-          { token: 'string', foreground: 'B1C9A4' },
-          { token: 'number', foreground: 'D7BF90' },
-          { token: 'type', foreground: 'BACBAD' },
-          { token: 'tag', foreground: 'BACBAD' },
+          // Blue-grey family, matching the studio dark elevation scale — the
+          // previous palette was green-tinted (#222522 family) and clashed
+          // with every surrounding surface.
+          { token: 'comment', foreground: '8B9BB4', fontStyle: 'italic' },
+          { token: 'keyword', foreground: 'C3D6F2' },
+          { token: 'string', foreground: '9FD4B8' },
+          { token: 'number', foreground: 'E3C08D' },
+          { token: 'type', foreground: 'A3C2F5' },
+          { token: 'tag', foreground: 'A3C2F5' },
         ],
         colors: {
-          'editor.background': '#222522', 'editor.foreground': '#ECEEE8',
-          'editorLineNumber.foreground': '#A3AAA0', 'editorLineNumber.activeForeground': '#ECEEE8',
-          'editor.lineHighlightBackground': '#2B3029', 'editor.selectionBackground': '#46523E',
-          'editor.inactiveSelectionBackground': '#343C30', 'editorCursor.foreground': '#BACBAD',
-          'editorIndentGuide.background1': '#373C35', 'editorIndentGuide.activeBackground1': '#626B5D',
-          'editorWidget.background': '#222522', 'editorWidget.border': '#4C5546',
-          'editorSuggestWidget.background': '#222522', 'editorSuggestWidget.border': '#4C5546',
-          'editorSuggestWidget.selectedBackground': '#343C30',
+          'editor.background': '#10161F', 'editor.foreground': '#E6EDF7',
+          'editorLineNumber.foreground': '#7D8CA3', 'editorLineNumber.activeForeground': '#E6EDF7',
+          'editor.lineHighlightBackground': '#16202E', 'editor.selectionBackground': '#2E4258',
+          'editor.inactiveSelectionBackground': '#223047', 'editorCursor.foreground': '#A3C2F5',
+          'editorIndentGuide.background1': '#223047', 'editorIndentGuide.activeBackground1': '#42557A',
+          'editorWidget.background': '#141C29', 'editorWidget.border': '#30405A',
+          'editorSuggestWidget.background': '#141C29', 'editorSuggestWidget.border': '#30405A',
+          'editorSuggestWidget.selectedBackground': '#223047',
         },
       });
       loader.config({ monaco });
@@ -422,8 +414,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     window.location.search = `?project=${forked.id}`;
   };
 
-  const modalRef = useRef<HTMLDivElement>(null);
-  const githubTriggerRef = useRef<HTMLElement | null>(null);
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -432,6 +422,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const [previewLoadState, setPreviewLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [previewLoadError, setPreviewLoadError] = useState('');
   const previewLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirror for the generation-status effect, whose subscription does not
+  // resubscribe on preview state changes.
+  const previewLoadStateRef = useRef(previewLoadState);
+  useEffect(() => { previewLoadStateRef.current = previewLoadState; }, [previewLoadState]);
   useEffect(() => setPreviewIssue(null), [activeProjectId]);
   useEffect(() => {
     setPreviewLoadState('idle');
@@ -555,6 +549,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     if (sync) appEvents.emit('sync-files', { files: next, replaceAll });
   }, [activeProjectId]);
 
+  const github = useGithubSync({ activeProjectId, isCurrent, filesRef, commitFiles, addBuildLog });
+
   useEffect(() => { activeFileRef.current = activeFile; }, [activeFile]);
 
   useEffect(() => {
@@ -612,27 +608,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     if (resolvedActiveTab === 'logs') logsEndRef.current?.scrollIntoView({ block: 'end' });
   }, [buildLogs, resolvedActiveTab]);
 
-  useEffect(() => {
-    const unsub = appEvents.on('open-github-modal', () => {
-      githubTriggerRef.current = document.activeElement as HTMLElement;
-      setShowGithubModal(true);
-    });
-    return () => unsub();
-  }, []);
-
-  // Dropdown dismissal. Escape closes the innermost layer only, so it does not
-  // tear down the whole UI in one keystroke. Window blur handles clicks into iframes.
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      if (showGithubModal) { setShowGithubModal(false); return; }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [showGithubModal]);
-
   // Cmd+K / Ctrl+K opens the command palette
   useEffect(() => {
     const handleCmdK = (e: KeyboardEvent) => {
@@ -644,31 +619,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     document.addEventListener('keydown', handleCmdK);
     return () => document.removeEventListener('keydown', handleCmdK);
   }, []);
-
-  // Modal focus management: move focus in on open, restore it on close, and keep
-  // Tab inside the dialog while it is up.
-  useEffect(() => {
-    if (!showGithubModal) {
-      githubTriggerRef.current?.focus?.();
-      return;
-    }
-    const node = modalRef.current;
-    if (!node) return;
-    const focusables = node.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [href], select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    focusables[0]?.focus();
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || focusables.length === 0) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    };
-    node.addEventListener('keydown', onKeyDown);
-    return () => node.removeEventListener('keydown', onKeyDown);
-  }, [showGithubModal]);
 
   const handleCreateFile = useCallback((path: string) => {
     if (!path || files[path] !== undefined) return;
@@ -708,77 +658,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       addBuildLog(`ZIP export failed: ${err?.message || err}`, 'error');
     }
   }, [activeProjectId, addBuildLog]);
-
-  const handleExportGitHub = useCallback(async () => {
-    if (!githubRepo.trim() || !githubToken.trim()) return;
-    setGithubStatus({ loading: true });
-    try {
-      await exportToGitHub(filesRef.current, githubRepo.trim(), githubToken.trim(), githubOwner.trim() || undefined);
-      // Persist repo name (never the token); token stays in state to enable auto-sync
-      try { localStorage.setItem(`bh_github_repo:${activeProjectId}`, githubRepo.trim()); } catch {}
-      setSavedGithubRepo(githubRepo.trim());
-      setGithubLastSynced(new Date());
-      setGithubStatus({ loading: false, success: `Synced to ${githubRepo.trim()} — auto-sync enabled for this session.` });
-      addBuildLog(`Pushed codebase to GitHub: ${githubRepo.trim()}`, 'success');
-    } catch (err: any) {
-      setGithubStatus({ loading: false, error: err?.message || 'Failed to export to GitHub' });
-      addBuildLog(`GitHub export failed: ${err?.message || err}`, 'error');
-    }
-  }, [githubRepo, githubToken, githubOwner, addBuildLog, activeProjectId]);
-
-  const handleImportGitHub = useCallback(async () => {
-    if (!githubRepo.trim() || !githubToken.trim()) return;
-    setGithubStatus({ loading: true });
-    setGithubImport(null);
-    try {
-      const input = githubRepo.trim();
-      const slash = input.indexOf('/');
-      const owner = slash > 0 ? input.slice(0, slash) : undefined;
-      const repo = slash > 0 ? input.slice(slash + 1) : input;
-      const result = await importFromGitHub(repo, githubToken.trim(), owner);
-      setGithubImport(result);
-      setGithubStatus({ loading: false });
-    } catch (err: any) {
-      setGithubStatus({ loading: false, error: err?.message || 'Failed to import from GitHub' });
-      addBuildLog(`GitHub import failed: ${err?.message || err}`, 'error');
-    }
-  }, [githubRepo, githubToken, addBuildLog]);
-
-  const confirmImportGitHub = useCallback(() => {
-    if (!githubImport) return;
-    commitFiles(githubImport.files, { replaceAll: true });
-    const input = githubRepo.trim();
-    const slash = input.indexOf('/');
-    const owner = slash > 0 ? input.slice(0, slash) : '';
-    const repo = slash > 0 ? input.slice(slash + 1) : input;
-    try {
-      localStorage.setItem(`bh_github_repo:${activeProjectId}`, repo);
-      if (owner) localStorage.setItem(`bh_github_owner:${activeProjectId}`, owner);
-      else localStorage.removeItem(`bh_github_owner:${activeProjectId}`);
-    } catch {}
-    setSavedGithubRepo(repo);
-    setGithubRepo(repo);
-    setGithubOwner(owner);
-    setGithubLastSynced(new Date());
-    const count = Object.keys(githubImport.files).length;
-    addBuildLog(`Imported ${count} files from GitHub: ${githubImport.repoUrl} (${githubImport.branch})`, 'success');
-    setGithubImport(null);
-    setGithubStatus({ loading: false, success: `Imported ${count} files from ${repo} — auto-sync enabled for this session.` });
-  }, [githubImport, githubRepo, activeProjectId, commitFiles, addBuildLog]);
-
-  const autoSyncGitHub = useCallback(async () => {
-    if (!githubToken || !savedGithubRepo || !isCurrent()) return;
-    setGithubSyncing(true);
-    try {
-      await exportToGitHub(filesRef.current, savedGithubRepo, githubToken, githubOwner.trim() || undefined);
-      setGithubLastSynced(new Date());
-      addBuildLog(`Auto-synced to GitHub: ${savedGithubRepo}`, 'success');
-    } catch (err: any) {
-      addBuildLog(`GitHub auto-sync failed: ${err?.message || err}`, 'warn');
-    } finally {
-      setGithubSyncing(false);
-    }
-  }, [githubToken, savedGithubRepo, githubOwner, addBuildLog, isCurrent]);
 
   const refreshUndoCheckpoint = useCallback(async () => {
     if (!activeProjectId || !isCurrent()) return;
@@ -974,8 +853,21 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           }
           return;
         }
-        setStatus('Connecting');
-        markPreviewState('loading');
+        if (previewLoadStateRef.current === 'ready') {
+          // The preview already rendered the final file set — its success
+          // landed while the builder was finishing. Restarting the load cycle
+          // here races that render and used to leave a stale "preview failed"
+          // state on screen until a manual refresh.
+          setStatus('Ready');
+          setPreviewStatus(activeProjectId, 'Ready');
+        } else {
+          // No render has confirmed the final files yet (e.g. a mid-generation
+          // module error was the last word). Force one clean reload so the
+          // result is authoritative instead of depending on a file sync that
+          // already happened and cannot repeat.
+          markPreviewState('loading');
+          if (completedGeneration) setEdgeRefreshCounter(current => current + 1);
+        }
         if (completedGeneration) startBackend(filesRef.current);
         addBuildLog(
           completedGeneration && isFullStackProject(filesRef.current)
@@ -984,7 +876,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           'success'
         );
         if (completedGeneration) addConsoleLog('[validation] Generation complete; project typecheck, build and tests have not been run by this preview.');
-        if (completedGeneration) void autoSyncGitHub();
+        if (completedGeneration) void github.autoSync();
         if (completedGeneration) void refreshUndoCheckpoint();
         return;
       }
@@ -1165,6 +1057,24 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         const lineInfo = event.data.lineno ? ` (line ${event.data.lineno})` : '';
         const fullErr = `${cleanMsg}${lineInfo}`;
         setPreviewIssue({ error: fullErr, file, layer });
+        if (generationActiveRef.current) {
+          // Mid-generation module errors are expected: files land one at a
+          // time, so an import can briefly point at a file that has not been
+          // written yet. Surface the diagnostic in the preview panel but do
+          // NOT flip the workspace out of 'Generating' — a later render with
+          // the complete file set clears this, and flipping status here used
+          // to leave the UI stuck on "Error" even after recovery.
+          setPreviewLoadState('error');
+          setPreviewLoadError(fullErr);
+          if (previewLoadTimerRef.current) {
+            clearTimeout(previewLoadTimerRef.current);
+            previewLoadTimerRef.current = null;
+          }
+          appEvents.emit('preview-state', { projectId: activeProjectId, state: 'error', error: fullErr });
+          addBuildLog(`${prefix} in ${file}: ${errorMsg} (files still writing — will recover when generation completes)`, 'warn');
+          addConsoleLog(`[${layer}-error] ${fullErr}`);
+          return;
+        }
         setStatus('Error');
         setPreviewStatus(activeProjectId, 'Error');
         markPreviewState('error', fullErr);
@@ -1189,7 +1099,16 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       }
 
       if (type === 'preview-success') {
-        if (generationActiveRef.current) return;
+        if (generationActiveRef.current) {
+          // A render completed with the files synced so far, so any earlier
+          // mid-generation module error (files are written one by one) is
+          // obsolete. Clear it — otherwise it can stick on screen after the
+          // final files land — but keep the workspace in its generating
+          // state until the builder actually finishes.
+          setPreviewIssue(null);
+          markPreviewState('ready');
+          return;
+        }
         if (previewLoadState === 'idle' && !hasGeneratedAppCode(filesRef.current)) return;
         setPreviewIssue(null);
         setPreviewStatus(activeProjectId, 'Ready');
@@ -1289,11 +1208,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       previewTargetOrigin
     );
     // Fast-path: detect expired session by fetching the preview URL and
-    // checking Content-Type. JSON → expired; any other error → swallow.
+    // checking the status. 401/403 with a JSON body → expired; a 429 from the
+    // preview rate limiter is transient and recovers on the next reload, so it
+    // must not be misreported as an expired session.
     void fetch(`/preview/${activeProjectId}/index.html`, { credentials: 'include', signal: AbortSignal.timeout(5_000) })
       .then(res => {
         const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json') || ct.includes('text/plain')) {
+        if ((res.status === 401 || res.status === 403) && (ct.includes('application/json') || ct.includes('text/plain'))) {
           const message = 'Preview session expired. Refresh the page to start a new session.';
           setPreviewLoadState('error');
           setPreviewLoadError(message);
@@ -1397,7 +1318,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           <ActionMenu label="Project actions" className="studio-project-actions" items={[
             { label: 'Project console', icon: <Server />, onSelect: () => selectTab('console') },
             { label: 'Download source ZIP', icon: <Download />, onSelect: () => { void handleExportZip(); }, disabled: !Object.keys(files).length, separator: true },
-            { label: 'Export to GitHub', icon: <GitBranch />, onSelect: () => { githubTriggerRef.current = document.activeElement as HTMLElement; setShowGithubModal(true); }, disabled: !Object.keys(files).length },
+            { label: 'Export to GitHub', icon: <GitBranch />, onSelect: () => github.openModal(), disabled: !Object.keys(files).length },
             { label: 'Run readiness audit', icon: <ListFilter />, onSelect: runReadinessAudit, separator: true },
             { label: 'Build guide', icon: <HelpCircle />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
             { label: 'Reset workspace', icon: <RotateCcw />, onSelect: () => setShowResetConfirm(true), danger: true, separator: true },
@@ -1573,8 +1494,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     </button>
                   </div>
                 )}
-                {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Start the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}</div>}
-                {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open in new tab <ArrowUpRight size={13} /></button></div>}
+                {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Start the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}{backend.ready && <button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button>}</div>}
+                {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
                 <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
                   {backend.liveUrl ? (
                     <iframe
@@ -1719,22 +1640,22 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   </button>
 
                   <button
-                    onClick={(e) => { githubTriggerRef.current = e.currentTarget; setShowGithubModal(true); }}
+                    onClick={(e) => { (e.currentTarget as HTMLElement).focus(); github.openModal(); }}
                     className="hover-bright"
-                    title={savedGithubRepo ? `GitHub: ${savedGithubRepo}${githubToken ? ' · auto-sync on' : ''}` : 'Export to GitHub'}
-                    aria-label={savedGithubRepo ? `GitHub: ${savedGithubRepo}` : 'Export to GitHub'}
+                    title={github.savedRepo ? `GitHub: ${github.savedRepo}${github.hasToken ? ' · auto-sync on' : ''}` : 'Export to GitHub'}
+                    aria-label={github.savedRepo ? `GitHub: ${github.savedRepo}` : 'Export to GitHub'}
                     style={{
                       background: 'transparent', border: 'none',
-                      color: savedGithubRepo ? 'var(--color-success, #22c55e)' : 'var(--text-muted)',
+                      color: github.savedRepo ? 'var(--color-success, #22c55e)' : 'var(--text-muted)',
                       padding: '6px 8px', minHeight: '32px', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'inherit'
                     }}
                   >
-                    {githubSyncing
+                    {github.syncing
                       ? <Loader2 size={16} strokeWidth={1.75} className="lucide-spin" />
                       : <FolderCode size={16} strokeWidth={1.75} />}
                     {!compactToolbar && (
-                      <span>{savedGithubRepo ? savedGithubRepo : 'GitHub'}</span>
+                      <span>{github.savedRepo ? github.savedRepo : 'GitHub'}</span>
                     )}
                   </button>
 
@@ -1951,8 +1872,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   </div>
                 </div>
               )}
-              {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Start the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}</div>}
-              {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open in new tab <ArrowUpRight size={13} /></button></div>}
+              {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Start the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}{backend.ready && <button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button>}</div>}
+              {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
               <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
                   {backend.liveUrl ? (
                     <iframe
@@ -1994,186 +1915,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       </footer>
 
       {/* GitHub export modal */}
-      {showGithubModal && (
-        <div
-          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowGithubModal(false); }}
-          style={{
-            position: 'fixed', inset: 0, background: 'var(--overlay)',
-            backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', zIndex: 100000, padding: '16px'
-          }}
-        >
-          <div
-            ref={modalRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="github-export-title"
-            style={{
-              background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
-              borderRadius: '12px', width: '420px', maxWidth: '100%',
-              // maxHeight + scroll: at 375px with the keyboard up, the fixed
-              // layout put the submit button below the fold and unreachable.
-              maxHeight: '90vh', overflowY: 'auto',
-              padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-              display: 'flex', flexDirection: 'column', gap: '16px'
-            }}
-          >
-            <h3 id="github-export-title" style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FolderCode size={20} />
-              {savedGithubRepo && githubToken ? 'GitHub auto-sync' : 'Export to GitHub'}
-            </h3>
+      {github.modalElement}
 
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-              {savedGithubRepo && githubToken
-                ? `Auto-syncing to ${savedGithubRepo} after each generation.${githubLastSynced ? ` Last synced ${githubLastSynced.toLocaleTimeString()}.` : ''}`
-                : 'New repositories are private. Existing repositories keep their default branch and newer commits are protected. Enter owner/repo to pull from another account with Import.'}
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label htmlFor="gh-repo" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Repository name
-              </label>
-              <input
-                id="gh-repo"
-                type="text"
-                value={githubRepo}
-                onChange={e => setGithubRepo(e.target.value)}
-                placeholder="brainhalf-app"
-                autoComplete="off"
-                style={{
-                  background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
-                  borderRadius: '6px', padding: '10px 12px', color: 'var(--text-primary)',
-                  fontSize: '13px', outline: 'none', fontFamily: 'inherit', minHeight: '44px'
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label htmlFor="gh-token" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Personal access token
-              </label>
-              <input
-                id="gh-token"
-                type="password"
-                value={githubToken}
-                onChange={e => setGithubToken(e.target.value)}
-                placeholder="ghp_..."
-                autoComplete="off"
-                style={{
-                  background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
-                  borderRadius: '6px', padding: '10px 12px', color: 'var(--text-primary)',
-                  fontSize: '13px', outline: 'none', fontFamily: 'inherit', minHeight: '44px'
-                }}
-              />
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                Use a fine-grained token with Contents read/write, or a classic token with repo scope. Kept in memory this session only — never written to disk — to enable auto-sync after generation.
-              </span>
-
-            </div>
-
-            {githubStatus.error && (
-              <div role="alert" style={{ padding: '10px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-error)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '12px', lineHeight: 1.5 }}>
-                {githubStatus.error}
-              </div>
-            )}
-
-            {githubStatus.success && (
-              <div role="status" style={{ padding: '10px', background: 'rgba(34, 197, 94, 0.1)', color: 'var(--color-success)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '6px', fontSize: '12px', lineHeight: 1.5 }}>
-                {githubStatus.success}
-              </div>
-            )}
-
-            {githubImport && (
-              <div role="alertdialog" aria-label="Confirm GitHub import" style={{ padding: '12px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <span>
-                  Import <strong>{Object.keys(githubImport.files).length} files</strong> from <strong>{githubImport.repoUrl}</strong> ({githubImport.branch})?
-                  This replaces the current project files.
-                </span>
-                {githubImport.skipped.length > 0 && (
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    Skipped: {githubImport.skipped.slice(0, 4).join(', ')}{githubImport.skipped.length > 4 ? ` and ${githubImport.skipped.length - 4} more` : ''}
-                  </span>
-                )}
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={() => setGithubImport(null)}
-                    style={{ padding: '8px 14px', minHeight: '44px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
-                  >
-                    Cancel import
-                  </button>
-                  <button
-                    onClick={confirmImportGitHub}
-                    style={{ padding: '8px 14px', minHeight: '44px', background: 'var(--color-warning, #d97706)', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
-                  >
-                    Replace project files
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px', flexWrap: 'wrap' }}>
-              {savedGithubRepo && (
-                <button
-                  onClick={() => {
-                    try { localStorage.removeItem(`bh_github_repo:${activeProjectId}`); } catch {}
-                    try { localStorage.removeItem(`bh_github_owner:${activeProjectId}`); } catch {}
-                    setSavedGithubRepo('');
-                    setGithubOwner('');
-                    setGithubRepo('');
-                    setGithubToken('');
-                    setGithubImport(null);
-                    setGithubLastSynced(null);
-                    setShowGithubModal(false);
-                  }}
-                  style={{
-                    padding: '10px 16px', minHeight: '44px', background: 'transparent',
-                    border: '1px solid var(--border-color)', color: 'var(--color-error, #ef4444)',
-                    borderRadius: '6px', cursor: 'pointer', fontSize: '13px', marginRight: 'auto'
-                  }}
-                >
-                  Disconnect
-                </button>
-              )}
-              <button
-                onClick={() => { setShowGithubModal(false); setGithubStatus({ loading: false }); setGithubImport(null); }}
-                style={{
-                  padding: '10px 16px', minHeight: '44px', background: 'transparent',
-                  border: '1px solid var(--border-color)', color: 'var(--text-primary)',
-                  borderRadius: '6px', cursor: 'pointer', fontSize: '13px'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImportGitHub}
-                disabled={githubStatus.loading || !!githubImport || !githubRepo.trim() || !githubToken.trim()}
-                style={{
-                  padding: '10px 16px', minHeight: '44px', background: 'transparent',
-                  border: '1px solid var(--color-primary, #3b82f6)', color: 'var(--color-primary, #3b82f6)',
-                  borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
-                  opacity: (githubStatus.loading || !!githubImport || !githubRepo.trim() || !githubToken.trim()) ? 0.5 : 1
-                }}
-              >
-                {githubStatus.loading ? 'Working…' : 'Import'}
-              </button>
-              <button
-                onClick={handleExportGitHub}
-                disabled={githubStatus.loading || !githubRepo.trim() || !githubToken.trim()}
-                style={{
-                  padding: '10px 16px', minHeight: '44px', background: 'var(--brand-primary)',
-                  border: 'none', color: 'var(--text-on-accent)', borderRadius: '6px',
-                  cursor: (githubStatus.loading || !githubRepo.trim() || !githubToken.trim()) ? 'not-allowed' : 'pointer',
-                  opacity: (githubStatus.loading || !githubRepo.trim() || !githubToken.trim()) ? 0.6 : 1,
-                  display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 500
-                }}
-              >
-                {githubStatus.loading && <Loader2 size={14} className="lucide-spin" />}
-                {githubStatus.loading ? 'Syncing...' : savedGithubRepo ? 'Sync now' : 'Export & enable auto-sync'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <CommandPalette
         open={cmdPaletteOpen}
@@ -2182,7 +1925,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         onSelectFile={(path) => { setActiveFile(path); selectTab('code'); }}
         onSwitchTab={selectTab}
         onExportZip={() => void handleExportZip()}
-        onOpenGithub={() => { githubTriggerRef.current = document.activeElement as HTMLElement; setShowGithubModal(true); }}
+        onOpenGithub={() => github.openModal()}
         onPublish={() => setPublishDialog({ projectId: activeProjectId })}
         onUndo={undoCheckpoint ? () => void quickUndo() : undefined}
       />

@@ -1,6 +1,6 @@
 import ThemeToggle from './ThemeToggle';
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, Pencil } from 'lucide-react';
+import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, Pencil } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import ActionMenu from './ActionMenu';
@@ -16,6 +16,7 @@ interface TopNavProps {
   currentUser?: { email?: string; name?: string; devMode?: boolean } | null;
   onLogout?: () => void | Promise<void>;
   onGoHome?: () => void;
+  onOpenDashboard?: () => void;
   onNewProject?: () => void;
   creatingProject?: boolean;
 }
@@ -30,6 +31,7 @@ const TopNav: React.FC<TopNavProps> = ({
   currentUser,
   onLogout,
   onGoHome,
+  onOpenDashboard,
   onNewProject,
   creatingProject = false,
 }) => {
@@ -181,9 +183,19 @@ const TopNav: React.FC<TopNavProps> = ({
 
       {/* Appearance and account actions */}
       <div className="top-nav-right-cluster" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
+        {onOpenDashboard && (
+          <button
+            type="button"
+            className="top-nav-dashboard-btn icon-btn"
+            onClick={onOpenDashboard}
+            title="Dashboard"
+            aria-label="Open dashboard"
+          ><LayoutDashboard size={16} strokeWidth={1.7} /></button>
+        )}
         <ThemeToggle />
 
         <ActionMenu label="User profile and menu" className="studio-account-trigger" items={[
+          ...(onOpenDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={15} />, onSelect: onOpenDashboard }] : []),
           ...(onGoHome ? [{ label: 'Back to home', icon: <Home size={15} />, onSelect: onGoHome }] : []),
           ...(onLogout ? [{ label: 'Sign out', icon: <LogOut size={15} />, onSelect: () => { void onLogout(); }, separator: true }] : []),
         ]}>

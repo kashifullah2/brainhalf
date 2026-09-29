@@ -77,18 +77,18 @@ describe('Public HTML and search metadata', () => {
 describe('Private search surfaces', () => {
   it.each(['?project=private', '?google=complete', '?token=value', '?_uid=user', '?utm_source=test&project=private'])('excludes %s from search', async search => {
     expect(isPrivateSearch(search)).toBe(true);
-    const response = await worker.fetch(new Request(`${SITE_URL}/${search}`), { ASSETS: { fetch: async () => new Response('public shell') } }, {} as never);
+    const response = await worker.fetch(new Request(`${SITE_URL}/${search}`), { ASSETS: { fetch: async () => new Response('public shell') } } as unknown as import('../worker').PlatformEnv, {} as never);
     expect(response.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
     expect(response.headers.get('Cache-Control')).toContain('no-store');
   });
   it('keeps the public homepage crawlable, including campaign links', async () => {
     expect(isPrivateSearch('?utm_source=search')).toBe(false);
-    const response = await worker.fetch(new Request(`${SITE_URL}/?utm_source=search`), { ASSETS: { fetch: async () => new Response('public shell') } }, {} as never);
+    const response = await worker.fetch(new Request(`${SITE_URL}/?utm_source=search`), { ASSETS: { fetch: async () => new Response('public shell') } } as unknown as import('../worker').PlatformEnv, {} as never);
     expect(response.headers.get('X-Robots-Tag')).toBeNull();
   });
   it('excludes preview and API responses', async () => {
     expect(previewSecurityHeaders()['X-Robots-Tag']).toBe('noindex, nofollow');
-    const response = await worker.fetch(new Request(`${SITE_URL}/api/private`), {}, {} as never);
+    const response = await worker.fetch(new Request(`${SITE_URL}/api/private`), {} as unknown as import('../worker').PlatformEnv, {} as never);
     expect(response.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
   });
 });

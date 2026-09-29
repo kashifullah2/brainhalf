@@ -5,6 +5,7 @@ import './styles/studio-fonts.css';
 import App from './App';
 import './styles/studio-theme.css';
 import PublicPage from './components/PublicPage';
+import GalleryPage from './components/GalleryPage';
 import { ACCOUNT_PAGES, findPublicPage } from './seo/content';
 import AccountPage from './components/AccountPage';
 import { pageMetadata, isPrivateSearch } from './seo/metadata';
@@ -17,7 +18,7 @@ if (root && window.self === window.top && !/^\/(preview|p)(\/|$)/.test(window.lo
   const path = window.location.pathname.replace(/\/$/, '') || '/';
   const home = path === '/' || path === '/index.html';
   const appRoute = home || path === '/dashboard';
-  const content = appRoute ? <App /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
+  const content = appRoute ? <App /> : path === '/gallery' ? <GalleryPage /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
   const tree = <StrictMode><ErrorBoundary>{content}</ErrorBoundary></StrictMode>;
   const meta = pageMetadata(home ? '/' : path);
   document.title = meta.title;

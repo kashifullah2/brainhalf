@@ -1,5 +1,5 @@
 export type ProjectEnvironment = 'development' | 'production';
-export type IntegrationProvider = 'resend' | 'google';
+export type IntegrationProvider = 'resend' | 'google' | 'github';
 export type JobKind = 'build' | 'preview' | 'verify' | 'deploy' | 'migrate' | 'publish';
 export type JobStatus = 'queued' | 'running' | 'passed' | 'failed' | 'stopping' | 'stopped';
 export type SourceFiles = Record<string, string>;
@@ -23,6 +23,7 @@ export interface ProjectRelease {
 export interface IntegrationConfig {
   resend?: { apiKey: string; from: string; contactTo: string; webhookSecret?: string };
   google?: { clientId: string; clientSecret: string };
+  github?: { clientId: string; clientSecret: string };
 }
 export interface IntegrationStatus {
   provider: IntegrationProvider; configured: boolean; updatedAt?: number;

@@ -2,6 +2,7 @@ import React from 'react';
 import { renderToString } from 'react-dom/server';
 import LandingPage from '../components/LandingPage';
 import PublicPage from '../components/PublicPage';
+import GalleryPage from '../components/GalleryPage';
 import { ACCOUNT_PAGES, HOME_DESCRIPTION, PUBLIC_PAGES, contentModified, findPublicPage, SITE_URL, SOCIAL_IMAGE } from './content';
 import AccountPage from '../components/AccountPage';
 import { pageMetadata, structuredData } from './metadata';
@@ -11,7 +12,7 @@ export const paths = ['/', ...PUBLIC_PAGES.map(page => page.path), ...Object.key
 export function render(path: string) {
   const meta = pageMetadata(path);
   const schema = structuredData(path);
-  const content = path === '/' ? <LandingPage onOpenProject={() => {}} onSubmitInitialPrompt={() => {}} currentUser={null} /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
+  const content = path === '/' ? <LandingPage onOpenProject={() => {}} onSubmitInitialPrompt={() => {}} currentUser={null} /> : path === '/gallery' ? <GalleryPage /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
   const head = [
     `<title>${escape(meta.title)}</title>`,
     `<meta name="description" content="${escape(meta.description)}" />`,

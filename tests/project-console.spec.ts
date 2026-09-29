@@ -18,7 +18,10 @@ test('failed publishing shows its own build error and verification evidence on m
   await dialog.getByRole('button', { name: /Skip/ }).click();
   await expect.poll(() => publishing.submitted.length).toBe(1);
   publishing.fail();
-  await expect(dialog.getByRole('alert')).toContainText('Building application failed (exit 1)', { timeout: 15000 });
+  // The dialog learns about the failed job on the next runtime-status poll,
+  // which runs every 10s while a job is active — under parallel test load the
+  // poll plus render can exceed 15s, so allow two full poll cycles.
+  await expect(dialog.getByRole('alert')).toContainText('Building application failed (exit 1)', { timeout: 30000 });
   await expect(dialog.getByLabel('Failed publishing build log')).toContainText('Cannot resolve ./missing-component');
   await expect(dialog.getByText('Expected the dashboard heading', { exact: false })).toBeVisible();
   await expect(dialog).not.toContainText('Other job output must stay hidden');

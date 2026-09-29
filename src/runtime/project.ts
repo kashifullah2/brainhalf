@@ -8,13 +8,13 @@ import { requireAdmission } from './pilot';
 import { runtimeAvailability } from './availability';
 import { verificationPlan, runVerificationPlan } from './verification';
 import { ProjectUploads } from './uploads';
-import { MANAGED_SCHEMA, ManagedStore } from './managed-store';
+import { ensureManagedSchema, ManagedStore } from './managed-store';
 import { ManagedMail } from './managed-mail';
 import { ManagedAuth } from './managed-auth';
 import { MANAGED_DEFAULTS } from './managed-types';
 import { authPage } from './auth-page';
 import { serviceCapability } from './managed-capability';
-import { databaseIdentifier, prepareRowImport, readDatabaseTable } from './database-tools';
+import { databaseIdentifier, prepareAddColumn, prepareCreateIndex, prepareCreateTable, prepareDropColumn, prepareDropTable, prepareRowDelete, prepareRowImport, prepareRowUpdate, readDatabaseSchema, readDatabaseTable } from './database-tools';
 import { REQUEST_MONITOR_SCHEMA, recordAppRequest } from './request-monitor';
 import { COLLECT_ARTIFACT, COLLECT_STATIC_ARTIFACT, validateArtifact, type BuildArtifact } from './artifact';
 import { publicationTarget, assertProductionServices, productionHealthPath } from './publication';
@@ -23,11 +23,24 @@ import { openSecret, sealSecret, validateIntegration, redactSecrets } from './se
 import { contactInput, token, cookie, secureCookie, embeddedPreviewCookie, readJson, readStreamJson } from './integrations';
 import { PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport } from './types';
 
-interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean }
+interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean; installRetried?: boolean }
 interface StoredIntegration { sealed: string; updatedAt: number }
 interface DatabaseRecoveryPoint { id: string; label: string; bookmark: string; databaseId: string; createdAt: number; migrations: MigrationReceipt[] }
 const authPath = (value: string) => /^\/__brainhalf\/auth(?:\?mode=(?:verify|reset|magic)#token=[A-Za-z0-9_-]{43})?$/.test(value);
 const active = <T extends RuntimeJob>(job?: T): job is T => !!job && ['queued', 'running', 'stopping'].includes(job.status);
+
+/** Pulls the actionable lines out of a failed job command's output so the job
+ *  message names the real cause (bad dependency version, TypeScript error,
+ *  unresolved import) instead of a bare exit code. Covers npm, tsc, and
+ *  Vite/Rollup output. */
+export function commandFailureSummary(stdout: string, stderr: string): string {
+  const lines = `${stderr}\n${stdout}`.split('\n')
+    .map(line => line.replace(/^npm (?:error|warn)\s*/i, '').trim())
+    .filter(line => /^(?:code\s+\w+|ERR!|ETARGET|ERESOLVE|EACCES|ENOENT|EPERM|404|Not Found|No matching version|notarget|Could not resolve|network|fetch failed|request to)/i.test(line)
+      || /\berror TS\d+\b|\bType error:|error during build|\[vite\]|RollupError|is not exported by|Failed to resolve import|Transform failed/i.test(line));
+  const summary = [...new Set(lines)].slice(-3).join(' — ').replace(/\s+/g, ' ').slice(0, 280).trim();
+  return summary ? ` Build output: ${summary}` : '';
+}
 
 export class ProjectRuntime extends DurableObject<RuntimeEnv> {
   private scope!: ProjectScope;
@@ -47,7 +60,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, kind TEXT NOT NULL, environment TEXT NOT NULL, data TEXT NOT NULL, expires INTEGER NOT NULL)');
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, environment TEXT NOT NULL, data TEXT NOT NULL, created INTEGER NOT NULL)');
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, job TEXT NOT NULL, text TEXT NOT NULL, created INTEGER NOT NULL)');
-      for (const sql of MANAGED_SCHEMA) ctx.storage.sql.exec(sql);
+      ensureManagedSchema(ctx.storage.sql);
       for (const sql of REQUEST_MONITOR_SCHEMA) ctx.storage.sql.exec(sql);
     });
   }
@@ -103,6 +116,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     return [
       { provider: 'resend', configured: !!config.resend, updatedAt: stored?.updatedAt, fields: config.resend ? { from: config.resend.from, contactTo: config.resend.contactTo } : {} },
       { provider: 'google', configured: !!config.google, updatedAt: stored?.updatedAt, fields: config.google ? { clientId: config.google.clientId } : {}, callbackUrl: `${this.url(environment)}/api/auth/google/callback` },
+      { provider: 'github', configured: !!config.github, updatedAt: stored?.updatedAt, fields: config.github ? { clientId: config.github.clientId } : {}, callbackUrl: `${this.url(environment)}/api/auth/github/callback` },
     ];
   }
   private log(job: string, message: string) {
@@ -237,7 +251,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     if (path === '/inbox' && request.method === 'GET') return Response.json({ messages: this.ctx.storage.sql.exec<{ id: string; data: string; created: number }>('SELECT id,data,created FROM inbox WHERE environment=? ORDER BY created DESC LIMIT 50', environment).toArray().map(row => ({ id: row.id, createdAt: row.created, ...JSON.parse(row.data) })) });
     if (path.startsWith('/integrations/')) {
       const provider = path.slice('/integrations/'.length) as IntegrationProvider;
-      if (!['resend', 'google'].includes(provider)) throw new RuntimeError('Unknown integration.', 404);
+      if (!['resend', 'google', 'github'].includes(provider)) throw new RuntimeError('Unknown integration.', 404);
       if (request.method !== 'PUT' && request.method !== 'DELETE') throw new RuntimeError('Method not allowed.', 405);
       // Serialize edits so simultaneous provider saves cannot overwrite each other.
       const value = request.method === 'PUT' ? await readJson(request) as Record<string, unknown> : null;
@@ -249,7 +263,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         if (value) Object.assign(config, { [provider]: validateIntegration(provider, value, config[provider]) });
         else delete config[provider];
         await this.ctx.storage.put(`integration:${environment}`, { sealed: await sealSecret(config, this.env.PROJECT_SECRETS_KEY || '', `${this.scope.projectId}:${environment}`), updatedAt: Date.now() });
-        this.services().store.saveSettings(environment, { [provider === 'google' ? 'googleMode' : 'emailMode']: value ? 'custom' : 'managed' });
+        this.services().store.saveSettings(environment, provider === 'github' ? { githubEnabled: !!value } : { [provider === 'google' ? 'googleMode' : 'emailMode']: value ? 'custom' : 'managed' });
       });
       return Response.json({ integrations: await this.integrations(environment) });
     }
@@ -576,7 +590,18 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       const output = await process.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes });
       this.log(job.id, `${job.message}\n${output.stdout}\n${output.stderr}`);
       await this.assertRunning(job);
-      if (output.exitCode !== 0 || output.timedOut) throw new RuntimeError(`${job.message} failed (exit ${output.exitCode}).`);
+      if (output.exitCode !== 0 || output.timedOut) {
+        // Dependency installation gets one fresh retry with plain `npm install`:
+        // it recovers old snapshots carrying a mismatched model-authored lockfile
+        // (`npm ci` hard-fails on those) and transient registry flakes. Timeouts
+        // are not retried — a second attempt would stall for the same duration.
+        if (job.step === 1 && !job.installRetried && !output.timedOut) {
+          job.installRetried = true;
+          await this.startProcess(job, ['npm', 'install', '--no-audit', '--no-fund']);
+          job.message = 'Installing dependencies'; await this.saveJob(job); return;
+        }
+        throw new RuntimeError(`${job.message} failed (exit ${output.exitCode}).${commandFailureSummary(output.stdout, output.stderr)}`);
+      }
       if (job.step === 1) { await this.startProcess(job, ['npm', 'run', 'build']); job.step = 2; job.message = 'Building application'; await this.saveJob(job); return; }
       if (job.step === 2 && projectManifest(snapshot.files).scripts.test) { await this.startProcess(job, ['npm', 'test']); job.step = 3; job.message = 'Running project tests'; await this.saveJob(job); return; }
       if (job.node) {
@@ -598,10 +623,10 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       await this.assertRunning(job); job.step = 5; job.message = 'Build complete'; await this.saveJob(job); return;
     }
     if (job.kind === 'build') { await this.finish(job, 'Build and configured tests passed'); return; }
-    if (job.kind === 'verify') { await this.verify(job, snapshot); await this.finish(job, 'Verification passed'); return; }
+    if (job.kind === 'verify') { await this.verifyWithInfraRetry(job, snapshot); await this.finish(job, 'Verification passed'); return; }
     if (job.kind === 'publish' && job.step === 5) {
       job.publishStage = 'verify'; job.message = 'Checking your app in an isolated test environment'; await this.saveJob(job);
-      await this.verify(job, snapshot);
+      await this.verifyWithInfraRetry(job, snapshot);
       // Promote the same artifact that passed, never a second, potentially different build.
       await this.assertRunning(job); job.step = 6; job.publishStage = 'services';
       job.message = 'Preparing production services'; await this.saveJob(job); return;
@@ -715,7 +740,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     const api = this.api();
     if (url.pathname === '/database' && request.method === 'GET') {
       const table = url.searchParams.get('table');
-      return Response.json(table ? await readDatabaseTable(api, db.id, table, Number(url.searchParams.get('offset') || 0)) : { tables: await api.query(db.id, "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '_cf_*' AND name NOT GLOB '_bh_*' ORDER BY name LIMIT 100") });
+      return Response.json(table ? await readDatabaseTable(api, db.id, table, Number(url.searchParams.get('offset') || 0)) : await readDatabaseSchema(api, db.id));
     }
     const prefix = `db-recovery:${environment}:`;
     if (url.pathname === '/database/recovery' && request.method === 'GET') {
@@ -724,7 +749,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     }
     if (request.method !== 'POST') throw new RuntimeError('Method not allowed.', 405);
     if (active(await this.ctx.storage.get<StoredJob>('current'))) throw new RuntimeError('Wait for the running build or release before changing the database.', 409);
-    const body = await readJson(request, 256_000) as { label?: string; id?: string; confirm?: string; table?: string; rows?: unknown };
+    const body = await readJson(request, 256_000) as { label?: string; id?: string; confirm?: string; table?: string; rows?: unknown; rowId?: unknown; values?: unknown; columns?: unknown; column?: unknown; name?: unknown; unique?: unknown };
     const migrations = await this.ctx.storage.get<MigrationReceipt[]>(`migrations:${environment}`) || [];
     const savePoint = async (label: string) => {
       const result = await api.request<{ bookmark: string }>(`/d1/database/${encodeURIComponent(db.id)}/time_travel/bookmark`);
@@ -748,6 +773,56 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       await api.query(db.id, prepared.sql, prepared.params);
       await this.ctx.storage.delete(`verification:${environment}`);
       return Response.json({ imported: prepared.count });
+    }
+    if (url.pathname === '/database/rows/update' || url.pathname === '/database/rows/delete') {
+      if (typeof body.table !== 'string') throw new RuntimeError('Choose an application table.');
+      const schema = await api.query(db.id, `PRAGMA table_info(${databaseIdentifier(body.table)})`);
+      if (!schema.length) throw new RuntimeError('Table no longer exists.', 404);
+      const prepared = url.pathname.endsWith('/update')
+        ? prepareRowUpdate(body.table, body.rowId, body.values, schema.map(column => String(column.name)))
+        : prepareRowDelete(body.table, body.rowId);
+      await savePoint(url.pathname.endsWith('/update') ? 'Before record update' : 'Before record delete');
+      await api.query(db.id, prepared.sql, prepared.params);
+      await this.ctx.storage.delete(`verification:${environment}`);
+      return Response.json({ changed: true });
+    }
+    if (url.pathname.startsWith('/database/schema/')) {
+      if (typeof body.table !== 'string') throw new RuntimeError('Choose an application table.');
+      const action = url.pathname.slice('/database/schema/'.length);
+      let prepared: { sql: string };
+      if (action === 'create') {
+        prepared = prepareCreateTable(body.table, body.columns);
+      } else {
+        const schema = await api.query(db.id, `PRAGMA table_info(${databaseIdentifier(body.table)})`);
+        if (!schema.length) throw new RuntimeError('Table no longer exists.', 404);
+        if (action === 'add-column') {
+          const name = body.column && typeof body.column === 'object' && !Array.isArray(body.column) ? String((body.column as Record<string, unknown>).name ?? '') : '';
+          if (schema.some(column => String(column.name) === name)) throw new RuntimeError('A column with this name already exists.');
+          prepared = prepareAddColumn(body.table, body.column);
+        } else if (action === 'drop-column') {
+          const target = typeof body.column === 'string' ? body.column : '';
+          const existing = schema.find(column => String(column.name) === target);
+          if (!existing) throw new RuntimeError('Column no longer exists.', 404);
+          if (Number(existing.pk) > 0) throw new RuntimeError('The primary key column cannot be removed.');
+          if (schema.length <= 1) throw new RuntimeError('A table must keep at least one column.');
+          prepared = prepareDropColumn(body.table, target);
+        } else if (action === 'add-index') {
+          if (typeof body.name !== 'string') throw new RuntimeError('Name the index.');
+          const columns = Array.isArray(body.columns) ? body.columns.map(String) : [];
+          const known = schema.map(column => String(column.name));
+          if (columns.some(column => !known.includes(column))) throw new RuntimeError('Indexes can only use existing columns.');
+          prepared = prepareCreateIndex(body.table, body.name, columns, body.unique);
+        } else if (action === 'drop-table') {
+          if (body.confirm !== `DROP ${body.table}`) throw new RuntimeError(`Type DROP ${body.table} to remove the whole table and its records.`);
+          prepared = prepareDropTable(body.table);
+        } else {
+          throw new RuntimeError('Unknown schema action.', 404);
+        }
+      }
+      await savePoint('Before schema change');
+      await api.query(db.id, prepared.sql);
+      await this.ctx.storage.delete(`verification:${environment}`);
+      return Response.json({ changed: true }, { status: action === 'create' ? 201 : 200 });
     }
     if (url.pathname === '/database/restore') {
       if (body.confirm !== `RESTORE ${environment}` || typeof body.id !== 'string' || !/^[a-f0-9-]{36}$/.test(body.id)) throw new RuntimeError(`Type RESTORE ${environment} to confirm.`);
@@ -916,6 +991,25 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     this.ctx.storage.sql.exec('DELETE FROM inbox WHERE id NOT IN (SELECT id FROM inbox ORDER BY created DESC LIMIT 100)');
     return Response.json({ ok: true, id: message.id, status: message.status, message: environment === 'development' ? 'Test message captured in the project inbox. No email was sent.' : 'Your message has been queued for delivery.' }, { status: 201 });
   }
+  /**
+   * Verification can fail for two very different reasons: the app failed one
+   * of its checks (must block publishing), or the test infrastructure itself
+   * could not run — browser launch failure, disposable database provisioning,
+   * network flake (a transient error must not block a working app). Retry the
+   * whole run once when no app-level check has failed.
+   */
+  private async verifyWithInfraRetry(job: StoredJob, snapshot: SourceSnapshot) {
+    try {
+      await this.verify(job, snapshot);
+    } catch (firstError) {
+      const report = await this.ctx.storage.get<VerificationReport>('verification:development');
+      const appCheckFailed = !!report && report.jobId === job.id
+        && report.checks.some(check => !check.passed && check.name !== 'Verification execution');
+      if (appCheckFailed) throw firstError;
+      await this.verify(job, snapshot);
+    }
+  }
+
   private async verify(job: StoredJob, snapshot: SourceSnapshot) {
     const plan = verificationPlan(snapshot.files);
     await this.assertRunning(job);
@@ -959,6 +1053,15 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       const response = await page.goto(this.url('development'), { waitUntil: 'networkidle', timeout: 25_000 });
       await this.assertRunning(job);
       report.checks.push({ name: 'Page loads', passed: !!response?.ok(), detail: `HTTP ${response?.status()}` });
+      // Apps that wire managed authentication must expose a healthy auth
+      // config — a generated login page that cannot reach it signs nobody in.
+      const usesManagedAuth = Object.values(snapshot.files).some(content => typeof content === 'string' && content.includes('/api/auth/'));
+      if (usesManagedAuth) {
+        const authConfig = await this.appRequest(new Request(this.url('development') + '/api/auth/config', { signal: AbortSignal.timeout(15_000) }), 'development');
+        const authOk = authConfig.ok;
+        await authConfig.body?.cancel();
+        report.checks.push({ name: 'Authentication ready', passed: authOk, detail: authOk ? 'The app exposes its hosted sign-in configuration.' : `Sign-in configuration failed (HTTP ${authConfig.status}).` });
+      }
       if (plan) {
         const otherUser = await this.createSession('app', 'development', { id: `other-test:${job.id}` }, sessionSeconds);
         const origin = this.url('development');

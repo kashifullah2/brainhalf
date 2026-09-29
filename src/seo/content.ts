@@ -6,7 +6,7 @@ export const HOME_TITLE = 'AI App Builder for Small Business — BrainHalf';
 export const HOME_DESCRIPTION = 'Build AI-powered inventory tools, booking apps, CRMs and customer portals with BrainHalf. Describe your workflow, test your app and publish with managed hosting. Start free.';
 // Editorial dates reflect meaningful content, public UI, or structured-data changes.
 // Keep these stable on rebuilds; update only the pages affected by a real change.
-export const HOME_MODIFIED = '2026-09-24';
+export const HOME_MODIFIED = '2026-09-29';
 export const HOME_FAQS = [
   { id: 'what-is-brainhalf', question: 'What is BrainHalf?', answer: 'BrainHalf is an AI app builder for small businesses creating internal tools. Describe your workflow, test the generated app, and publish supported apps with a managed backend and database. You can also inspect and export your source code.' },
   { id: 'free-access', question: 'Is BrainHalf free to use?', answer: 'Yes. BrainHalf is free to use for building and refining apps. Project and usage limits still apply. Hosting, databases, and third-party services you choose for an exported app may have their own costs.' },
@@ -88,7 +88,7 @@ export const PUBLIC_PAGES: PublicPage[] = [
     related: ['/guides/ai-appointment-app-example', '/use-cases/ai-inventory-app-builder', '/guides/full-stack-apps'],
   },
   {
-    dateModified: '2026-09-24',
+    dateModified: '2026-09-28',
     path: '/use-cases/ai-dashboard-builder',
     title: 'AI Dashboard Builder: Build and Refine Custom Dashboards | BrainHalf',
     description: 'Build a custom dashboard with AI. Define metrics, tables and filters, connect a managed database or API, test permissions, and publish with BrainHalf.',
@@ -102,7 +102,7 @@ export const PUBLIC_PAGES: PublicPage[] = [
       { id: 'connect-real-data', title: 'How do I connect a dashboard to real data?', paragraphs: ['You can ask the builder for an API integration and inspect the generated source in Code. Credentials belong on the server. A database or external service needs its own configuration and access rules; a frontend preview alone does not provide them.', 'Describe the saved records and sign-in rules in chat. BrainHalf can prepare a supported managed Workers backend and an isolated database. Check that records survive reloads and that a separate account cannot read them. Keep an external data source’s credentials on the server and verify its permissions separately.'] },
       { id: 'dashboard-checklist', title: 'Check the numbers as carefully as the design', paragraphs: ['Compare every displayed metric with a small, known dataset. Test the same date filter across cards, charts, and tables, including boundaries such as the first day of a month.'], items: ['Label sample data and remove it before connecting a live workflow.', 'Check how timestamps and time zones affect reporting periods.', 'Show a helpful empty state when no records match the filters.', 'Test loading failures, retry actions, and access restrictions.', 'Verify the published app against its actual API and production database.'] },
     ],
-    related: ['/use-cases/ai-inventory-app-builder', '/guides/full-stack-apps', '/guides/build-an-app-with-ai'],
+    related: ['/use-cases/customer-dashboard-builder', '/use-cases/ai-inventory-app-builder', '/guides/full-stack-apps'],
   },
   {
     dateModified: '2026-09-24',
@@ -151,7 +151,7 @@ export const PUBLIC_PAGES: PublicPage[] = [
     ], related: ['/guides/build-an-app-with-ai', '/privacy', '/terms'],
   },
   {
-    dateModified: '2026-09-23',
+    dateModified: '2026-09-29',
     path: '/privacy', title: 'Privacy Overview — Accounts, Projects & AI | BrainHalf',
     description: 'Understand the information BrainHalf uses for accounts, project storage, AI requests, previews, and Google sign-in, and how project removal works.',
     heading: 'How information is used in BrainHalf', category: 'Privacy overview',
@@ -159,6 +159,7 @@ export const PUBLIC_PAGES: PublicPage[] = [
     sections: [
       { id: 'account', title: 'Accounts and sign-in', paragraphs: ['BrainHalf uses account information to sign you in and associate projects with your account. The email/password flow hashes passwords on the server. New email accounts verify ownership before signing in. Resend delivers verification, password-reset, and contact emails; it receives the recipient address and message content. Reset links expire after 30 minutes and verification links after 24 hours. Resetting a password revokes existing sessions. The Google flow requests basic profile and email information to identify your account; it does not request access to your Gmail messages or Drive files.', 'The browser stores session information so the app can make authenticated requests. Sign-out revokes the session and removes the active browser session. Theme preferences and local project caches also use browser storage.'] },
       { id: 'analytics', title: 'Website analytics', paragraphs: ['BrainHalf uses Google Analytics on public pages to understand visits and improve the website. Google Analytics may use cookies and process browser, device, and usage information.', 'The integration sends public page addresses without query strings or fragments and includes only the referring website’s origin. It does not start for signed-in sessions or project and sign-in callback URLs, and collection is disabled when a visitor signs in. Advertising personalization and Google signals are disabled in the site configuration.'] },
+      { id: 'advertising', title: 'Advertising', paragraphs: ['BrainHalf shows ads from Google AdSense on public pages to support the free tier. Third-party vendors, including Google, use cookies to serve ads based on your prior visits to this website or other websites.', 'Google’s use of advertising cookies enables it and its partners to serve ads to you based on your visit to this site and other sites on the internet. You can opt out of personalized advertising in Google Ads Settings (adssettings.google.com) and opt out of other third-party vendors’ cookies at aboutads.info/choices.', 'Ads do not appear inside signed-in workspaces, project previews, or published apps you build. Advertising cookies are separate from the session cookies required to sign in.'] },
       { id: 'product-outcomes', title: 'App reliability measurements', paragraphs: ['BrainHalf records first-party generation, app-verification and publishing outcomes with account and project IDs, revision hashes and timestamps. These records help measure verified apps per generation, successful publishing and time to a first live app. They do not include prompts, source code, passwords or customer records.', 'We also record the first observed workspace activity and whether the account is active again between days 7 and 14. Outcome records are separate from Google Analytics and remain after project deletion for reliability reporting. Account reports are private; aggregate reports require operator access.'] },
       { id: 'ai-requests', title: 'Prompts, code, and AI providers', paragraphs: ['The building workflow sends your prompts and relevant project context to the configured AI provider for the model you select. Provider availability and processing depend on the platform configuration and the provider’s own terms.', 'Do not include passwords, private API keys, or information you are not authorized to share in a prompt. Generated apps should read secrets from their own server environment rather than embedding them in frontend files.'] },
       { id: 'project-storage', title: 'Project storage and removal', paragraphs: ['The platform uses Cloudflare infrastructure for accounts and project services, with browser caches to support the workspace. Project files may also be backed up to object storage.', 'Deleting a project immediately revokes access and removes local files and conversation history after the request is accepted. An automatically retried cleanup job removes app deployments, databases, server source, attachments, stored project credentials, and backups. The dashboard shows pending and completed cleanup. Minimal project-ID ownership tombstones remain to prevent another account from reclaiming a deleted project; cleanup status is retained for 30 days.'] },
@@ -177,6 +178,17 @@ export const PUBLIC_PAGES: PublicPage[] = [
       { id: 'services', title: 'Configure and test the services your app needs', paragraphs: ['A working frontend preview does not establish that a backend, database, email sender, or payment integration is ready. Those services need their own configuration, testing, and operational support.', 'External providers may impose their own costs, limits, and conditions. Usage availability depends on the platform configuration and the chosen model. Source export lets you continue the project in your own environment.'] },
       { id: 'publication', title: 'Check access before publishing', paragraphs: ['Decide who should be able to open a project and check its contents before enabling public access. Keep private data and credentials out of the published frontend. Publish deploys supported apps with their frontend, Workers backend and production database after verification. Existing Node backends require conversion first. Taking the app offline disables its public routes while keeping its database and saved releases. Older public preview links have a separate privacy control.', 'Read the privacy overview for the implemented account, prompt, and project-storage flows.'] },
     ], related: ['/privacy', '/about', '/guides/build-an-app-with-ai'],
+  },
+  {
+    dateModified: '2026-09-29',
+    path: '/gallery', title: 'App Gallery — Explore and Remix Apps Built with BrainHalf',
+    description: 'Browse apps published by BrainHalf builders. Open them live, then remix any app into your own workspace and change it with a prompt.',
+    heading: 'Apps built with BrainHalf', category: 'Gallery',
+    summary: 'Explore published apps. Open any of them live, or remix one into your own workspace and change it with a prompt.',
+    sections: [
+      { id: 'remix', title: 'Remix any app into your own workspace', paragraphs: ['Every app in the gallery can be opened live. When you remix one, BrainHalf copies its public source files into a new project in your account — the copy is yours to change, rename, and publish. Private environment files and secrets never leave the original project.', 'Owners choose to list their app after publishing it. Removing a listing stops new remixes; existing copies stay with their owners.'] },
+    ],
+    related: ['/guides/build-an-app-with-ai', '/free-ai-app-builder', '/about'],
   },
 ];
 

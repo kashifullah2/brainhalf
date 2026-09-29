@@ -14,6 +14,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chrome
+      # Full local gate first: typecheck + unit tests (both vitest configs and
+      # script tests) + lint + build. verify:release packages the release; it
+      # does not run the test suites, so without this step a change that breaks
+      # test imports would still pass CI.
+      - run: npm run verify
       - run: npm run verify:release
       - uses: actions/upload-artifact@v4
         if: always()

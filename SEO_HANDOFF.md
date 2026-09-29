@@ -1,6 +1,8 @@
 # BrainHalf SEO implementation
 
-Current operator plan: [BrainHalf search growth plan](SEO_GROWTH_PLAYBOOK.md). The September 24 growth update corrects stale publishing instructions and adds two useful destinations with stronger internal links and a tested original app walkthrough. Release evidence is recorded in that plan and `audit-artifacts/seo-growth-2026-09-24/`.
+The September 24 growth update corrected stale publishing instructions and added two useful destinations with stronger internal links and a tested original app walkthrough. (The growth playbook and its audit artifacts were pruned in the September 28 repository cleanup; this handoff retains the operative guidance.)
+
+The September 28 update added five use-case pages after Search Console showed impressions with zero clicks for specific inventory and dashboard queries: book, warehouse/stock-control, equipment/asset and personal inventory, plus a customer-portal dashboard page. Each page has distinct workflow content, a ready-to-adapt prompt and an acceptance checklist; the general inventory page now links to all four variants. Watch the query report over the following weeks and improve the pages that earn impressions rather than adding more near-duplicate pages.
 
 The September 22–23 notes below are historical. Their SEO and cache changes were deployed in the September 24 platform releases. A previous audit reported an existing Search Console property; use that property if accessible. Current GSC access, indexing and traffic still need direct account evidence.
 
@@ -34,6 +36,11 @@ Implemented September 22, 2026. The owner confirmed that BrainHalf is completely
 | `/free-ai-app-builder` | Free access, included capabilities, usage and external costs |
 | `/guides/build-an-app-with-ai` | Practical prompt-to-preview and launch guide |
 | `/use-cases/ai-dashboard-builder` | Dashboard planning, example prompt, data and testing |
+| `/use-cases/book-inventory-app-builder` | Bookstore/library catalog: ISBN records, condition, sales vs lending |
+| `/use-cases/warehouse-inventory-app-builder` | Bin locations, receipts, putaway, picks, transfers and cycle counts |
+| `/use-cases/equipment-asset-inventory-app-builder` | Serialized equipment/IT assets: custody, check-out/return, maintenance |
+| `/use-cases/personal-inventory-app-builder` | Home inventory for insurance/moving: rooms, values, photos, export |
+| `/use-cases/customer-dashboard-builder` | Customer-facing portal dashboard with per-account data isolation |
 | `/use-cases/ai-website-builder` | Portfolio/business website workflow and example prompt |
 | `/about` | Product identity and capabilities |
 | `/privacy` | Implemented account, AI, and project data flows |

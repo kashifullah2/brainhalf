@@ -1,13 +1,41 @@
 import { AiBudget, meteredModel } from './ai-budget';
 import { transform } from 'sucrase';
-import { authorizeProject, isAllowedOrigin, USER_ID_HEADER } from './auth';
+import { authorizeProject, isAllowedOrigin, USER_ID_HEADER, type RegistryEnv } from './auth';
 import { atriaConfiguration, bedrockBearer, credential, validateRuntimeProviders } from './runtime-config';
+import { BEDROCK_ALIASES, createBedrockClient } from './provider-clients';
+import { errorMessage } from './generation-errors';
+import type { DurableBinding } from './bindings';
 import {
   MODEL_ALLOWLIST,
   MODEL_TEST_TIMEOUT_MS,
   resolveModel,
   withTimeout,
 } from './models';
+
+/**
+ * The bindings the model tester touches, declared structurally so the harness
+ * type-checks against the DOM lib (workers-types Request/Response drift). The
+ * index signature keeps `PlatformEnv` assignable and lets `credential()` read
+ * secrets by name.
+ */
+export type ModelTestEnv = Record<string, unknown> & {
+  // `unknown` rather than a structural `run` signature: the workers-types `Ai`
+  // overload set is not assignable to any single call signature, so the shape
+  // is asserted once at the guarded use site below.
+  AI?: unknown;
+  // Optional because test harnesses exercise unauthenticated paths without a
+  // registry; the preview branch (which needs it) asserts the shape at the
+  // authorizeProject call.
+  REGISTRY?: DurableBinding;
+  ChatAgent?: DurableBinding;
+};
+
+/** Workers AI test responses arrive as a byte/object stream or an async iterable. */
+type ModelTestStreamResponse = {
+  response?: string;
+  getReader?: () => ReadableStreamDefaultReader<unknown>;
+  [Symbol.asyncIterator]?: () => AsyncIterator<unknown>;
+};
 
 export interface ModelTestResult {
   success: boolean;
@@ -221,7 +249,7 @@ function cleanCode(code: string): string {
 
 export async function handleModelTest(
   request: Request,
-  env: any,
+  env: ModelTestEnv,
   level: 'simple' | 'medium' | 'hard',
   identity?: { userId: string }
 ): Promise<Response> {
@@ -254,10 +282,10 @@ export async function handleModelTest(
 
   if (request.method === 'POST') {
     try {
-      const body: any = await request.json();
-      if (body.model) modelId = body.model;
-      if (body.modelId) modelId = body.modelId;
-      if (body.provider) provider = body.provider;
+      const body = await request.json() as { model?: string; modelId?: string; provider?: string } | null;
+      if (body?.model) modelId = body.model;
+      if (body?.modelId) modelId = body.modelId;
+      if (body?.provider) provider = body.provider;
     } catch {
       // ignore
     }
@@ -315,16 +343,17 @@ export async function handleModelTest(
     // same per-step billing issue fixed in the main generation path.
     await budget.reserve(65536);
     if (resolved.provider === 'cloudflare') {
-      if (typeof env?.AI?.run !== 'function') {
+      const aiBinding = env.AI as { run(model: string, input: Record<string, unknown>): Promise<unknown> } | undefined;
+      if (typeof aiBinding?.run !== 'function') {
         throw new Error('Cloudflare Workers AI binding env.AI is not available');
       }
 
-      let aiResponse: any = null;
+      let aiResponse: ModelTestStreamResponse | null = null;
       const testLadder = [32768, 16384, 8192, 4096];
       for (const tokenLimit of testLadder) {
         try {
           aiResponse = await withTimeout(
-            env.AI.run(resolved.id, {
+            aiBinding.run(resolved.id, {
               messages: [
                 { role: 'system', content: 'You are BrainHalf, an elite autonomous React developer. Always provide complete, modular, working React code inside a <file path="/src/App.jsx">...</file> block. Do not use emoji characters anywhere in the UI or code (use SVG or clean styling instead). Ensure all JSX elements and conditional expressions are strictly balanced with valid syntax.' },
                 { role: 'user', content: prompt }
@@ -336,10 +365,10 @@ export async function handleModelTest(
             }),
             MODEL_TEST_TIMEOUT_MS,
             `Model test (${resolved.id})`
-          );
+          ) as ModelTestStreamResponse;
           if (aiResponse) break;
-        } catch (limitErr: any) {
-          const msg = String(limitErr?.message || limitErr || '');
+        } catch (limitErr) {
+          const msg = errorMessage(limitErr);
           console.warn(`Model test ${resolved.id} at limit ${tokenLimit} failed:`, msg);
         }
       }
@@ -347,11 +376,13 @@ export async function handleModelTest(
       const decoder = new TextDecoder();
       let sseBuffer = '';
 
-      const extractToken = (obj: any): string | undefined => {
+      const extractToken = (obj: unknown): string | undefined => {
         if (!obj) return undefined;
         if (typeof obj === 'string') return obj;
-        if (obj.response != null) return String(obj.response);
-        const content = obj.choices?.[0]?.delta?.content ?? obj.choices?.[0]?.text;
+        if (typeof obj !== 'object') return undefined;
+        const payload = obj as { response?: unknown; choices?: Array<{ delta?: { content?: unknown }; text?: unknown }> };
+        if (payload.response != null) return String(payload.response);
+        const content = payload.choices?.[0]?.delta?.content ?? payload.choices?.[0]?.text;
         if (content != null) return String(content);
         return undefined;
       };
@@ -389,8 +420,8 @@ export async function handleModelTest(
             }
           }
         }
-      } else if (aiResponse && Symbol.asyncIterator in aiResponse) {
-        for await (const chunk of aiResponse) {
+      } else if (aiResponse && typeof aiResponse[Symbol.asyncIterator] === 'function') {
+        for await (const chunk of aiResponse as AsyncIterable<unknown>) {
           if (!firstTokenTime) {
             firstTokenTime = Date.now() - startTime;
           }
@@ -466,30 +497,20 @@ export async function handleModelTest(
         throw new Error(`AWS Bedrock credentials are not configured in Cloudflare Workers secrets. Strict Zero-Fallback policy prohibits substituting with alternative models.`);
       }
 
-      const { createAmazonBedrock } = await import('@ai-sdk/amazon-bedrock');
       const { streamText } = await import('ai');
-      const bedrock = createAmazonBedrock({
-        region: env.AWS_REGION || 'us-east-1',
-        apiKey: bedrockApiKey || undefined,
-        accessKeyId: awsKey || undefined,
-        secretAccessKey: awsSecret || undefined,
+      const bedrock = createBedrockClient({
+        bedrockApiKey: bedrockApiKey || undefined,
+        awsKey: awsKey || undefined,
+        awsSecret: awsSecret || undefined,
+        awsRegion: (typeof env.AWS_REGION === 'string' && env.AWS_REGION) || 'us-east-1',
       });
 
-      const BEDROCK_ALIASES: Record<string, string[]> = {
-        'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-        'moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-        'global.moonshotai.kimi-k3': ['global.moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-        'us.anthropic.claude-sonnet-4-6': ['us.anthropic.claude-sonnet-4-6', 'global.anthropic.claude-sonnet-4-6', 'anthropic.claude-sonnet-4-6', 'us.anthropic.claude-sonnet-4-6-v1:0'],
-        'us.anthropic.claude-opus-4-6': ['us.anthropic.claude-opus-4-6', 'global.anthropic.claude-opus-4-6', 'anthropic.claude-opus-4-6', 'us.anthropic.claude-opus-4-6-v1:0'],
-        'minimax.minimax-m2.5': ['minimax.minimax-m2.5', 'us.minimax.minimax-m2.5'],
-      };
-
       const candidates = BEDROCK_ALIASES[resolved.id] || [resolved.id];
-      let lastErr: any = null;
+      let lastErr: unknown = null;
 
       for (let idx = 0; idx < candidates.length; idx++) {
         const candidateId = candidates[idx];
-        let streamErrorCaught: any = null;
+        let streamErrorCaught: unknown = null;
         try {
           outputContent = '';
           firstTokenTime = null;
@@ -497,7 +518,7 @@ export async function handleModelTest(
             model: meteredModel(bedrock(candidateId)),
             messages: [{ role: 'user', content: prompt }],
             abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
-            onError: (errEvent: any) => {
+            onError: (errEvent) => {
               streamErrorCaught = errEvent?.error || errEvent;
             }
           });
@@ -517,9 +538,9 @@ export async function handleModelTest(
           }
           lastErr = null;
           break;
-        } catch (bErr: any) {
+        } catch (bErr) {
           lastErr = bErr;
-          const msg = bErr?.message || String(bErr);
+          const msg = errorMessage(bErr);
           if ((/model identifier is invalid/i.test(msg) || /ResourceNotFoundException/i.test(msg) || /is not authorized/i.test(msg) || /reached the end of its life/i.test(msg)) && idx + 1 < candidates.length) {
             console.warn(`Bedrock candidate ${candidateId} failed (${msg}); trying ${candidates[idx + 1]}`);
             continue;
@@ -560,8 +581,8 @@ export async function handleModelTest(
       // Unreachable: resolveModel already rejected anything else.
       throw new Error(`Unsupported provider for model: ${resolved.name}`);
     }
-  } catch (err: any) {
-    errorMsg = (err.message || String(err)).replace(/^undefined:\s*/i, '');
+  } catch (err) {
+    errorMsg = errorMessage(err).replace(/^undefined:\s*/i, '');
   } finally {
     await budget.end().catch(() => { console.warn('Model test lease will expire automatically.'); });
   }
@@ -600,9 +621,9 @@ export async function handleModelTest(
   try {
     transform(extractedCode, { transforms: ['jsx', 'typescript'] });
     syntaxValid = true;
-  } catch (transpileErr: any) {
+  } catch (transpileErr) {
     syntaxValid = false;
-    syntaxError = transpileErr.message || 'Sucrase JSX/TypeScript transpile error';
+    syntaxError = errorMessage(transpileErr) || 'Sucrase JSX/TypeScript transpile error';
   }
   if (!syntaxValid) {
     return new Response(JSON.stringify({
@@ -620,7 +641,10 @@ export async function handleModelTest(
   try {
     if (env.ChatAgent) {
       if (!identity?.userId) throw new Error('Authenticated project owner is required for preview');
-      const ownership = await authorizeProject(env, testProjectId, identity.userId, `${resolved.name} ${level} test`);
+      // RegistryEnv assertion: production envs (PlatformEnv) always bind
+      // REGISTRY; the ChatAgent guard above already proves this is a full
+      // platform env rather than a minimal test harness.
+      const ownership = await authorizeProject(env as RegistryEnv, testProjectId, identity.userId, `${resolved.name} ${level} test`);
       if (!ownership.ok) throw new Error(`Preview project could not be authorized (${ownership.status})`);
       const doId = env.ChatAgent.idFromName(testProjectId);
       const doObj = env.ChatAgent.get(doId);
@@ -645,7 +669,7 @@ export async function handleModelTest(
       }
       previewUrl = `/preview/${testProjectId}/index.html`;
     }
-  } catch (syncErr: any) {
+  } catch (syncErr) {
     console.warn('Failed to auto-sync to Edge Preview DO:', syncErr);
     previewError = syncErr instanceof Error ? syncErr.message : 'Preview could not be saved';
   }

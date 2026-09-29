@@ -30,6 +30,20 @@ describe('Full-stack runtime boundaries', () => {
     await expect(sourceSnapshot({ 'package.json': '{}', '../escape': 'bad' })).rejects.toThrow('unsafe');
     await expect(sourceSnapshot({ '/package.json': '{}', 'package.json': '{}' })).rejects.toThrow('duplicate');
   });
+  it('drops model-authored lockfiles so dependency resolution always runs fresh', async () => {
+    const snapshot = await sourceSnapshot({
+      'package.json': '{"scripts":{"build":"build"}}',
+      'package-lock.json': '{"lockfileVersion":3}',
+      '/npm-shrinkwrap.json': '{}',
+      'yarn.lock': '# yarn',
+      'pnpm-lock.yaml': 'lockfileVersion: 9',
+      '/src/App.tsx': 'hello',
+    });
+    expect(Object.keys(snapshot.files).sort()).toEqual(['package.json', 'src/App.tsx']);
+    // Nested paths with the same name are real project files and must survive.
+    const nested = await sourceSnapshot({ 'package.json': '{}', 'packages/app/package-lock.json': 'kept' });
+    expect(nested.files['packages/app/package-lock.json']).toBe('kept');
+  });
   it('keeps revision ordering independent of host and browser locales', async () => {
     const snapshot = await sourceSnapshot({ 'ä.ts': '1', 'a.ts': '2', 'Z.ts': '3', 'package.json': '{}' });
     expect(Object.keys(snapshot.files)).toEqual(['Z.ts', 'a.ts', 'package.json', 'ä.ts']);

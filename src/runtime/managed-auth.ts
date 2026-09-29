@@ -1,4 +1,5 @@
 import { base64urlEncode, hashPassword, isValidEmail, isValidPassword, randomId, sha256Hex, timingSafeEqual, verifyPassword } from '../lib/crypto';
+import { exchangeGithubCode, type GithubProfile } from '../lib/github-profile';
 import { exchangeGoogleCode, type GoogleProfile } from '../lib/google-profile';
 import { cookie, readJson, secureCookie } from './integrations';
 import { ManagedStore, type StoredUser } from './managed-store';
@@ -22,10 +23,10 @@ export class ManagedAuth {
     const count = this.store.sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM managed_users WHERE environment=?', environment).toArray()[0].count;
     if (count >= 1000) throw new RuntimeError('This pilot app has reached its user limit.', 429);
   }
-  private addUser(environment: ProjectEnvironment, email: string, name: string, passwordHash: string | null, google: string | null = null) {
+  private addUser(environment: ProjectEnvironment, email: string, name: string, passwordHash: string | null, google: string | null = null, github: string | null = null) {
     this.capacity(environment);
-    const id = google ? 'google:' + google : 'app_' + crypto.randomUUID();
-    this.store.sql.exec('INSERT INTO managed_users (environment,id,email,name,password_hash,google_sub,verified,created) VALUES (?,?,?,?,?,?,?,?)', environment, id, email, name, passwordHash, google, google ? 1 : 0, Date.now());
+    const id = google ? 'google:' + google : github ? 'github:' + github : 'app_' + crypto.randomUUID();
+    this.store.sql.exec('INSERT INTO managed_users (environment,id,email,name,password_hash,google_sub,github_id,verified,created) VALUES (?,?,?,?,?,?,?,?,?)', environment, id, email, name, passwordHash, google, github, google || github ? 1 : 0, Date.now());
     return this.store.user(environment, id)!;
   }
   private async issue(environment: ProjectEnvironment, user: StoredUser, kind: ActionKind) {
@@ -74,12 +75,49 @@ export class ManagedAuth {
     }
     return this.addUser(environment, profile.email, profile.name, null, profile.sub);
   }
+  private async githubUser(environment: ProjectEnvironment, profile: GithubProfile) {
+    let user = this.store.sql.exec<StoredUser>('SELECT * FROM managed_users WHERE environment=? AND github_id=?', environment, profile.id).toArray()[0];
+    if (user) return user;
+    user = this.store.byEmail(environment, profile.email);
+    if (user) {
+      if (user.disabled || (user.github_id && user.github_id !== profile.id)) throw new RuntimeError('This account cannot use that GitHub identity.', 403);
+      // GitHub proves mailbox ownership for the primary verified address. An
+      // unverified pre-existing signup must not retain an attacker's password.
+      if (!user.verified) this.store.revoke(environment, user.id);
+      this.store.sql.exec('UPDATE managed_users SET github_id=?,verified=1,password_hash=?,name=? WHERE environment=? AND id=?', profile.id, user.verified ? user.password_hash : null, profile.name, environment, user.id);
+      return this.store.user(environment, user.id)!;
+    }
+    return this.addUser(environment, profile.email, profile.name, null, null, profile.id);
+  }
+  private async github(request: Request, environment: ProjectEnvironment) {
+    const settings = this.store.settings(environment); const url = new URL(request.url);
+    if (!settings.githubEnabled || request.method !== 'GET') throw new RuntimeError('GitHub sign-in is disabled.', 403);
+    if (url.pathname === '/api/auth/github/start') {
+      await this.rate(request, environment);
+      if (!(await this.store.readiness(environment)).githubReady) throw new RuntimeError('GitHub sign-in is not configured for this app.', 503);
+      const config = (await this.store.deps.integration(environment)).github;
+      if (!config) throw new RuntimeError('GitHub sign-in is not configured.', 503);
+      const state = await this.store.deps.createSession('oauth', environment, { provider: 'github' }, 600);
+      const authorization = new URL('https://github.com/login/oauth/authorize');
+      authorization.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: this.store.deps.origin(environment) + '/api/auth/github/callback', scope: 'read:user user:email', state }).toString();
+      return new Response(null, { status: 302, headers: { Location: authorization.toString(), 'Set-Cookie': secureCookie('__Host-bh_oauth', state, 600) } });
+    }
+    if (url.pathname !== '/api/auth/github/callback') throw new RuntimeError('Not found.', 404);
+    const state = cookie(request, '__Host-bh_oauth');
+    if (!state || !timingSafeEqual(state, url.searchParams.get('state') || '')) throw invalidLink();
+    const flow = await this.store.deps.session(state, 'oauth', environment, true);
+    if (!flow || flow.provider !== 'github') throw invalidLink();
+    const config = (await this.store.deps.integration(environment)).github;
+    if (!config) throw new RuntimeError('GitHub sign-in is not configured.', 503);
+    const profile = await exchangeGithubCode(url.searchParams.get('code') || '', config.clientId, config.clientSecret, this.store.deps.origin(environment) + '/api/auth/github/callback');
+    return this.signIn(environment, await this.githubUser(environment, profile), true);
+  }
   async handle(request: Request, environment: ProjectEnvironment): Promise<Response> {
     const url = new URL(request.url); const path = url.pathname;
     const settings = this.store.settings(environment);
     if (path === '/api/auth/config' && request.method === 'GET') {
       const providers = await this.store.readiness(environment);
-      return Response.json({ appName: settings.appName, passwordEnabled: settings.passwordEnabled, magicLinkEnabled: settings.magicLinkEnabled, googleEnabled: settings.googleEnabled, emailReady: providers.emailReady, googleReady: providers.googleReady, development: environment === 'development' });
+      return Response.json({ appName: settings.appName, passwordEnabled: settings.passwordEnabled, magicLinkEnabled: settings.magicLinkEnabled, googleEnabled: settings.googleEnabled, githubEnabled: settings.githubEnabled, emailReady: providers.emailReady, googleReady: providers.googleReady, githubReady: providers.githubReady, development: environment === 'development' });
     }
     if (path === '/api/auth/session' && request.method === 'GET') return Response.json({ user: await this.user(request, environment) });
     if (path === '/api/auth/logout' && request.method === 'POST') {
@@ -87,6 +125,7 @@ export class ManagedAuth {
       return Response.json({ ok: true }, { headers: { 'Set-Cookie': secureCookie('__Host-bh_app', '', 0) } });
     }
     if (path.startsWith('/api/auth/google/')) return this.google(request, environment);
+    if (path.startsWith('/api/auth/github/')) return this.github(request, environment);
     if (request.method !== 'POST') throw new RuntimeError('Method not allowed.', 405);
     const body = await readJson(request) as Record<string, unknown>;
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new RuntimeError('Invalid authentication request.');

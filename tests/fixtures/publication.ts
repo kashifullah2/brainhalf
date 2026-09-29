@@ -9,10 +9,23 @@ export async function setupPublication(page: Page, reject = false) {
   await page.route('**/api/projects/*/runtime/**', async route => {
     const request = route.request(); const url = new URL(request.url());
     const environment = url.searchParams.get('environment') || 'development';
+    if (url.pathname.endsWith('/database')) {
+      if (url.searchParams.get('table')) {
+        return route.fulfill({ json: { columns: ['id', 'title'], rows: [{ __bh_rowid: 1, id: 1, title: 'First item' }, { __bh_rowid: 2, id: 2, title: 'Second item' }], hasMore: false, offset: 0, rowIds: true } });
+      }
+      return route.fulfill({ json: { tables: [{ name: 'items', rowCount: 2, indexes: [], columns: [{ name: 'id', type: 'INTEGER', notNull: false, primaryKey: true, defaultValue: null }, { name: 'title', type: 'TEXT', notNull: true, primaryKey: false, defaultValue: null }] }] } });
+    }
+    if (url.pathname.endsWith('/database/recovery')) {
+      return route.fulfill({ json: { points: [] } });
+    }
     if (url.pathname.endsWith('/jobs')) {
-      const body = request.postDataJSON(); submitted.push({ ...body, environment });
-      if (reject) return route.fulfill({ status: 403, json: { error: 'Not the project owner' } });
+      const body = request.postDataJSON();
+      if (reject) { submitted.push({ ...body, environment }); return route.fulfill({ status: 403, json: { error: 'Not the project owner' } }); }
+      // Assign `job` before `submitted.push`: the snapshot await suspends, and
+      // tests poll `submitted.length` before calling fail()/complete() — a push
+      // first would let the test observe a submission with job still null.
       job = { id: 'publication-job', kind: body.kind, environment: 'production', revision: (await sourceSnapshot(body.files)).revision, status: 'queued', createdAt: Date.now(), updatedAt: Date.now(), leaseUntil: Date.now() + 600_000, processIds: [], publishStage: 'build', message: 'Building your app' };
+      submitted.push({ ...body, environment });
       return route.fulfill({ status: 202, json: { job } });
     }
     if (url.pathname.endsWith('/stop')) {

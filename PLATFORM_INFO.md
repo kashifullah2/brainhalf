@@ -13,10 +13,11 @@
 - **Domains**: `https://brainhalf.com` & `https://www.brainhalf.com`
 - **Global Edge Infrastructure**: Cloudflare Workers with `nodejs_compat` runtime.
 - **Edge State Engine**: Cloudflare Durable Objects with embedded SQLite databases.
-- **Preview Boot Time**: `< 100ms` (Zero VM/Docker cold start).
-- **Supported AI Models**: 8 Frontier & Open-Weight models across Cloudflare Workers AI and AWS Bedrock.
-- **Preview Tech**: Dual preview engines (Cloudflare Edge Preview with Sucrase + Sandpack Virtual Bundler).
-- **Test Suite**: 61/61 passing unit & integration tests (`vitest`).
+- **Preview Boot Time**: Edge preview has no VM/Docker cold start; actual startup depends on project size, dependencies and network.
+- **Supported AI Models**: See `MODELS.md` — the allowlist in `src/lib/models.ts` is the only authoritative list.
+- **Preview Tech**: Single isolated edge preview (opaque-origin sandbox, Sucrase transpilation). Sandpack was removed.
+- **Test Suite**: ~1,100 unit/integration tests (`vitest`, two configs) plus Playwright e2e; `npm run verify` must be fully green before any commit lands.
+- **Second Worker**: `brainhalf-runtime` (`src/runtime/worker.ts`) hosts managed apps on `*.apps.brainhalf.com` via Workers for Platforms, containers and a pilot-owner gate.
 
 ---
 
@@ -120,9 +121,9 @@ On initial database creation, `ensureSchema()` seeds default starter files:
 
 ---
 
-## 5. Dual Preview Architecture
+## 5. Preview Architecture
 
-BrainHalf solves the traditional slow preview problem by providing two independent preview runtimes.
+BrainHalf uses a single isolated edge preview runtime. (Sandpack was evaluated and removed; this section previously described a dual-engine design that no longer exists.)
 
 ### 5.1 Cloudflare Edge Preview Engine (`/preview/:projectId/`)
 The primary preview engine runs directly on Cloudflare Workers:
@@ -175,10 +176,10 @@ The primary preview engine runs directly on Cloudflare Workers:
    - `Cross-Origin-Resource-Policy: cross-origin`
    - `Content-Security-Policy: frame-ancestors *` (permits embedding inside the IDE iframe).
 
-### 5.2 Sandpack Virtual Bundler
-- Integrated CodeSandbox virtual bundler for client-side sandboxed testing.
-- Uses `SandpackProvider`, `SandpackPreview`, and an explicit Sandpack entrypoint (`/index.tsx`).
-- Allows users to toggle preview modes at any time with a single click.
+### 5.2 Live App Preview (managed runtime)
+- Full-stack projects can run on the `brainhalf-runtime` Worker at `dev-{projectId}.apps.brainhalf.com`.
+- Real Cloudflare Worker execution with per-project D1 databases; CHIPS cookie authentication.
+- Managed hosting is gated to configured pilot owners (`PILOT_OWNER_IDS`); other accounts use the "Build downloadable app" path with an exported standalone Node backend.
 
 ---
 
@@ -186,23 +187,19 @@ The primary preview engine runs directly on Cloudflare Workers:
 
 ### 6.1 Supported AI Models
 
-| Model ID | Provider | Type | Context / Capabilities |
-| :--- | :--- | :--- | :--- |
-| `claude-opus-4.6` | AWS Bedrock | Frontier LLM | Deep reasoning, large complex architectures |
-| `claude-sonnet-4.6` | AWS Bedrock | Frontier LLM | Ultra-fast, state-of-the-art coding |
-| `minimax-m2.5` | AWS Bedrock | Commercial LLM | High-speed code generation & logic |
-| `@cf/qwen/qwen2.5-coder-32b-instruct` | Cloudflare Workers AI | Edge Native | SOTA open coding model, primary default |
-| `@cf/qwen/qwen3.8-27b` | Cloudflare Workers AI | Edge Native | Next-gen Qwen reasoning |
-| `@cf/zai-org/glm-5.3-flash` | Cloudflare Workers AI | Edge Native | Ultra-low latency code generation |
-| `@cf/moonshotai/kimi-k2.7-code` | Cloudflare Workers AI | Edge Native | Specialized code assistant |
-| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Cloudflare Workers AI | Edge Native | Meta 70B flagship instruct model |
+The authoritative catalog is `MODELS.md`, generated from `MODEL_ALLOWLIST` in
+`src/lib/models.ts`. Default: `@cf/deepseek-ai/deepseek-v4-pro-0813`. Providers:
+Cloudflare Workers AI, AWS Bedrock, Anthropic native (transport-only), Atria ASI.
 
 ### 6.2 Descending Token Ladder
 To guarantee maximum completion capacity without encountering provider ceiling exceptions, Cloudflare AI executions step through a descending ladder:
 ```typescript
-const TOKEN_LADDER = [65536, 32768, 16384, 8192];
+const TOKEN_LADDER = [32768, 16384, 8192, 4096];
 ```
-Cloudflare defaults unconfigured calls to only 256 tokens; BrainHalf explicitly sets `max_tokens` and `max_completion_tokens` through this ladder to allow generating complete 500+ line applications in a single turn.
+When the caller requests a larger budget, the ladder starts at that request and steps down
+through the smaller rungs. Cloudflare defaults unconfigured calls to only 256 tokens;
+BrainHalf explicitly sets `max_tokens` through this ladder to allow generating complete
+500+ line applications in a single turn.
 
 ### 6.3 Pre-Save Syntax Validation Guard
 In `src/agent.ts`, the `extractAndSaveFiles` method intercepts all generated code before updating the SQLite store:

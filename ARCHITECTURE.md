@@ -1,8 +1,11 @@
 # BrainHalf — Architecture & Structure Map
 
-**Generated**: September 17, 2026  
+**Generated**: September 17, 2026 (partially corrected September 28, 2026)
 **Codebase**: `/home/kashifullah/brainhalf/`  
 **Purpose**: Comprehensive architectural mapping of the BrainHalf platform
+
+> **Accuracy note**: file counts and provider listings in code always win over this
+> document. The model catalog is maintained only in `MODELS.md` / `src/lib/models.ts`.
 
 ---
 
@@ -13,10 +16,10 @@
 ```
 brainhalf/
 ├── src/                          # Core application source code
-│   ├── components/              # React UI components (14 files)
+│   ├── components/              # React UI components (~50 files)
 │   ├── lib/                     # Shared libraries and utilities
 │   ├── assets/                  # Static assets (logos, images)
-│   ├── __tests__/              # Vitest unit & integration tests (21 test files)
+│   ├── __tests__/              # Vitest unit & integration tests (97 test files)
 │   ├── agent.ts                # ChatAgent Durable Object (core business logic)
 │   ├── worker.ts               # Cloudflare Worker entrypoint & router
 │   ├── registry.ts             # AuthRegistry Durable Object (user/project mapping)
@@ -40,9 +43,9 @@ brainhalf/
 |---|---|
 | `App.tsx` | Top-level container: auth gating, sidebar/workspace layout, session management |
 | `ChatPanel.tsx` | AI chat interface: WebSocket connection, streaming tokens, model selector, message history |
-| `Workspace.tsx` | Multi-panel code editor + preview: Monaco integration, dual preview engines (Edge/Sandpack), file tree |
+| `Workspace.tsx` | Multi-panel code editor + preview: Monaco integration, isolated edge preview, split view, file tree |
 | `TopNav.tsx` | Project identity, deploy modal, export actions, settings, user menu |
-| `Sidebar.tsx` | Project list, creation, deletion, branch/merge operations |
+| `DashboardPage.tsx` / `RecentProjects.tsx` | Project list, creation, deletion, branch/merge operations |
 | `LoginScreen.tsx` | Authentication UI: signup/login forms, credential validation |
 | `FileExplorer.tsx` | File tree navigation with expand/collapse |
 | `PreviewRunner.tsx` | Isolated preview iframe manager |
@@ -238,7 +241,7 @@ brainhalf/
 | `react` | UI framework | 19.2.8 |
 | `react-dom` | React DOM renderer | 19.2.8 |
 | `@monaco-editor/react` | Code editor component | 4.7.0 |
-| `@codesandbox/sandpack-react` | Virtual bundler preview | 2.20.0 |
+| (removed) | Sandpack virtual bundler was removed; the isolated edge preview is the only engine |
 | `agents` | Cloudflare Durable Objects SDK | 0.22.0 |
 | `ai` | Vercel AI SDK (multi-provider streaming) | 7.0.97 |
 | `sucrase` | Ultra-fast TypeScript/JSX transpiler | 3.35.1 |

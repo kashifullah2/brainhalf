@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import BrainHalfLogo from './BrainHalfLogo';
-import ThemeToggle from './ThemeToggle';
+import SiteHeaderActions from './SiteHeaderActions';
 import { submitEmailRequest } from '../lib/email-client';
 import { ACCOUNT_PAGES } from '../seo/content';
 import './AccountPage.css';
@@ -21,7 +21,7 @@ export default function AccountPage({ path }: { path: string }) {
     if (value) { setToken(value); window.history.replaceState({}, '', window.location.pathname); }
   }, []);
   return <main className="account-page"><div className="account-card">
-    <header><a href="/" aria-label="BrainHalf home"><BrainHalfLogo size={38} /><strong>BrainHalf</strong></a><ThemeToggle /></header>
+    <header><a href="/" aria-label="BrainHalf home"><BrainHalfLogo size={38} /><strong>BrainHalf</strong></a><SiteHeaderActions /></header>
     <p className="studio-section-label">YOUR ACCOUNT</p><h1>{title}</h1>
     <p>{reset ? 'Choose a new password to secure your account. Existing sessions will be signed out.' : verify ? 'Confirm your email address to finish setting up your account.' : 'Enter your account email and we’ll send you a link with the next steps.'}</p>
     <noscript><p>Enable JavaScript to use this secure account form.</p></noscript>

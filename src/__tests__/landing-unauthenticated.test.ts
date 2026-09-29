@@ -31,7 +31,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
     expect(html).toContain('Get Started');
     expect(html).toContain('Sign in');
     expect(html).toContain('Build the tools');
-    expect(html).toContain('Create app from prompt');
+    expect(html).toContain('Start building');
   });
 
   it('renders user avatar and email when currentUser is logged in', () => {

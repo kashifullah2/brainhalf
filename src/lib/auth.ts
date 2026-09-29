@@ -14,7 +14,7 @@
  * unknown project, or an unreachable Registry all deny access rather than
  * degrading to an anonymous mode.
  */
-import type { DurableObjectNamespace, DurableObjectStub } from '@cloudflare/workers-types';
+import type { BindingFetcher, DurableBinding } from './bindings';
 import { validSessionSecret } from './runtime-config';
 import {
   TOKEN_PREFIX,
@@ -42,7 +42,7 @@ export interface AuthenticatedUser {
 }
 
 export interface RegistryEnv {
-  REGISTRY: DurableObjectNamespace;
+  REGISTRY: DurableBinding;
 }
 
 /** Origin allowlist — re-exported from ./allowed-origins so the Worker and the
@@ -141,13 +141,13 @@ export async function verifyPreviewSession(request: Request, env: RegistryEnv): 
 }
 
 /** Global registry DO singleton lookup (idFromName is stable per deployment). */
-export function getRegistry(env: RegistryEnv): DurableObjectStub {
+export function getRegistry(env: RegistryEnv): BindingFetcher {
   const id = env.REGISTRY.idFromName('auth');
   return env.REGISTRY.get(id);
 }
 
 /** User-partitioned DO lookup to prevent singleton bottlenecks on metadata (M08). */
-export async function getUserRegistry(env: RegistryEnv, userId: string): Promise<DurableObjectStub> {
+export async function getUserRegistry(env: RegistryEnv, userId: string): Promise<BindingFetcher> {
   const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(userId));
   const hash = Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
   return env.REGISTRY.get(env.REGISTRY.idFromName('user-' + hash));

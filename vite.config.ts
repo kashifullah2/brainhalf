@@ -143,6 +143,33 @@ function backendDevPlugin() {
           return;
         }
 
+        // The gallery registry runs on the production Worker; dev shows the
+        // honest empty state instead of a backend-runner 404.
+        if (url === '/api/gallery' || url.startsWith('/api/gallery?')) {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ apps: [] }));
+          return;
+        }
+
+        // Managed-runtime routes — the runtime Worker does not run in dev.
+        // Answer with an explicit "disabled" status instead of falling into the
+        // simulated app backend, which 404s and surfaces a confusing
+        // "[Backend Error] Route not found" in the project console.
+        if (url.match(/^\/api\/projects\/[^/?#]+\/runtime\//)) {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({
+            enabled: false,
+            projectId: null,
+            environment: 'development',
+            availability: { state: 'disabled', message: 'Managed hosting is not available in this local preview. You can keep building and export your project.' },
+            capabilities: { sandbox: false, database: false, deployment: false, browser: false, secrets: false },
+            jobs: [], releases: [], migrations: [], integrations: [],
+            activeRelease: null, database: null, verification: null,
+            previewUrl: '', productionUrl: '',
+          }));
+          return;
+        }
+
         // 6. Backend runner for /api/ routes
         if (url.includes('/api/')) {
           let bodyData: any = null;

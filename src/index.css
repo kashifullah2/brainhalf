@@ -1,28 +1,29 @@
 :root {
   /* ==========================================================================
      Layered Dark Theme Hierarchy (Linear / Cursor / Vercel Depth)
+     Kept in step with the elevation scale in styles/studio-theme.css.
      ========================================================================== */
-  --bg-canvas: #09090b;
+  --bg-canvas: #0d1219;
   /* Pure deep obsidian backdrop */
-  --bg-sidebar: #0c0d12;
+  --bg-sidebar: #131a26;
   /* Refined navigation sidebar */
-  --bg-topnav: #0c0d12;
+  --bg-topnav: #131a26;
   /* Clean header navbar */
-  --bg-chat-panel: #101117;
+  --bg-chat-panel: #1b2434;
   /* Focused chat panel */
-  --bg-workspace: #0c0d12;
+  --bg-workspace: #1b2434;
   /* Main workspace container */
-  --bg-file-explorer: #0c0d12;
+  --bg-file-explorer: #131a26;
   /* File explorer sidebar */
-  --bg-code-editor: #09090b;
+  --bg-code-editor: #10161f;
   /* Monaco code editor background */
-  --bg-preview-canvas: #09090b;
+  --bg-preview-canvas: #0a0e14;
   /* App preview container */
-  --bg-surface: rgba(255, 255, 255, 0.03);
-  --bg-surface-hover: rgba(255, 255, 255, 0.06);
-  --bg-card: #13151f;
+  --bg-surface: #232f45;
+  --bg-surface-hover: #2c3c57;
+  --bg-card: #1b2434;
   /* Elevated card surfaces */
-  --bg-card-hover: #181b28;
+  --bg-card-hover: #232f45;
 
   /* 1px Border Depth Tokens */
   --border-subtle: rgba(255, 255, 255, 0.07);
@@ -372,8 +373,7 @@ body,
   padding: 0;
   width: 100%;
   min-height: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow-x: clip;
   border: none;
   outline: none;
 }
@@ -382,8 +382,7 @@ body {
   font-family: var(--font-sans);
   background-color: var(--bg-canvas);
   color: var(--text-primary);
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
@@ -1989,6 +1988,10 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   }
 
   .top-nav-new-project-btn {
+    display: none !important;
+  }
+
+  .top-nav-dashboard-btn {
     display: none !important;
   }
 

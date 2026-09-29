@@ -36,7 +36,8 @@ async function readiness(env: ManagedProviderEnv, ownerId: string): Promise<Prov
     ownerEmail: owner.email, ownerVerified: owner.verified,
     emailReady: owner.verified && !!env.RESEND_API_KEY && isValidEmail(env.RESEND_FROM_EMAIL),
     googleReady: !!env.GOOGLE_CLIENT_ID && !!env.GOOGLE_CLIENT_SECRET,
-    from: env.RESEND_FROM_EMAIL || '', googleCallback: originFor(env) + callbackPath,
+    githubReady: false, // GitHub sign-in is custom-credentials only; the runtime decides readiness per project.
+    from: env.RESEND_FROM_EMAIL || '', googleCallback: originFor(env) + callbackPath, githubCallback: '',
   };
 }
 async function storeFlow(env: ManagedProviderEnv, flow: Flow, kind: 'state' | 'handoff') {

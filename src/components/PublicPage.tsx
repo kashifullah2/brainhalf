@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowRight, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
-import ThemeToggle from './ThemeToggle';
+import SiteHeaderActions from './SiteHeaderActions';
 import LandingFooter from './LandingFooter';
 import ContactForm from './ContactForm';
 import { findPublicPage, formatContentDate, type PublicPage as PageContent } from '../seo/content';
@@ -13,8 +13,8 @@ export default function PublicPage({ page }: { page?: PageContent }) {
     <a href="#main-content" className="studio-skip-link">Skip to content</a>
     <header className="landing-header">
       <a className="landing-brand-group" href="/" aria-label="BrainHalf home"><span className="landing-brand-logo"><BrainHalfLogo size={27} color="currentColor" /></span><span className="landing-brand-text">BrainHalf</span></a>
-      <nav className="studio-navigation" aria-label="Main navigation"><a href="/">AI app builder</a><a href="/guides/build-an-app-with-ai">Build guide</a><a href="/about">About</a></nav>
-      <div className="landing-header-right"><ThemeToggle /><a className="landing-get-started-btn" href="/#start-building">Start building <ArrowRight size={14} /></a></div>
+      <nav className="studio-navigation" aria-label="Main navigation"><a href="/">AI app builder</a><a href="/gallery">Gallery</a><a href="/guides/build-an-app-with-ai">Build guide</a><a href="/about">About</a></nav>
+      <div className="landing-header-right"><SiteHeaderActions /></div>
     </header>
     <main className="landing-main-content" id="main-content">
       {page ? <>

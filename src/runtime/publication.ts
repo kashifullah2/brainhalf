@@ -19,9 +19,10 @@ export function publicationTarget(files: SourceFiles): 'workers' | 'static' {
 
 export function assertProductionServices(settings: ManagedSettings, readiness: ProviderReadiness): void {
   if ((settings.emailEnabled || settings.passwordEnabled || settings.magicLinkEnabled || settings.welcomeEnabled) && (!readiness.ownerVerified || !readiness.emailReady)) {
-    throw new RuntimeError('Production email is not ready. Verify your BrainHalf account email and configure email in Authentication & email before publishing. Password signup and recovery also require email.', 409);
+    throw new RuntimeError('Production email is not ready. Verify your BrainHalf account email and configure email in Users & email before publishing. Password signup and recovery also require email.', 409);
   }
-  if (settings.googleEnabled && !readiness.googleReady) throw new RuntimeError('Google sign-in is enabled but its production connection is not ready. Configure it in Authentication & email before publishing.', 409);
+  if (settings.googleEnabled && !readiness.googleReady) throw new RuntimeError('Google sign-in is enabled but its production connection is not ready. Configure it in Users & email before publishing.', 409);
+  if (settings.githubEnabled && !readiness.githubReady) throw new RuntimeError('GitHub sign-in is enabled but its connection is not ready. Add your GitHub OAuth credentials in Users & email before publishing.', 409);
 }
 
 /** A custom endpoint is allowed, but production checks must remain read-only and same-origin. */

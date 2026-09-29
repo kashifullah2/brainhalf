@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronDown, LogOut, Plus } from 'lucide-react';
+import { ArrowLeft, Plus } from 'lucide-react';
 import { authFetch, getToken, removeProject } from '../lib/auth-client';
 import { appEvents } from '../lib/events';
 import { getProjects, type Project, updateProjectName } from '../lib/project-store';
@@ -7,7 +7,7 @@ import { useModalFocus } from '../lib/use-modal-focus';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import ConfirmModal from './ConfirmModal';
 import RecentProjects from './RecentProjects';
-import ThemeToggle from './ThemeToggle';
+import SiteHeaderActions from './SiteHeaderActions';
 import './LandingPage.css';
 import './DashboardPage.css';
 
@@ -26,6 +26,39 @@ interface AccountAiUsage {
   reservedOutputTokens: number;
   activeGenerations: number;
   limits: { dailyCalls: number; dailyOutputTokens: number; concurrentGenerations: number };
+}
+
+function DashboardUsageExtra() {
+  const [accountAiUsage, setAccountAiUsage] = useState<AccountAiUsage | null>(null);
+  const [accountAiUsageError, setAccountAiUsageError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadUsage = async () => {
+      try {
+        const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+        const token = getToken();
+        const response = await fetch(`${origin}/api/account/ai-usage`, {
+          signal: controller.signal,
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const body = await response.json();
+        if (!response.ok || !body?.limits) throw new Error('Account usage is unavailable.');
+        if (!controller.signal.aborted) setAccountAiUsage(body as AccountAiUsage);
+      } catch {
+        if (!controller.signal.aborted) setAccountAiUsageError('AI usage is unavailable right now.');
+      }
+    };
+    void loadUsage();
+    return () => controller.abort();
+  }, []);
+
+  if (accountAiUsage) {
+    return <p className="dashboard-account-usage">AI usage today ({accountAiUsage.day} UTC): {accountAiUsage.calls}/{accountAiUsage.limits.dailyCalls} calls · {accountAiUsage.reservedOutputTokens.toLocaleString()}/{accountAiUsage.limits.dailyOutputTokens.toLocaleString()} tokens · {accountAiUsage.activeGenerations}/{accountAiUsage.limits.concurrentGenerations} active</p>;
+  }
+  if (accountAiUsageError) return <p className="dashboard-account-usage dashboard-account-usage-error">{accountAiUsageError}</p>;
+  return null;
 }
 
 function dedupe(projects: Project[]) {
@@ -62,11 +95,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     };
     void refresh(); return () => { controller.abort(); clearTimeout(timer); };
   }, [projects.length]);
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const [accountAiUsage, setAccountAiUsage] = useState<AccountAiUsage | null>(null);
-  const [accountAiUsageError, setAccountAiUsageError] = useState('');
   const deletionPending = useRef(false);
-  const userMenuRef = useRef<HTMLDivElement>(null);
   const renameDialogRef = useModalFocus(!!projectToRename, () => setProjectToRename(null));
   const refreshProjects = useCallback(() => setProjects(dedupe(getProjects())), []);
 
@@ -74,40 +103,6 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     const subscriptions = ['project-renamed', 'project-messages-updated', 'project-account-changed', 'project-list-updated'].map(event => appEvents.on(event, refreshProjects));
     return () => subscriptions.forEach(unsubscribe => unsubscribe());
   }, [refreshProjects]);
-
-  useEffect(() => {
-    const close = (event: MouseEvent) => {
-      if (!userMenuRef.current?.contains(event.target as Node)) setShowUserMenu(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
-
-  useEffect(() => {
-    if (!showUserMenu) return;
-    const controller = new AbortController();
-    const loadUsage = async () => {
-      try {
-        const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
-        const token = getToken();
-        const response = await fetch(`${origin}/api/account/ai-usage`, {
-          signal: controller.signal,
-          credentials: 'include',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const body = await response.json();
-        if (!response.ok || !body?.limits) throw new Error('Account usage is unavailable.');
-        if (!controller.signal.aborted) {
-          setAccountAiUsage(body as AccountAiUsage);
-          setAccountAiUsageError('');
-        }
-      } catch {
-        if (!controller.signal.aborted) setAccountAiUsageError('AI usage is unavailable right now.');
-      }
-    };
-    if (!accountAiUsage && !accountAiUsageError) void loadUsage();
-    return () => controller.abort();
-  }, [showUserMenu, accountAiUsage, accountAiUsageError]);
 
   const handleDelete = async () => {
     if (!projectToDelete || deletionPending.current) return;
@@ -131,8 +126,6 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     refreshProjects();
   };
 
-  const userInitial = (currentUser.name || currentUser.email || 'U').trim()[0].toUpperCase();
-
   return <div className="dashboard-page landing-container">
     <a className="studio-skip-link" href="#dashboard-main">Skip to content</a>
     <header className="dashboard-header">
@@ -141,22 +134,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
         <span className="landing-brand-text">BrainHalf</span>
       </button>
       <div className="dashboard-header-actions">
-        <ThemeToggle />
-        <div className="landing-user-menu-anchor" ref={userMenuRef}>
-          <button className="landing-user-menu-trigger" type="button" onClick={() => setShowUserMenu(value => !value)} aria-label="User profile and menu" aria-haspopup="menu" aria-expanded={showUserMenu}>
-            <span className="landing-user-avatar" aria-hidden="true">{userInitial}</span>
-            <span className="landing-user-menu-email">{currentUser.email || 'Your account'}</span>
-            <ChevronDown size={13} aria-hidden="true" />
-          </button>
-          {showUserMenu && <div className="landing-user-dropdown" role="menu">
-            <div className="landing-user-dropdown-info dashboard-user-dropdown-info" role="status">
-              <p className="user-email">{currentUser.email || 'Your account'}</p>
-              {accountAiUsage && <p className="dashboard-account-usage">AI usage today ({accountAiUsage.day} UTC): {accountAiUsage.calls}/{accountAiUsage.limits.dailyCalls} calls · {accountAiUsage.reservedOutputTokens.toLocaleString()}/{accountAiUsage.limits.dailyOutputTokens.toLocaleString()} tokens · {accountAiUsage.activeGenerations}/{accountAiUsage.limits.concurrentGenerations} active</p>}
-              {!accountAiUsage && accountAiUsageError && <p className="dashboard-account-usage dashboard-account-usage-error">{accountAiUsageError}</p>}
-            </div>
-            <button className="landing-dropdown-item" type="button" role="menuitem" onClick={() => { setShowUserMenu(false); void onLogout(); }}><LogOut size={14} />Sign out</button>
-          </div>}
-        </div>
+        <SiteHeaderActions currentUser={currentUser} onLogout={onLogout} hideDashboard menuExtra={<DashboardUsageExtra />} />
       </div>
     </header>
     <main className="dashboard-main" id="dashboard-main">

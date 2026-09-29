@@ -909,7 +909,7 @@ test('appearance: theme follows the system, persists a choice, and keeps account
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await expect(dialog.getByRole('button', { name: 'Create account', exact: true })).toBeInViewport();
       await expect(dialog).toHaveJSProperty('scrollWidth', width);
-      await expect(dialog.getByLabel('Email Address')).toHaveCSS('background-color', theme === 'dark' ? 'rgb(25, 34, 48)' : 'rgb(255, 255, 255)');
+      await expect(dialog.getByLabel('Email Address')).toHaveCSS('background-color', theme === 'dark' ? 'rgb(27, 36, 52)' : 'rgb(255, 255, 255)');
       await dialog.screenshot({ path: `/tmp/brainhalf-auth-${theme}-${width}.png` });
     }
   }
@@ -936,7 +936,7 @@ test('appearance: workspace, code editor and agent tools share the selected them
     if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: `Switch to ${theme} mode` }).click();
     await page.getByRole('button', { name: 'Code', exact: true }).click();
     await expect(page.locator('.monaco-editor').first()).toBeVisible();
-    await expect(page.locator('.monaco-editor').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(34, 37, 34)' : 'rgb(255, 255, 255)');
+    await expect(page.locator('.monaco-editor').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(16, 22, 31)' : 'rgb(255, 255, 255)');
     await page.screenshot({ path: `/tmp/brainhalf-workspace-${theme}.png`, fullPage: true });
     await openAdvanced(page);
     await page.screenshot({ path: `/tmp/brainhalf-agent-tools-${theme}.png`, fullPage: true });
@@ -992,7 +992,7 @@ for (const theme of ['light', 'dark']) test(`landing prompt works on desktop and
   const hero = page.getByRole('region', { name: 'Build the tools your business needs.', exact: true });
   const form = hero.locator('form');
   const input = hero.getByRole('textbox', { name: 'Describe your app' });
-  const submit = hero.getByRole('button', { name: 'Create app from prompt' });
+  const submit = hero.getByRole('button', { name: 'Start building' });
   await expect(hero.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(hero.getByRole('textbox')).toHaveCount(1);
   await expect(form.getByRole('textbox')).toHaveCount(1);

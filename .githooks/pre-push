@@ -1,0 +1,10 @@
+#!/bin/sh
+# Runs the fast gates before code leaves the machine. CI runs the full
+# `npm run verify` + release packaging; this hook catches the two failure
+# modes that have shipped before: type errors and silently broken test files.
+# Bypass in an emergency with: git push --no-verify
+set -e
+echo "pre-push: typecheck + unit tests (skip with --no-verify)"
+npm run typecheck
+npx vitest run
+npx vitest run --config vitest.runtime.config.ts

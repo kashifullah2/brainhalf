@@ -13,6 +13,16 @@ import { HtmlPreview } from './HtmlPreview';
 
 const nativeFetch = window.fetch.bind(window);
 
+// Time budget for a single CDN dependency load before it counts as failed.
+const DEP_LOAD_TIMEOUT_MS = 20_000;
+// Automatic retries for a failed dependency load — CDN flakes are common and
+// a single failed fetch should never permanently break the preview.
+const DEP_LOAD_MAX_RETRIES = 2;
+// How long to wait for the parent's file sync before re-requesting, and how
+// many re-requests to make before surfacing a visible error.
+const FILE_SYNC_RETRY_MS = 2_000;
+const FILE_SYNC_MAX_ATTEMPTS = 5;
+
 // ---------------------------------------------------------------------------
 // Lucide icon fallback: if a requested icon doesn't exist in the loaded
 // lucide-react bundle, hand back a neutral placeholder SVG instead of
@@ -229,6 +239,12 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   );
   const waitingForFilesRef = useRef(waitingForFiles);
 
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const reportRuntimeError = useCallback((error: string) => {
+    setRuntimeError(error);
+    if (window.parent !== window) window.parent.postMessage({ type: 'preview-error', layer: 'frontend', error }, '*');
+  }, []);
+
   // Listen for file sync messages from the parent window. Only messages from
   // the parent frame, on an allowed origin, targeting this exact project are
   // accepted — otherwise an embedded third-party page could swap the
@@ -238,6 +254,9 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
       const initialSync = waitingForFilesRef.current;
       waitingForFilesRef.current = false;
       setWaitingForFiles(false);
+      // Any fresh sync invalidates errors from the previous render — including
+      // the file-sync watchdog error — so the preview recovers on its own.
+      setRuntimeError(null);
       const previous = currentFiles.current;
       if (Object.keys(previous).length === Object.keys(next).length && Object.keys(previous).every(path => previous[path] === next[path])) return;
       if (!initialSync && selectHtmlEntry(previous)) {
@@ -307,20 +326,28 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   useEffect(() => {
     if (waitingForFiles) return;
     let active = true;
+    let retryCount = 0;
 
     const doLoad = () => {
-      loadPreviewDependencies(files, builtinLibraries)
+      const timeout = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Timed out after ${DEP_LOAD_TIMEOUT_MS / 1000}s`)), DEP_LOAD_TIMEOUT_MS);
+      });
+      Promise.race([loadPreviewDependencies(files, builtinLibraries), timeout])
         .then((libraries) => {
           if (active) setDependencies({ files, libraries });
         })
         .catch((error) => {
-          if (active) {
-            setDependencies({
-              files,
-              libraries: {},
-              error: `Dependency loading failed: ${error instanceof Error ? error.message : String(error)}`,
-            });
+          if (!active) return;
+          if (retryCount < DEP_LOAD_MAX_RETRIES) {
+            retryCount += 1;
+            depLoadTimerRef.current = setTimeout(doLoad, 1_500 * retryCount);
+            return;
           }
+          setDependencies({
+            files,
+            libraries: {},
+            error: `Dependency loading failed: ${error instanceof Error ? error.message : String(error)}`,
+          });
         });
     };
 
@@ -340,7 +367,14 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
       if (depLoadTimerRef.current) clearTimeout(depLoadTimerRef.current);
       depLoadTimerRef.current = setTimeout(doLoad, dependencies ? 300 : 0);
     } else if (dependencies && dependencies.files !== files) {
-      setDependencies({ ...dependencies, files });
+      if (dependencies.error) {
+        // The previous dependency load failed — a fresh file sync is a new
+        // chance to recover, so retry instead of staying on the error panel.
+        if (depLoadTimerRef.current) clearTimeout(depLoadTimerRef.current);
+        depLoadTimerRef.current = setTimeout(doLoad, 500);
+      } else {
+        setDependencies({ ...dependencies, files });
+      }
     }
 
     return () => {
@@ -362,11 +396,30 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
     return () => { window.fetch = nativeFetch; };
   }, [files, store]);
 
-  const [runtimeError, setRuntimeError] = useState<string | null>(null);
-  const reportRuntimeError = useCallback((error: string) => {
-    setRuntimeError(error);
-    if (window.parent !== window) window.parent.postMessage({ type: 'preview-error', layer: 'frontend', error }, '*');
-  }, []);
+  // Watchdog: the initial request-preview-files (sent on mount) can be lost
+  // if the parent's message listener wasn't attached yet or the parent
+  // remounted. Re-request a few times, then show a real error instead of
+  // spinning on "Preparing your preview…" forever.
+  useEffect(() => {
+    if (!waitingForFiles || window.parent === window) return;
+    let attempts = 0;
+    const id = setInterval(() => {
+      if (!waitingForFilesRef.current) {
+        clearInterval(id);
+        return;
+      }
+      attempts += 1;
+      if (attempts <= FILE_SYNC_MAX_ATTEMPTS) {
+        window.parent.postMessage({ type: 'request-preview-files', projectId }, '*');
+        return;
+      }
+      clearInterval(id);
+      waitingForFilesRef.current = false;
+      setWaitingForFiles(false);
+      reportRuntimeError('Preview did not receive project files from the editor. Refresh the preview to try again.');
+    }, FILE_SYNC_RETRY_MS);
+    return () => clearInterval(id);
+  }, [waitingForFiles, projectId, reportRuntimeError]);
 
   useLayoutEffect(() => {
     setRuntimeError(null);

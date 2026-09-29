@@ -62,7 +62,7 @@ function App() {
   const [runtimeActive, setRuntimeActive] = useState(false);
   const [closingProject, setClosingProject] = useState(false);
   const [closeError, setCloseError] = useState('');
-  const [pendingWorkspaceExit, setPendingWorkspaceExit] = useState<'home' | 'new' | null>(null);
+  const [pendingWorkspaceExit, setPendingWorkspaceExit] = useState<'home' | 'new' | 'dashboard' | null>(null);
 
   const releaseProjectCreationLock = React.useCallback(() => {
     createProjectLockedRef.current = false;
@@ -282,6 +282,14 @@ function App() {
     window.history.pushState({}, '', url.toString());
   };
 
+  const requestOpenDashboard = () => {
+    if ((generationActive || runtimeActive) && currentView === 'workspace') {
+      setPendingWorkspaceExit('dashboard');
+      return;
+    }
+    handleOpenDashboard();
+  };
+
   const [authModal, setAuthModal] = useState<{ isOpen: boolean; mode: 'login' | 'signup' }>({
     isOpen: false,
     mode: 'signup',
@@ -458,7 +466,7 @@ function App() {
       }
       if (!stopped) throw new Error('The server is still stopping. Keep this page open and try again.');
       setGenerationActive(false); setRuntimeActive(false); setPendingWorkspaceExit(null);
-      if (next === 'new') handleCreateNewProject(); else handleGoHome();
+      if (next === 'new') handleCreateNewProject(); else if (next === 'dashboard') handleOpenDashboard(); else handleGoHome();
     } catch (error) { setCloseError(error instanceof Error ? error.message : 'Shutdown could not be confirmed.'); }
     finally { setClosingProject(false); }
   };
@@ -483,6 +491,7 @@ function App() {
           onSelectProject={handleSelectProject}
           onGoHome={requestGoHome}
           onNewProject={requestCreateNewProject}
+          onOpenDashboard={requestOpenDashboard}
           mobileTab={mobileTab}
           onSelectMobileTab={setMobileTab}
           isMobile={isMobile}

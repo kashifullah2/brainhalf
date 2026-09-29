@@ -17,12 +17,17 @@ export async function sourceSnapshot(input: SourceFiles): Promise<SourceSnapshot
     if (typeof content !== 'string') throw new RuntimeError('Project source must contain text files.');
     if (isBlockedSecretFile(path) && !path.endsWith('.env.example')) continue;
     if (/^(?:node_modules|\.git|\.brainhalf|dist)\//.test(path)) continue;
+    // A model-authored lockfile cannot be trusted to match package.json, and
+    // `npm ci` hard-fails on any mismatch — the most common reason dependency
+    // installation failed for otherwise valid projects. Resolution always runs
+    // fresh with `npm install`, matching agent-context and workers-starter.
+    if (/^(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(path)) continue;
     if (Object.prototype.hasOwnProperty.call(files, path)) throw new RuntimeError('Project contains duplicate normalized file paths.');
     bytes += new TextEncoder().encode(content).length;
     if (bytes > PILOT_LIMITS.sourceBytes) throw new RuntimeError('Project exceeds the pilot source size limit.');
     Object.defineProperty(files, path, { value: content, enumerable: true, configurable: true, writable: true });
   }
-  if (!files['package.json']) throw new RuntimeError('Project needs a package.json before it can run.');
+  if (!files['package.json']) throw new RuntimeError('Publishing and app checks need a package.json in the project. Frontend-only apps can skip this.');
   const compatible = lucideCompatibleSource(files);
   if (Object.keys(compatible).length > PILOT_LIMITS.sourceFiles || Object.values(compatible).reduce((size, content) => size + new TextEncoder().encode(content).length, 0) > PILOT_LIMITS.sourceBytes) throw new RuntimeError('Project exceeds the source limit after applying icon compatibility.');
   const canonicalFiles = Object.fromEntries(Object.entries(compatible).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));

@@ -1,25 +1,67 @@
 import React from 'react';
 import BrainHalfLogo from './BrainHalfLogo';
 
+const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
+  {
+    title: 'Product',
+    links: [
+      { label: 'AI app builder', href: '/' },
+      { label: 'Gallery', href: '/gallery' },
+      { label: 'Free AI app builder', href: '/free-ai-app-builder' },
+      { label: 'About', href: '/about' },
+    ],
+  },
+  {
+    title: 'Resources',
+    links: [
+      { label: 'Build guide', href: '/guides/build-an-app-with-ai' },
+      { label: 'Full-stack guide', href: '/guides/full-stack-apps' },
+      { label: 'Contact', href: '/contact' },
+      { label: 'Support', href: 'mailto:support@brainhalf.com' },
+    ],
+  },
+  {
+    title: 'Use cases',
+    links: [
+      { label: 'Inventory apps', href: '/use-cases/ai-inventory-app-builder' },
+      { label: 'Dashboards', href: '/use-cases/ai-dashboard-builder' },
+      { label: 'Customer portals', href: '/use-cases/customer-dashboard-builder' },
+      { label: 'Websites', href: '/use-cases/ai-website-builder' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { label: 'Privacy', href: '/privacy' },
+      { label: 'Usage guidelines', href: '/terms' },
+    ],
+  },
+];
+
 export const LandingFooter: React.FC = () => {
   const year = new Date().getFullYear();
 
   return (
     <footer className="landing-footer" aria-label="Landing footer">
-      <div className="landing-footer-left">
-        <span className="landing-footer-brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><BrainHalfLogo size={24} />BrainHalf</span>
-        <span className="landing-footer-copy">© {year} BrainHalf. A little thought goes a long way.</span>
+      <div className="landing-footer-grid">
+        <div className="landing-footer-brand-col">
+          <a className="landing-footer-brand" href="/" aria-label="BrainHalf home"><BrainHalfLogo size={24} />BrainHalf</a>
+          <p className="landing-footer-tagline">Describe your idea, watch it become a working app, and publish it — all from one workspace.</p>
+        </div>
+        {COLUMNS.map(column => (
+          <nav key={column.title} className="landing-footer-col" aria-label={column.title}>
+            <p className="landing-footer-heading">{column.title}</p>
+            {column.links.map(link => <a key={link.href} className="landing-footer-link" href={link.href}>{link.label}</a>)}
+          </nav>
+        ))}
       </div>
-      <nav className="landing-footer-nav" aria-label="Footer links">
-        <a className="landing-footer-link" href="/about">About</a>
-        <a className="landing-footer-link" href="/contact">Contact</a>
-        <a className="landing-footer-link" href="mailto:support@brainhalf.com">Support</a>
-        <a className="landing-footer-link" href="/guides/build-an-app-with-ai">Build guide</a>
-        <a className="landing-footer-link" href="/guides/full-stack-apps">Full-stack guide</a>
-        <a className="landing-footer-link" href="/free-ai-app-builder">Free AI app builder</a>
-        <a className="landing-footer-link" href="/privacy">Privacy</a>
-        <a className="landing-footer-link" href="/terms">Usage guidelines</a>
-      </nav>
+      <div className="landing-footer-bottom">
+        <span className="landing-footer-copy">© {year} BrainHalf. A little thought goes a long way.</span>
+        <div className="landing-footer-legal">
+          <a className="landing-footer-link" href="/privacy">Privacy</a>
+          <a className="landing-footer-link" href="/terms">Usage guidelines</a>
+        </div>
+      </div>
     </footer>
   );
 };

@@ -10,6 +10,7 @@ export const LOCAL_BROWSER_SPECS = [
   '**/workspace-clarity.spec.ts',
   '**/managed-runtime.spec.ts',
   '**/nontechnical-flow.spec.ts',
+  '**/gallery.spec.ts',
   '**/agent-tools.spec.ts',
 ];
 

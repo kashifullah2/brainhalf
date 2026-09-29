@@ -34,6 +34,12 @@ export function validateIntegration(provider: IntegrationProvider, value: Record
     if (webhookSecret && (!text(webhookSecret) || !webhookSecret.startsWith('whsec_'))) throw new RuntimeError('Enter a valid signing secret.');
     return { apiKey, from: value.from, contactTo: value.contactTo, ...(typeof webhookSecret === 'string' ? { webhookSecret } : {}) };
   }
+  if (provider === 'github') {
+    const clientSecret = value.clientSecret || (previous as IntegrationConfig['github'])?.clientSecret;
+    if (!text(value.clientId, 255) || !/^(Ov[0-9A-Za-z]{10,}|Iv1\.[0-9a-f]{16}|[0-9a-f]{20})$/.test(value.clientId)) throw new RuntimeError('Enter a GitHub OAuth client ID.');
+    if (!text(clientSecret, 255)) throw new RuntimeError('Enter the GitHub OAuth client secret.');
+    return { clientId: value.clientId, clientSecret };
+  }
   if (provider !== 'google') throw new RuntimeError('Unknown integration.');
   const clientSecret = value.clientSecret || (previous as IntegrationConfig['google'])?.clientSecret;
   if (!text(value.clientId) || !value.clientId.endsWith('.apps.googleusercontent.com')) throw new RuntimeError('Enter a Google OAuth web client ID.');

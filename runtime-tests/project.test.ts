@@ -427,6 +427,39 @@ describe('Project runtime with real SQLite state', () => {
     expect([...objects.keys()].some(key => key.includes('/artifacts/'))).toBe(true);
     expect(sandbox.exec.mock.calls.every(call => !JSON.stringify(call).includes('platform-only'))).toBe(true);
   });
+  it('retries a failed dependency installation once with fresh resolution and strips model lockfiles', async () => {
+    const p = await project(); const objects = new Map<string, string>();
+    p.env.ARTIFACTS = { put: async (key: string, value: string) => objects.set(key, value), get: async (key: string) => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)!) } : null };
+    const failing = { id: 'proc-fail', status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 1, timedOut: false, stdout: '', stderr: 'npm error code ETARGET\nnpm error ETARGET No matching version found for fake-dep@^9.9.9' }), kill: vi.fn(async () => {}) };
+    const passing = { id: 'proc-ok', status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 0, timedOut: false, stdout: 'added 12 packages', stderr: '' }), kill: vi.fn(async () => {}) };
+    sandbox.exec.mockResolvedValueOnce(failing).mockResolvedValue(passing);
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'proc-fail' ? failing : passing);
+    sandbox.readFile.mockImplementation(async () => ({ content: new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(JSON.stringify({ worker: 'export default {}', assets: { '/index.html': { content: btoa('<h1>App</h1>'), type: 'text/html' } } }))); controller.close(); } }) }));
+    const response = await p.call('/jobs', 'POST', { kind: 'build', files: { 'package.json': JSON.stringify({ brainhalf: { runtime: 'workers' }, scripts: { build: 'build' } }), 'src/App.tsx': 'source', 'package-lock.json': '{"lockfileVersion":3}' } });
+    expect(response.status).toBe(202);
+    const source = JSON.parse(objects.get([...objects.keys()].find(key => key.includes('/sources/'))!)!);
+    expect(source.files['package-lock.json']).toBeUndefined();
+    for (let i = 0; i < 8; i++) await p.object.alarm();
+    const current = p.map.get('current');
+    expect(current.status).toBe('passed');
+    expect(current.installRetried).toBe(true);
+    expect(sandbox.exec.mock.calls.filter(call => call[0][0] === 'npm' && call[0][1] === 'install')).toHaveLength(2);
+    expect(sandbox.exec.mock.calls.some(call => call[0][1] === 'ci')).toBe(false);
+  });
+  it('names the npm cause when dependency installation fails on the retry too', async () => {
+    const p = await project(); const objects = new Map<string, string>();
+    p.env.ARTIFACTS = { put: async (key: string, value: string) => objects.set(key, value), get: async (key: string) => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)!) } : null };
+    const failing = { id: 'proc-fail', status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 1, timedOut: false, stdout: '', stderr: 'npm error code ETARGET\nnpm error ETARGET No matching version found for fake-dep@^9.9.9' }), kill: vi.fn(async () => {}) };
+    sandbox.exec.mockResolvedValue(failing); sandbox.getProcess.mockResolvedValue(failing);
+    const response = await p.call('/jobs', 'POST', { kind: 'build', files: { 'package.json': JSON.stringify({ brainhalf: { runtime: 'workers' }, scripts: { build: 'build' } }), 'src/App.tsx': 'source' } });
+    expect(response.status).toBe(202);
+    for (let i = 0; i < 6; i++) await p.object.alarm();
+    const current = p.map.get('current');
+    expect(current.status).toBe('failed');
+    expect(current.message).toContain('Installing dependencies failed (exit 1)');
+    expect(current.message).toContain('No matching version found for fake-dep@^9.9.9');
+    expect(sandbox.exec.mock.calls.filter(call => call[0][0] === 'npm' && call[0][1] === 'install')).toHaveLength(2);
+  });
   it('encrypts per-environment credentials and returns only public connection fields', async () => {
     const p = await project();
     const saved = await p.call('/integrations/resend', 'PUT', { apiKey: 're_private_key', from: 'sender@example.com', contactTo: 'owner@example.com' });

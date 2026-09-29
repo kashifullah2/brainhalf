@@ -18,6 +18,8 @@ import { bindProjectStore, getProjectSubmissionKey } from '../lib/project-store'
 import { getToken, getUser, verifyStoredSession, withWsAuthQuery } from '../lib/auth-client';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
+import GenerationChanges, { type ChangeContent } from './GenerationChanges';
+import { diffFileMaps, type FileChange } from '../lib/file-diff';
 import CommandBlock from './CommandBlock';
 import PlanBlock from './PlanBlock';
 import ToolSummary from './ToolSummary';
@@ -78,6 +80,24 @@ interface Message {
   /** When the message was created; absent for rows that carry no time. */
   timestamp?: number;
   internal?: boolean;
+  /** Per-file diff summary of the generation that produced this reply. */
+  changes?: FileChange[];
+}
+
+/**
+ * Server history stores only role/content, so locally-computed `changes`
+ * cards would vanish when an incoming snapshot is applied. Carry them over
+ * for messages whose role and content are unchanged.
+ */
+export function mergeHistoryMetadata(local: Message[], incoming: Message[]): Message[] {
+  if (local.length === 0) return incoming;
+  return incoming.map((message, index) => {
+    const prior = local[index];
+    if (prior && prior.role === message.role && prior.content === message.content && prior.changes && !message.changes) {
+      return { ...message, changes: prior.changes };
+    }
+    return message;
+  });
 }
 
 function hasVisibleAssistantContent(messages: Message[]): boolean {
@@ -391,6 +411,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const currentGenIdRef = useRef(0);
   const generationModelIdRef = useRef<string | null>(null);
   const generationTouchedFilesRef = useRef(false);
+  // File map captured when a generation starts, so completion can show the
+  // real per-file diff of what the builder changed.
+  const generationBaseRef = useRef<Record<string, string> | null>(null);
+  // Old/new contents per completed generation, keyed by the reply's
+  // timestamp. Session-only; the persisted message keeps just the stats.
+  const generationDiffContentsRef = useRef<Map<number, ChangeContent[]>>(new Map());
   const pendingSendRef = useRef<((ws: WebSocket) => void) | null>(null);
   const pendingRequestRef = useRef<PendingChatRequest | null>(null);
   const generationClockRef = useRef<GenerationClock | null>(null);
@@ -403,6 +429,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
   useEffect(() => {
     currentFilesRef.current = getProjectFiles(activeProjectId) || {};
+    generationBaseRef.current = null;
+    generationDiffContentsRef.current.clear();
   }, [activeProjectId]);
 
   // RAF throttle: pending token queue to avoid calling setMessages on every token
@@ -629,6 +657,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               aiMessageRef.current = generation.response;
               generationModelIdRef.current = generation.model;
               generationTouchedFilesRef.current = generation.filesChanged === true;
+              // Reconnecting mid-generation: the diff can only cover changes
+              // that land from this point on.
+              generationBaseRef.current ??= { ...currentFilesRef.current };
               if (MODEL_CATALOG.some(model => model.id === generation.model)) setSelectedModelId(generation.model);
               const restored: Message[] = (Array.isArray(data.data) ? data.data : []).map((message: any) => ({
                 role: message.role === 'assistant' || message.role === 'ai' ? 'ai' : 'user',
@@ -680,9 +711,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 internal: m.internal === true || m.role === 'system'
               }));
               if (shouldApplyIncomingHistory(messagesRef.current, loadedMsgs)) {
-                setMessages(loadedMsgs);
-                messagesRef.current = loadedMsgs;
-                saveProjectMessages(activeProjectId, loadedMsgs);
+                const mergedMsgs = mergeHistoryMetadata(messagesRef.current, loadedMsgs);
+                setMessages(mergedMsgs);
+                messagesRef.current = mergedMsgs;
+                saveProjectMessages(activeProjectId, mergedMsgs);
               } else {
                 if (import.meta.env.DEV) console.debug('Ignoring stale/partial history snapshot from server');
               }
@@ -810,6 +842,27 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               } else {
                 doneMsgs[doneMsgs.length - 1] = { ...doneMsgs[doneMsgs.length - 1], content: effectiveContent, timestamp: completedAt };
               }
+              const generationBase = generationBaseRef.current;
+              generationBaseRef.current = null;
+              if (generationBase && generationTouchedFilesRef.current) {
+                const changes = diffFileMaps(generationBase, currentFilesRef.current);
+                if (changes.length > 0) {
+                  const lastIndex = doneMsgs.length - 1;
+                  doneMsgs[lastIndex] = { ...doneMsgs[lastIndex], changes };
+                  const contents = generationDiffContentsRef.current;
+                  contents.set(completedAt, changes.map(change => ({
+                    path: change.path,
+                    before: generationBase[change.path] ?? '',
+                    after: currentFilesRef.current[change.path] ?? '',
+                  })));
+                  // Keep the session-only content map bounded.
+                  while (contents.size > 50) {
+                    const oldest = contents.keys().next().value;
+                    if (oldest === undefined) break;
+                    contents.delete(oldest);
+                  }
+                }
+              }
               messagesRef.current = doneMsgs;
               setMessages(doneMsgs);
 
@@ -866,6 +919,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               if (prompt) setExportPrompt({ notice: errMsg, resume: () => { if (isCurrent()) handleSendMessageRef.current?.(prompt); } });
             }
             const isRateLimited = data.code === 'rate_limited';
+            const isProviderBusy = data.code === 'provider_busy';
             if (wasGenerating && data.code !== 'hosting_unavailable' && !isRateLimited && generationModelIdRef.current) {
               recordModelOutcome(generationModelIdRef.current, 'failure', errMsg, getReliabilityScope());
               setModels(rankModelsByReliability(MODEL_CATALOG, getReliabilityScope()));
@@ -873,7 +927,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             appEvents.emit('generation-status', { status: isRateLimited ? 'Ready' : 'Error', error: isRateLimited ? undefined : errMsg, projectId: activeProjectId });
             const displayErrMsg = isRateLimited
               ? `⏳ ${errMsg}\n\nWait for one of your running apps to finish, then send your message again.`
-              : `⚠️ ${errMsg}`;
+              : isProviderBusy
+                ? `⏳ ${errMsg}\n\nThis is usually temporary — wait a few seconds and send your message again.`
+                : `⚠️ ${errMsg}`;
             const current = [...messagesRef.current];
             if (wasGenerating && current[current.length - 1]?.role === 'ai') {
               const partialContent = aiMessageRef.current.trim();
@@ -1237,11 +1293,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     const last = stoppedMsgs[stoppedMsgs.length - 1];
     if (last && last.role === 'ai') {
       const text = (aiMessageRef.current || last.content || '').trim();
+      const stoppedAt = Date.now();
       stoppedMsgs[stoppedMsgs.length - 1] = {
         ...last,
         content: text ? `${text}\n\n*[Generation stopped by user]*` : '*[Generation stopped by user]*',
-        timestamp: Date.now()
+        timestamp: stoppedAt
       };
+      // Files written before the stop are real changes — show what landed.
+      const stoppedBase = generationBaseRef.current;
+      generationBaseRef.current = null;
+      if (stoppedBase && generationTouchedFilesRef.current) {
+        const partialChanges = diffFileMaps(stoppedBase, currentFilesRef.current);
+        if (partialChanges.length > 0) {
+          stoppedMsgs[stoppedMsgs.length - 1].changes = partialChanges;
+          generationDiffContentsRef.current.set(stoppedAt, partialChanges.map(change => ({
+            path: change.path,
+            before: stoppedBase[change.path] ?? '',
+            after: currentFilesRef.current[change.path] ?? '',
+          })));
+        }
+      }
+    } else {
+      generationBaseRef.current = null;
     }
     messagesRef.current = stoppedMsgs;
     saveProjectMessages(activeProjectId, stoppedMsgs);
@@ -1410,6 +1483,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           return;
         }
         currentFilesRef.current = { ...files };
+        // Baseline for the post-generation "files changed" summary.
+        generationBaseRef.current = { ...files };
         try {
           pendingRequest.send((idempotencyKey) => {
             const reliability = getReliabilityControls(activeProjectId);
@@ -1846,6 +1921,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                             return null;
                           })}
 
+                          {msg.role === 'ai' && msg.changes && msg.changes.length > 0 && (
+                            <GenerationChanges
+                              changes={msg.changes}
+                              contents={msg.timestamp !== undefined ? generationDiffContentsRef.current.get(msg.timestamp) : undefined}
+                            />
+                          )}
                         </div>
                       );
                     })()}

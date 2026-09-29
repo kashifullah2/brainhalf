@@ -14,12 +14,13 @@ export interface ManagedDependencies {
 }
 export interface StoredUser extends Record<string, SqlStorageValue> {
   id: string; environment: ProjectEnvironment; email: string; name: string;
-  password_hash: string | null; google_sub: string | null; verified: number; disabled: number;
+  password_hash: string | null; google_sub: string | null; github_id: string | null; verified: number; disabled: number;
   role: 'user' | 'admin'; revision: number; created: number; last_login: number | null;
 }
 export const MANAGED_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS managed_settings (environment TEXT PRIMARY KEY, data TEXT NOT NULL)',
-  'CREATE TABLE IF NOT EXISTS managed_users (environment TEXT NOT NULL,id TEXT NOT NULL,email TEXT NOT NULL,name TEXT NOT NULL,password_hash TEXT,google_sub TEXT,verified INTEGER NOT NULL DEFAULT 0,disabled INTEGER NOT NULL DEFAULT 0,role TEXT NOT NULL DEFAULT \'user\',revision INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,last_login INTEGER,PRIMARY KEY(environment,id),UNIQUE(environment,email),UNIQUE(environment,google_sub))',
+  'CREATE TABLE IF NOT EXISTS managed_users (environment TEXT NOT NULL,id TEXT NOT NULL,email TEXT NOT NULL,name TEXT NOT NULL,password_hash TEXT,google_sub TEXT,github_id TEXT,verified INTEGER NOT NULL DEFAULT 0,disabled INTEGER NOT NULL DEFAULT 0,role TEXT NOT NULL DEFAULT \'user\',revision INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,last_login INTEGER,PRIMARY KEY(environment,id),UNIQUE(environment,email),UNIQUE(environment,google_sub))',
+  'CREATE UNIQUE INDEX IF NOT EXISTS managed_users_github ON managed_users(environment,github_id)',
   'CREATE TABLE IF NOT EXISTS managed_actions (hash TEXT PRIMARY KEY,environment TEXT NOT NULL,user_id TEXT NOT NULL,kind TEXT NOT NULL,expires INTEGER NOT NULL)',
   'CREATE INDEX IF NOT EXISTS managed_actions_expiry ON managed_actions(expires)',
   'CREATE TABLE IF NOT EXISTS managed_limits (key TEXT PRIMARY KEY,reset INTEGER NOT NULL,count INTEGER NOT NULL)',
@@ -27,6 +28,16 @@ export const MANAGED_SCHEMA = [
   'CREATE TABLE IF NOT EXISTS managed_emails (id TEXT PRIMARY KEY,environment TEXT NOT NULL,kind TEXT NOT NULL,recipient TEXT NOT NULL,subject TEXT NOT NULL,status TEXT NOT NULL,sealed TEXT NOT NULL,idempotency_key TEXT NOT NULL,request_hash TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,polls INTEGER NOT NULL DEFAULT 0,provider_id TEXT,next_at INTEGER,created INTEGER NOT NULL,updated INTEGER NOT NULL,error TEXT,UNIQUE(environment,idempotency_key))',
   'CREATE INDEX IF NOT EXISTS managed_emails_due ON managed_emails(next_at)',
 ];
+
+/** Runs the managed schema and upgrades databases created before the GitHub sign-in column existed. */
+export function ensureManagedSchema(sql: SqlStorage) {
+  const existing = sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name='managed_users'").toArray();
+  if (existing.length) {
+    const columns = sql.exec<{ name: string }>('PRAGMA table_info(managed_users)').toArray().map(column => column.name);
+    if (!columns.includes('github_id')) sql.exec('ALTER TABLE managed_users ADD COLUMN github_id TEXT');
+  }
+  for (const statement of MANAGED_SCHEMA) sql.exec(statement);
+}
 
 export class ManagedStore {
   constructor(readonly deps: ManagedDependencies) {}
@@ -37,7 +48,7 @@ export class ManagedStore {
   }
   saveSettings(environment: ProjectEnvironment, value: Record<string, unknown>) {
     const result = this.settings(environment);
-    for (const key of ['passwordEnabled', 'magicLinkEnabled', 'googleEnabled', 'emailEnabled', 'welcomeEnabled'] as const) {
+    for (const key of ['passwordEnabled', 'magicLinkEnabled', 'googleEnabled', 'githubEnabled', 'emailEnabled', 'welcomeEnabled'] as const) {
       if (key in value) { if (typeof value[key] !== 'boolean') throw new RuntimeError('Use true or false for enabled services.'); result[key] = value[key]; }
     }
     if ('appName' in value) {
@@ -91,14 +102,16 @@ export class ManagedStore {
   async readiness(environment: ProjectEnvironment): Promise<ProviderReadiness> {
     const settings = this.settings(environment);
     const custom = await this.deps.integration(environment);
-    let platform: ProviderReadiness = { emailReady: false, googleReady: false, ownerVerified: false, ownerEmail: '', from: '', googleCallback: '' };
+    let platform: ProviderReadiness = { emailReady: false, googleReady: false, githubReady: false, ownerVerified: false, ownerEmail: '', from: '', googleCallback: '', githubCallback: '' };
     try { platform = await this.platform<ProviderReadiness>('/config', environment); } catch { /* Show unavailable services without hiding settings or test inboxes. */ }
     return {
       ...platform,
       emailReady: settings.emailEnabled && (environment === 'development' || (settings.emailMode === 'custom' ? !!custom.resend : platform.emailReady)),
       googleReady: settings.googleEnabled && (settings.googleMode === 'custom' ? !!custom.google : platform.googleReady),
+      githubReady: settings.githubEnabled && !!custom.github,
       from: settings.emailMode === 'custom' ? custom.resend?.from || '' : platform.from,
       googleCallback: settings.googleMode === 'custom' ? this.deps.origin(environment) + '/api/auth/google/callback' : platform.googleCallback,
+      githubCallback: this.deps.origin(environment) + '/api/auth/github/callback',
     };
   }
 }

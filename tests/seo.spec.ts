@@ -55,7 +55,7 @@ test.describe('versioned theme startup before the application loads', () => {
       });
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('html')).toHaveAttribute('data-theme', scenario.expected);
-      await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', scenario.expected === 'dark' ? '#111722' : '#f8f9fc');
+      await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', scenario.expected === 'dark' ? '#0d1219' : '#f8f9fc');
     });
   }
 });
@@ -206,7 +206,7 @@ test('example previews support keyboard navigation and preserve a prompt through
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const draft = `${await prompt.inputValue()} Include supplier details.`;
   await prompt.fill(draft);
-  await page.getByRole('button', { name: 'Create app from prompt', exact: true }).click();
+  await page.getByRole('button', { name: 'Start building', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(prompt).toHaveValue(draft);
@@ -261,7 +261,7 @@ for (const theme of ['light', 'dark']) test(`${theme} mobile pages and prompt ha
   await page.screenshot({ path: `audit-artifacts/2026-09-23/seo-refresh/guide-${theme}-mobile.png`, fullPage: true });
   await page.getByRole('link', { name: 'Start building', exact: true }).click();
   await page.getByLabel('Describe your app', { exact: true }).fill('Build a weekly habit tracker');
-  await page.getByRole('button', { name: 'Create app from prompt', exact: true }).click();
+  await page.getByRole('button', { name: 'Start building', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

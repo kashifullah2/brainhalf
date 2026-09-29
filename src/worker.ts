@@ -4,7 +4,7 @@ import { handleGoogleAuth } from './lib/google-auth';
 import { handleManagedGoogle } from './lib/managed-providers';
 export { ManagedProviders } from './lib/managed-providers';
 import { handleEmailRequest } from './lib/email';
-import type { ExecutionContext } from '@cloudflare/workers-types';
+import type { Ai, ExecutionContext } from '@cloudflare/workers-types';
 import { ChatAgent } from './agent';
 import { AuthRegistry } from './registry';
 import { handleModelTest } from './lib/model-tester';
@@ -34,8 +34,22 @@ import { createTenantRequest } from './lib/tenant-request';
 import { checkPreviewAccess, isPublicPreviewRead, PREVIEW_ACCESS_HEADER } from './lib/project-access';
 import { validSessionSecret } from './lib/runtime-config';
 import { isolatedPreviewHtml, previewFiles, previewSecurityHeaders } from './lib/preview-isolation';
+import type { BindingFetcher, DispatchBinding, DurableBinding } from './lib/bindings';
 
 export { ChatAgent, AuthRegistry };
+
+/** Bindings declared in wrangler.toml. The index signature covers plain vars. */
+export interface PlatformEnv {
+  ChatAgent: DurableBinding;
+  REGISTRY: DurableBinding;
+  ASSETS: BindingFetcher;
+  DISPATCHER: DispatchBinding;
+  RUNTIME: BindingFetcher;
+  AI: Ai;
+  CONTACT_EMAIL?: string;
+  PRODUCT_METRICS_OWNER_IDS?: string;
+  [key: string]: unknown;
+}
 
 const AUTH_ROUTES = new Set([
   '/api/auth/signup',
@@ -59,10 +73,15 @@ const CORS_PREFIXES = ['/api/', '/agents/', '/preview/', '/p/'];
 const RATE_LIMIT_CONFIG = {
   modelTest: { limit: 20, windowMs: 60_000 },
   auth: { limit: 10, windowMs: 60_000 },
+  // Preview reads are per IP+project: a single page load costs ~2 requests
+  // (HTML + file snapshot), so 120/min leaves generous headroom for reload
+  // loops while still stopping scrape/refresh abuse. Writes are tighter.
+  previewRead: { limit: 120, windowMs: 60_000 },
+  previewWrite: { limit: 30, windowMs: 60_000 },
 } as const;
 
 async function checkRateLimit(
-  env: any,
+  env: PlatformEnv,
   bucket: keyof typeof RATE_LIMIT_CONFIG,
   key: string
 ): Promise<{ ok: boolean; retryAfter: number; unavailable?: boolean }> {
@@ -94,6 +113,22 @@ function tooManyRequests(retryAfter: number): Response {
     status: 429,
     headers: { 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) },
   });
+}
+
+/**
+ * Rate limit for preview traffic. Unlike auth/modelTest, previews fail OPEN
+ * when the limiter itself is unavailable — rate limiting is abuse protection,
+ * not a reason to take every preview offline during a registry hiccup.
+ */
+async function checkPreviewRateLimit(env: PlatformEnv, request: Request, agentId: string): Promise<Response | null> {
+  const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
+  const rate = await checkRateLimit(env, isWrite ? 'previewWrite' : 'previewRead', `${clientKey(request)}:${agentId}`);
+  if (rate.ok) return null;
+  if (rate.unavailable) {
+    console.warn(`Preview rate-limit service unavailable; allowing ${request.method} for project ${agentId}`);
+    return null;
+  }
+  return tooManyRequests(rate.retryAfter);
 }
 
 /** Best-effort client identity for rate limiting before a session is known. */
@@ -174,13 +209,13 @@ function previewDenied(status: number): Response {
 export function shellSecurityHeaders(): Record<string, string> {
   const csp = [
     `default-src 'none'`,
-    `script-src 'self' 'unsafe-eval' data: blob: https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com`,
+    `script-src 'self' 'unsafe-eval' data: blob: https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net`,
     `img-src 'self' data: https: blob:`,
     `font-src 'self' data: https://fonts.gstatic.com`,
-    `connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com`,
+    `connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.adtrafficquality.google`,
     `worker-src 'self' blob:`,
-    `frame-src 'self' https://*.apps.brainhalf.com`,
+    `frame-src 'self' https://*.apps.brainhalf.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://securepubads.g.doubleclick.net`,
     `manifest-src 'self'`,
     `frame-ancestors 'none'`,
     `form-action 'self'`,
@@ -212,8 +247,21 @@ function withShellSecurity(response: Response, privateSearch = false): Response 
 }
 
 export default {
-  async fetch(request: Request, env: any, _ctx: ExecutionContext) {
+  async fetch(request: Request, env: PlatformEnv, _ctx: ExecutionContext) {
     const url = new URL(request.url);
+    // Canonical host consolidation: Google indexed www.brainhalf.com as a
+    // duplicate of the apex (splitting ranking signals across hosts), so the
+    // www host permanently redirects before any other handling.
+    if (url.hostname === 'www.brainhalf.com') {
+      url.hostname = 'brainhalf.com';
+      return Response.redirect(url.toString(), 301);
+    }
+    // Sign-in is a modal on the landing page, never a route. The URL picked up
+    // indexed impressions anyway (navigational "brainhalf sign in" queries), so
+    // redirect it to the homepage instead of leaving a soft 404 in the index.
+    if (url.pathname === '/sign-in' || url.pathname === '/login') {
+      return Response.redirect(`${url.origin}/`, 301);
+    }
     const privateSearch = isPrivateSearch(url.search);
     const origin = request.headers.get('origin');
     const untrustedOrigin = (origin !== null && !isAllowedOrigin(origin)) || request.headers.get('sec-fetch-site') === 'cross-site';
@@ -404,6 +452,69 @@ export default {
       }
     }
 
+    // Public gallery listing — no session; the registry only returns showcased apps.
+    if (url.pathname === '/api/gallery' && request.method === 'GET') {
+      try {
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/gallery');
+        const listing = new Response(response.body, response);
+        listing.headers.set('Cache-Control', 'public, max-age=60');
+        return withCors(listing, origin);
+      } catch { return withCors(jsonError('The gallery is temporarily unavailable', 502), origin); }
+    }
+
+    const showcaseMatch = url.pathname.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/showcase$/);
+    if (showcaseMatch) {
+      if (request.method !== 'GET' && request.method !== 'PUT') return withCors(jsonError('Method not allowed', 405), origin);
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      const query = new URLSearchParams({ projectId: showcaseMatch[1], userId: user.userId });
+      try {
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/projects/showcase?${query}`, {
+          method: request.method,
+          headers: { 'Content-Type': 'application/json' },
+          body: request.method === 'PUT' ? JSON.stringify(await request.json()) : undefined,
+        });
+        return withCors(response, origin);
+      } catch (error) {
+        if (error instanceof SyntaxError) return withCors(jsonError('Invalid JSON', 400), origin);
+        return withCors(jsonError('Showcase update failed', 502), origin);
+      }
+    }
+
+    // Remix a gallery app: the registry creates the caller's project and counts
+    // the remix, then the source agent's public files are copied into it.
+    const remixMatch = url.pathname.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/remix$/);
+    if (remixMatch && request.method === 'POST') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      const sourceId = remixMatch[1];
+      try {
+        const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
+        const created = await registry.fetch('https://registry/projects/remix', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.userId, sourceProjectId: sourceId }),
+        });
+        if (!created.ok) return withCors(created, origin);
+        const { projectId, name } = await created.json() as { projectId: string; name: string };
+        const exportResponse = await env.ChatAgent.get(env.ChatAgent.idFromName(sourceId))
+          .fetch(new Request('https://agent/internal/remix-export', { headers: { 'x-bh-project': sourceId } }));
+        if (!exportResponse.ok) throw new Error(`Remix export failed: ${exportResponse.status}`);
+        const imported = await env.ChatAgent.get(env.ChatAgent.idFromName(projectId))
+          .fetch(injectUserId(new Request('https://agent/internal/remix-import', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-bh-project': projectId }, body: await exportResponse.text(),
+          }), user.userId));
+        if (!imported.ok) {
+          // Best-effort cleanup so a failed copy never leaves a broken project behind.
+          await registry.fetch(`https://registry/projects/${encodeURIComponent(projectId)}?userId=${encodeURIComponent(user.userId)}`, { method: 'DELETE' }).catch(() => {});
+          throw new Error(`Remix import failed: ${imported.status}`);
+        }
+        return withCors(Response.json({ projectId, name }), origin);
+      } catch (error) {
+        console.error('Remix failed:', error);
+        return withCors(jsonError('Remix could not be completed. Please try again.', 502), origin);
+      }
+    }
+
     const publicationMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/publication$/);
     if (publicationMatch) {
       if (request.method !== 'GET' && request.method !== 'PUT') return withCors(jsonError('Method not allowed', 405), origin);
@@ -493,6 +604,8 @@ export default {
         const user = untrustedOrigin ? null : await verifyPreviewSession(request, env);
         const access = await checkPreviewAccess(env, scriptName, user?.userId, request.method, subPath, 'deployment');
         if (!access.ok) return withCors(previewDenied(access.status), origin);
+        const limited = await checkPreviewRateLimit(env, request, scriptName);
+        if (limited) return withCors(limited, origin);
 
         if (env.DISPATCHER) {
           try {
@@ -533,6 +646,8 @@ export default {
         const subPath = url.pathname.slice(match[0].length) || '/';
         const access = await checkPreviewAccess(env, agentId, user?.userId, request.method, subPath);
         if (!access.ok) return withCors(previewDenied(access.status), origin);
+        const limited = await checkPreviewRateLimit(env, request, agentId);
+        if (limited) return withCors(limited, origin);
 
         const id = env.ChatAgent.idFromName(agentId);
         const obj = env.ChatAgent.get(id);
@@ -556,21 +671,24 @@ export default {
       onBeforeConnect: async (req, route) => {
         // The upgrade URL is the only place a browser can carry credentials for
         // a WebSocket. A single-use ticket keeps the 30-day session token out of
-        // URLs — and therefore out of logs and sampled traces. The `?token=`
-        // path stays as a fallback so a client predating the ticket still
-        // connects; both resolve to a user id before any ownership check.
+        // URLs — and therefore out of logs and sampled traces. Without a ticket,
+        // only the session cookie (or an Authorization header) authenticates;
+        // `?token=` is stripped here so the long-lived token can never ride in
+        // a URL, even from an outdated or tampered client.
         const ticket = extractWsTicket(req);
         const identity = ticket ? await redeemWsIdentity(env, ticket) : null;
         let userId = identity?.userId ?? null;
         let sessionHash = identity?.sessionHash ?? null;
         if (!userId) {
-          userId = (await verifySession(req, env))?.userId ?? null;
-          if (userId) sessionHash = await sha256Hex(extractToken(req)!);
+          const sanitizedUrl = new URL(req.url);
+          sanitizedUrl.searchParams.delete('token');
+          const sanitized = new Request(sanitizedUrl.toString(), req);
+          userId = (await verifySession(sanitized, env))?.userId ?? null;
+          if (userId) sessionHash = await sha256Hex(extractToken(sanitized)!);
         }
         if (!userId || !sessionHash || !/^[a-f0-9]{64}$/.test(sessionHash)) return unauthorized('Sign in to connect');
         const claim = await authorizeOrClaim(env, route.name, userId, req.url);
         if (!claim.ok) {
-          console.warn(`[DEBUG] authorizeOrClaim failed for ${route.name}. Status: ${claim.status}`);
           if (claim.status === 409) return injectUserId(req, 'QUOTA_EXCEEDED');
           return injectUserId(req, 'FORBIDDEN');
         }
@@ -607,6 +725,8 @@ export default {
         const user = await verifyPreviewSession(request, env);
         const access = await checkPreviewAccess(env, agentId, user?.userId, request.method, url.pathname);
         if (!access.ok) return withCors(previewDenied(access.status), origin);
+        const limited = await checkPreviewRateLimit(env, request, agentId);
+        if (limited) return withCors(limited, origin);
         const id = env.ChatAgent.idFromName(agentId);
         const obj = env.ChatAgent.get(id);
         const targetUrl = new URL(request.url);
@@ -644,7 +764,7 @@ export default {
  * false when the project belongs to someone else (or the Registry is down —
  * fail closed).
  */
-async function authorizeOrClaim(env: any, projectId: string, userId: string, requestUrl: string): Promise<{ ok: boolean; status: number }> {
+async function authorizeOrClaim(env: PlatformEnv, projectId: string, userId: string, requestUrl: string): Promise<{ ok: boolean; status: number }> {
   if (!projectId || !userId) return { ok: false, status: 400 };
   let name: string | undefined;
   let idempotencyKey: string | undefined;
@@ -655,9 +775,7 @@ async function authorizeOrClaim(env: any, projectId: string, userId: string, req
     /* a malformed URL just means no display name */
   }
   try {
-    const result = await authorizeProject(env, projectId, userId, name, idempotencyKey);
-    console.warn(`[DEBUG] authorizeProject returned: ${JSON.stringify(result)}`);
-    return result;
+    return await authorizeProject(env, projectId, userId, name, idempotencyKey);
   } catch (err) {
     // Fail closed: a Registry outage must not become an authorization bypass.
     console.error('authorizeProject failed; denying access:', err);

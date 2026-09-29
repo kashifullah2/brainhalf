@@ -151,6 +151,12 @@ export class AuthRegistry {
     if (!columns.some(column => column.name === 'published')) {
       sql.exec('ALTER TABLE project_owners ADD COLUMN published INTEGER NOT NULL DEFAULT 0');
     }
+    if (!columns.some(column => column.name === 'showcase')) {
+      sql.exec('ALTER TABLE project_owners ADD COLUMN showcase INTEGER NOT NULL DEFAULT 0');
+      sql.exec('ALTER TABLE project_owners ADD COLUMN showcase_description TEXT NOT NULL DEFAULT \'\'');
+      sql.exec('ALTER TABLE project_owners ADD COLUMN remix_count INTEGER NOT NULL DEFAULT 0');
+      sql.exec('ALTER TABLE project_owners ADD COLUMN showcased_at INTEGER');
+    }
     sql.exec(
       `CREATE TABLE IF NOT EXISTS project_claim_idempotency (
         user_id TEXT NOT NULL,
@@ -673,6 +679,77 @@ export class AuthRegistry {
           this.sql.exec('UPDATE project_owners SET published = ?, updated_at = ? WHERE project_id = ?', body!.published ? 1 : 0, Date.now(), projectId as string);
         }
         return this.json(200, { published: method === 'PUT' ? body!.published : rows[0].published === 1 });
+      }
+
+      // Public showcase gallery. No session: listings contain only what an owner
+      // explicitly published to the gallery — never private project data.
+      if (path === '/gallery' && method === 'GET') {
+        const rows = this.sql.exec(
+          'SELECT project_id, name, showcase_description, remix_count, showcased_at FROM project_owners WHERE showcase = 1 AND deleted_at IS NULL ORDER BY showcased_at DESC LIMIT 60'
+        ).toArray() as Array<{ project_id: string; name: string; showcase_description: string; remix_count: number; showcased_at: number | null }>;
+        return this.json(200, {
+          apps: rows.map((row) => ({
+            id: row.project_id,
+            name: row.name,
+            description: row.showcase_description,
+            remixCount: row.remix_count,
+            showcasedAt: row.showcased_at,
+          })),
+        });
+      }
+
+      if (path === '/projects/showcase' && (method === 'GET' || method === 'PUT')) {
+        const body = method === 'PUT' ? await json<{ showcase?: boolean; description?: string }>() : null;
+        const projectId = url.searchParams.get('projectId');
+        const userId = url.searchParams.get('userId');
+        if (!isValidProjectId(projectId) || !userId) return this.json(400, { error: 'Invalid request' });
+        const rows = this.sql.exec(
+          'SELECT user_id, deleted_at, published, showcase, showcase_description, remix_count FROM project_owners WHERE project_id = ?', projectId as string
+        ).toArray() as Array<{ user_id: string; deleted_at: number | null; published: number; showcase: number; showcase_description: string; remix_count: number }>;
+        if (!rows.length || rows[0].deleted_at != null) return this.json(404, { error: 'Project not found' });
+        if (rows[0].user_id !== userId) return this.json(403, { error: 'Not the project owner' });
+        if (method === 'PUT') {
+          if (typeof body?.showcase !== 'boolean') return this.json(400, { error: 'Expected a showcase boolean' });
+          const description = typeof body.description === 'string' ? body.description.trim().slice(0, 280) : rows[0].showcase_description;
+          if (body.showcase && rows[0].published !== 1) return this.json(409, { error: 'Publish your app first — the gallery links to the live app.' });
+          this.sql.exec(
+            'UPDATE project_owners SET showcase = ?, showcase_description = ?, showcased_at = CASE WHEN ? = 1 AND showcased_at IS NULL THEN ? ELSE showcased_at END, updated_at = ? WHERE project_id = ?',
+            body.showcase ? 1 : 0, description, body.showcase ? 1 : 0, Date.now(), Date.now(), projectId as string
+          );
+        }
+        const current = this.sql.exec('SELECT showcase, showcase_description, remix_count FROM project_owners WHERE project_id = ?', projectId as string).toArray() as Array<{ showcase: number; showcase_description: string; remix_count: number }>;
+        return this.json(200, { showcase: current[0].showcase === 1, description: current[0].showcase_description, remixCount: current[0].remix_count });
+      }
+
+      // Read-only public-listing flag. The agent export endpoint authorizes remixes
+      // against this instead of trusting the caller.
+      if (path === '/projects/showcase-status' && method === 'GET') {
+        const projectId = url.searchParams.get('projectId');
+        if (!isValidProjectId(projectId)) return this.json(400, { error: 'Invalid request' });
+        const rows = this.sql.exec('SELECT showcase FROM project_owners WHERE project_id = ? AND deleted_at IS NULL', projectId as string).toArray() as Array<{ showcase: number }>;
+        return this.json(200, { showcase: rows.length > 0 && rows[0].showcase === 1 });
+      }
+
+      // Remix: atomically create the caller's copy and count it on the source.
+      // Files are copied by the Worker between the two project agents afterwards.
+      if (path === '/projects/remix' && method === 'POST') {
+        const body = await json<{ userId?: string; sourceProjectId?: string }>();
+        if (!body || !body.userId || !isValidProjectId(body.sourceProjectId)) return this.json(400, { error: 'Invalid request' });
+        const source = this.sql.exec(
+          'SELECT user_id, name, showcase FROM project_owners WHERE project_id = ? AND deleted_at IS NULL', body.sourceProjectId as string
+        ).toArray() as Array<{ user_id: string; name: string; showcase: number }>;
+        if (!source.length || source[0].showcase !== 1) return this.json(404, { error: 'This app is not listed in the gallery' });
+        const live = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', body.userId).toArray()[0]?.total || 0);
+        if (live >= MAX_PROJECT_ROWS_PER_USER) return this.json(409, { error: 'You have reached the project limit. Delete a project to make room.' });
+        const projectId = crypto.randomUUID();
+        const name = `${source[0].name.replace(/ \(remix\)$/u, '').slice(0, 112)} (remix)`;
+        const now = Date.now();
+        this.sql.exec(
+          'INSERT INTO project_owners (project_id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          projectId, body.userId, name, now, now
+        );
+        this.sql.exec('UPDATE project_owners SET remix_count = remix_count + 1 WHERE project_id = ?', body.sourceProjectId as string);
+        return this.json(201, { projectId, name });
       }
 
       // Read-only ownership check (no claim). Used by preview/static-asset paths

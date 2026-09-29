@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldApplyIncomingHistory } from '../components/ChatPanel';
+import { mergeHistoryMetadata, shouldApplyIncomingHistory } from '../components/ChatPanel';
 import { EMPTY_RESPONSE_MESSAGE } from '../lib/assistant-response';
 
 describe('Chat history merge guards', () => {
@@ -107,5 +107,40 @@ describe('Chat history merge guards', () => {
     ];
     const incoming = local.map((message, index) => index === 3 ? { ...message, content: '' } : message);
     expect(shouldApplyIncomingHistory(local, incoming)).toBe(false);
+  });
+});
+
+describe('mergeHistoryMetadata', () => {
+  const changes = [{ path: 'src/App.tsx', kind: 'modified' as const, added: 3, removed: 1 }];
+
+  it('carries generation changes onto matching incoming messages', () => {
+    const local = [
+      { role: 'user' as const, content: 'Build app' },
+      { role: 'ai' as const, content: 'Done', timestamp: 10, changes },
+    ];
+    const incoming = [
+      { role: 'user' as const, content: 'Build app' },
+      { role: 'ai' as const, content: 'Done' },
+    ];
+    const merged = mergeHistoryMetadata(local, incoming);
+    expect(merged[1].changes).toEqual(changes);
+  });
+
+  it('does not attach changes when content differs', () => {
+    const local = [{ role: 'ai' as const, content: 'Old', changes }];
+    const incoming = [{ role: 'ai' as const, content: 'New' }];
+    expect(mergeHistoryMetadata(local, incoming)[0].changes).toBeUndefined();
+  });
+
+  it('never overwrites incoming changes', () => {
+    const newer = [{ path: 'src/B.tsx', kind: 'added' as const, added: 5, removed: 0 }];
+    const local = [{ role: 'ai' as const, content: 'Done', changes }];
+    const incoming = [{ role: 'ai' as const, content: 'Done', changes: newer }];
+    expect(mergeHistoryMetadata(local, incoming)[0].changes).toEqual(newer);
+  });
+
+  it('returns incoming unchanged when there is no local history', () => {
+    const incoming = [{ role: 'ai' as const, content: 'Hi' }];
+    expect(mergeHistoryMetadata([], incoming)).toBe(incoming);
   });
 });

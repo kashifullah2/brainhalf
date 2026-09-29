@@ -1,12 +1,9 @@
 import { BUSINESS_APPS } from '../lib/business-apps';
-import ThemeToggle from './ThemeToggle';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowRight,
-  ChevronDown,
   Plus,
   ArrowUpRight,
-  LogOut,
   BarChart3,
   LayoutGrid,
   ShoppingCart,
@@ -19,6 +16,7 @@ import {
 import { BrainHalfLogo } from './BrainHalfLogo';
 import LandingFooter from './LandingFooter';
 import LandingShowcase from './LandingShowcase';
+import SiteHeaderActions from './SiteHeaderActions';
 import { HOME_FAQS, HOME_MODIFIED, formatContentDate } from '../seo/content';
 import './LandingPage.css';
 import './PublicPage.css';
@@ -50,11 +48,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenDashboard,
 }) => {
   const [promptText, setPromptText] = useState('');
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  const userMenuRef = useRef<HTMLDivElement>(null);
-  const userMenuButtonRef = useRef<HTMLButtonElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
@@ -66,27 +61,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   }, [promptText]);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setShowUserMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (showUserMenu) {
-        setShowUserMenu(false);
-        userMenuButtonRef.current?.focus();
-      }
       if (showMobileMenu) setShowMobileMenu(false);
     };
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [showUserMenu, showMobileMenu]);
+  }, [showMobileMenu]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -127,10 +108,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     focusComposer();
   };
 
-  const userInitial = (currentUser?.name || currentUser?.email || 'U')
-    .trim()[0]
-    .toUpperCase();
-
   return (
     <div className="landing-container">
       <a className="studio-skip-link" href="#main-content">Skip to content</a>
@@ -153,6 +130,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         <nav className="studio-navigation" aria-label="Main navigation">
           <a href="#possibilities">Examples</a>
+          <a href="/gallery">Gallery</a>
           <a href="#how-it-works">How it works</a>
           <a href="#questions">FAQs</a>
         </nav>
@@ -168,67 +146,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           >
             {showMobileMenu ? <X size={20} /> : <Menu size={20} />}
           </button>
-          {currentUser && <button className="landing-get-started-btn landing-dashboard-btn" onClick={onOpenDashboard}>Dashboard <ArrowRight size={14} /></button>}
-          <ThemeToggle />
-          {currentUser ? (
-            <div className="landing-user-menu-anchor" ref={userMenuRef}>
-              <button
-                ref={userMenuButtonRef}
-                type="button"
-                className="landing-user-menu-trigger"
-                onClick={() => setShowUserMenu(prev => !prev)}
-                title={currentUser?.email || 'User Profile'}
-                aria-label="User profile and menu"
-                aria-haspopup="menu"
-                aria-expanded={showUserMenu}
-              >
-                <span className="landing-user-avatar" aria-hidden="true">{userInitial}</span>
-                <span className="landing-user-menu-email">{currentUser?.email || 'user@brainhalf.com'}</span>
-                <ChevronDown size={13} className="landing-user-menu-chevron" aria-hidden="true" />
-              </button>
-
-              {showUserMenu && (
-                <div className="landing-user-dropdown" role="menu" aria-label="User menu">
-                  <div className="landing-user-dropdown-info" role="presentation">
-                    <p className="user-email">{currentUser?.email || 'user@brainhalf.com'}</p>
-                  </div>
-                  <hr className="landing-dropdown-divider" />
-                  {onLogout && (
-                    <button
-                      type="button"
-                      className="landing-dropdown-item"
-                      role="menuitem"
-                      onClick={() => {
-                        setShowUserMenu(false);
-                        onLogout();
-                      }}
-                    >
-                      <LogOut size={14} />
-                      <span>Sign out</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="landing-auth-buttons">
-              <button
-                type="button"
-                className="landing-signin-btn"
-                onClick={() => onLoginRequest?.('login')}
-              >
-                Sign in
-              </button>
-              <button
-                type="button"
-                className="landing-get-started-btn"
-                onClick={() => onLoginRequest?.('signup')}
-              >
-                <span>Get Started</span>
-                <ArrowRight size={13} />
-              </button>
-            </div>
-          )}
+          <SiteHeaderActions
+            currentUser={currentUser ?? null}
+            onLogout={onLogout}
+            onOpenDashboard={onOpenDashboard}
+            onAuthRequest={onLoginRequest}
+          />
         </div>
       </header>
 
@@ -237,8 +160,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="landing-mobile-nav" id="mobile-nav" ref={mobileMenuRef} role="dialog" aria-label="Navigation menu">
           <nav aria-label="Mobile navigation">
             <a href="#possibilities" onClick={() => setShowMobileMenu(false)}>Examples</a>
+            <a href="/gallery">Gallery</a>
             <a href="#how-it-works" onClick={() => setShowMobileMenu(false)}>How it works</a>
             <a href="#questions" onClick={() => setShowMobileMenu(false)}>FAQs</a>
+            <a href="/guides/build-an-app-with-ai">Build guide</a>
+            <a href="/about">About</a>
           </nav>
         </div>
       )}
@@ -269,8 +195,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   type="submit"
                   className="landing-submit-btn"
                   disabled={!promptText.trim() || creatingProject}
-                  title="Create app from prompt (Enter)"
-                  aria-label="Create app from prompt"
+                  title="Start building (Enter)"
                 >
                   <span>{creatingProject ? 'Creating…' : 'Start building'}</span><ArrowRight size={16} aria-hidden="true" />
                 </button>
@@ -318,6 +243,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <a href="/guides/build-an-app-with-ai" className="landing-guide-link">How to build an app with AI</a>
         </section>
 
+        <section className="studio-proof-section" aria-labelledby="proof-heading">
+          <div className="studio-proof-intro">
+            <p className="studio-section-label">THE NETWORK UNDER YOUR APP</p>
+            <h2 id="proof-heading">Fast for everyone who opens it.</h2>
+            <p>Published apps run on Cloudflare's global edge network, the same infrastructure BrainHalf itself is served from.</p>
+          </div>
+          <div className="studio-proof-grid">
+            <div className="studio-proof-stat">
+              <strong>~50 ms</strong>
+              <span>from 95% of the world's Internet-connected population</span>
+            </div>
+            <div className="studio-proof-stat">
+              <strong>300+</strong>
+              <span>cities serving your published app, close to every visitor</span>
+            </div>
+            <div className="studio-proof-stat">
+              <strong>1</strong>
+              <span>isolated database per app — your records are never mixed with another project's</span>
+            </div>
+          </div>
+          <p className="studio-proof-source">Network figures: <a href="https://www.cloudflare.com/network/" target="_blank" rel="noopener noreferrer">Cloudflare's global network <ArrowUpRight size={12} aria-hidden="true" /></a></p>
+        </section>
+
         <section className="studio-faq-section" id="questions" aria-labelledby="faq-heading">
           <div>
             <p className="studio-section-label">GOOD TO KNOW</p>
@@ -333,6 +281,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             ))}
           </div>
         </section>
+
+        <nav className="landing-usecase-links" aria-label="Build guides by use case">
+          <span>Start from a guide</span>
+          <a href="/use-cases/ai-inventory-app-builder">Inventory apps</a>
+          <a href="/use-cases/book-inventory-app-builder">Book inventory</a>
+          <a href="/use-cases/warehouse-inventory-app-builder">Warehouse stock control</a>
+          <a href="/use-cases/equipment-asset-inventory-app-builder">Equipment &amp; assets</a>
+          <a href="/use-cases/personal-inventory-app-builder">Personal inventory</a>
+          <a href="/use-cases/ai-dashboard-builder">Dashboards</a>
+          <a href="/use-cases/customer-dashboard-builder">Customer portals</a>
+          <a href="/use-cases/ai-website-builder">Websites</a>
+        </nav>
 
         <section className="studio-closing" aria-labelledby="closing-heading">
           <div>

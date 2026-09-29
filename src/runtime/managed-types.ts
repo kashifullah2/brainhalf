@@ -7,6 +7,7 @@ export interface ManagedSettings {
   passwordEnabled: boolean;
   magicLinkEnabled: boolean;
   googleEnabled: boolean;
+  githubEnabled: boolean;
   emailEnabled: boolean;
   welcomeEnabled: boolean;
   googleMode: 'managed' | 'custom';
@@ -17,8 +18,8 @@ export interface ManagedUser {
   role: 'user' | 'admin'; createdAt: number; lastLoginAt: number | null;
 }
 export interface ProviderReadiness {
-  emailReady: boolean; googleReady: boolean; ownerVerified: boolean;
-  ownerEmail: string; from: string; googleCallback: string;
+  emailReady: boolean; googleReady: boolean; githubReady: boolean; ownerVerified: boolean;
+  ownerEmail: string; from: string; googleCallback: string; githubCallback: string;
 }
 export type EmailState = 'captured' | 'queued' | 'sending' | 'sent' | 'delivered' | 'bounced' | 'failed';
 export interface ManagedMessage {
@@ -34,6 +35,6 @@ export interface ManagedStatus {
 
 export const MANAGED_DEFAULTS: ManagedSettings = {
   appName: 'My app', passwordEnabled: true, magicLinkEnabled: true,
-  googleEnabled: true, emailEnabled: true, welcomeEnabled: false,
+  googleEnabled: true, githubEnabled: false, emailEnabled: true, welcomeEnabled: false,
   googleMode: 'managed', emailMode: 'managed',
 };

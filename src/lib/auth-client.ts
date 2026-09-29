@@ -294,12 +294,9 @@ export async function projectPublication(projectId: string, signal: AbortSignal,
  * is deleted on use, so a value captured from a URL, a log, or a sampled trace
  * is already worthless. The 30-day session token never enters a URL.
  *
- * If the ticket endpoint is unreachable (e.g. the Registry DO hasn't migrated
- * yet), the session token is used as a fallback so the connection can still be
- * established. The server's `onBeforeConnect` already accepts both `?ticket=`
- * and `?token=` — see worker.ts line ~400.
- *
- * Returns the URL unmodified only when *no* credential is available at all.
+ * If the ticket endpoint is unreachable, the URL is returned unmodified: the
+ * same-origin session cookie rides with the upgrade automatically. There is no
+ * `?token=` fallback — the long-lived token must never appear in a URL.
  */
 export async function withWsAuthQuery(wsUrl: string): Promise<string> {
   const revision = sessionRevision;
@@ -310,12 +307,6 @@ export async function withWsAuthQuery(wsUrl: string): Promise<string> {
   if (revision !== sessionRevision || originalToken !== getToken()) throw new Error('Session changed while connecting');
   if (ticket) {
     return `${wsUrl}${separator}ticket=${encodeURIComponent(ticket)}`;
-  }
-  // Fallback: use the session token so the connection doesn't fail entirely.
-  // The server's verifySession path still accepts this via cookie/query.
-  const token = getToken();
-  if (token) {
-    return `${wsUrl}${separator}token=${encodeURIComponent(token)}`;
   }
   return wsUrl;
 }

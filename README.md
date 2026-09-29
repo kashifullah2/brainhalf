@@ -28,7 +28,7 @@ BrainHalf is an AI engineering workspace where you describe what you want to bui
 - Click-to-edit inspect mode — click any element in the design preview to pre-fill the chat with an edit prompt
 - Right-click context menu in design preview — change text, style, color, or remove elements
 - One-click **Undo** button in Code toolbar after every AI generation (restores to pre-generation checkpoint)
-- ZIP export, GitHub auto-sync with session PAT, and Publish to production
+- ZIP export, two-way GitHub sync (export, auto-sync, and import with `owner/repo` support) using a session-only PAT, and Publish to production
 
 ### Preview
 - **Design preview**: isolated sandboxed iframe via `/preview/{projectId}/index.html` — Sucrase JSX/TSX transpilation on the edge, dual-MIME CSS serving, in-browser React runtime
@@ -109,7 +109,7 @@ brainhalf/
 │   ├── lib/
 │   │   ├── automatic-backend.ts  # Live app preview ticket + CHIPS cookie lifecycle
 │   │   ├── automatic-build-fix.ts # Auto-fix TypeScript errors after build failures
-│   │   ├── github-export.ts      # GitHub tree-based commit export
+│   │   ├── github-export.ts      # GitHub tree-based commit export + repository import
 │   │   ├── preview-isolation.ts  # Preview sandbox config and file filtering
 │   │   ├── project-store.ts      # IndexedDB/localStorage project file persistence
 │   │   ├── source-history.ts     # SourceHistory class + SourceCheckpoint schema

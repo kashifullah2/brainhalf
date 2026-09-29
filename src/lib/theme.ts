@@ -11,7 +11,7 @@ function savedTheme(): Theme | null {
 function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#111722' : '#f8f9fc');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0d1219' : '#f8f9fc');
   window.dispatchEvent(new Event(EVENT));
 }
 

@@ -9,7 +9,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const files = { 'package.json': '{"scripts":{"build":"vite build"}}' };
-const ready = { emailReady: true, googleReady: true, ownerVerified: true, ownerEmail: 'owner@example.com', from: 'sender@example.com', googleCallback: 'https://example.com/callback' };
+const ready = { emailReady: true, googleReady: true, githubReady: true, ownerVerified: true, ownerEmail: 'owner@example.com', from: 'sender@example.com', googleCallback: 'https://example.com/callback', githubCallback: 'https://example.com/github/callback' };
 
 describe('Publication readiness', () => {
   it('recognizes static builds and complete Workers apps', () => {
@@ -30,6 +30,7 @@ describe('Publication readiness', () => {
     expect(() => assertProductionServices(MANAGED_DEFAULTS, ready)).not.toThrow();
     expect(() => assertProductionServices(MANAGED_DEFAULTS, { ...ready, ownerVerified: false })).toThrow('Verify your BrainHalf');
     expect(() => assertProductionServices(MANAGED_DEFAULTS, { ...ready, googleReady: false })).toThrow('Google sign-in');
+    expect(() => assertProductionServices({ ...MANAGED_DEFAULTS, githubEnabled: true }, { ...ready, githubReady: false })).toThrow('GitHub sign-in');
     expect(() => assertProductionServices({ ...MANAGED_DEFAULTS, emailEnabled: false }, { ...ready, emailReady: false })).toThrow('Password signup');
     expect(() => assertProductionServices({ ...MANAGED_DEFAULTS, emailEnabled: false, googleEnabled: false, magicLinkEnabled: false, passwordEnabled: false, welcomeEnabled: false }, { ...ready, emailReady: false, googleReady: false, ownerVerified: false })).not.toThrow();
   });

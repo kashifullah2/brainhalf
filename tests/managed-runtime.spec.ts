@@ -29,7 +29,12 @@ async function reopenBackend(page: Page) {
     await store.idbSet('files', id, files);
   }, { id: lifecycleProjects[0].id, files: backendFiles });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByText('Design preview', { exact: true })).toBeVisible();
+  // With a ready backend the strip flips from "Design preview" to
+  // "Live app preview" as soon as the embed ticket resolves — either proves
+  // the workspace finished loading.
+  await expect(
+    page.getByText('Design preview', { exact: true }).or(page.getByText('Live app preview', { exact: true }))
+  ).toBeVisible();
 }
 
 test('reopened backend starts one development preview using saved source', async ({ page }) => {
@@ -59,7 +64,9 @@ test('reopened backend starts one development preview using saved source', async
 
 for (const action of ['toolbar', 'button', 'blocked', 'switch'] as const) test(`managed preview opening handles ${action}`, async ({ page, context }) => {
   await setupLifecycle(page);
-  let ticketRequests = 0;
+  // The embedded live preview keeps its own auto-refreshing ticket; only
+  // non-embed tickets come from the user clicking an open button.
+  let openTickets = 0;
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   const target = 'https://managed-preview.example.test/__brainhalf/open?ticket=test-only';
@@ -67,7 +74,9 @@ for (const action of ['toolbar', 'button', 'blocked', 'switch'] as const) test(`
   await page.route('**/api/projects/*/runtime/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/preview-ticket')) {
-      ticketRequests++;
+      const body = route.request().postDataJSON() as { embed?: boolean } | null;
+      if (body?.embed) return route.fulfill({ json: { url: target } });
+      openTickets++;
       expect(url.searchParams.get('environment')).toBe('development');
       expect(url.pathname).toContain(lifecycleProjects[0].id);
       expect(route.request().method()).toBe('POST');
@@ -77,20 +86,20 @@ for (const action of ['toolbar', 'button', 'blocked', 'switch'] as const) test(`
     return route.fulfill({ json: previewStatus(true) });
   });
   await reopenBackend(page);
-  const open = page.getByRole('button', { name: action === 'toolbar' ? 'Open preview in a new tab' : 'Open app preview', exact: true });
+  const open = page.getByRole('button', { name: action === 'toolbar' ? 'Open preview in a new tab' : 'Open app preview', exact: true }).first();
   await expect(open).toBeEnabled();
   if (action === 'blocked') {
     await page.evaluate(() => { window.open = () => null; });
     await open.click();
     await expect(page.getByText('Allow popups to open your app preview.', { exact: false })).toBeVisible();
-    expect(ticketRequests).toBe(0);
+    expect(openTickets).toBe(0);
     return;
   }
   const popupPromise = page.waitForEvent('popup');
   await open.click();
   const popup = await popupPromise;
   if (action === 'switch') {
-    await expect.poll(() => ticketRequests).toBe(1);
+    await expect.poll(() => openTickets).toBe(1);
     await page.route('**/api/projects/*/stop', route => route.fulfill({ json: { ok: true } }));
     await page.getByRole('button', { name: 'Return to Home', exact: true }).click();
     await page.getByRole('button', { name: 'Stop and close', exact: true }).click();
@@ -106,7 +115,7 @@ for (const action of ['toolbar', 'button', 'blocked', 'switch'] as const) test(`
     expect(await popup.evaluate(() => window.opener)).toBeNull();
     await popup.close();
   }
-  expect(ticketRequests).toBe(1);
+  expect(openTickets).toBe(1);
 });
 
 test('app preview start can be retried after a request fails', async ({ page }) => {

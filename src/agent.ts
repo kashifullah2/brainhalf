@@ -17,7 +17,8 @@ import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
 import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, type AllowedModel } from './lib/models';
 import { safeFetchText } from './lib/ssrf';
-import { atriaConfiguration, bedrockBearer, credential, validateRuntimeProviders } from './lib/runtime-config';
+import { validateRuntimeProviders } from './lib/runtime-config';
+import { BEDROCK_ALIASES, createBedrockClient, providerCredentials, providerModel, selectModelTransport, type ProviderLanguageModel } from './lib/provider-clients';
 import { buildDynamicImportMap as buildDynamicImportMapModule, isHarnessEntry as isHarnessEntryModule } from './lib/preview-import-map';
 import { buildSystemPrompt as buildSystemPromptModule } from './lib/system-prompt';
 import { BusyLock, IdempotencyStore, WriteEpoch, dedupeAdjacent } from './lib/concurrency';
@@ -37,6 +38,11 @@ import { managedAppScaffold } from './lib/managed-app-scaffold';
 import type { RuntimeStatus } from './runtime/types';
 import { AiBudget, AiBudgetError, meteredModel } from './lib/ai-budget';
 import { sourceSnapshot } from './runtime/source';
+import { GenerationUserError, classifyGenerationError, errorMessage } from './lib/generation-errors';
+
+// Transient provider failures (rate limits, overload, dropped connections)
+// get this many automatic retries per pipeline stage before we give up.
+const GENERATION_TRANSIENT_RETRIES = 2;
 import { SourceHistory, sourceChanges } from './lib/source-history';
 import { readJson } from './runtime/integrations';
 import { MAX_GENERATION_RESUME_CHARS, type GenerationSession } from './lib/generation-session';
@@ -48,9 +54,6 @@ import {
   buildMissingComponentStub,
 } from './lib/preview-templates';
 import { isStepCount, streamText, tool } from 'ai';
-import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 
 /**
@@ -74,6 +77,44 @@ const FORWARDABLE_BACKEND_HEADERS = new Set([
   'user-agent',
   USER_ID_HEADER,
 ]);
+
+/**
+ * The WebSocket payload a workspace client sends. Parsed from JSON at the
+ * socket boundary, so every field is optional; consumers still narrow at
+ * runtime (`Array.isArray`, `typeof === 'string'`, the model allowlist) before
+ * trusting a value. Declared as a type alias so it stays assignable to
+ * `Record<string, unknown>` for helpers like `generationControls`.
+ */
+type ClientMessage = {
+  type?: string;
+  prompt?: unknown;
+  message?: unknown;
+  messages?: Array<{ role?: unknown; content?: unknown } | null>;
+  files?: Record<string, unknown>;
+  workspaceFiles?: Record<string, unknown>;
+  expected_revision?: unknown;
+  replace_all?: unknown;
+  preserve_secrets?: unknown;
+  idempotencyKey?: string;
+  executionTarget?: unknown;
+  model?: string;
+  provider?: string;
+  attachmentIds?: unknown;
+  requestId?: unknown;
+  limit?: unknown;
+  offset?: unknown;
+  revision?: unknown;
+};
+
+/**
+ * Workers AI returns either a ReadableStream (object chunks or SSE bytes) or an
+ * async-iterable response, depending on the model and binding version. Both
+ * shapes are handled by the streaming loop in runCloudflareWorkersAI.
+ */
+type WorkersAIStreamResponse = {
+  getReader?: () => ReadableStreamDefaultReader<unknown>;
+  [Symbol.asyncIterator]?: () => AsyncIterator<unknown>;
+};
 
 /**
  * Copy only the headers the simulated backend may see. Exported so the
@@ -201,10 +242,16 @@ function safeOrigin(value: string | null): string | null {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface ChatAgentEnv {
-  AI: any;
+  // Structural binding types — @cloudflare/workers-types clashes with the DOM
+  // lib in this tsconfig, so bindings declare only the surface this agent uses.
+  AI: { run(model: string, input: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<unknown> };
   RUNTIME: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
-  PROJECT_BACKUPS: any;
-  REGISTRY: any;
+  PROJECT_BACKUPS: {
+    put(key: string, value: string, options?: { customMetadata?: Record<string, string> }): Promise<unknown>;
+    get(key: string): Promise<{ customMetadata?: Record<string, string>; text(): Promise<string>; json(): Promise<{ files?: Array<{ path?: unknown; content?: unknown }>; ownerId?: unknown }> } | null>;
+    delete(key: string): Promise<void>;
+  };
+  REGISTRY: { get(id: unknown): { fetch(input: string | Request, init?: RequestInit): Promise<Response> }; idFromName(name: string): unknown };
   SESSION_SECRET: string;
   REQUIRED_MODEL_PROVIDERS?: string;
   REQUIRED_PUBLIC_SERVICES?: string;
@@ -311,12 +358,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * come from a table, not from source text. A plain string is wrapped in a
    * single-element template array because the SDK's sql tag reduces over it.
    */
-  private runSql(strings: TemplateStringsArray | string, ...values: any[]): any[] {
+  private runSql<Row = Record<string, any>>(strings: TemplateStringsArray | string, ...values: any[]): Row[] {
     if (this.erasing) throw new Error('Project deleted');
     if (typeof strings === 'string') {
-      return [...this.sql([strings] as unknown as TemplateStringsArray, ...values)];
+      return [...this.sql<Row>([strings] as unknown as TemplateStringsArray, ...values)];
     }
-    return [...this.sql(strings, ...values)];
+    return [...this.sql<Row>(strings, ...values)];
   }
 
   /** Runs `closure` inside the DO's synchronous storage transaction. */
@@ -490,9 +537,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       // Reading the path list from the covering index and filtering in JS keeps
       // the scan index-only; the previous `path NOT LIKE '%node_modules%'` was a
       // leading-wildcard pattern that scanned the whole table on every prompt.
-      const pathRows = this.runSql`SELECT path FROM project_files`;
+      const pathRows = this.runSql<{ path: string }>`SELECT path FROM project_files`;
       const selected = pathRows
-        .map((r: any) => String(r.path))
+        .map(r => String(r.path))
         .filter(contextFileAllowed)
         .filter(path => !/^\/src\/assets\/uploads\/[^/]+\.\d+\.js$/.test(path))
         // `pinned` only keeps a file from being filtered out (a pinned main.js
@@ -503,11 +550,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         .slice(0, opts.maxFiles);
       if (selected.length === 0) return '';
 
-      const rows = this.runSql`SELECT path, content FROM project_files WHERE path IN (SELECT value FROM json_each(${JSON.stringify(selected)}))`;
+      const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files WHERE path IN (SELECT value FROM json_each(${JSON.stringify(selected)}))`;
       rows.sort((left, right) => selected.indexOf(left.path) - selected.indexOf(right.path));
       if (opts.charBudget === undefined) {
         const summary = rows
-          .map((r: any) => `File: ${r.path}\n\`\`\`\n${r.content}\n\`\`\``)
+          .map(r => `File: ${r.path}\n\`\`\`\n${r.content}\n\`\`\``)
           .join('\n\n');
         return `\n\n${opts.header}\n${summary}\n`;
       }
@@ -682,7 +729,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       }
 
       const state = await obj.json();
-      if (state && state.files && Array.isArray(state.files)) {
+      const backupFiles = state?.files;
+      if (backupFiles && Array.isArray(backupFiles)) {
         // Owner recorded in the body is checked too, so a copied object whose
         // metadata was stripped is still not restorable by the wrong user.
         const bodyOwner = (state as { ownerId?: unknown }).ownerId;
@@ -691,7 +739,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           return;
         }
         this.transact(() => {
-          for (const file of state.files) {
+          for (const file of backupFiles) {
             if (!file || typeof file.path !== 'string' || typeof file.content !== 'string') continue;
             this.runSql`INSERT INTO project_files (path, content) VALUES (${normalizePath(file.path)}, ${file.content})
                        ON CONFLICT(path) DO UPDATE SET content=excluded.content;`;
@@ -877,14 +925,15 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (message === '{"type":"ping"}') this.authCache.delete(connection.id);
       if (!await this.authorizeConnection(connection)) return;
       if (this.erasing) return;
-      let data: any;
+      let parsed: unknown;
       try {
-        data = JSON.parse(message);
+        parsed = JSON.parse(message);
       } catch {
         try { connection.send(JSON.stringify({ type: 'error', error: 'Malformed message payload' })); } catch { }
         return;
       }
-      if (!data || typeof data !== 'object') return;
+      if (!parsed || typeof parsed !== 'object') return;
+      const data = parsed as ClientMessage;
 
       this.ensureSchema();
 
@@ -952,8 +1001,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // the context window with identical turns.
           const messages = dedupeAdjacent(
             data.messages
-              .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'ai') && typeof m.content === 'string')
-              .map((m: any) => ({ role: m.role === 'ai' ? 'assistant' : m.role, content: String(m.content).slice(0, 200_000) }))
+              .filter((m): m is { role: 'user' | 'assistant' | 'ai'; content: string } =>
+                m !== null && (m.role === 'user' || m.role === 'assistant' || m.role === 'ai') && typeof m.content === 'string')
+              .map(m => ({ role: m.role === 'ai' ? 'assistant' : m.role, content: String(m.content).slice(0, 200_000) }))
           );
           this.transact(() => {
             this.runSql`DELETE FROM messages;`;
@@ -972,7 +1022,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           connection.send(JSON.stringify({ type: 'files_sync_conflict', revision: this.getFilesRevision() }));
           return;
         }
-        const syncCount = Object.keys(data.files).length;
+        const syncFiles = data.files;
+        const syncCount = Object.keys(syncFiles).length;
         if (syncCount > MAX_FILES_PER_SYNC) {
           try {
             connection.send(JSON.stringify({
@@ -997,7 +1048,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 this.runSql`DELETE FROM project_files;`;
               }
             }
-            for (const [path, content] of Object.entries(data.files)) {
+            for (const [path, content] of Object.entries(syncFiles)) {
               if (typeof content !== 'string') continue;
               const cleanPath = normalizePath(path);
               if (this.isHarnessEntry(cleanPath)) continue;
@@ -1018,7 +1069,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         // Bounded the same way as an explicit sync: an editor that posts its
         // whole tree on every keystroke burst would otherwise rewrite the
         // workspace without limit.
-        if (Object.keys(data.workspaceFiles).length > MAX_FILES_PER_SYNC) {
+        const workspaceFiles = data.workspaceFiles;
+        if (Object.keys(workspaceFiles).length > MAX_FILES_PER_SYNC) {
           try {
             connection.send(JSON.stringify({
               type: 'error',
@@ -1029,7 +1081,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         }
         try {
           this.transact(() => {
-            for (const [path, content] of Object.entries(data.workspaceFiles)) {
+            for (const [path, content] of Object.entries(workspaceFiles)) {
               if (typeof content !== 'string') continue;
               const cleanPath = normalizePath(path);
               if (this.isHarnessEntry(cleanPath)) continue;
@@ -1136,7 +1188,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       // interleave their file writes. The client is told why and can retry.
       // The lock has a timeout so a generation that never settles cannot hold
       // the project hostage — the user can always prompt again.
-      let lockResult: any;
+      let lockResult: { value: void } | { reason: string };
       let generationStarted = false;
       try {
         lockResult = await this.generationLock.run(`generate:${actualPrompt.slice(0, 60)}`, async () => {
@@ -1172,9 +1224,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         return;
       }
       return;
-    } catch (e: any) {
+    } catch (e) {
       console.error('Error handling message:', e);
-      try { connection.send(JSON.stringify({ type: 'error', error: e?.message || 'Internal error' })); } catch { }
+      try { connection.send(JSON.stringify({ type: 'error', error: errorMessage(e) || 'Internal error' })); } catch { }
     }
   }
 
@@ -1230,7 +1282,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
   private async runGeneration(
     connection: Connection,
-    data: any,
+    data: ClientMessage,
     systemPrompt: string,
     actualPrompt: string,
     epoch: number,
@@ -1304,25 +1356,21 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       await Promise.all([
         budget.startAndReserve(maxReserveTokens),
         Promise.resolve().then(() => {
-          try { rawHistory = this.runSql`SELECT role, content FROM messages ORDER BY id DESC LIMIT 12`.reverse(); }
+          try { rawHistory = this.runSql<{ role: string; content: string }>`SELECT role, content FROM messages ORDER BY id DESC LIMIT 12`.reverse(); }
           catch { console.warn('Could not load conversation context'); }
         }),
       ]);
       this.activeBudget = budget;
       const inputMessages = boundedConversation(rawHistory, actualPrompt, generationContextLimits(controls.fastMode).historyChars);
-      await tracing.enterSpan('invoke_agent', async (invokeSpan: any) => {
+      await tracing.enterSpan('invoke_agent', async (invokeSpan) => {
         invokeSpan.setAttribute('gen_ai.operation.name', 'invoke_agent');
 
-        await tracing.enterSpan('chat', async (_chatSpan: any) => {
-          let aiModel: any = null;
+        await tracing.enterSpan('chat', async (_chatSpan) => {
+          let aiModel: ProviderLanguageModel | null = null;
 
           const env = this.env;
           validateRuntimeProviders(env);
-          const anthropicApiKey = credential(env, 'ANTHROPIC_API_KEY');
-          const bedrockApiKey = bedrockBearer(env);
-          const awsKey = credential(env, 'AWS_ACCESS_KEY_ID');
-          const awsSecret = credential(env, 'AWS_SECRET_ACCESS_KEY');
-          const awsRegion = (typeof env.AWS_REGION === 'string' && env.AWS_REGION) || 'us-east-1';
+          const creds = providerCredentials(env);
 
           const requestedModel = data.model || DEFAULT_MODEL_ID;
 
@@ -1458,8 +1506,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       return { content };
                     }
                     return { error: 'File not found' };
-                  } catch (e: any) {
-                    return { error: e.message };
+                  } catch (e) {
+                    return { error: errorMessage(e) };
                   }
                 },
               }),
@@ -1470,8 +1518,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   try {
                     const rows = this.runSql`SELECT path FROM project_files`;
                     return { files: rows.map(r => r.path) };
-                  } catch (e: any) {
-                    return { error: e.message };
+                  } catch (e) {
+                    return { error: errorMessage(e) };
                   }
                 },
               }),
@@ -1482,8 +1530,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   try {
                     transform(code, { transforms: ['typescript', 'jsx'] });
                     return { valid: true };
-                  } catch (e: any) {
-                    return { valid: false, error: e.message };
+                  } catch (e) {
+                    return { valid: false, error: errorMessage(e) };
                   }
                 }
               }),
@@ -1526,8 +1574,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       return { success: true, response: response?.response || response };
                     }
                     return { success: false, error: 'Cloudflare AI edge binding not available' };
-                  } catch (e: any) {
-                    return { success: false, error: e.message };
+                  } catch (e) {
+                    return { success: false, error: errorMessage(e) };
                   }
                 }
               }),
@@ -1569,9 +1617,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     const saved = await saveToolFile(modulePath, moduleContent);
                     if (saved && typeof saved === 'object' && 'success' in saved && !saved.success) return saved;
                     return { path: modulePath, usage: `Import the default URL from ${modulePath} and use it as an <img src={...} /> or CSS background. The image is a small PNG.` };
-                  } catch (e: any) {
+                  } catch (e) {
                     if (abortController.signal.aborted) throw e;
-                    return { error: e?.message || 'Image generation failed.' };
+                    return { error: errorMessage(e) || 'Image generation failed.' };
                   }
                 }
               }),
@@ -1622,45 +1670,17 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           let maxTokensForModel: number | undefined = undefined;
           let model: AllowedModel = resolved;
 
-          // Anthropic-family models may be served by the native API or by Bedrock.
-          // Pick whichever credential this deployment actually has; both ids are
-          // allowlist entries for the same client-visible name, so this is a
-          // transport choice, not a model substitution.
-          if (model.provider === 'anthropic' && !anthropicApiKey) {
-            const alt = resolveModel(model.name, 'aws');
-            if (alt) model = alt;
-          } else if (model.provider === 'aws' && !(bedrockApiKey || (awsKey && awsSecret))) {
-            const alt = resolveModel(model.name, 'anthropic');
-            if (alt) model = alt;
-          }
+          // Anthropic-family models may be served by the native API or by Bedrock;
+          // selectModelTransport picks whichever credential this deployment has.
+          model = selectModelTransport(model, creds);
 
-          if (model.provider === 'anthropic' && anthropicApiKey) {
-            const anthropic = createAnthropic({ apiKey: anthropicApiKey });
-            aiModel = anthropic(model.id);
-            maxTokensForModel = model.maxTokens;
-          } else if (model.provider === 'aws' && (bedrockApiKey || (awsKey && awsSecret))) {
-            const bedrock = createAmazonBedrock({
-              region: awsRegion,
-              apiKey: bedrockApiKey,
-              accessKeyId: awsKey,
-              secretAccessKey: awsSecret,
-            });
-            aiModel = bedrock(model.id);
-            maxTokensForModel = model.maxTokens;
-          } else if (model.provider === 'atria') {
-            const { apiKey: atriaApiKey, baseURL: atriaBaseUrl } = atriaConfiguration(env);
-            if (!atriaApiKey) {
-              sendError('Atria credentials are not configured');
-              return;
-            }
-            const atria = createOpenAI({
-              name: 'atria',
-              apiKey: atriaApiKey,
-              baseURL: atriaBaseUrl,
-              compatibility: 'compatible',
-            } as any);
-            aiModel = atria.chat(model.id);
-            maxTokensForModel = model.maxTokens;
+          try {
+            const built = providerModel(model, env, creds);
+            aiModel = built.aiModel;
+            maxTokensForModel = built.maxTokens;
+          } catch (err) {
+            sendError(err instanceof Error ? err.message : 'Model provider is not configured');
+            return;
           }
 
           // No cross-provider fallback. If the required credential is missing,
@@ -1682,20 +1702,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           let currentNativeMessages = [...nativeMessages];
 
           try {
-            const BEDROCK_ALIASES: Record<string, string[]> = {
-              'us.moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-              'moonshotai.kimi-k3': ['us.moonshotai.kimi-k3', 'global.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-              'global.moonshotai.kimi-k3': ['global.moonshotai.kimi-k3', 'us.moonshotai.kimi-k3', 'moonshotai.kimi-k3'],
-              'us.anthropic.claude-sonnet-4-6': ['us.anthropic.claude-sonnet-4-6', 'global.anthropic.claude-sonnet-4-6', 'anthropic.claude-sonnet-4-6', 'us.anthropic.claude-sonnet-4-6-v1:0'],
-              'us.anthropic.claude-opus-4-6': ['us.anthropic.claude-opus-4-6', 'global.anthropic.claude-opus-4-6', 'anthropic.claude-opus-4-6', 'us.anthropic.claude-opus-4-6-v1:0'],
-              'minimax.minimax-m2.5': ['minimax.minimax-m2.5', 'us.minimax.minimax-m2.5'],
-            };
-
             const candidates = model.provider === 'aws'
               ? (BEDROCK_ALIASES[model.id] || [model.id])
               : [model.id];
 
-            let lastStreamError: any = null;
+            let lastStreamError: unknown = null;
 
             for (let stageIdx = 0; stageIdx < pipelineStages.length; stageIdx++) {
               const stage = pipelineStages[stageIdx];
@@ -1703,33 +1714,43 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               const stageSystemPrompt = systemPrompt + stage.extraPrompt;
               const stageToolWrittenPaths = new Set(toolWrittenPaths);
 
-              let streamErrorCaught: any = null;
+              let streamErrorCaught: unknown = null;
               let stageCompleted = false;
 
+              let transientRetries = 0;
               for (let idx = 0; idx < candidates.length; idx++) {
                 const currentModelId = candidates[idx];
                 let activeAiModel = aiModel;
                 if (model.provider === 'aws' && currentModelId !== model.id) {
-                  const bedrock = createAmazonBedrock({
-                    region: awsRegion,
-                    apiKey: bedrockApiKey,
-                    accessKeyId: awsKey,
-                    secretAccessKey: awsSecret,
-                  });
-                  activeAiModel = bedrock(currentModelId);
+                  activeAiModel = createBedrockClient(creds)(currentModelId);
                 }
 
                 streamErrorCaught = null;
                 let streamedText = '';
                 let displayContent = '';
                 const transcript = new ToolTranscriptStream();
+                // Token-level WS frames cost one send + one client re-render per
+                // token. Coalesce deltas into 50 ms frames instead: ~20 updates a
+                // second reads as smooth typing while cutting frames ~100x. Every
+                // non-stream message (tool_call, files_changed, done, error) must
+                // flush first so ordering is preserved.
+                let pendingFrame = '';
+                let flushTimer: ReturnType<typeof setTimeout> | null = null;
+                const flushFrame = () => {
+                  if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null; }
+                  if (!pendingFrame) return;
+                  const frame = pendingFrame;
+                  pendingFrame = '';
+                  const message = JSON.stringify({ type: 'stream', chunk: { response: frame, done: false } });
+                  try { connection.send(message); } catch { }
+                  try { this.broadcast(message, [connection.id]); } catch { }
+                };
                 const sendDisplay = (response: string) => {
                   if (!response) return;
                   displayContent += response;
                   this.rememberGenerationText(response, epoch);
-                  const message = JSON.stringify({ type: 'stream', chunk: { response, done: false } });
-                  try { connection.send(message); } catch { }
-                  try { this.broadcast(message, [connection.id]); } catch { }
+                  pendingFrame += response;
+                  if (flushTimer === null) flushTimer = setTimeout(flushFrame, 50);
                 };
                 
                 const streamOptions: Parameters<typeof streamText>[0] = {
@@ -1747,17 +1768,21 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   maxOutputTokens: requestedMaxTokens ?? maxTokensForModel,
                   maxRetries: 0,
                   abortSignal: abortController.signal,
-                  onError: (event: any) => {
+                  onError: (event) => {
                     const err = event?.error || event;
                     console.error(`streamText error (${model.name}, id=${currentModelId}):`, err);
                     streamErrorCaught = err;
                   },
-                  onChunk: (event: any) => {
+                  onChunk: (event) => {
                     if (!this.writeEpoch.accepts(epoch) || abortController.signal.aborted) {
                       abortController.abort();
                       return;
                     }
-                    const chunk = event?.chunk ?? event;
+                    // The ai-sdk has shipped three spellings of a text chunk
+                    // (textDelta, text, delta); accept all of them.
+                    const chunk = (event?.chunk ?? event) as {
+                      type?: string; textDelta?: unknown; text?: unknown; delta?: unknown; toolName?: unknown;
+                    } | undefined;
                     const textDelta =
                       chunk?.textDelta ??
                       chunk?.text ??
@@ -1770,6 +1795,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     }
 
                     if (chunk?.type === 'tool-call') {
+                      flushFrame();
                       sendDisplay(toolSummaryMarkup([String(chunk.toolName || 'tool')]));
                       const toolMsg = JSON.stringify({
                         type: 'tool_call',
@@ -1789,6 +1815,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   this.captureUsage(usage.inputTokens, usage.outputTokens);
                   if (streamErrorCaught) throw streamErrorCaught;
                   if (!this.writeEpoch.accepts(epoch)) return;
+                  flushFrame();
                   const text = streamedText || finalText;
                   if (!streamedText) sendDisplay(transcript.push(finalText));
                   sendDisplay(transcript.push('', true));
@@ -1802,6 +1829,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   this.saveTurn(stageIdx === 0 ? actualPrompt : 'Continue to the next stage.', displayContent || (stageNewPaths.size ? `Updated ${[...stageNewPaths].join(', ')}.` : ''));
 
                   if (stageNewPaths.size > 0) {
+                    flushFrame();
                     const changed = JSON.stringify({ type: 'files_changed' });
                     try { connection.send(changed); } catch { }
                     try { this.broadcast(changed, [connection.id]); } catch { }
@@ -1811,6 +1839,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   if (isLastStage) {
                     const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
                     deferTerminal(() => {
+                      flushFrame();
                       try { connection.send(doneMsg); } catch { }
                       try { this.broadcast(doneMsg, [connection.id]); } catch { }
                     });
@@ -1823,15 +1852,36 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   lastStreamError = null;
                   stageCompleted = true;
                   break;
-                } catch (streamErr: any) {
-                  const effectiveErr = streamErrorCaught || streamErr;
-                  const errMessage = effectiveErr?.message || String(effectiveErr);
+                } catch (streamErr) {
+                  flushFrame();
+                  const effectiveErr: unknown = streamErrorCaught || streamErr;
+                  const errMessage = errorMessage(effectiveErr);
                   lastStreamError = effectiveErr;
                   if (!streamedText && toolWrittenPaths.size === 0 && !abortController.signal.aborted && (/model identifier is invalid/i.test(errMessage) || /ResourceNotFoundException/i.test(errMessage) || /is not authorized/i.test(errMessage) || /reached the end of its life/i.test(errMessage)) && idx + 1 < candidates.length) {
                     console.warn(`Bedrock ID ${currentModelId} failed (${errMessage}); retrying alternate profile ${candidates[idx + 1]}`);
                     continue;
                   }
-                  throw new Error(errMessage);
+                  const classification = classifyGenerationError(effectiveErr);
+                  // Transient provider failures (rate limit, overload, dropped
+                  // connection, timeout) get automatic retries — but only when
+                  // nothing was shown to the user yet, so a retry can never
+                  // duplicate streamed output in the chat.
+                  if (classification.retryable && !displayContent && !abortController.signal.aborted && transientRetries < GENERATION_TRANSIENT_RETRIES) {
+                    transientRetries += 1;
+                    console.warn(`Transient provider error for ${model.name} (${classification.category}: ${errMessage}); retrying stage "${stage.stageId}" (attempt ${transientRetries + 1})`);
+                    try { connection.send(JSON.stringify({ type: 'generation_notice', message: `${classification.userMessage} Retrying…`, stage: stage.stageId, requestId: data.idempotencyKey })); } catch { }
+                    // Tests cannot wait out real exponential backoff.
+                    const retryDelayMs = typeof process !== 'undefined' && process.env?.VITEST ? 10 : 1_000 * 2 ** transientRetries;
+                    await new Promise<void>((resolve) => {
+                      const timer = setTimeout(resolve, retryDelayMs);
+                      abortController.signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+                    });
+                    if (abortController.signal.aborted) throw abortController.signal.reason ?? new Error('Generation stopped');
+                    idx--; // Retry the same candidate; the loop increment restores idx.
+                    continue;
+                  }
+                  if (classification.category === 'unknown') throw new Error(errMessage);
+                  throw new GenerationUserError(classification, effectiveErr);
                 }
               }
               
@@ -1841,27 +1891,27 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             }
 
             if (lastStreamError) {
-              throw new Error(lastStreamError?.message || String(lastStreamError));
+              throw new Error(errorMessage(lastStreamError));
             }
           } finally {
             // Inner cleanup handled by outer finally block
           }
         });
       });
-    } catch (err: any) {
+    } catch (err) {
       // FIX (high): the catch here used to call runCloudflareWorkersAI with a
       // hardcoded '@cf/meta/llama-3.3-70b-instruct-fp8-fast'. That silently
       // substituted a different model for the one the user selected and was
       // billed for — directly contradicting the zero-fallback policy enforced
       // everywhere else in this file, and invalidating any per-model testing.
       // A failure is now reported as a failure.
-      const aborted = err?.name === 'AbortError' || !this.writeEpoch.accepts(epoch);
+      const aborted = (err instanceof Error && err.name === 'AbortError') || !this.writeEpoch.accepts(epoch);
       if (aborted) {
         console.log('Generation aborted by user or timeout');
         return;
       }
       console.error('Error handling message in ChatAgent:', err);
-      let cleanError = (err?.message || 'Failed to process AI generation.').replace(/^undefined:\s*/i, '');
+      let cleanError = ((err instanceof Error ? err.message : '') || 'Failed to process AI generation.').replace(/^undefined:\s*/i, '');
       if (err instanceof AiBudgetError && err.status === 429) {
         // Preserve the user's prompt in the server-side conversation history even
         // when the concurrent generation limit is exceeded, so it survives a
@@ -1869,7 +1919,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         try { this.saveTurn(actualPrompt, cleanError); } catch { }
         sendError(cleanError, 'rate_limited');
       } else {
-        sendError(cleanError);
+        sendError(cleanError, err instanceof GenerationUserError ? err.code : undefined);
       }
     } finally {
       clearTimeout(genTimeout);
@@ -1905,7 +1955,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     modelName: string,
     systemPrompt: string,
     inputMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
-    connection: any,
+    connection: Connection,
     actualPrompt: string,
     requestedMaxTokens?: number,
     epoch?: number,
@@ -1961,7 +2011,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       // Retrying the *same* model at a lower token limit is legitimate. Trying a
       // *different* model is a silent substitution, so the candidate list is now
       // just the requested model. If it cannot serve the request, we report it.
-      let aiResponse: any = null;
+      let aiResponse: WorkersAIStreamResponse | null = null;
       let attempts = 0;
       let lastError: unknown;
 
@@ -2002,8 +2052,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // Tool turns already streamed through the same transcript and file
           // collector. Finalize once without replaying the completed response.
           if (answer !== null) aiResponse = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n')); controller.close(); } });
-        } catch (toolErr: any) {
-          const msg = String(toolErr?.message || toolErr || '');
+        } catch (toolErr) {
+          const msg = errorMessage(toolErr);
           if (abortController.signal.aborted || !/schema|oneOf|5006|not met|type mismatch|tool/i.test(msg)) throw toolErr;
           console.warn('Tool capability loop hit schema error; falling back to plain generation:', msg);
           messages.length = 0;
@@ -2028,7 +2078,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 chat_template_kwargs: { enable_thinking: false }
               }, { signal: abortController.signal }),
               abortController.signal
-            );
+            ) as WorkersAIStreamResponse;
           } catch (error) {
             if (abortController.signal.aborted || !/chat_template_kwargs|enable_thinking|unexpected.*(?:parameter|argument)|unsupported.*(?:parameter|argument)/i.test(String(error))) throw error;
             aiResponse = await withAbortSignal(
@@ -2039,11 +2089,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 max_completion_tokens: tokenLimit
               }, { signal: abortController.signal }),
               abortController.signal
-            );
+            ) as WorkersAIStreamResponse;
           }
           if (aiResponse) break;
-        } catch (limitErr: any) {
-          const msg = String(limitErr?.message || limitErr || '');
+        } catch (limitErr) {
+          const msg = errorMessage(limitErr);
           lastError = limitErr;
           if (abortController.signal.aborted || !/max[_ ](?:completion[_ ])?tokens|context (?:length|window)|token (?:limit|budget)|too many tokens/i.test(msg)) throw limitErr;
           console.warn(`Model ${cfModel} at limit ${tokenLimit} failed:`, msg);
@@ -2058,19 +2108,31 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       let sseBuffer = '';
       let receivedDone = false;
 
-      const extractToken = (obj: any): string | undefined => {
+      // One parsed SSE payload (or object chunk) from a Workers AI stream. The
+      // binding has shipped both `usage.prompt_tokens`/`completion_tokens` and
+      // `input_tokens`/`output_tokens` spellings, and errors arrive as either a
+      // string or an object — hence the wide field types with runtime checks.
+      const extractToken = (obj: unknown): string | undefined => {
         if (!obj || typeof obj !== 'object') return undefined;
-        if (obj.usage) {
-          const input = obj.usage.prompt_tokens ?? obj.usage.input_tokens;
-          const output = obj.usage.completion_tokens ?? obj.usage.output_tokens;
+        const payload = obj as {
+          usage?: { prompt_tokens?: unknown; input_tokens?: unknown; completion_tokens?: unknown; output_tokens?: unknown };
+          error?: { message?: unknown } | string;
+          success?: boolean;
+          errors?: Array<{ message?: unknown }>;
+          response?: unknown;
+          choices?: Array<{ delta?: { content?: unknown }; text?: unknown }>;
+        };
+        if (payload.usage) {
+          const input = payload.usage.prompt_tokens ?? payload.usage.input_tokens;
+          const output = payload.usage.completion_tokens ?? payload.usage.output_tokens;
           this.captureUsage(typeof input === 'number' ? toolInputTokens + input : undefined, typeof output === 'number' ? toolOutputTokens + output : undefined);
         }
-        if (obj.error || obj.success === false) {
-          const error = obj.error?.message ?? obj.error ?? obj.errors?.[0]?.message ?? 'Workers AI streaming failed';
+        if (payload.error || payload.success === false) {
+          const error = (typeof payload.error === 'object' ? payload.error?.message : payload.error) ?? payload.errors?.[0]?.message ?? 'Workers AI streaming failed';
           throw new Error(String(error));
         }
-        if (obj.response != null) return String(obj.response);
-        const content = obj.choices?.[0]?.delta?.content ?? obj.choices?.[0]?.text;
+        if (payload.response != null) return String(payload.response);
+        const content = payload.choices?.[0]?.delta?.content ?? payload.choices?.[0]?.text;
         if (content != null) return String(content);
         return undefined;
       };
@@ -2295,7 +2357,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     if (opts.deferTerminal) opts.deferTerminal(publishRetry); else publishRetry();
   }
 
-  private extractAndSaveFiles(text: string, connection: any, epoch?: number): ExtractionSummary {
+  private extractAndSaveFiles(text: string, connection: Connection, epoch?: number): ExtractionSummary {
     const summary: ExtractionSummary = {
       writtenCount: 0,
       deletedCount: 0,
@@ -2433,14 +2495,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (!path.startsWith('/src/') || !(path.endsWith('.jsx') || path.endsWith('.tsx'))) continue;
       try {
         transform(content, { transforms: ['jsx', 'typescript'] });
-      } catch (syntaxErr: any) {
+      } catch (syntaxErr) {
         const repaired = this.repairUnclosedBrackets(content);
         try {
           transform(repaired, { transforms: ['jsx', 'typescript'] });
           pendingWrites.set(path, repaired);
         } catch {
-          console.warn(`Unrecoverable syntax error in ${path}: ${syntaxErr.message}`);
-          brokenFiles.push({ path, error: syntaxErr.message });
+          console.warn(`Unrecoverable syntax error in ${path}: ${errorMessage(syntaxErr)}`);
+          brokenFiles.push({ path, error: errorMessage(syntaxErr) });
         }
       }
     }
@@ -2569,6 +2631,44 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       return Response.json({ ok: !this.generationLock.isHeld, stopping: this.generationLock.isHeld }, { status: this.generationLock.isHeld ? 202 : 200 });
     }
 
+    // Gallery remix: the source project serves its files only while it is
+    // showcase-listed, and the target accepts them only into a project the
+    // requester owns. Secret files never leave the source workspace.
+    if (url.pathname === '/internal/remix-export' && request.method === 'GET') {
+      const projectId = request.headers.get('x-bh-project');
+      if (!projectId || (this.name && this.name !== projectId)) return Response.json({ error: 'Invalid remix scope' }, { status: 403 });
+      const listing = await getRegistry(this.env).fetch(`https://registry/projects/showcase-status?projectId=${encodeURIComponent(projectId)}`);
+      if (!listing.ok || !(await listing.json() as { showcase?: boolean }).showcase) return Response.json({ error: 'This app is not listed in the gallery' }, { status: 403 });
+      this.ensureSchema();
+      const all = this.readAllProjectFiles();
+      const files: Record<string, string> = Object.create(null);
+      for (const [path, content] of Object.entries(all)) if (contextFileAllowed(path) && !this.isHarnessEntry(path)) files[path] = content;
+      return Response.json({ files });
+    }
+    if (url.pathname === '/internal/remix-import' && request.method === 'POST') {
+      const projectId = request.headers.get('x-bh-project');
+      if (!projectId || (this.name && this.name !== projectId)) return Response.json({ error: 'Invalid remix scope' }, { status: 403 });
+      const userId = getRequestUserId(request);
+      if (!userId || !(await isProjectOwner(this.env, projectId, userId))) return Response.json({ error: 'Not the project owner' }, { status: 403 });
+      if (this.erasing) return Response.json({ error: 'Project deleted' }, { status: 410 });
+      if (this.generationLock.isHeld || this.currentAbortController) return Response.json({ error: 'Wait for generation to finish before remixing.' }, { status: 409 });
+      this.ensureSchema();
+      const body = await readJson(request, 16 * 1024 * 1024) as { files?: unknown };
+      if (!body || typeof body !== 'object' || !body.files || typeof body.files !== 'object' || Array.isArray(body.files)) return Response.json({ error: 'Invalid remix files' }, { status: 400 });
+      try {
+        this.transact(() => {
+          for (const { path } of this.runSql`SELECT path FROM project_files`) if (contextFileAllowed(path) && !this.isHarnessEntry(path)) this.runSql`DELETE FROM project_files WHERE path=${path}`;
+          for (const [path, content] of Object.entries(body.files as Record<string, unknown>)) {
+            if (typeof content !== 'string' || !contextFileAllowed(path) || this.isHarnessEntry(path)) continue;
+            if (!this.upsertFile(normalizePath(path), content)) throw new Error('Remix exceeds the project file limit.');
+          }
+        });
+      } catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Remix import failed.' }, { status: 413 }); }
+      this.broadcast(JSON.stringify({ type: 'files_changed' }));
+      await this.backupToR2(userId);
+      return Response.json({ ok: true, revision: this.getFilesRevision() });
+    }
+
     if (url.pathname.match(/^\/(?:preview|p)\/[^/]+$/)) {
       return Response.redirect(`${url.origin}${url.pathname}/`, 301);
     }
@@ -2679,11 +2779,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
       if (request.method === 'POST' && path.endsWith('/api/sync')) {
         try {
-          const body: any = await request.json();
+          const body = await request.json() as { files?: unknown } | null;
           if (body?.files && typeof body.files === 'object') {
+            const bodyFiles = body.files;
             let count = 0;
             this.transact(() => {
-              for (const [fPath, fContent] of Object.entries(body.files)) {
+              for (const [fPath, fContent] of Object.entries(bodyFiles)) {
                 if (typeof fContent !== 'string') continue;
                 const cleanPath = normalizePath(fPath);
                 if (this.isHarnessEntry(cleanPath)) continue;
@@ -2698,8 +2799,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
-        } catch (e: any) {
-          return new Response(JSON.stringify({ success: false, error: e.message }), {
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: errorMessage(e) }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
@@ -2726,7 +2827,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         // validates the server sources, and needs nothing else.
         const allFiles = this.readServerFilesForBackend();
 
-        let bodyData: any = null;
+        let bodyData: unknown = null;
         if (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH') {
           try { bodyData = await request.json(); } catch { /* body optional */ }
         }
@@ -2749,13 +2850,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               ...(backendRes.headers || {})
             }
           });
-        } catch (e: any) {
+        } catch (e) {
           // FIX: a throw from the generated backend escaped this handler and
           // surfaced as an opaque 500 with no layer attribution, so the preview
           // could not tell the user which side failed.
           return new Response(JSON.stringify({
             layer: 'backend',
-            error: e?.message || 'Backend execution failed',
+            error: errorMessage(e) || 'Backend execution failed',
             file: 'server/index.js'
           }), {
             status: 500,
@@ -2855,8 +2956,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           if (/\.(jsx|tsx|ts|js)$/.test(path)) {
             try {
               content = this.prepareModuleSource(content, cleanPath, path);
-            } catch (transpileErr: any) {
-              return new Response(this.buildTranspileErrorModule(path, transpileErr?.message || 'Syntax or transpilation error'), {
+            } catch (transpileErr) {
+              return new Response(this.buildTranspileErrorModule(path, errorMessage(transpileErr) || 'Syntax or transpilation error'), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/javascript; charset=utf-8' }
               });
             }

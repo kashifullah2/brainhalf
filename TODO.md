@@ -7,7 +7,7 @@ A comprehensive tracking list of completed milestones, immediate priorities, fea
 ## 🚀 Completed Milestones
 
 - [x] **Zero Cold-Start Edge Preview Engine**: Built native Cloudflare Edge Preview (`/preview/:projectId/`) using Sucrase for instant on-the-fly JSX/TSX transpilation on Cloudflare Workers.
-- [x] **Dual Preview Engines**: Integrated both Cloudflare Edge Preview (instant edge execution) and Sandpack (in-browser virtual bundler) with toggle support in the preview toolbar.
+- [x] **Cloudflare Edge Preview Engine**: Single isolated preview engine — Sandpack was fully removed in favor of the opaque-origin sandboxed edge preview.
 - [x] **Spec-Compliant Dual-MIME CSS Serving**: Implemented dual-mode CSS HTTP router in Durable Objects:
   - Serves valid JS module (`Content-Type: application/javascript; charset=utf-8`) with automatic `<style>` injection when imported via ES module scripts (`import './styles.css'`).
   - Serves raw stylesheet (`Content-Type: text/css; charset=utf-8`) when requested via `<link rel="stylesheet">`.
@@ -40,6 +40,10 @@ A comprehensive tracking list of completed milestones, immediate priorities, fea
 - [x] **Fast expired session detection** — iframe onLoad fetches preview URL to detect JSON error, shows styled error immediately
 - [x] **Model persistence** — selected AI model saved to localStorage across sessions
 - [x] **Share button relabeled** — "Copy link" instead of "Share" with honest tooltip
+- [x] **GitHub two-way sync** — Import from GitHub (owner/repo syntax, replace-with-confirmation) complements export; auto-sync passes owner through
+- [x] **Device viewport switcher** — PreviewCanvas toolbar toggles mobile/tablet/desktop preview widths
+- [x] **Dark / light theme toggle** — ThemeToggle component with persisted preference and pre-paint theme init script
+- [x] **Anthropic native transport** — `claude-sonnet-6` resolves to the native API when `ANTHROPIC_API_KEY` is configured without Bedrock credentials; Dahl provider fully removed
 
 ---
 
@@ -50,17 +54,12 @@ A comprehensive tracking list of completed milestones, immediate priorities, fea
 - [ ] **Package management UI** — view installed npm packages, add/remove with live Import Map update
 - [ ] **Public sharing / viewer mode** — share projects publicly (not just your own login link)
 - [ ] **Console output drawer** — capture preview `console.log`/`warn`/`error` via postMessage, filterable by severity
+- [ ] **Multi-file editor tabs** — open-file tab bar in Monaco (close/reorder/switch with Ctrl+W / Ctrl+Tab)
 
 ---
 
 ## 🎨 UI & UX Enhancements
 
-- [ ] **Device Viewport Switcher**:
-  - Preview toolbar buttons to toggle viewport size:
-    - 📱 Mobile (375 × 667 / 390 × 844)
-    - 📟 Tablet (768 × 1024)
-    - 💻 Desktop (100% responsive)
-  - Custom width/height input fields and zoom-to-fit scale.
 - [ ] **Diff Viewer for AI Changes**:
   - Visual side-by-side or inline diff preview before applying AI-suggested surgical edits.
   - Accept or reject individual file modifications.
@@ -71,8 +70,6 @@ A comprehensive tracking list of completed milestones, immediate priorities, fea
     - *Kanban & Task Management*
     - *E-commerce Storefront & Cart*
     - *AI Chat & RAG Interface*
-- [ ] **Dark / Light Theme Toggle**:
-  - Full theme system support for light mode while preserving sleek dark cyber aesthetics as default.
 - [ ] **Keyboard Shortcuts Overlay (`Ctrl + /` or `Cmd + /`)**:
   - Quick modal listing editor keybindings, preview reload, export shortcuts, and tab switching.
 
@@ -101,5 +98,4 @@ A comprehensive tracking list of completed milestones, immediate priorities, fea
   - Cloudflare Turnstile integration on anonymous project creation if public traffic scales.
 - [ ] **Automated CI/CD Deployment**:
   - GitHub Actions workflow running Oxlint, Vitest, TypeScript verification, and Wrangler deploy on git push to `main`.
-- [ ] **Sandpack Virtual Bundler Fallback Improvements**:
-  - Automatically synchronise preview engine selection with user preferences in `localStorage`.
+  - Note: `validate.yml` already runs `verify:release` on every push/PR; this item covers adding the deploy stage.

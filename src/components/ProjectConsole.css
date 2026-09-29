@@ -49,9 +49,29 @@
 .project-console nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 16px;
   padding: 10px 24px 16px;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.console-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.console-nav-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.console-nav-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .project-console main {
@@ -130,7 +150,162 @@
 }
 
 .project-console .console-environment {
-  max-width: 260px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0 12px;
+}
+
+.project-console .console-environment button {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 5px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.project-console .console-environment button[aria-pressed="true"] {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #fff;
+}
+
+.project-console .console-environment-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.project-console .ship-steps {
+  list-style: none;
+  margin: 14px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.project-console .ship-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface);
+}
+
+.project-console .ship-step-next {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.project-console .ship-step-done .ship-step-marker { color: var(--color-success); }
+.project-console .ship-step-failed { border-color: var(--color-error, #dc4f62); }
+.project-console .ship-step-failed .ship-step-marker { color: var(--color-error, #dc4f62); }
+.project-console .ship-step-pending .ship-step-marker,
+.project-console .ship-step-next .ship-step-marker { color: var(--accent-primary); }
+
+.project-console .ship-step-marker {
+  flex-shrink: 0;
+  display: flex;
+  margin-top: 1px;
+}
+
+.project-console .ship-step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-console .ship-step-body strong {
+  font-size: 13.5px;
+  color: var(--text-primary);
+}
+
+.project-console .ship-step-body p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.project-console .ship-step-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.project-console .ship-step-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.project-console .ship-step-status {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--bg-surface-2);
+  color: var(--text-muted);
+}
+
+.project-console .ship-step-done .ship-step-status {
+  color: var(--color-success);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.project-console .ship-step-failed .ship-step-status {
+  color: var(--color-error, #dc4f62);
+  background: rgba(220, 79, 98, 0.12);
+}
+
+.project-console .ship-step-next .ship-step-status {
+  color: var(--accent-primary);
+  background: var(--color-ai-bg, var(--bg-surface-2));
+}
+
+.project-console .console-check-passed strong { color: var(--color-success); }
+.project-console .console-check-failed strong { color: var(--color-error, #dc4f62); }
+
+.project-console .console-advanced {
+  margin: 12px 0;
+  font-size: 12.5px;
+}
+
+.project-console .console-advanced summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.project-console .console-advanced ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+@media (max-width: 560px) {
+  .project-console .ship-step {
+    flex-wrap: wrap;
+  }
+  .project-console .ship-step-status {
+    order: -1;
+    margin-left: auto;
+  }
 }
 
 .project-console .settings-card {
@@ -171,6 +346,239 @@
 }
 
 .project-console .settings-error {
+  color: var(--color-error, #dc4f62);
+}
+
+.project-console .database-table-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 6px 0 14px;
+}
+
+.project-console .database-table-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.project-console .database-table-card:hover {
+  border-color: var(--accent-primary);
+}
+
+.project-console .database-table-card.active {
+  border-color: var(--accent-primary);
+  background: var(--color-ai-bg, var(--bg-surface-2));
+}
+
+.project-console .database-table-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.project-console .database-schema {
+  margin: 4px 0 14px;
+}
+
+.project-console .database-column-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-console .database-column-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+.project-console .database-column-list code {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.project-console .database-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 1px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.project-console .database-badge-pk {
+  color: var(--color-warning, #d9a03f);
+  border-color: var(--color-warning, #d9a03f);
+}
+
+.project-console .database-row-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.project-console .database-row-actions button {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  padding: 3px 7px;
+  margin-left: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.project-console .database-row-actions button:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.project-console .database-confirm-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-left-color: var(--color-error, #dc4f62);
+}
+
+.project-console .database-confirm-strip .settings-actions {
+  margin: 0;
+}
+
+.project-console .database-edit-row {
+  margin: 10px 0;
+  padding: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.project-console .database-edit-row textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.project-console .database-column-draft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+.project-console .database-column-draft input[aria-label="Column name"] {
+  width: 160px;
+}
+
+.project-console .database-column-draft input[aria-label="Default value"] {
+  width: 140px;
+}
+
+.project-console .database-draft-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.project-console .database-column-drop {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  padding: 2px 7px;
+  margin-left: auto;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.project-console .database-column-drop:hover {
+  border-color: var(--color-error, #dc4f62);
+  color: var(--color-error, #dc4f62);
+}
+
+.project-console .database-cell {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: text;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.project-console .database-cell:disabled {
+  cursor: default;
+}
+
+.project-console .database-cell:not(:disabled):hover {
+  outline: 1px dashed var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.project-console .database-cell-input {
+  width: 100%;
+  min-width: 120px;
+  font: inherit;
+  padding: 2px 6px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.project-console .database-index-columns {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+
+.project-console .database-index-columns legend {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+
+.project-console .database-danger {
+  border-color: var(--color-error, #dc4f62);
   color: var(--color-error, #dc4f62);
 }
 
