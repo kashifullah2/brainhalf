@@ -87,6 +87,27 @@ describe('Project access through the Worker and real Registry SQLite', () => {
     }
   });
 
+  it('lists accounts for operator tooling without credentials or OAuth subjects', async () => {
+    database.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run('owner', 'pilot@example.com', 'private-password-hash', 1000);
+    database.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run('second', 'second@example.com', 'another-private-hash', 2000);
+    database.prepare("INSERT INTO oauth_identities (provider, subject, user_id) VALUES ('google', 'google-subject-secret', 'second')").run();
+    database.prepare('INSERT INTO email_verification (user_id, verified_at) VALUES (?, ?)').run('owner', 1500);
+    const response = await registry.fetch(new Request('https://registry/admin/users'));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { users: Array<Record<string, unknown>> };
+    // Newest accounts first; the beforeEach session rows mark 'owner' active.
+    expect(body.users.map(user => user.email)).toEqual(['second@example.com', 'pilot@example.com']);
+    const pilot = body.users.find(user => user.id === 'owner')!;
+    expect(pilot).toMatchObject({ verified: true, projects: 1, createdAt: 1000 });
+    expect(typeof pilot.lastLoginAt).toBe('number');
+    const googleUser = body.users.find(user => user.id === 'second')!;
+    expect(googleUser).toMatchObject({ verified: true, projects: 0, lastLoginAt: null });
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain('private-password-hash');
+    expect(raw).not.toContain('another-private-hash');
+    expect(raw).not.toContain('google-subject-secret');
+  });
+
   it.each(routes)('denies private reads across $path for a guest and another account', async ({ path, referer }) => {
     env.DISPATCHER = { get: () => ({ fetch: dispatchFetch }) };
     for (const userId of [undefined, 'other']) {

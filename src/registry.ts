@@ -345,6 +345,23 @@ export class AuthRegistry {
         const google = this.sql.exec("SELECT subject FROM oauth_identities WHERE user_id=? AND provider='google'", id).toArray()[0];
         return this.json(200, { email: owner.email, verified: !!email?.verified_at || !!google });
       }
+      // Operator account list for support and growth review. Compact rows only —
+      // password hashes and OAuth subjects never leave the registry. The last
+      // session row approximates last sign-in; sessions expire after 30 days.
+      if (path === '/admin/users' && method === 'GET') {
+        const rows = this.sql.exec(`SELECT u.id, u.email, u.created_at,
+          (SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id = u.id) AS last_login,
+          (SELECT COUNT(*) FROM project_owners p WHERE p.user_id = u.id) AS projects,
+          (SELECT v.verified_at FROM email_verification v WHERE v.user_id = u.id) AS verified_at,
+          (SELECT o.subject FROM oauth_identities o WHERE o.user_id = u.id AND o.provider = 'google') AS google_subject
+          FROM users u ORDER BY u.created_at DESC LIMIT 500`).toArray();
+        return this.json(200, {
+          users: rows.map(row => ({
+            id: row.id, email: row.email, createdAt: row.created_at, lastLoginAt: row.last_login ?? null,
+            projects: row.projects, verified: Boolean(row.verified_at || row.google_subject),
+          })),
+        });
+      }
       if (path.startsWith('/email/') && method === 'POST') return emailRegistry(path, await json(), this.state.storage);
       if (path === '/oauth/store' && method === 'POST') {
         const body = await json<{ key?: string; kind?: string; data?: unknown; ttl?: number }>();

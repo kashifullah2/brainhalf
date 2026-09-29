@@ -394,6 +394,19 @@ export default {
       } catch { return withCors(jsonError('Outcome metrics unavailable', 503), origin); }
     }
 
+    // Owner-only account list. The registry route returns compact public-safe
+    // rows (no credentials); this gate adds session + operator allowlist auth.
+    if (url.pathname === '/api/admin/users' && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      try {
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/admin/users');
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch { return withCors(jsonError('User list unavailable', 503), origin); }
+    }
+
     if (url.pathname === '/api/account/ai-usage' && request.method === 'GET') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
@@ -750,8 +763,9 @@ export default {
       // gets the same headers through one path.
       // Fetch the root asset: html_handling canonicalizes /index.html to /,
       // which would otherwise redirect a dashboard reload back to the landing page.
-      const assetRequest = url.pathname === '/dashboard' ? new Request(new URL('/', url), request) : request;
-      return withShellSecurity(await env.ASSETS.fetch(assetRequest), privateSearch || url.pathname === '/dashboard');
+      const shellPaths = ['/dashboard', '/admin'];
+      const assetRequest = shellPaths.includes(url.pathname) ? new Request(new URL('/', url), request) : request;
+      return withShellSecurity(await env.ASSETS.fetch(assetRequest), privateSearch || shellPaths.includes(url.pathname));
     }
 
     return new Response('Not found', { status: 404 });

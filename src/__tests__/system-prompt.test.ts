@@ -45,4 +45,12 @@ describe('7.3 extracted system prompt', () => {
     const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
     expect(prompt).toContain('NEVER output, echo, or summarise the contents of .env files');
   });
+
+  it('requires batching independent file writes into one tool round', () => {
+    // Parallel write_file calls in a single step skip a full model roundtrip
+    // per file — the single biggest generation-latency lever we control.
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    expect(prompt).toContain('parallel write_file calls in ONE tool round');
+    expect(prompt).toContain('App.tsx before components');
+  });
 });

@@ -557,6 +557,23 @@ describe('product outcome access', () => {
     });
     expect((await worker.fetch(request, envWith(registry, { PRODUCT_METRICS_OWNER_IDS: 'user-1' }), {} as any)).status).toBe(200);
   });
+
+  it('restricts the account list to authenticated operator allowlist members', async () => {
+    const registry = mockRegistry();
+    const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/admin/users') return Response.json({ users: [{ email: 'pilot@example.com', verified: true }] });
+      return original(input, init);
+    });
+    expect((await worker.fetch(new Request('https://brainhalf.com/api/admin/users'), envWith(registry), {} as any)).status).toBe(401);
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/admin/users');
+    expect((await worker.fetch(request, envWith(registry), {} as any)).status).toBe(403);
+    const allowed = await worker.fetch(request, envWith(registry, { PRODUCT_METRICS_OWNER_IDS: 'user-1' }), {} as any);
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual({ users: [{ email: 'pilot@example.com', verified: true }] });
+    expect(allowed.headers.get('Cache-Control')).toBe('no-store');
+  });
 });
 
 describe('Gallery remix orchestration', () => {

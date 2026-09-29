@@ -6,6 +6,7 @@ import App from './App';
 import './styles/studio-theme.css';
 import PublicPage from './components/PublicPage';
 import GalleryPage from './components/GalleryPage';
+import AdminPage from './components/AdminPage';
 import { ACCOUNT_PAGES, findPublicPage } from './seo/content';
 import AccountPage from './components/AccountPage';
 import { pageMetadata, isPrivateSearch } from './seo/metadata';
@@ -18,14 +19,15 @@ if (root && window.self === window.top && !/^\/(preview|p)(\/|$)/.test(window.lo
   const path = window.location.pathname.replace(/\/$/, '') || '/';
   const home = path === '/' || path === '/index.html';
   const appRoute = home || path === '/dashboard';
-  const content = appRoute ? <App /> : path === '/gallery' ? <GalleryPage /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
+  const content = appRoute ? <App /> : path === '/gallery' ? <GalleryPage /> : path === '/admin' ? <AdminPage /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
   const tree = <StrictMode><ErrorBoundary>{content}</ErrorBoundary></StrictMode>;
-  const meta = pageMetadata(home ? '/' : path);
-  document.title = meta.title;
-  document.querySelector('meta[name="description"]')?.setAttribute('content', meta.description);
-  document.querySelector('meta[name="robots"]')?.setAttribute('content', isPrivateSearch(window.location.search) ? 'noindex, nofollow' : meta.robots);
+  // /admin is an operator tool: never indexed, never canonicalized.
+  const meta = path === '/admin' ? null : pageMetadata(home ? '/' : path);
+  document.title = path === '/admin' ? 'Admin | BrainHalf' : meta!.title;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', meta?.description || 'BrainHalf operator console.');
+  document.querySelector('meta[name="robots"]')?.setAttribute('content', path === '/admin' || isPrivateSearch(window.location.search) ? 'noindex, nofollow' : meta!.robots);
   const canonical = document.querySelector('link[rel="canonical"]');
-  if (meta.canonical) canonical?.setAttribute('href', meta.canonical);
+  if (meta?.canonical) canonical?.setAttribute('href', meta.canonical);
   else canonical?.remove();
   initializeAnalytics();
   // Anonymous visitors hydrate the exact public markup generated at build time.
