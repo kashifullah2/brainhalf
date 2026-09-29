@@ -45,6 +45,22 @@ describe('Persistence recovery', () => {
     expect(store.getProjectMessages('quota')).toEqual([{ role: 'user', content: 'new' }]);
   });
 
+  it('stops retrying localStorage writes after the first quota failure', async () => {
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('test-account');
+    rejectWrites = true;
+    const warn = vi.mocked(console.warn);
+    store.saveProjectFiles('quota-once', { '/src/App.jsx': 'a' });
+    store.saveProjectFiles('quota-once', { '/src/App.jsx': 'b' });
+    store.saveProjectMessages('quota-once', [{ role: 'user', content: 'hi' }]);
+    // Only the first failing write warns; later writes skip localStorage silently.
+    const quotaWarns = warn.mock.calls.filter(args => String(args[0]).includes('localStorage unavailable'));
+    expect(quotaWarns).toHaveLength(1);
+    // Data is still safe via the memory cache (and IndexedDB).
+    expect(store.getProjectFiles('quota-once')).toEqual({ '/src/App.jsx': 'b' });
+    expect(store.getProjectMessages('quota-once')).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+
   it('keeps an edit made while asynchronous hydration is pending', async () => {
     const store = await import('../lib/project-store');
     store.setProjectAccount('test-account');

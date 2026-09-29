@@ -35,6 +35,12 @@ let legacyProjectIds = new Set<string>();
 let deletedProjectIds = new Set<string>();
 const projectSubmissionKeys = new Map<string, string>();
 
+// localStorage is only a fast synchronous cache — IndexedDB is the durable
+// store. Once a write throws (almost always QuotaExceededError), retrying on
+// every save just throws again and spams the console, so remember the failure
+// and skip localStorage writes for the rest of the session. Reads are unaffected.
+let localStorageWriteFailed = false;
+
 function projectDeleted(projectId: string): boolean {
   if (deletedProjectIds.has(projectId)) return true;
   try { return localStorage.getItem(projectStorageKey(`deleted:project:${projectId}`)) === 'true'; } catch { return false; }
@@ -585,10 +591,11 @@ function persistFiles(projectId: string, files: Record<string, string>) {
 
   // 2. Synchronously cache to localStorage if within quota
   try {
-    if (typeof localStorage !== 'undefined') {
+    if (!localStorageWriteFailed && typeof localStorage !== 'undefined') {
       localStorage.setItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`), JSON.stringify(files));
     }
   } catch (e) {
+    localStorageWriteFailed = true;
     try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`)); } catch {}
     console.warn('localStorage unavailable for files; IndexedDB persistence requested:', e);
   }
@@ -738,10 +745,11 @@ export function saveProjectMessages(projectId: string, messages: any[]) {
 
   // 2. Synchronously cache to localStorage if within quota
   try {
-    if (typeof localStorage !== 'undefined') {
+    if (!localStorageWriteFailed && typeof localStorage !== 'undefined') {
       localStorage.setItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`), JSON.stringify(messages));
     }
   } catch (e) {
+    localStorageWriteFailed = true;
     try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`)); } catch {}
     console.warn('localStorage unavailable for messages; IndexedDB persistence requested:', e);
   }
