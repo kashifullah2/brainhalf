@@ -1,4 +1,5 @@
 import React from 'react';
+import { ArrowRight } from 'lucide-react';
 import BrainHalfLogo from './BrainHalfLogo';
 
 const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
@@ -45,8 +46,9 @@ export const LandingFooter: React.FC = () => {
     <footer className="landing-footer" aria-label="Landing footer">
       <div className="landing-footer-grid">
         <div className="landing-footer-brand-col">
-          <a className="landing-footer-brand" href="/" aria-label="BrainHalf home"><BrainHalfLogo size={24} />BrainHalf</a>
-          <p className="landing-footer-tagline">Describe your idea, watch it become a working app, and publish it — all from one workspace.</p>
+          <a className="landing-footer-brand" href="/" aria-label="BrainHalf home"><BrainHalfLogo size={26} />BrainHalf</a>
+          <p className="landing-footer-tagline">Describe your idea, watch it become a working app, and publish it — all from one workspace. Free to start, no coding required.</p>
+          <a className="landing-footer-cta" href="/#start-building">Start building <ArrowRight size={14} aria-hidden="true" /></a>
         </div>
         {COLUMNS.map(column => (
           <nav key={column.title} className="landing-footer-col" aria-label={column.title}>

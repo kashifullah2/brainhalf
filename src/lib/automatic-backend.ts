@@ -117,9 +117,10 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   }, [projectId, ready]);
 
   const showJobMessage = latestJob && (['queued', 'running', 'failed'].includes(latestJob.status) || (!ready && latestJob.status === 'stopped'));
+  const failed = Boolean(latestJob && latestJob.status === 'failed');
   const message = openError || (fault ? notice : showJobMessage ? latestJob.message : ready ? 'App preview is running. Update it to use your latest changes.' : notice);
   const available = runtime.status?.enabled && runtime.status.availability?.state === 'ready';
-  return { start, open, message, ready, fault, liveUrl,
+  return { start, open, message, ready, fault, failed, liveUrl,
     canStart: Boolean(available && !busy && !activeJob && !ready),
     canUpdate: Boolean(available && !busy && ready && (!activeJob || (latestJob?.kind === 'preview' && latestJob.previewReady && latestJob.status === 'running'))),
   };

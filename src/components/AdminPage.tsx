@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Users, BadgeCheck, Activity, FolderKanban, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
 import { authFetch } from '../lib/auth-client';
@@ -110,8 +111,12 @@ export default function AdminPage() {
     <div className="admin-body">
       <p className="studio-section-label">OPERATOR</p>
       <div className="admin-title-row">
-        <h1>Accounts &amp; product health</h1>
+        <div>
+          <h1>Accounts &amp; product health</h1>
+          <p className="admin-subtitle">Private operator view — who is here, and how the product is performing.</p>
+        </div>
         <button type="button" className="admin-refresh" onClick={() => void load()} disabled={state === 'loading'}>
+          <RefreshCw size={14} className={state === 'loading' ? 'admin-spin' : ''} aria-hidden="true" />
           {state === 'loading' ? 'Loading…' : 'Refresh'}
         </button>
       </div>
@@ -130,17 +135,28 @@ export default function AdminPage() {
         <p>Check your connection and try again. If this persists, the endpoint may not be deployed yet.</p>
       </div>}
 
+      {state === 'loading' && <div className="admin-skeletons" aria-hidden="true">
+        <div className="admin-skeleton admin-skeleton-stats" />
+        <div className="admin-skeleton admin-skeleton-table" />
+      </div>}
+
       {state === 'ready' && <>
         <section className="admin-stats" aria-label="Account overview">
-          <div className="admin-stat"><strong>{stats.total}</strong><span>Total accounts</span></div>
-          <div className="admin-stat"><strong>{stats.verified}</strong><span>Verified</span></div>
-          <div className="admin-stat"><strong>{stats.activeWeek}</strong><span>Active this week</span></div>
-          <div className="admin-stat"><strong>{stats.withProjects}</strong><span>With projects</span></div>
+          <div className="admin-stat"><span className="admin-stat-icon"><Users size={17} aria-hidden="true" /></span><strong>{stats.total}</strong><span>Total accounts</span></div>
+          <div className="admin-stat"><span className="admin-stat-icon"><BadgeCheck size={17} aria-hidden="true" /></span><strong>{stats.verified}</strong><span>Verified</span></div>
+          <div className="admin-stat"><span className="admin-stat-icon"><Activity size={17} aria-hidden="true" /></span><strong>{stats.activeWeek}</strong><span>Active this week</span></div>
+          <div className="admin-stat"><span className="admin-stat-icon"><FolderKanban size={17} aria-hidden="true" /></span><strong>{stats.withProjects}</strong><span>With projects</span></div>
         </section>
 
-        {outcomes && <section className="admin-outcomes" aria-label="Product health">
-          <h2>Product health</h2>
-          <div className="admin-stats">
+        {outcomes && <section className="admin-card" aria-label="Product health">
+          <div className="admin-card-head">
+            <span className="admin-stat-icon"><ShieldCheck size={17} aria-hidden="true" /></span>
+            <div>
+              <h2>Product health</h2>
+              <p>Measured {new Date(outcomes.measuredAt).toLocaleString()} — generations, publishes and retention.</p>
+            </div>
+          </div>
+          <div className="admin-stats admin-stats-tight">
             <div className="admin-stat"><strong>{outcomes.generations}</strong><span>Generations started</span></div>
             <div className="admin-stat"><strong>{percent(outcomes.workingAppsPerGeneration)}</strong><span>Verified working apps</span></div>
             <div className="admin-stat"><strong>{percent(outcomes.publishingSuccessRate)}</strong><span>Publish success ({outcomes.published}/{outcomes.publishAttempts})</span></div>
@@ -152,13 +168,16 @@ export default function AdminPage() {
         <section aria-label="Accounts">
           <div className="admin-table-bar">
             <h2>Accounts</h2>
-            <input
-              type="search"
-              placeholder="Filter by email…"
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              aria-label="Filter accounts by email"
-            />
+            <label className="admin-search">
+              <Search size={15} aria-hidden="true" />
+              <input
+                type="search"
+                placeholder="Filter by email…"
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                aria-label="Filter accounts by email"
+              />
+            </label>
           </div>
           <div className="admin-table-wrap">
             <table className="admin-table">

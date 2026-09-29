@@ -10,7 +10,7 @@ import { RepairBudget } from '../lib/repair-budget';
 import AssistantMarkdown from './AssistantMarkdown';
 import ActionMenu from './ActionMenu';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, ArrowDown, Plus, Copy, Check, ArrowUp, AlertCircle, RotateCcw, ChevronDown, MoreHorizontal, Upload, FileUp, Server, Activity, Loader2 } from 'lucide-react';
+import { Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, ArrowDown, Plus, Copy, Check, ArrowUp, AlertCircle, AlertTriangle, RotateCcw, ChevronDown, MoreHorizontal, Upload, FileUp, Server, Activity, Loader2 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, parseMessageSegmentsMemoized, type ParseResult } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
@@ -150,6 +150,20 @@ export function shouldApplyIncomingHistory(local: Message[], incoming: Message[]
     if (local.some((message, index) => message.role === 'ai' && !isEmptyAssistantResponse(message.content) && isEmptyAssistantResponse(incoming[index].content))) return false;
   }
   return true;
+}
+
+/**
+ * The change-summary bar counts files, not write events: a model that rewrites
+ * the same path twice (e.g. styles.css, then styles.css again) must show as
+ * one file, not "AI generated 2 files · styles.css • styles.css".
+ */
+export function dedupeSegmentsByPath<T extends { path: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    if (seen.has(item.path)) return false;
+    seen.add(item.path);
+    return true;
+  });
 }
 
 /**
@@ -1662,11 +1676,31 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         </div>
       </header>
       {workspaceConflict && (
-        <div role="alert" style={{ padding: '16px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}>
-          <p style={{ margin: '0 0 12px' }}>This workspace differs from the server in {workspaceConflict.length} file(s). Your local files are preserved. Choose which version to continue with.</p>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button type="button" className="btn-secondary" onClick={() => resolveWorkspaceConflictRef.current?.(false)}>Use server files</button>
-            <button type="button" className="btn-secondary" onClick={() => resolveWorkspaceConflictRef.current?.(true)}>Keep local files</button>
+        <div role="alert" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--color-warning-bg)', color: 'var(--text-primary)' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+            <AlertTriangle size={20} style={{ color: 'var(--color-warning)', flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: '0 0 4px', fontWeight: 650, fontSize: '14px' }}>Your app changed in two places</p>
+              <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.5 }}>
+                {workspaceConflict.length === 1
+                  ? 'One file was edited both here and on the server, and the two versions are different.'
+                  : `${workspaceConflict.length} files were edited both here and on the server, and the versions are different.`}{' '}
+                Choose which version to keep — the other one will be replaced.
+              </p>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => resolveWorkspaceConflictRef.current?.(true)}
+                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'var(--accent-primary)', color: 'var(--text-on-accent)', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
+                >Keep my changes</button>
+                <button
+                  type="button"
+                  onClick={() => resolveWorkspaceConflictRef.current?.(false)}
+                  title="Your edits here will be replaced by the server's version"
+                  style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-strong)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontWeight: 500, fontSize: '13px', cursor: 'pointer' }}
+                >Use the server's version</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1834,8 +1868,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                         );
                       }
 
-                      const fileSegments = segments.filter(s => s.type === 'file');
-                      const editSegments = segments.filter(s => s.type === 'edit');
+                      const fileSegments = dedupeSegmentsByPath(segments.filter(s => s.type === 'file'));
+                      const editSegments = dedupeSegmentsByPath(segments.filter(s => s.type === 'edit'));
                       const totalChanges = fileSegments.length + editSegments.length;
                       const tools = segments.flatMap(segment => segment.type === 'tools' ? segment.names : []);
 

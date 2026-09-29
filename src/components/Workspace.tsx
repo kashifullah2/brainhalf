@@ -26,6 +26,8 @@ import { diagnosePreviewError } from '../lib/preview-diagnostics';
 import { createTypeScriptStarter } from '../lib/project-starters';
 import { useProjectRuntime } from '../lib/project-runtime-client';
 import PreviewCanvas from './PreviewCanvas';
+import LivePreviewFrame from './LivePreviewFrame';
+import { DesignPreviewStrip } from './DesignPreviewStrip';
 import ActionMenu from './ActionMenu';
 import FileExplorer from './FileExplorer';
 import ConfirmModal from './ConfirmModal';
@@ -1466,10 +1468,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     {(status === 'Generating' || status === 'Connecting')
                       ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Building your preview'}</div>
                       : status === 'Error' || status === 'Stopped'
-                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
+                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                       : (status === 'Ready' && generationEverAttempted)
-                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask agent to build the UI<ArrowUpRight size={16} /></button>
-                      : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app<ArrowUpRight size={16} /></button>
+                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask agent to build the UI</button>
+                      : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app</button>
                     }
                     {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                   </div>
@@ -1480,7 +1482,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
                     <h2>We couldn't open your latest preview.</h2>
                     <p>{previewLoadError || previewIssue?.error || 'The build completed but the preview output could not be loaded.'}</p>
-                    <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
+                    <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                   </div>
                 )}
                 {isReadOnlyProject && (
@@ -1494,17 +1496,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     </button>
                   </div>
                 )}
-                {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Start the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}{backend.ready && <button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button>}</div>}
+                {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && (
+                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} />
+                )}
                 {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
                 <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
                   {backend.liveUrl ? (
-                    <iframe
-                      key={`live-preview-${activeProjectId}-${backend.liveUrl}`}
-                      src={backend.liveUrl}
-                      sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-modals allow-downloads"
-                      style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'var(--bg-card)' }}
-                      title="Live App Preview"
-                    />
+                    <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
                   ) : previewSessionReady ? <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
@@ -1816,10 +1814,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   {(status === 'Generating' || status === 'Connecting')
                     ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Building your preview'}</div>
                     : status === 'Error' || status === 'Stopped'
-                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
+                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                     : (status === 'Ready' && generationEverAttempted)
-                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask agent to build the UI<ArrowUpRight size={16} /></button>
-                    : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app<ArrowUpRight size={16} /></button>
+                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask agent to build the UI</button>
+                    : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app</button>
                   }
                   {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                 </div>
@@ -1830,7 +1828,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
                   <h2>We couldn't open your latest preview.</h2>
                   <p>{previewLoadError || previewIssue?.error || 'The build completed but the preview output could not be loaded.'}</p>
-                  <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat<ArrowUpRight size={16} /></button>
+                  <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                 </div>
               )}
               {isReadOnlyProject && (
@@ -1872,17 +1870,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   </div>
                 </div>
               )}
-              {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && <div className={`preview-health-strip${backend.fault ? ' has-fault' : ''}`} role="status"><Server size={15} /><span><strong>Design preview</strong> · Start the app preview to test sign-in and saved data.<br />{backend.message || runtime.error || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '') || 'Start your app preview to connect its backend.'}</span>{backend.canStart && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Start app preview</button>}{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app preview</button>}{backend.ready && <button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button>}</div>}
+              {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && (
+                <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} />
+              )}
               {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
               <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
                   {backend.liveUrl ? (
-                    <iframe
-                      key={`live-preview-${activeProjectId}-${backend.liveUrl}`}
-                      src={backend.liveUrl}
-                      sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-modals allow-downloads"
-                      style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: 'var(--bg-card)' }}
-                      title="Live App Preview"
-                    />
+                    <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
                   ) : previewSessionReady ? <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}

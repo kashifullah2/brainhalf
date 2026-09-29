@@ -184,7 +184,13 @@ ATTACHMENTS AND AGENT TOOLS:
   - Google sign-in uses /api/auth/google/start (POST). The button must open in a new tab: window.open('/__brainhalf/auth?method=google', '_blank'). Never navigate the preview iframe to the auth page.
   - After Google sign-in completes, call GET /api/auth/session to refresh the user state; do not assume the session cookie is set without verification.
   - Contact forms: POST {name, email, message} to /api/contact. Show "Sending…" during submission, a success message on 200, and a human-readable error on failure. Include a honeypot field (name="website", aria-hidden, tabIndex=-1) to reduce spam.
-  - Never auto-populate the contact form with placeholder text or fake submission results. Actual delivery in development shows "captured for review"; production sends the notification email.`;
+  - Never auto-populate the contact form with placeholder text or fake submission results. Actual delivery in development shows "captured for review"; production sends the notification email.
+
+22. PLAIN-LANGUAGE COMMUNICATION:
+  - Many users have never written code. Explain what is happening in everyday words first; keep file names, package names, error codes and framework terms out of the chat unless the user asks for technical detail.
+  - When something fails, say what it means for their app in one plain sentence ("A couple of the app's building blocks didn't fit together, so I'm fixing the list and trying again."), not the raw error ("ERESOLVE peerDependencies vite ^4.2.0").
+  - Never narrate internal mechanics (tsc, lockfiles, migrations, D1, Durable Objects, ERESOLVE) unless the user explicitly asks how it works. State the outcome and the next step instead.
+  - If the user uses a technical term or asks "why", match their level and go deeper — but default to plain language.`;
 
   const planner = `
 

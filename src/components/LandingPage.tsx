@@ -228,7 +228,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <section className="studio-workflow-section" id="how-it-works" aria-labelledby="workflow-heading">
           <div className="studio-workflow-intro">
             <p className="studio-section-label">THE WAY FROM IDEA TO APP</p>
-            <h2 id="workflow-heading">Less setup.<br />More building.</h2>
+            <h2 id="workflow-heading">Describe.<br />Refine. Publish.</h2>
             <p>You set the direction, make the decisions, and stay close to what you're creating.</p>
             <a href="#start-building" onClick={focusComposer}>Start building <ArrowRight size={16} /></a>
           </div>
@@ -297,7 +297,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <section className="studio-closing" aria-labelledby="closing-heading">
           <div>
             <p className="studio-section-label">READY WHEN YOU ARE</p>
-            <h2 id="closing-heading">Your idea deserves<br />a real home.</h2>
+            <h2 id="closing-heading">Give your idea<br />a real home.</h2>
             <p>Start with a sentence. See where it takes you.</p>
           </div>
           <a href="#start-building" className="studio-closing-link" onClick={focusComposer}>Build your app <ArrowUpRight size={18} /></a>

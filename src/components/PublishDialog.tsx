@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { Check, Copy, ExternalLink, Globe, Loader2, Rocket, X } from 'lucide-react';
+import { describeVerificationFailure, isVerificationFailure } from '../lib/verification-copy';
 import { useModalFocus } from '../lib/use-modal-focus';
 import { useProjectRuntime, runtimeRequest } from '../lib/project-runtime-client';
 import { usePlatformStatus } from '../lib/status-store';
@@ -15,6 +16,33 @@ import './PublishDialog.css';
 
 const stageLabels = ['Build app', 'Test frontend & backend', 'Connect production services', 'Deploy app', 'Check deployment', 'Live'];
 const stageKeys = ['build', 'verify', 'services', 'deploy', 'check', 'live'];
+
+export interface PublishProgressView {
+  /** Heading shown above the stage list. */
+  heading: string;
+  /** Index into stageLabels of the stage actually in progress, or null when nothing has started yet. */
+  currentStage: number | null;
+  /** True while the job is waiting for a build slot — no stage may show as active. */
+  waitingInQueue: boolean;
+}
+
+/**
+ * Derives the honest progress view for a publish job.
+ *
+ * The old UI marked "Build app" as in-progress while the job was still queued,
+ * so the dialog claimed "Queued" and "building" at the same time. A queued job
+ * has started nothing: currentStage is null and the heading says so plainly.
+ */
+export function publishProgressView(job: Pick<RuntimeJob, 'status' | 'message' | 'publishStage'>): PublishProgressView {
+  if (job.status === 'queued') {
+    return { heading: 'Queued — waiting for a build slot…', currentStage: null, waitingInQueue: true };
+  }
+  return {
+    heading: job.message || (job.status === 'stopping' ? 'Stopping…' : 'Publishing your app…'),
+    currentStage: stageKeys.indexOf(job.publishStage || 'build'),
+    waitingInQueue: false,
+  };
+}
 
 export default function PublishDialog({ projectId, files, publishOnOpen, onClose, onManage }: {
   projectId: string; files: SourceFiles; publishOnOpen?: SourceFiles; onClose: () => void; onManage: () => void;
@@ -64,7 +92,8 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
   const publishing = !!job && ['queued', 'running', 'stopping'].includes(job.status);
   const busy = submitting || publishing || actionBusy;
   const currentIsLive = !!revision && release?.revision === revision;
-  const stage = job?.status === 'passed' ? 5 : stageKeys.indexOf(job?.publishStage || 'build');
+  const progress = job && publishing ? publishProgressView(job) : null;
+  const stage = job?.status === 'passed' ? 5 : progress?.currentStage ?? stageKeys.indexOf(job?.publishStage || 'build');
 
   const needsName = !release && !publishing && !job;
 
@@ -199,12 +228,15 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
           {/* ─── Publishing progress ─── */}
           {showPublishing && (
             <div className="pub-step pub-step-progress">
-              <p className="pub-heading">{submitting ? 'Starting…' : job?.message || 'Publishing your app…'}</p>
+              <p className="pub-heading">{submitting ? 'Starting…' : progress?.heading || 'Publishing your app…'}</p>
+              {progress?.waitingInQueue && (
+                <p className="pub-notice">Your publish is in line and will start on its own — nothing is building yet.</p>
+              )}
 
               <div className="pub-stages">
                 {stageLabels.map((label, i) => {
                   const done = i < stage || job?.status === 'passed';
-                  const current = i === stage && publishing;
+                  const current = progress?.currentStage === i && publishing;
                   return (
                     <div key={label} className={`pub-stage ${done ? 'done' : ''} ${current ? 'current' : ''}`}>
                       <span className="pub-stage-icon">
@@ -291,7 +323,9 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
           {showFailed && job && (
             <div className="pub-step pub-step-failed">
               <p className="pub-heading">Publishing failed</p>
-              <p role="alert" className="pub-field-error">{job.message}</p>
+              {isVerificationFailure(job.message)
+                ? <p className="pub-subtitle" role="alert">The app didn't pass its final automatic checks, so this version stayed unpublished. Your live app, if any, is untouched.</p>
+                : <p role="alert" className="pub-field-error">{job.message}</p>}
               <PublishFailureDetails projectId={projectId} job={job} onRepair={(buildLog) => {
                 let accepted = false;
                 appEvents.emit('repair-project-request', {
@@ -348,15 +382,24 @@ function PublishFailureDetails({ projectId, job, onRepair }: { projectId: string
   }, [projectId, job.id, job.environment]);
   const logs = details?.logs?.filter(entry => entry.job === job.id).map(entry => entry.text).join('\n\n');
   const checks = details?.verification?.jobId === job.id ? details.verification.checks.filter(check => !check.passed) : [];
+  const copy = checks.length ? describeVerificationFailure(checks) : null;
+  const technical = !!checks.length || !!logs;
   return <div className="pub-failure-details">
     {!details && !loadError && <p>Loading details…</p>}
     {loadError && <p>{loadError}</p>}
-    {!!checks.length && <ul className="pub-failure-checks">{checks.map(check => <li key={check.name}><strong>{check.name}</strong>: {check.detail}</li>)}</ul>}
+    {copy && <div className="pub-failure-plain">
+      <p className="pub-failure-headline">{copy.headline}</p>
+      <ul>{copy.plainChecks.map((line, index) => <li key={index}>{line}</li>)}</ul>
+      <p className="pub-failure-reassurance">{copy.reassurance}</p>
+    </div>}
     {details && <button type="button" className="pub-btn-ghost" onClick={() => {
       const ok = onRepair(logs || '');
       setRepairNotice(ok ? 'The builder is fixing the problem.' : 'Finish the current request first.');
     }}>Fix publishing problem</button>}
     {repairNotice && <p>{repairNotice}</p>}
-    {logs && <details><summary>Technical details</summary><pre tabIndex={0} aria-label="Failed publishing build log">{logs}</pre></details>}
+    {technical && <details><summary>Technical details</summary>
+      {!!checks.length && <ul className="pub-failure-checks">{checks.map(check => <li key={check.name}><strong>{check.name}</strong>: {check.detail}</li>)}</ul>}
+      {logs && <pre tabIndex={0} aria-label="Failed publishing build log">{logs}</pre>}
+    </details>}
   </div>;
 }

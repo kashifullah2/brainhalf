@@ -53,4 +53,13 @@ describe('7.3 extracted system prompt', () => {
     expect(prompt).toContain('parallel write_file calls in ONE tool round');
     expect(prompt).toContain('App.tsx before components');
   });
+
+  it('teaches plain-language communication for non-technical users', () => {
+    // Non-technical users bounce on raw errors ("ERESOLVE peerDependencies");
+    // the agent must lead with what a failure means for their app.
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    expect(prompt).toContain('PLAIN-LANGUAGE COMMUNICATION');
+    expect(prompt).toContain('everyday words first');
+    expect(prompt).toContain('what it means for their app in one plain sentence');
+  });
 });

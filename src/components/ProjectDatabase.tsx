@@ -376,7 +376,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
               onClick={() => void perform(() => browse(item.name))}
             >
               <span className="database-table-name"><Table2 size={13} />{item.name}</span>
-              <span className="settings-muted">{item.rowCount.toLocaleString()} row{item.rowCount === 1 ? '' : 's'} · {item.columns.length} column{item.columns.length === 1 ? '' : 's'}</span>
+              <span className="settings-muted">{item.rowCount?.toLocaleString() ?? '—'} row{(item.rowCount ?? 0) === 1 ? '' : 's'} · {item.columns.length} column{item.columns.length === 1 ? '' : 's'}</span>
             </button>
           ))}
         </div>

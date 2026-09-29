@@ -55,7 +55,7 @@ function DashboardUsageExtra() {
   }, []);
 
   if (accountAiUsage) {
-    return <p className="dashboard-account-usage">AI usage today ({accountAiUsage.day} UTC): {accountAiUsage.calls}/{accountAiUsage.limits.dailyCalls} calls · {accountAiUsage.reservedOutputTokens.toLocaleString()}/{accountAiUsage.limits.dailyOutputTokens.toLocaleString()} tokens · {accountAiUsage.activeGenerations}/{accountAiUsage.limits.concurrentGenerations} active</p>;
+    return <p className="dashboard-account-usage">AI usage today ({accountAiUsage.day} UTC): {accountAiUsage.calls}/{accountAiUsage.limits.dailyCalls} calls · {accountAiUsage.reservedOutputTokens?.toLocaleString() ?? '—'}/{accountAiUsage.limits.dailyOutputTokens?.toLocaleString() ?? '—'} tokens · {accountAiUsage.activeGenerations}/{accountAiUsage.limits.concurrentGenerations} active</p>;
   }
   if (accountAiUsageError) return <p className="dashboard-account-usage dashboard-account-usage-error">{accountAiUsageError}</p>;
   return null;
