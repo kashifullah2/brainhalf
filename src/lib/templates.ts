@@ -338,3 +338,231 @@ export default function App() {
     },
   },
 };
+
+/**
+ * Full-stack starter: a polished todo app proving the real backend contract.
+ * - /server/routes.js  -> real API handlers + SQLite schema, executed in the
+ *   project's Durable Object (serveProjectApi in src/agent.ts)
+ * - /src/App.jsx       -> React frontend calling fetch('/api/...'), with
+ *   loading / empty / error states per the DESIGN EXCELLENCE mandate
+ */
+export const fullStackStarterTemplate = {
+  'server': {
+    directory: {
+      'routes.js': {
+        file: {
+          contents: `
+export const schema = \`
+  CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    done INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+\`;
+
+export const routes = {
+  'GET /api/todos': async ({ db }) => {
+    const rows = db.query('SELECT * FROM todos ORDER BY id DESC');
+    // Seed starter content once, when the table is empty.
+    if (rows.length === 0) {
+      const seeds = ['Design the landing page', 'Wire up the real API', 'Ship v1'];
+      for (const title of seeds) db.exec('INSERT INTO todos (title, done) VALUES (?, ?)', title, 0);
+      return Response.json(db.query('SELECT * FROM todos ORDER BY id DESC'));
+    }
+    return Response.json(rows);
+  },
+
+  'POST /api/todos': async ({ db, req }) => {
+    const { title } = await req.json();
+    if (!title || !String(title).trim()) {
+      return Response.json({ error: 'Title is required' }, { status: 400 });
+    }
+    const r = db.exec('INSERT INTO todos (title) VALUES (?)', String(title).trim());
+    return Response.json({ id: r.lastRowId, title: String(title).trim(), done: 0 });
+  },
+
+  'PATCH /api/todos/:id': async ({ db, req, params }) => {
+    const { done } = await req.json();
+    db.exec('UPDATE todos SET done = ? WHERE id = ?', done ? 1 : 0, params.id);
+    return Response.json({ ok: true });
+  },
+
+  'DELETE /api/todos/:id': async ({ db, params }) => {
+    db.exec('DELETE FROM todos WHERE id = ?', params.id);
+    return Response.json({ ok: true });
+  },
+};
+          `,
+        },
+      },
+    },
+  },
+  'src': {
+    directory: {
+      'App.jsx': {
+        file: {
+          contents: `
+import React, { useState, useEffect } from 'react';
+import { Check, Plus, Trash2, Loader2, ListTodo, AlertTriangle } from 'lucide-react';
+
+export default function App() {
+  const [todos, setTodos] = useState([]);
+  const [input, setInput] = useState('');
+  const [status, setStatus] = useState('loading'); // loading | ready | error
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setStatus('loading');
+    try {
+      const res = await fetch('/api/todos');
+      if (!res.ok) throw new Error('API returned ' + res.status);
+      setTodos(await res.json());
+      setStatus('ready');
+    } catch (e) {
+      console.error(e);
+      setStatus('error');
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const addTodo = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: input.trim() }),
+      });
+      if (!res.ok) throw new Error('create failed');
+      const created = await res.json();
+      setTodos([created, ...todos]);
+      setInput('');
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
+  };
+
+  const toggleTodo = async (todo) => {
+    setTodos(todos.map(t => t.id === todo.id ? { ...t, done: t.done ? 0 : 1 } : t));
+    try {
+      await fetch('/api/todos/' + todo.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ done: !todo.done }),
+      });
+    } catch (e) { console.error(e); load(); }
+  };
+
+  const deleteTodo = async (id) => {
+    setTodos(todos.filter(t => t.id !== id));
+    try { await fetch('/api/todos/' + id, { method: 'DELETE' }); }
+    catch (e) { console.error(e); load(); }
+  };
+
+  const doneCount = todos.filter(t => t.done).length;
+
+  return (
+    <div className="min-h-full w-full flex items-start justify-center px-4 py-10"
+      style={{ background: '#090b10', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+      <div className="w-full max-w-xl">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)' }}>
+            <ListTodo size={20} color="#a5b4fc" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-white" style={{ letterSpacing: '-0.02em' }}>Tasks</h1>
+            <p className="text-xs" style={{ color: '#71717a' }}>
+              {status === 'ready' ? doneCount + ' of ' + todos.length + ' complete · backed by a real database' : 'Full-stack starter · real API + SQLite'}
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={addTodo} className="flex gap-2 mt-6 mb-6">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="What needs doing?"
+            className="flex-1 rounded-xl px-4 py-3 text-sm text-white outline-none"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
+          />
+          <button type="submit" disabled={saving || !input.trim()}
+            className="rounded-xl px-4 py-3 text-sm font-medium text-white flex items-center gap-2 disabled:opacity-40"
+            style={{ background: '#6366f1' }}>
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+            Add
+          </button>
+        </form>
+
+        {status === 'loading' && (
+          <div className="space-y-2">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="rounded-xl h-14 animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }} />
+            ))}
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="rounded-xl p-6 text-center" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <AlertTriangle size={22} color="#f87171" className="mx-auto mb-2" />
+            <p className="text-sm font-medium" style={{ color: '#fca5a5' }}>Couldn't reach the API</p>
+            <p className="text-xs mt-1 mb-4" style={{ color: '#71717a' }}>The backend may still be starting. Try again.</p>
+            <button onClick={load} className="text-xs font-medium px-4 py-2 rounded-lg text-white" style={{ background: '#6366f1' }}>Retry</button>
+          </div>
+        )}
+
+        {status === 'ready' && todos.length === 0 && (
+          <div className="rounded-xl p-10 text-center" style={{ border: '1px dashed rgba(255,255,255,0.12)' }}>
+            <ListTodo size={28} color="#52525b" className="mx-auto mb-3" />
+            <p className="text-sm font-medium text-white">All clear</p>
+            <p className="text-xs mt-1" style={{ color: '#71717a' }}>Add your first task above to get started.</p>
+          </div>
+        )}
+
+        {status === 'ready' && todos.length > 0 && (
+          <div className="space-y-2">
+            {todos.map(todo => (
+              <div key={todo.id}
+                className="rounded-xl px-4 py-3 flex items-center gap-3 transition-colors"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <button onClick={() => toggleTodo(todo)}
+                  className="w-5 h-5 rounded-md flex items-center justify-center shrink-0"
+                  style={{
+                    background: todo.done ? '#10b981' : 'transparent',
+                    border: todo.done ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.25)',
+                  }}>
+                  {todo.done ? <Check size={13} color="#fff" /> : null}
+                </button>
+                <span className="flex-1 text-sm text-white" style={{ textDecoration: todo.done ? 'line-through' : 'none', opacity: todo.done ? 0.45 : 1 }}>
+                  {todo.title}
+                </span>
+                <button onClick={() => deleteTodo(todo.id)} className="p-1.5 rounded-lg hover:bg-white/10" style={{ color: '#71717a' }}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+          `,
+        },
+      },
+      'styles.css': {
+        file: {
+          contents: `
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: #090b10; color: #f4f4f5; }
+input:focus { border-color: rgba(99,102,241,0.6) !important; }
+          `,
+        },
+      },
+    },
+  },
+};

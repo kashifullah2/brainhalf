@@ -2,6 +2,7 @@ import { Agent, type Connection } from 'agents';
 import { tracing } from 'cloudflare:workers';
 import { transform } from 'sucrase';
 import { normalizePath } from './lib/utils';
+import { matchApiRoute, loadServerEntry, dispatchServerApi, type ServerDb } from './lib/server-runtime';
 import { parseEditPairs, applyEditsToFile } from './lib/message-parser';
 import { autoHealAppCode } from './lib/model-tester';
 import { streamText, tool } from 'ai';
@@ -541,6 +542,57 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES:
    }
    </file>
 
+FULL-STACK BACKEND (REAL DATABASE + REAL API — NEVER A MOCK):
+This environment is FULL-STACK. Every project has a real server and a real per-project SQLite database that persists.
+- Write backend code in <file path="/server/routes.js"> using ES module syntax (TypeScript also works as /server/routes.ts).
+- Export a \`schema\` string (CREATE TABLE IF NOT EXISTS statements) and a \`routes\` object mapping "METHOD /api/path" to async handlers:
+  <file path="/server/routes.js">
+  export const schema = \`
+    CREATE TABLE IF NOT EXISTS todos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      done INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  \`;
+  export const routes = {
+    'GET /api/todos': async ({ db }) => Response.json(db.query('SELECT * FROM todos ORDER BY id DESC')),
+    'POST /api/todos': async ({ db, req }) => {
+      const { title } = await req.json();
+      if (!title || !String(title).trim()) return Response.json({ error: 'Title is required' }, { status: 400 });
+      const r = db.exec('INSERT INTO todos (title) VALUES (?)', String(title).trim());
+      return Response.json({ id: r.lastRowId, title: String(title).trim(), done: 0 });
+    },
+    'PATCH /api/todos/:id': async ({ db, req, params }) => {
+      const { done } = await req.json();
+      db.exec('UPDATE todos SET done = ? WHERE id = ?', done ? 1 : 0, params.id);
+      return Response.json({ ok: true });
+    },
+    'DELETE /api/todos/:id': async ({ db, params }) => {
+      db.exec('DELETE FROM todos WHERE id = ?', params.id);
+      return Response.json({ ok: true });
+    },
+  };
+  </file>
+- Each handler receives { db, req, params }: req is the Fetch API Request, params holds :path segments.
+- db.query(sql, ...params) returns an array of row objects. db.exec(sql, ...params) returns { changes, lastRowId }.
+- ALWAYS use parameterized queries (? placeholders). NEVER interpolate user input into SQL strings.
+- The frontend simply calls fetch('/api/...') — the preview routes it to your real backend automatically. NEVER create src/api.mock.js for new projects; real backend only.
+- Split growing server code into multiple files under /server/ with relative imports (e.g. import { validate } from './validate.js').
+- Seed starter data carefully: insert seed rows lazily inside a GET handler only when the table is empty (check COUNT first) — never duplicate seeds on every request.
+
+DESIGN EXCELLENCE (LOVABLE-GRADE AESTHETICS — NON-NEGOTIABLE):
+Every app must look like a polished, professionally designed product, never a demo or tutorial page:
+- Typography: deliberate hierarchy — display headings with tight tracking, clear size steps, generous line-height for body. No walls of unstyled text.
+- Spacing & rhythm: consistent spacing scale, breathing room between sections, clear visual grouping with cards and sections.
+- Color: an intentional palette (2-3 accent colors max plus refined neutrals), sophisticated dark-first surfaces. Avoid garish default gradients and flat pure-black/white blocks.
+- Motion: subtle entrance animations, hover states, and transitions on interactive elements; skeleton loaders while data fetches — never a frozen blank screen.
+- Icons: lucide-react for every UI icon. Never use emoji as interface icons.
+- Real content: believable, specific copy. No lorem ipsum, no "placeholder text", no empty buttons.
+- Complete states: every data view ships loading, empty, and error states — designed, not just the happy path.
+- Responsive: must look great at 390px mobile width and on desktop.
+- Polish details: visible focus rings, disabled button states, consistent border radii, subtle borders/shadows for depth.
+
 8. VARIABLE INTEGRITY & ITERABLE SAFETY:
    Never reuse an array collection name as a counter or number.
 
@@ -670,6 +722,11 @@ ${existingFilesContext}
           }
 
           this.currentAbortController = new AbortController();
+
+          // Progressive saves for the SDK streaming path too.
+          const sdkProgressivelySaved = new Map<string, string>();
+          let sdkProgressiveText = '';
+          let sdkLastScan = 0;
 
           try {
             const result = (streamText as any)({
@@ -813,9 +870,15 @@ ${existingFilesContext}
                   (chunk?.type === 'text-delta' ? chunk.text ?? chunk.textDelta : undefined);
 
                 if (textDelta) {
+                  const deltaStr = String(textDelta);
+                  sdkProgressiveText += deltaStr;
+                  if (sdkProgressiveText.indexOf('</file>', sdkLastScan) !== -1) {
+                    sdkLastScan = sdkProgressiveText.length;
+                    this.extractAndSaveNewFiles(sdkProgressiveText, connection, sdkProgressivelySaved);
+                  }
                   const msg = JSON.stringify({
                     type: 'stream',
-                    chunk: { response: String(textDelta), done: false }
+                    chunk: { response: deltaStr, done: false }
                   });
                   try { connection.send(msg); } catch { }
                   try { this.broadcast(msg, [connection.id]); } catch { }
@@ -951,6 +1014,51 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
    React, ReactDOM, 'react-router-dom', and 'lucide-react' icons are available. Tailwind CSS is pre-loaded.
    Do NOT wrap <App /> in <BrowserRouter> or <HashRouter> as the Edge Preview harness already provides the router. Use <Routes>, <Route>, <Link>, and useNavigate directly or manage views with state.
 
+FULL-STACK BACKEND (REAL DATABASE + REAL API — NEVER A MOCK):
+This environment is FULL-STACK. Every project has a real server and a real per-project SQLite database that persists.
+- Write backend code in <file path="/server/routes.js"> using ES module syntax (TypeScript also works as /server/routes.ts).
+- Export a \`schema\` string (CREATE TABLE IF NOT EXISTS statements) and a \`routes\` object mapping "METHOD /api/path" to async handlers:
+  <file path="/server/routes.js">
+  export const schema = \`
+    CREATE TABLE IF NOT EXISTS todos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      done INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  \`;
+  export const routes = {
+    'GET /api/todos': async ({ db }) => Response.json(db.query('SELECT * FROM todos ORDER BY id DESC')),
+    'POST /api/todos': async ({ db, req }) => {
+      const { title } = await req.json();
+      if (!title || !String(title).trim()) return Response.json({ error: 'Title is required' }, { status: 400 });
+      const r = db.exec('INSERT INTO todos (title) VALUES (?)', String(title).trim());
+      return Response.json({ id: r.lastRowId, title: String(title).trim(), done: 0 });
+    },
+    'DELETE /api/todos/:id': async ({ db, params }) => {
+      db.exec('DELETE FROM todos WHERE id = ?', params.id);
+      return Response.json({ ok: true });
+    },
+  };
+  </file>
+- Each handler receives { db, req, params }: req is the Fetch API Request, params holds :path segments.
+- db.query(sql, ...params) returns an array of row objects. db.exec(sql, ...params) returns { changes, lastRowId }.
+- ALWAYS use parameterized queries (? placeholders). NEVER interpolate user input into SQL strings.
+- The frontend simply calls fetch('/api/...') — the preview routes it to your real backend automatically. NEVER create src/api.mock.js for new projects; real backend only.
+- Seed starter data lazily inside a GET handler only when the table is empty (check COUNT first) — never duplicate seeds on every request.
+
+DESIGN EXCELLENCE (LOVABLE-GRADE AESTHETICS — NON-NEGOTIABLE):
+Every app must look like a polished, professionally designed product, never a demo or tutorial page:
+- Typography: deliberate hierarchy — display headings with tight tracking, clear size steps, generous line-height for body. No walls of unstyled text.
+- Spacing & rhythm: consistent spacing scale, breathing room between sections, clear visual grouping with cards and sections.
+- Color: an intentional palette (2-3 accent colors max plus refined neutrals), sophisticated dark-first surfaces. Avoid garish default gradients and flat pure-black/white blocks.
+- Motion: subtle entrance animations, hover states, and transitions on interactive elements; skeleton loaders while data fetches — never a frozen blank screen.
+- Icons: lucide-react for every UI icon. Never use emoji as interface icons.
+- Real content: believable, specific copy. No lorem ipsum, no "placeholder text", no empty buttons.
+- Complete states: every data view ships loading, empty, and error states — designed, not just the happy path.
+- Responsive: must look great at 390px mobile width and on desktop.
+- Polish details: visible focus rings, disabled button states, consistent border radii, subtle borders/shadows for depth.
+
 8. VARIABLE INTEGRITY & ITERABLE SAFETY:
    Never reuse an array collection name as a counter or number.
 
@@ -1032,6 +1140,17 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       const decoder = new TextDecoder();
       let sseBuffer = '';
 
+      // Progressive saves: persist complete <file> blocks as they stream in so
+      // the preview updates live instead of waiting for the whole response.
+      const progressivelySaved = new Map<string, string>();
+      let lastProgressiveScan = 0;
+      const maybeProgressiveSave = () => {
+        if (outputContent.indexOf('</file>', lastProgressiveScan) !== -1) {
+          lastProgressiveScan = outputContent.length;
+          this.extractAndSaveNewFiles(outputContent, connection, progressivelySaved);
+        }
+      };
+
       const extractToken = (obj: any): string | undefined => {
         if (!obj || typeof obj !== 'object') return undefined;
         if (obj.response != null) return String(obj.response);
@@ -1046,6 +1165,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
         const directText = extractToken(rawChunk);
         if (directText) {
           outputContent += directText;
+          maybeProgressiveSave();
           const msg = JSON.stringify({
             type: 'stream',
             chunk: { response: directText, done: false }
@@ -1074,6 +1194,7 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
             const token = extractToken(parsed);
             if (token) {
               outputContent += token;
+              maybeProgressiveSave();
               const msg = JSON.stringify({
                 type: 'stream',
                 chunk: { response: token, done: false }
@@ -1119,6 +1240,139 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
     } catch (e) {
       console.error('Cloudflare Workers AI execution failed:', e);
       return false;
+    }
+  }
+
+  /**
+   * Full-stack backend engine. Executes the project's generated server code
+   * (/server/routes.js|ts, plus relative /server/* modules) inside this
+   * project's Durable Object, with a `db` helper bound to the project's own
+   * SQLite database. This is what makes BrainHalf apps real full-stack apps:
+   * the frontend's fetch('/api/...') calls hit these handlers for real.
+   *
+   * Contract the agent follows:
+   *   export const schema = `CREATE TABLE IF NOT EXISTS ...; ...`;
+   *   export const routes = {
+   *     'GET /api/todos': async ({ db }) => Response.json(db.query('SELECT * FROM todos')),
+   *     'POST /api/todos': async ({ db, req }) => { ... },
+   *     'DELETE /api/todos/:id': async ({ db, params }) => { ... },
+   *   };
+   */
+  private async serveProjectApi(apiPath: string, request: Request, corsHeaders: Record<string, string>): Promise<Response> {
+    const json = (data: any, status = 200) =>
+      new Response(JSON.stringify(data), {
+        status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+
+    try {
+      this.ensureSchema();
+
+      // Load all /server/* files so handlers can use relative imports.
+      const serverFiles: Record<string, string> = {};
+      try {
+        const rows = this.runSql`SELECT path, content FROM project_files WHERE path LIKE '/server/%'`;
+        for (const r of rows as any[]) {
+          serverFiles[normalizePath(r.path as string)] = r.content as string;
+        }
+      } catch (e) {
+        console.warn('serveProjectApi: could not load server files:', e);
+      }
+
+      const entryCandidates = ['/server/routes.js', '/server/routes.ts', '/server/index.js', '/server/index.ts'];
+      const entryPath = entryCandidates.find(p => serverFiles[p] != null);
+      if (!entryPath) {
+        // No backend generated for this project: signal the preview shim so it
+        // can fall back to the legacy client-side api.mock.js if one exists.
+        return json({ error: 'no-api-route', message: `No backend route for ${apiPath}. Generate /server/routes.js to add a real API.` }, 404);
+      }
+
+      const db: ServerDb = {
+        query: (sqlText: string, ...params: any[]) => {
+          const cursor = (this as any).sql.exec(sqlText, ...params);
+          return cursor.toArray();
+        },
+        exec: (sqlText: string, ...params: any[]) => {
+          const cursor = (this as any).sql.exec(sqlText, ...params);
+          let lastRowId: number | null = null;
+          try {
+            const idRows = (this as any).sql.exec('SELECT last_insert_rowid() AS id').toArray();
+            if (idRows && idRows.length > 0 && typeof idRows[0].id === 'number') lastRowId = idRows[0].id;
+          } catch {}
+          return { changes: cursor.rowsWritten ?? 0, lastRowId };
+        }
+      };
+
+      const entry = loadServerEntry(entryPath, serverFiles, db);
+
+      // Run the exported schema idempotently (CREATE TABLE IF NOT EXISTS).
+      if (entry && typeof entry.schema === 'string' && entry.schema.trim()) {
+        const statements = entry.schema.split(';').map((s: string) => s.trim()).filter(Boolean);
+        for (const stmt of statements) {
+          try {
+            (this as any).sql.exec(stmt);
+          } catch (e: any) {
+            console.warn(`serveProjectApi: schema statement failed: ${e.message}`);
+          }
+        }
+      }
+
+      const res = await dispatchServerApi(entry, request.method, apiPath, request, db);
+      // Merge CORS headers onto whatever the handler returned.
+      const merged = new Headers(res.headers);
+      for (const [k, v] of Object.entries(corsHeaders)) merged.set(k, v);
+      if (!merged.has('Content-Type') && res.headers.get('Content-Type') == null) {
+        merged.set('Content-Type', 'application/json');
+      }
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: merged });
+    } catch (e: any) {
+      console.error('serveProjectApi error:', e);
+      return json({ error: 'api-error', message: e?.message || 'Backend handler failed.' }, 500);
+    }
+  }
+
+  /**
+   * Incrementally saves complete <file> blocks as they stream in, so the
+   * preview updates while the model is still writing (Lovable-like speed feel).
+   * Only handles complete, syntactically valid blocks; the final
+   * extractAndSaveFiles pass still handles edits, deletes, and leftovers.
+   */
+  private extractAndSaveNewFiles(text: string, connection: any, alreadySaved: Map<string, string>) {
+    const fileRegex = /<file\s+path=["']([^"']+)["']>([\s\S]*?)<\/file>/gi;
+    let match;
+    let savedAny = false;
+    while ((match = fileRegex.exec(text)) !== null) {
+      let filePath = normalizePath(match[1]);
+      if (!filePath || filePath === '/src/main.jsx' || filePath === 'src/main.jsx' || filePath.endsWith('/main.jsx') || filePath.endsWith('/main.tsx')) {
+        continue;
+      }
+      const fileContent = this.cleanCodeBlock(match[2]);
+      if (!fileContent) continue;
+      if (alreadySaved.get(filePath) === fileContent) continue;
+
+      // Validate syntax before writing (same guard as the final pass).
+      if (filePath.endsWith('.jsx') || filePath.endsWith('.tsx') || filePath.endsWith('.js') || filePath.endsWith('.ts')) {
+        try {
+          transform(fileContent, { transforms: ['jsx', 'typescript'] });
+        } catch {
+          continue; // incomplete or invalid block — leave for the final pass
+        }
+      }
+
+      try {
+        this.runSql`INSERT INTO project_files (path, content) VALUES (${filePath}, ${fileContent})
+                   ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
+        alreadySaved.set(filePath, fileContent);
+        savedAny = true;
+        const updateMsg = JSON.stringify({ type: 'file_updated', path: filePath, content: fileContent });
+        try { connection.send(updateMsg); } catch { }
+        try { this.broadcast(updateMsg, [connection.id]); } catch { }
+      } catch (e) {
+        console.error('Progressive save failed for', filePath, e);
+      }
+    }
+    if (savedAny) {
+      this.backupToR2().catch(console.error);
     }
   }
 
@@ -1469,6 +1723,13 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
         });
       }
 
+      // Real full-stack backend: generated /server/* route handlers backed by
+      // this project's own SQLite database. IDE endpoints (/api/sync, /api/files)
+      // are matched above; everything else under /api/ is user backend code.
+      if (path.startsWith('/api/')) {
+        return await this.serveProjectApi(path, request, corsHeaders);
+      }
+
       if (path === '/index.html') {
         let allFiles: Array<{path: string, content: string}> = [];
         try {
@@ -1507,30 +1768,54 @@ CRITICAL CODE COMPLETION & ARCHITECTURE RULES (STRICT MANDATE):
       ${dynamicImportMapJson}
     </script>
     <script type="module">
-      const originalFetch = window.fetch;
-      window.fetch = async (...args) => {
-        const urlObj = new URL(typeof args[0] === 'string' ? args[0] : (args[0]?.url || ''), window.location.origin);
-        if (urlObj.pathname.startsWith('/api/')) {
-          try {
-            // Try to load user-defined API mock
-            let apiModule;
-            try { apiModule = await import('./src/api.mock.js'); }
-            catch (e1) {
-              try { apiModule = await import('./src/api.mock.jsx'); }
-              catch (e2) {
-                try { apiModule = await import('./src/api.mock.ts'); }
-                catch (e3) { apiModule = await import('./src/api.mock.tsx'); }
-              }
+      // BrainHalf full-stack fetch bridge: same-origin /api/* calls from the
+      // generated app are routed to this project's REAL backend
+      // (/preview/:projectId/api/*), served by the project's Durable Object
+      // with its own SQLite database. Legacy client-side api.mock.js modules
+      // are only used as a fallback when no backend route exists.
+      const __bhProjectMatch = window.location.pathname.match(new RegExp('^/(?:preview|p)/([^/]+)'));
+      const __bhProjectId = __bhProjectMatch ? __bhProjectMatch[1] : null;
+      const originalFetch = window.fetch.bind(window);
+      async function __bhLegacyMock(args) {
+        try {
+          let apiModule;
+          try { apiModule = await import('./src/api.mock.js'); }
+          catch (e1) {
+            try { apiModule = await import('./src/api.mock.jsx'); }
+            catch (e2) {
+              try { apiModule = await import('./src/api.mock.ts'); }
+              catch (e3) { apiModule = await import('./src/api.mock.tsx'); }
             }
-            if (apiModule && (apiModule.default || apiModule.mockApi)) {
-              const handler = apiModule.default || apiModule.mockApi;
-              const req = new Request(...args);
-              const res = await handler(req);
-              if (res instanceof Response) return res;
-            }
-          } catch (e) {
-            console.warn('Mock API Handler Error:', e);
           }
+          if (apiModule && (apiModule.default || apiModule.mockApi)) {
+            const handler = apiModule.default || apiModule.mockApi;
+            const req = new Request(...args);
+            const res = await handler(req);
+            if (res instanceof Response) return res;
+          }
+        } catch (e) {
+          console.warn('Mock API Handler Error:', e);
+        }
+        return null;
+      }
+      window.fetch = async (...args) => {
+        let urlObj = null;
+        try {
+          urlObj = new URL(typeof args[0] === 'string' ? args[0] : (args[0]?.url || ''), window.location.origin);
+        } catch (_) { return originalFetch(...args); }
+        const isSameOriginApi = __bhProjectId && urlObj.origin === window.location.origin && urlObj.pathname.startsWith('/api/');
+        if (isSameOriginApi) {
+          const target = '/preview/' + __bhProjectId + urlObj.pathname + urlObj.search;
+          const res = await originalFetch(target, args[1]);
+          if (res.status === 404) {
+            let body = null;
+            try { body = await res.clone().json(); } catch (_) {}
+            if (body && body.error === 'no-api-route') {
+              const mocked = await __bhLegacyMock(args);
+              if (mocked) return mocked;
+            }
+          }
+          return res;
         }
         return originalFetch(...args);
       };

@@ -3,7 +3,7 @@ import * as ReactDOM from 'react-dom/client';
 import * as LucideIcons from 'lucide-react';
 import { transform } from 'sucrase';
 import { basicReactTemplate } from '../lib/templates';
-import { getProjectFiles } from '../lib/project-store';
+import { getProjectFiles, saveProjectFiles } from '../lib/project-store';
 
 // Safe proxy for Lucide icons: if an icon doesn't exist, return a fallback SVG icon instead of crashing
 const safeLucideIcons: any = new Proxy(LucideIcons, {
