@@ -373,10 +373,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       monaco.editor.defineTheme('brainhalf-studio-dark', {
         base: 'vs-dark', inherit: true,
         rules: [
-          // Blue-grey family, matching the studio dark elevation scale — the
-          // previous palette was green-tinted (#222522 family) and clashed
-          // with every surrounding surface.
-          { token: 'comment', foreground: '8B9BB4', fontStyle: 'italic' },
+          // Neutral grey family, matching the studio dark elevation scale —
+          // the previous palette was blue-tinted (#10161F family) and clashed
+          // with the neutral dark-grey surfaces.
+          { token: 'comment', foreground: '8A8A8A', fontStyle: 'italic' },
           { token: 'keyword', foreground: 'C3D6F2' },
           { token: 'string', foreground: '9FD4B8' },
           { token: 'number', foreground: 'E3C08D' },
@@ -384,14 +384,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           { token: 'tag', foreground: 'A3C2F5' },
         ],
         colors: {
-          'editor.background': '#10161F', 'editor.foreground': '#E6EDF7',
-          'editorLineNumber.foreground': '#7D8CA3', 'editorLineNumber.activeForeground': '#E6EDF7',
-          'editor.lineHighlightBackground': '#16202E', 'editor.selectionBackground': '#2E4258',
-          'editor.inactiveSelectionBackground': '#223047', 'editorCursor.foreground': '#A3C2F5',
-          'editorIndentGuide.background1': '#223047', 'editorIndentGuide.activeBackground1': '#42557A',
-          'editorWidget.background': '#141C29', 'editorWidget.border': '#30405A',
-          'editorSuggestWidget.background': '#141C29', 'editorSuggestWidget.border': '#30405A',
-          'editorSuggestWidget.selectedBackground': '#223047',
+          'editor.background': '#131313', 'editor.foreground': '#EDEDED',
+          'editorLineNumber.foreground': '#7A7A7A', 'editorLineNumber.activeForeground': '#EDEDED',
+          'editor.lineHighlightBackground': '#1D1D1D', 'editor.selectionBackground': '#3D3D3D',
+          'editor.inactiveSelectionBackground': '#2C2C2C', 'editorCursor.foreground': '#A3C2F5',
+          'editorIndentGuide.background1': '#2C2C2C', 'editorIndentGuide.activeBackground1': '#555555',
+          'editorWidget.background': '#242424', 'editorWidget.border': '#4A4A4A',
+          'editorSuggestWidget.background': '#242424', 'editorSuggestWidget.border': '#4A4A4A',
+          'editorSuggestWidget.selectedBackground': '#333333',
         },
       });
       loader.config({ monaco });

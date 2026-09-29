@@ -7,10 +7,10 @@
  --frame-bar: #f1f3f8;
 }
 :root[data-theme='dark'] .landing-container {
- --desk-shadow: 0 2px 3px #050b1420, 0 24px 70px #050b1438;
- --closing-background: #1c3356;
+ --desk-shadow: 0 2px 3px #00000020, 0 24px 70px #00000038;
+ --closing-background: #242424;
  --shot-shadow: 0 2px 6px #00000040, 0 32px 90px #00000059, 0 90px 180px #00000038;
- --frame-bar: #161d28;
+ --frame-bar: #232323;
 }
 .landing-container { width: 100%; min-height: 100vh; background: var(--studio-paper); color: var(--studio-ink); font: 15px var(--font-sans); -webkit-font-smoothing: antialiased; }
 .landing-container * { box-sizing: border-box; }
@@ -86,7 +86,7 @@
 
 /* The real workspace, framed like a product shot. */
 .landing-hero-shot { margin: 64px 0 0; }
-.landing-browser-frame { overflow: hidden; border: 1px solid var(--border-medium); border-radius: 16px; background: #0d1219; box-shadow: var(--shot-shadow); }
+.landing-browser-frame { overflow: hidden; border: 1px solid var(--border-medium); border-radius: 16px; background: #101010; box-shadow: var(--shot-shadow); }
 .landing-browser-bar { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--frame-bar); border-bottom: 1px solid var(--border-subtle); }
 .landing-browser-dots { display: flex; gap: 7px; }
 .landing-browser-dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--border-medium); }

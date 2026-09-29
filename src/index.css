@@ -3,27 +3,27 @@
      Layered Dark Theme Hierarchy (Linear / Cursor / Vercel Depth)
      Kept in step with the elevation scale in styles/studio-theme.css.
      ========================================================================== */
-  --bg-canvas: #0d1219;
+  --bg-canvas: #161616;
   /* Pure deep obsidian backdrop */
-  --bg-sidebar: #131a26;
+  --bg-sidebar: #1b1b1b;
   /* Refined navigation sidebar */
-  --bg-topnav: #131a26;
+  --bg-topnav: #1b1b1b;
   /* Clean header navbar */
-  --bg-chat-panel: #1b2434;
+  --bg-chat-panel: #212121;
   /* Focused chat panel */
-  --bg-workspace: #1b2434;
+  --bg-workspace: #212121;
   /* Main workspace container */
-  --bg-file-explorer: #131a26;
+  --bg-file-explorer: #1b1b1b;
   /* File explorer sidebar */
-  --bg-code-editor: #10161f;
+  --bg-code-editor: #131313;
   /* Monaco code editor background */
-  --bg-preview-canvas: #0a0e14;
+  --bg-preview-canvas: #0f0f0f;
   /* App preview container */
-  --bg-surface: #232f45;
-  --bg-surface-hover: #2c3c57;
-  --bg-card: #1b2434;
+  --bg-surface: #292929;
+  --bg-surface-hover: #323232;
+  --bg-card: #212121;
   /* Elevated card surfaces */
-  --bg-card-hover: #232f45;
+  --bg-card-hover: #292929;
 
   /* 1px Border Depth Tokens */
   --border-subtle: rgba(255, 255, 255, 0.07);

@@ -83,44 +83,43 @@
 :root[data-theme='dark'] {
   /* Elevation scale: each raised layer steps visibly lighter than the one
      below it, and editors/previews sit in darker "inset wells" below the
-     canvas. The previous scale (canvas #111722 → card #192230) was too flat
-     to perceive, which read as one undifferentiated dark-grey mass. */
+     canvas. Neutral dark-grey scale (no blue tint). */
   --focus-ring: #97baf52b;
-  --studio-paper: #0d1219;
-  --studio-white: #1b2434;
-  --studio-ink: #edf2fa;
+  --studio-paper: #161616;
+  --studio-white: #212121;
+  --studio-ink: #f2f2f2;
   --studio-blue: #a3c2f5;
-  --studio-muted: #a4b1c4;
-  --studio-line: #30405a;
-  --studio-wash: #232f45;
-  --control-border: #586e8b;
-  --bg-canvas: #0d1219;
-  --bg-sidebar: #131a26;
-  --bg-topnav: #131a26;
-  --bg-chat-panel: #1b2434;
-  --bg-workspace: #1b2434;
-  --bg-file-explorer: #131a26;
-  --bg-code-editor: #10161f;
-  --bg-preview-canvas: #0a0e14;
-  --bg-panel: #1b2434;
-  --bg-surface: #232f45;
-  --bg-surface-hover: #2c3c57;
-  --bg-card: #1b2434;
-  --bg-card-hover: #232f45;
-  --bg-hover: #232f45;
+  --studio-muted: #a3a3a3;
+  --studio-line: #383838;
+  --studio-wash: #292929;
+  --control-border: #5c5c5c;
+  --bg-canvas: #161616;
+  --bg-sidebar: #1b1b1b;
+  --bg-topnav: #1b1b1b;
+  --bg-chat-panel: #212121;
+  --bg-workspace: #212121;
+  --bg-file-explorer: #1b1b1b;
+  --bg-code-editor: #131313;
+  --bg-preview-canvas: #0f0f0f;
+  --bg-panel: #212121;
+  --bg-surface: #292929;
+  --bg-surface-hover: #323232;
+  --bg-card: #212121;
+  --bg-card-hover: #292929;
+  --bg-hover: #292929;
   /* Dark surfaces separate with shadow, not lightness alone. */
-  --shadow-subtle: 0 1px 2px rgba(3, 6, 12, 0.6);
-  --shadow-panel: 0 4px 16px rgba(3, 6, 12, 0.5);
-  --shadow-overlay: 0 20px 60px rgba(2, 4, 8, 0.7);
-  --border-color: #30405a;
-  --border-subtle: #2b3a50;
-  --border-medium: #405574;
-  --border-strong: #677f9e;
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow-panel: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 20px 60px rgba(0, 0, 0, 0.7);
+  --border-color: #383838;
+  --border-subtle: #2e2e2e;
+  --border-medium: #4a4a4a;
+  --border-strong: #6b6b6b;
   --border-accent: #45628a;
   --border-accent-strong: #a3c2f5;
-  --text-primary: #edf2fa;
-  --text-secondary: #c6d1e1;
-  --text-muted: #a4b1c4;
+  --text-primary: #f2f2f2;
+  --text-secondary: #c7c7c7;
+  --text-muted: #a3a3a3;
   --text-on-accent: #14243c;
   --accent-primary: #a8c7f6;
   --accent-secondary: #c0d7fa;
@@ -145,17 +144,17 @@
   --color-info-bg: #1d2c42;
   --color-info-border: #425d83;
   --color-ai: #a3c2f5;
-  --color-ai-bg: #232f45;
-  --color-ai-border: #405574;
-  --color-neutral: #a4b1c4;
-  --color-neutral-muted: #a4b1c4;
-  --color-neutral-bg: #232f45;
-  --color-neutral-border: #30405a;
+  --color-ai-bg: #292929;
+  --color-ai-border: #4a4a4a;
+  --color-neutral: #a3a3a3;
+  --color-neutral-muted: #a3a3a3;
+  --color-neutral-bg: #292929;
+  --color-neutral-border: #383838;
   --color-code-violet: #c5b4e6;
   --soft-error-bg: #342d29;
   --soft-error-border: #76614c;
   --soft-error-text: #e6c7a3;
-  --overlay: #080e18c9;
+  --overlay: #0b0b0bcc;
   color-scheme: dark;
 }
 

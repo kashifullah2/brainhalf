@@ -105,8 +105,19 @@ export default function AdminPage() {
 
   return <main className="admin-page">
     <header className="admin-header">
-      <a href="/" aria-label="BrainHalf home"><BrainHalfLogo size={34} /><strong>BrainHalf</strong></a>
-      <SiteHeaderActions />
+      <div className="admin-header-inner">
+        <a href="/" className="admin-brand" aria-label="BrainHalf home">
+          <BrainHalfLogo size={30} />
+          <strong>BrainHalf</strong>
+          <span className="admin-operator-badge">Operator</span>
+        </a>
+        <nav className="admin-nav" aria-label="Admin sections">
+          <a href="#overview">Overview</a>
+          <a href="#health">Product health</a>
+          <a href="#accounts">Accounts</a>
+        </nav>
+        <SiteHeaderActions />
+      </div>
     </header>
     <div className="admin-body">
       <p className="studio-section-label">OPERATOR</p>
@@ -141,14 +152,14 @@ export default function AdminPage() {
       </div>}
 
       {state === 'ready' && <>
-        <section className="admin-stats" aria-label="Account overview">
+        <section className="admin-stats" id="overview" aria-label="Account overview">
           <div className="admin-stat"><span className="admin-stat-icon"><Users size={17} aria-hidden="true" /></span><strong>{stats.total}</strong><span>Total accounts</span></div>
           <div className="admin-stat"><span className="admin-stat-icon"><BadgeCheck size={17} aria-hidden="true" /></span><strong>{stats.verified}</strong><span>Verified</span></div>
           <div className="admin-stat"><span className="admin-stat-icon"><Activity size={17} aria-hidden="true" /></span><strong>{stats.activeWeek}</strong><span>Active this week</span></div>
           <div className="admin-stat"><span className="admin-stat-icon"><FolderKanban size={17} aria-hidden="true" /></span><strong>{stats.withProjects}</strong><span>With projects</span></div>
         </section>
 
-        {outcomes && <section className="admin-card" aria-label="Product health">
+        {outcomes && <section className="admin-card" id="health" aria-label="Product health">
           <div className="admin-card-head">
             <span className="admin-stat-icon"><ShieldCheck size={17} aria-hidden="true" /></span>
             <div>
@@ -165,9 +176,9 @@ export default function AdminPage() {
           </div>
         </section>}
 
-        <section aria-label="Accounts">
+        <section id="accounts" aria-label="Accounts">
           <div className="admin-table-bar">
-            <h2>Accounts</h2>
+            <h2>Accounts <span className="admin-count">{filtered.length}</span></h2>
             <label className="admin-search">
               <Search size={15} aria-hidden="true" />
               <input
