@@ -9,7 +9,14 @@ import {
   ShoppingCart,
   MessageSquare,
   Check,
-  Zap,
+  Layers,
+  Database,
+  Rocket,
+  Globe,
+  KeyRound,
+  Link2,
+  History,
+  Activity,
   Menu,
   X,
 } from 'lucide-react';
@@ -33,10 +40,76 @@ interface LandingPageProps {
 
 const IDEA_ICONS = [ShoppingCart, LayoutGrid, BarChart3, MessageSquare];
 
+const AUDIENCES = [
+  'Retail shops',
+  'Cafés & restaurants',
+  'Clinics',
+  'Studios & agencies',
+  'Warehouses',
+  'Schools',
+  'Freelancers',
+  'Nonprofits',
+];
+
 const HOW_IT_WORKS = [
-  { step: '01', title: 'Put your idea into words', detail: 'Describe one job: tracking stock, booking appointments, or following up with customers.' },
-  { step: '02', title: 'Watch it take shape', detail: 'Try adding a record and saving changes. Ask for anything that makes the job easier.' },
-  { step: '03', title: 'Publish when it works', detail: 'Click Publish to build, check and host your supported app. Your existing usage limits apply.' },
+  {
+    step: '01',
+    title: 'Describe it in plain words',
+    detail: 'One job is enough to start: tracking stock, taking bookings, or following up with customers. Write it the way you would explain it to a person.',
+  },
+  {
+    step: '02',
+    title: 'Refine it by chatting',
+    detail: 'Click through your app, try things out, and ask for changes in plain language. The screens, the data, and the logic all update together.',
+  },
+  {
+    step: '03',
+    title: 'Publish when it is ready',
+    detail: 'Automatic checks run before anything goes live. Then your app gets its own address on the web — or bring your own domain.',
+  },
+];
+
+const FEATURES = [
+  {
+    icon: Layers,
+    title: 'Screens and backend, together',
+    detail: 'The interface and the server behind it are built from the same description, so buttons actually save, load, and update.',
+  },
+  {
+    icon: Database,
+    title: 'Your own database',
+    detail: 'Every app gets an isolated database. Your records are never mixed with another project\u2019s.',
+  },
+  {
+    icon: Rocket,
+    title: 'Publishing with safety checks',
+    detail: 'Each publish runs automatic checks first. If one fails, nothing goes live — and you get a plain-language explanation.',
+  },
+  {
+    icon: KeyRound,
+    title: 'Sign-in for your users',
+    detail: 'Google, GitHub, or email sign-in for the people who use your app, with private workspaces per account.',
+  },
+  {
+    icon: Globe,
+    title: 'Your own domain',
+    detail: 'Point a domain you own at your app. Secure connections are set up automatically.',
+  },
+  {
+    icon: Link2,
+    title: 'Shareable preview links',
+    detail: 'Send a working link while you build — no publish needed to show progress to a partner or client.',
+  },
+  {
+    icon: History,
+    title: 'Every version kept',
+    detail: 'Each change is checkpointed. Step back to any earlier version of your app at any time.',
+  },
+  {
+    icon: Activity,
+    title: 'Watch it run',
+    detail: 'Requests, errors, and AI usage are visible in the project console, so you always know what your app is doing.',
+  },
 ];
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -129,9 +202,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         <nav className="studio-navigation" aria-label="Main navigation">
-          <a href="#possibilities">Examples</a>
-          <a href="/gallery">Gallery</a>
           <a href="#how-it-works">How it works</a>
+          <a href="#examples">Examples</a>
+          <a href="#features">Features</a>
           <a href="#questions">FAQs</a>
         </nav>
 
@@ -159,10 +232,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {showMobileMenu && (
         <div className="landing-mobile-nav" id="mobile-nav" ref={mobileMenuRef} role="dialog" aria-label="Navigation menu">
           <nav aria-label="Mobile navigation">
-            <a href="#possibilities" onClick={() => setShowMobileMenu(false)}>Examples</a>
-            <a href="/gallery">Gallery</a>
             <a href="#how-it-works" onClick={() => setShowMobileMenu(false)}>How it works</a>
+            <a href="#examples" onClick={() => setShowMobileMenu(false)}>Examples</a>
+            <a href="#features" onClick={() => setShowMobileMenu(false)}>Features</a>
             <a href="#questions" onClick={() => setShowMobileMenu(false)}>FAQs</a>
+            <a href="/gallery">Gallery</a>
             <a href="/guides/build-an-app-with-ai">Build guide</a>
             <a href="/about">About</a>
           </nav>
@@ -171,18 +245,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Hero */}
       <main className="landing-main-content" id="main-content" tabIndex={-1}>
-        <section className="landing-hero-shell" aria-labelledby="hero-heading">
+        <section className="landing-hero" aria-labelledby="hero-heading">
           <div className="landing-hero-copy">
-            <p className="landing-hero-eyebrow"><Zap size={12} aria-hidden="true" /> AI app builder for small businesses</p>
-            <h1 id="hero-heading">Build the tools<br /><span>your business needs.</span></h1>
-            <p className="landing-hero-description">Describe what you want, watch it come to life, and publish it — all from one workspace. No coding required.</p>
+            <p className="landing-hero-eyebrow"><Check size={12} aria-hidden="true" /> AI app builder for small businesses</p>
+            <h1 id="hero-heading">From a sentence<br />to working software.</h1>
+            <p className="landing-hero-description">
+              Describe what your business needs. BrainHalf builds the screens, the database,
+              and the hosting — then refines it with you, in plain words. No code required.
+            </p>
             <form className="landing-prompt-box" id="start-building" onSubmit={handlePromptSubmit}>
               <label htmlFor="app-idea" className="landing-input-label">Describe your app</label>
               <textarea
                 id="app-idea"
                 ref={textareaRef}
                 className="landing-prompt-textarea"
-                placeholder="Describe what you need to build…"
+                placeholder="An inventory app for my bookshop, with low-stock alerts…"
                 aria-describedby="prompt-help"
                 value={promptText}
                 onChange={event => setPromptText(event.target.value)}
@@ -202,57 +279,107 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </form>
           </div>
-          <LandingShowcase onUsePrompt={handleExamplePrompt} />
+          <figure className="landing-hero-shot">
+            <div className="landing-browser-frame">
+              <div className="landing-browser-bar" aria-hidden="true">
+                <span className="landing-browser-dots"><i /><i /><i /></span>
+                <span className="landing-browser-url">The BrainHalf workspace</span>
+              </div>
+              <img
+                src="/images/landing-workspace.png"
+                alt="The BrainHalf workspace: a chat with the AI builder on the left and the app being built on the right"
+                width={1440}
+                height={684}
+              />
+            </div>
+            <figcaption>The real workspace — describe on the left, watch your app take shape on the right.</figcaption>
+          </figure>
         </section>
 
-        <section className="studio-ideas-section" id="possibilities" aria-labelledby="ideas-heading">
-          <div className="studio-section-intro">
-            <div><p className="studio-section-label">A LITTLE INSPIRATION</p><h2 id="ideas-heading">What will you make first?</h2></div>
-            <p>Pick an idea to fill in your first prompt.<br />{' '}Change anything before you build.</p>
+        {/* Who it's for */}
+        <section className="landing-audience" aria-labelledby="audience-heading">
+          <p className="studio-section-label">MADE FOR REAL BUSINESSES</p>
+          <h2 id="audience-heading">If you run it on spreadsheets and memory, it can be software.</h2>
+          <ul className="landing-audience-list" aria-label="Businesses BrainHalf is built for">
+            {AUDIENCES.map(audience => <li key={audience}>{audience}</li>)}
+          </ul>
+        </section>
+
+        {/* How it works */}
+        <section className="landing-workflow" id="how-it-works" aria-labelledby="workflow-heading">
+          <div className="landing-section-intro">
+            <p className="studio-section-label">THE WAY FROM IDEA TO APP</p>
+            <h2 id="workflow-heading">Describe. Refine. Publish.</h2>
+            <p className="landing-section-lede">You set the direction and make the decisions. BrainHalf does the building.</p>
           </div>
-          <div className="studio-idea-list">
+          <ol className="landing-steps" aria-label="How it works" role="list">
+            {HOW_IT_WORKS.map(item => (
+              <li key={item.step} className="landing-step">
+                <span className="landing-step-number" aria-hidden="true">{item.step}</span>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p>{item.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <a href="#start-building" className="landing-text-cta" onClick={focusComposer}>
+            Start with your first sentence <ArrowRight size={16} aria-hidden="true" />
+          </a>
+        </section>
+
+        {/* Examples */}
+        <section className="landing-examples" id="examples" aria-labelledby="examples-heading">
+          <div className="landing-section-intro">
+            <p className="studio-section-label">WHAT COMES OUT</p>
+            <h2 id="examples-heading">Real apps, not mockups.</h2>
+            <p className="landing-section-lede">These are the kinds of working tools people build. Click through them — every button does something.</p>
+          </div>
+          <LandingShowcase onUsePrompt={handleExamplePrompt} />
+          <div className="landing-idea-row" aria-label="More starting ideas">
             {BUSINESS_APPS.slice(0, 4).map((suggestion, index) => {
               const Icon = IDEA_ICONS[index] ?? ShoppingCart;
               return (
-                <button key={suggestion.label} type="button" className={`studio-idea-card idea-tone-${index}`} onClick={() => handleExamplePrompt(suggestion.prompt)}>
-                  <span className="studio-idea-icon"><Icon size={24} strokeWidth={1.5} /></span>
-                  <strong>{suggestion.label}</strong>
-                  <span>{suggestion.detail}</span>
-                  <ArrowUpRight className="studio-idea-arrow" size={18} />
+                <button key={suggestion.label} type="button" className="landing-idea-chip" onClick={() => handleExamplePrompt(suggestion.prompt)}>
+                  <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
+                  <span><strong>{suggestion.label}</strong><small>{suggestion.detail}</small></span>
+                  <ArrowUpRight size={15} aria-hidden="true" />
                 </button>
               );
             })}
           </div>
+          <p className="landing-idea-hint">Pick one to fill in your first prompt — change anything before you build.</p>
         </section>
 
-        <section className="studio-workflow-section" id="how-it-works" aria-labelledby="workflow-heading">
-          <div className="studio-workflow-intro">
-            <p className="studio-section-label">THE WAY FROM IDEA TO APP</p>
-            <h2 id="workflow-heading">Describe.<br />Refine. Publish.</h2>
-            <p>You set the direction, make the decisions, and stay close to what you're creating.</p>
-            <a href="#start-building" onClick={focusComposer}>Start building <ArrowRight size={16} /></a>
+        {/* Features */}
+        <section className="landing-features" id="features" aria-labelledby="features-heading">
+          <div className="landing-section-intro">
+            <p className="studio-section-label">UNDER THE HOOD</p>
+            <h2 id="features-heading">Everything your app needs, built in.</h2>
+            <p className="landing-section-lede">No plugins to wire up, no servers to rent, no database to configure. It is all part of the workspace.</p>
           </div>
-          <ol className="landing-how-it-works" aria-label="How it works" role="list">
-            {HOW_IT_WORKS.map(item => (
-              <li key={item.step} className="landing-how-card">
-                <span className="landing-how-step" aria-hidden="true">{item.step}</span>
-                <div><h3 className="landing-how-title">{item.title}</h3><p className="landing-how-detail">{item.detail}</p></div>
+          <ul className="landing-feature-grid" role="list">
+            {FEATURES.map(feature => (
+              <li key={feature.title} className="landing-feature-card">
+                <span className="landing-feature-icon"><feature.icon size={20} strokeWidth={1.7} aria-hidden="true" /></span>
+                <h3>{feature.title}</h3>
+                <p>{feature.detail}</p>
               </li>
             ))}
-          </ol>
-          <a href="/guides/build-an-app-with-ai" className="landing-guide-link">How to build an app with AI</a>
+          </ul>
         </section>
 
+        {/* Network proof */}
         <section className="studio-proof-section" aria-labelledby="proof-heading">
           <div className="studio-proof-intro">
             <p className="studio-section-label">THE NETWORK UNDER YOUR APP</p>
             <h2 id="proof-heading">Fast for everyone who opens it.</h2>
-            <p>Published apps run on Cloudflare's global edge network, the same infrastructure BrainHalf itself is served from.</p>
+            <p>Published apps run on Cloudflare&#8217;s global edge network, the same infrastructure BrainHalf itself is served from.</p>
           </div>
           <div className="studio-proof-grid">
             <div className="studio-proof-stat">
               <strong>~50 ms</strong>
-              <span>from 95% of the world's Internet-connected population</span>
+              <span>from 95% of the world&#8217;s Internet-connected population</span>
             </div>
             <div className="studio-proof-stat">
               <strong>300+</strong>
@@ -260,12 +387,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
             <div className="studio-proof-stat">
               <strong>1</strong>
-              <span>isolated database per app — your records are never mixed with another project's</span>
+              <span>isolated database per app — your records are never mixed with another project&#8217;s</span>
             </div>
           </div>
-          <p className="studio-proof-source">Network figures: <a href="https://www.cloudflare.com/network/" target="_blank" rel="noopener noreferrer">Cloudflare's global network <ArrowUpRight size={12} aria-hidden="true" /></a></p>
+          <p className="studio-proof-source">Network figures: <a href="https://www.cloudflare.com/network/" target="_blank" rel="noopener noreferrer">Cloudflare&#8217;s global network <ArrowUpRight size={12} aria-hidden="true" /></a></p>
         </section>
 
+        {/* FAQ */}
         <section className="studio-faq-section" id="questions" aria-labelledby="faq-heading">
           <div>
             <p className="studio-section-label">GOOD TO KNOW</p>
@@ -294,6 +422,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <a href="/use-cases/ai-website-builder">Websites</a>
         </nav>
 
+        {/* Closing */}
         <section className="studio-closing" aria-labelledby="closing-heading">
           <div>
             <p className="studio-section-label">READY WHEN YOU ARE</p>
