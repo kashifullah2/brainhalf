@@ -4,7 +4,8 @@ import { runtimeRequest, type useProjectRuntime } from './project-runtime-client
 import { sourceSnapshot } from '../runtime/source';
 import type { RuntimeStatus } from '../runtime/types';
 
-const TICKET_TTL_MS = 55_000; // Refresh ticket 5 s before the 60 s server TTL
+const TICKET_TTL_MS = 45_000; // Refresh well before the 60 s server TTL; background tabs throttle timers
+const TICKET_RETRY_MS = 10_000; // Retry a failed ticket refresh quickly instead of blanking the preview
 
 type Runtime = ReturnType<typeof useProjectRuntime>;
 /** A generation can queue one latest development snapshot. Never starts a production job. */
@@ -19,6 +20,8 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   const attempted = useRef('');
   const epoch = useRef(0);
   const liveUrlTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const fetchTicketRef = useRef<(() => void) | null>(null);
+  const ticketFault = useRef(false);
   const refresh = runtime.refresh;
   useEffect(() => {
     epoch.current++;
@@ -31,6 +34,8 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
     setOpenError('');
     setLiveUrl(null);
     clearTimeout(liveUrlTimer.current);
+    ticketFault.current = false;
+    fetchTicketRef.current = null;
     return () => {
       epoch.current++;
       clearTimeout(liveUrlTimer.current);
@@ -94,27 +99,48 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   const latestJob = runtime.status?.jobs.find(job => job.environment === 'development');
   const activeJob = runtime.status?.jobs.some(job => ['queued', 'running', 'stopping'].includes(job.status));
   const ready = Boolean(runtime.status?.activeRelease || (latestJob?.previewReady && latestJob.status === 'running'));
+  const readyRef = useRef(ready);
+  readyRef.current = ready;
 
   // Maintain an embedded-preview ticket URL that refreshes before expiry.
   // When ready → false (backend stopped), clear immediately so the iframe reverts.
+  // A failed refresh no longer blanks the preview: the current ticket may still
+  // be valid, so we keep showing it, say so honestly, and retry shortly.
   useEffect(() => {
     clearTimeout(liveUrlTimer.current);
-    if (!ready) { setLiveUrl(null); return; }
+    if (!ready) { setLiveUrl(null); fetchTicketRef.current = null; return; }
 
     let cancelled = false;
     const fetchTicket = async () => {
+      clearTimeout(liveUrlTimer.current);
       try {
         const result = await runtimeRequest<{ url: string }>(projectId, '/preview-ticket', 'development', { method: 'POST', body: JSON.stringify({ embed: true }) });
         if (cancelled) return;
         setLiveUrl(result.url);
+        if (ticketFault.current) { ticketFault.current = false; setFault(false); setNotice(''); }
         liveUrlTimer.current = setTimeout(fetchTicket, TICKET_TTL_MS);
       } catch {
-        if (!cancelled) setLiveUrl(null);
+        if (cancelled) return;
+        liveUrlTimer.current = setTimeout(fetchTicket, TICKET_RETRY_MS);
+        if (!ticketFault.current) {
+          ticketFault.current = true;
+          setFault(true);
+          setNotice('Your preview link could not be refreshed. Trying again — your app is still running.');
+        }
       }
     };
+    fetchTicketRef.current = fetchTicket;
     void fetchTicket();
     return () => { cancelled = true; clearTimeout(liveUrlTimer.current); };
   }, [projectId, ready]);
+
+  // Background tabs throttle timers, which can let the 60 s ticket expire
+  // before the scheduled refresh runs. Refresh promptly when visible again.
+  useEffect(() => {
+    const onVisibility = () => { if (document.visibilityState === 'visible' && readyRef.current) fetchTicketRef.current?.(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   const showJobMessage = latestJob && (['queued', 'running', 'failed'].includes(latestJob.status) || (!ready && latestJob.status === 'stopped'));
   const failed = Boolean(latestJob && latestJob.status === 'failed');
