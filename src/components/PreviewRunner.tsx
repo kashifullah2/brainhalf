@@ -87,7 +87,7 @@ class PreviewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                   window.parent.postMessage({
                     type: 'preview-auto-fix',
                     error: this.state.error?.message || 'Runtime error'
-                  }, '*');
+                  }, window.location.origin);
                 }
               }}
               style={{
@@ -136,6 +136,8 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
   // Listen for file sync messages from parent window
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      // Security: only accept messages from our own origin.
+      if (event.origin !== window.location.origin) return;
       if (!event.data || typeof event.data !== 'object') return;
       if (event.data.type === 'sync-files' && event.data.files) {
         setFiles(event.data.files);
@@ -146,7 +148,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
 
     // Request initial files from parent
     if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'request-preview-files', projectId }, '*');
+      window.parent.postMessage({ type: 'request-preview-files', projectId }, window.location.origin);
     }
 
     return () => window.removeEventListener('message', handleMessage);
@@ -264,11 +266,11 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
         window.parent.postMessage({
           type: 'preview-error',
           error: buildError
-        }, '*');
+        }, window.location.origin);
       }
     } else {
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'preview-success' }, '*');
+        window.parent.postMessage({ type: 'preview-success' }, window.location.origin);
       }
     }
   }, [buildError]);
@@ -308,7 +310,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
                 window.parent.postMessage({
                   type: 'preview-auto-fix',
                   error: buildError
-                }, '*');
+                }, window.location.origin);
               }
             }}
             style={{
@@ -337,7 +339,7 @@ export const PreviewRunner: React.FC<{ projectId: string }> = ({ projectId }) =>
           window.parent.postMessage({
             type: 'preview-error',
             error: err.message
-          }, '*');
+          }, window.location.origin);
         }
       }}>
         {RenderedComponent ? <RenderedComponent /> : null}

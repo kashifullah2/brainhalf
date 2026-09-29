@@ -2,7 +2,19 @@ import { Agent, type Connection } from 'agents';
 import { tracing } from 'cloudflare:workers';
 import { transform } from 'sucrase';
 import { normalizePath } from './lib/utils';
-import { matchApiRoute, loadServerEntry, dispatchServerApi, type ServerDb } from './lib/server-runtime';
+import { matchApiRoute, loadServerEntry, dispatchServerApi, createGuardedServerDb, splitSqlStatements, assertSafeServerSchema, type ServerDb } from './lib/server-runtime';
+import {
+  getProjectTokens,
+  getOrCreateProjectTokens,
+  mintProjectTokens,
+  readRequestToken,
+  tokensEqual,
+  tokenDeniedResponse,
+  type ProjectTokens,
+  type SqlTag,
+} from './lib/preview-auth';
+import { FixedWindowRateLimiter } from './lib/rate-limit';
+import { safeFetchText } from './lib/ssrf-guard';
 import { parseEditPairs, applyEditsToFile } from './lib/message-parser';
 import { autoHealAppCode } from './lib/model-tester';
 import { streamText, tool } from 'ai';
@@ -37,6 +49,49 @@ const BEDROCK_MODEL_MAP: Record<string, { id: string; maxTokens: number }> = {
 const BEDROCK_FALLBACK_ANTHROPIC = { id: 'us.anthropic.claude-sonnet-4-6-v1:0', maxTokens: 64000 };
 const BEDROCK_FALLBACK_OPUS = { id: 'us.anthropic.claude-opus-4-6-v1:0', maxTokens: 64000 };
 
+/**
+ * Decodes base64 text to bytes. Returns null when the input is not valid
+ * base64 (callers fall back to serving the content as-is).
+ */
+function base64ToBytes(b64: string): Uint8Array | null {
+  try {
+    if (typeof b64 !== 'string') return null;
+    const clean = b64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '').replace(/\s+/g, '');
+    if (clean.length < 20 || clean.length % 4 !== 0 || !/^[A-Za-z0-9+/=]+$/.test(clean)) return null;
+    const bin = atob(clean);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+/** FNV-1a 32-bit hash for cheap cache keys (schema versioning). Not cryptographic. */
+function hashString(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
+/**
+ * Races a promise against a timeout. Rejects with an Error(message) on
+ * expiry so hanging async backend handlers fail closed instead of burning
+ * Durable Object CPU.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
 // Unlimited/maximal token capacity ladder for Cloudflare Workers AI:
 // Models begin at maximum 65,536 output tokens and only step down if a model
 // specifically reports a ceiling or context-length rejection.
@@ -46,11 +101,30 @@ const MAX_CF_ATTEMPTS = 16; // Ceiling across candidates x token limits
 export class ChatAgent extends Agent {
   private currentAbortController: AbortController | null = null;
 
+  // Lazily initialized in ensureTables() (which runs on every entry point),
+  // so they also exist when the instance is constructed outside the normal
+  // Durable Object lifecycle (e.g. in tests).
+  private apiRateLimiter: FixedWindowRateLimiter | null = null;
+  private appliedSchemaHashes: Map<string, string> | null = null;
+
   private runSql(strings: TemplateStringsArray, ...values: any[]): any[] {
     return [...this.sql(strings, ...values)];
   }
 
-  private ensureSchema() {
+  /**
+   * The DO's `this.sql` used as a plain template-tag function, for the
+   * framework-free helpers in lib/*.
+   */
+  private get sqlTag(): SqlTag {
+    return (strings: TemplateStringsArray, ...values: unknown[]) =>
+      (this.sql as any)(strings, ...values);
+  }
+
+  /**
+   * Creates tables only (no seeding). Seeding is separate so R2 restore can
+   * run BEFORE default files are written (see onConnect).
+   */
+  private ensureTables() {
     try {
       this.runSql`CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,8 +139,26 @@ export class ChatAgent extends Agent {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );`;
 
+      this.runSql`CREATE TABLE IF NOT EXISTS project_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );`;
+
+      if (!this.apiRateLimiter) this.apiRateLimiter = new FixedWindowRateLimiter();
+      if (!this.appliedSchemaHashes) this.appliedSchemaHashes = new Map();
+    } catch (e) {
+      console.warn('SQLite init note:', e);
+    }
+  }
+
+  /**
+   * Seeds the default starter files when the project is empty. Must only run
+   * after restoreFromR2() had its chance, otherwise restores are impossible.
+   */
+  private seedDefaultFiles() {
+    try {
       const countRows = [...this.sql`SELECT COUNT(*) as count FROM project_files`];
-      if (countRows.length === 0 || countRows[0].count === 0) {
+      if (countRows.length === 0 || Number((countRows[0] as any)?.count) === 0) {
         const defaultApp = `import React from 'react';
 import { BrainCircuit } from 'lucide-react';
 
@@ -313,8 +405,18 @@ body {
         this.runSql`UPDATE project_files SET content = ${defaultApp} WHERE path = '/src/App.jsx' AND (content LIKE '%BRAINHALF CORE // REACTIVE ENGINE%' OR content LIKE '%From interactive workflows to full-stack reactive prototypes%' OR content LIKE '%BrainHalf Studio%');`;
       }
     } catch (e) {
-      console.warn('SQLite init note:', e);
+      console.warn('SQLite seed note:', e);
     }
+  }
+
+  /**
+   * Backwards-compatible composite: tables + default seeding. Used by all
+   * hot paths. onConnect() intentionally calls the pieces separately so R2
+   * restore runs before seeding.
+   */
+  private ensureSchema() {
+    this.ensureTables();
+    this.seedDefaultFiles();
   }
 
   private saveTurn(prompt: string, response: string) {
@@ -322,6 +424,10 @@ body {
     try {
       this.runSql`INSERT INTO messages (role, content) VALUES ('user', ${prompt});`;
       this.runSql`INSERT INTO messages (role, content) VALUES ('assistant', ${response});`;
+      // Prune conversation history so the table cannot grow unboundedly.
+      // Keeps the most recent 1000 rows (~500 turns); the model context and
+      // the history payload are capped separately at read time.
+      this.runSql`DELETE FROM messages WHERE id NOT IN (SELECT id FROM messages ORDER BY id DESC LIMIT 1000);`;
       console.log('Saved conversation turn to SQLite for session:', this.name || 'default');
     } catch (e) {
       console.warn('Failed saving turn to SQLite:', e);
@@ -340,37 +446,81 @@ body {
     }
   }
 
-  private async restoreFromR2() {
+  /**
+   * Restores project files from the R2 backup. Returns true when files were
+   * actually restored.
+   *
+   * Runs BEFORE seedDefaultFiles() (see onConnect) and only attempts once
+   * per project lifetime (guarded by a project_meta flag): previously the
+   * seed ran first, COUNT(*) was always > 1, and this method early-returned
+   * on every fresh Durable Object — restores were impossible.
+   */
+  private async restoreFromR2(): Promise<boolean> {
     try {
       const r2 = (this as any).env.PROJECT_BACKUPS;
-      if (!r2) return;
-      
-      const countRows = [...this.sql`SELECT COUNT(*) as count FROM project_files`];
-      if (countRows.length > 0 && Number(countRows[0]?.count) > 1) {
-        return; // Already initialized, don't clobber
-      }
+      if (!r2) return false;
 
-      const obj = await r2.get(`backup-${(this as any).ctx?.id || 'default'}.json`);
-      if (!obj) return;
-      const state = await obj.json();
-      if (state && state.files && Array.isArray(state.files)) {
-        for (const file of state.files) {
-          this.runSql`INSERT INTO project_files (path, content) VALUES (${file.path}, ${file.content})
-                     ON CONFLICT(path) DO UPDATE SET content=excluded.content;`;
-        }
-        console.log('Restored from R2 backup successfully.');
+      const flagRows = [...this.sql`SELECT value FROM project_meta WHERE key = 'r2_restore_attempted'`];
+      if (flagRows.length > 0) return false; // already attempted; never retry automatically
+      this.runSql`INSERT OR REPLACE INTO project_meta (key, value) VALUES ('r2_restore_attempted', '1')`;
+
+      const countRows = [...this.sql`SELECT COUNT(*) as count FROM project_files`];
+      const count = countRows.length > 0 ? Number((countRows[0] as any)?.count) : 0;
+      if (count > 0) return false; // Local files win; never clobber them.
+
+      const doId = (this as any).ctx?.id;
+      const idPart = doId && typeof doId.toString === 'function' ? doId.toString() : 'default';
+      const obj = await r2.get(`backup-${idPart}.json`);
+      if (!obj) return false;
+      const state: any = await obj.json();
+      if (!state || !Array.isArray(state.files)) return false;
+
+      let restored = 0;
+      for (const file of state.files) {
+        if (!file || typeof file.path !== 'string' || typeof file.content !== 'string') continue;
+        const cleanPath = normalizePath(file.path);
+        if (!cleanPath || cleanPath.length > 512 || file.content.length > 5 * 1024 * 1024) continue;
+        this.runSql`INSERT INTO project_files (path, content) VALUES (${cleanPath}, ${file.content})
+                   ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
+        restored++;
       }
+      if (restored > 0) console.log(`Restored ${restored} files from R2 backup.`);
+      return restored > 0;
     } catch (e) {
       console.error('Failed to restore from R2', e);
+      return false;
     }
   }
 
   async onConnect(connection: Connection) {
     console.log('Client connected to ChatAgent');
-    this.ensureSchema();
-    await this.restoreFromR2();
+    // NOTE: the WebSocket upgrade was already gated on the owner token in
+    // onRequest (or this is the first, bootstrapping connection). Order
+    // matters: tables -> tokens -> R2 restore -> seed defaults -> history.
+    this.ensureTables();
+
+    let tokens: ProjectTokens | null = null;
     try {
-      const rows = [...this.sql`SELECT role, content FROM messages ORDER BY id ASC`];
+      tokens = getOrCreateProjectTokens(this.sqlTag);
+    } catch (e) {
+      console.warn('Failed minting project tokens:', e);
+    }
+
+    const restored = await this.restoreFromR2();
+    if (!restored) this.seedDefaultFiles();
+
+    if (tokens) {
+      try {
+        connection.send(JSON.stringify({
+          type: 'project_tokens',
+          ownerToken: tokens.ownerToken,
+          previewToken: tokens.previewToken,
+        }));
+      } catch {}
+    }
+    try {
+      // Bounded: the 500 most recent turns, oldest-first for the client.
+      const rows = [...this.sql`SELECT role, content FROM (SELECT id, role, content FROM messages ORDER BY id DESC LIMIT 500) ORDER BY id ASC`];
       connection.send(JSON.stringify({ type: 'history', data: rows }));
     } catch (e) {
       console.warn('Failed retrieving history onConnect:', e);
@@ -830,30 +980,33 @@ ${existingFilesContext}
                   }
                 }),
                 generate_image: (tool as any)({
-                  description: 'Generate an image or icon asset using Cloudflare Flux Schnell or SDXL.',
+                  description: 'Generate an image or icon asset using Cloudflare Flux Schnell or SDXL. The image is saved into the project under /src/assets/ and the saved path is returned — reference that path from the app code (e.g. <img src="./src/assets/ai-....png" />).',
                   parameters: z.object({ prompt: z.string() }),
                   execute: async ({ prompt }: { prompt: string }) => {
                     try {
                       if ((this as any).env?.AI) {
-                        await (this as any).env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt });
-                        return { success: true, note: 'Asset generated successfully via Cloudflare Flux' };
+                        const result: any = await (this as any).env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt });
+                        const savedPath = this.saveGeneratedImage(result);
+                        if (savedPath) {
+                          return { success: true, path: savedPath, note: `Asset generated and saved to ${savedPath}. Reference it from the app.` };
+                        }
+                        return { success: false, error: 'Image generated but the output was empty or in an unrecognized format, so nothing was saved.' };
                       }
                       return { success: false, error: 'Cloudflare AI edge binding not available' };
                     } catch (e: any) {
-                      return { success: false, error: e.message };
+                      return { success: false, error: e?.message || 'Image generation failed.' };
                     }
                   }
                 }),
                 fetch_api: (tool as any)({
-                  description: 'Fetch data from an external 3rd-party REST API.',
+                  description: 'Fetch data from an external 3rd-party REST API. Only public http(s) URLs are allowed; private/loopback/link-local IPs, cloud metadata endpoints, embedded credentials, and oversized responses are rejected.',
                   parameters: z.object({ url: z.string() }),
                   execute: async ({ url }: { url: string }) => {
                     try {
-                      const res = await fetch(url);
-                      const text = await res.text();
-                      return { status: res.status, data: text.slice(0, 3000) };
+                      const { status, finalUrl, text } = await safeFetchText(url, { timeoutMs: 15000, maxBytes: 2 * 1024 * 1024 });
+                      return { status, url: finalUrl, data: text.slice(0, 3000) };
                     } catch (e: any) {
-                      return { error: e.message };
+                      return { error: e?.message || 'Fetch failed.' };
                     }
                   }
                 })
@@ -1302,22 +1455,46 @@ Every app must look like a polished, professionally designed product, never a de
           return { changes: cursor.rowsWritten ?? 0, lastRowId };
         }
       };
+      // Least privilege: generated handlers get DML-only access, single
+      // statements, and can never touch system tables (messages,
+      // project_files, project_meta). Schema application below keeps the raw
+      // connection because CREATE TABLE is legitimate there.
+      const guardedDb = createGuardedServerDb(db);
 
-      const entry = loadServerEntry(entryPath, serverFiles, db);
+      const entry = loadServerEntry(entryPath, serverFiles, guardedDb);
 
-      // Run the exported schema idempotently (CREATE TABLE IF NOT EXISTS).
+      // Run the exported schema once per entry version (CREATE TABLE IF NOT
+      // EXISTS is idempotent). The naive per-request re-run wasted work;
+      // quote-aware splitting keeps triggers/defaults containing semicolons
+      // intact, and each statement is screened: the schema runs on the raw
+      // project connection, so destructive DDL and references to the IDE's
+      // own tables are rejected here.
       if (entry && typeof entry.schema === 'string' && entry.schema.trim()) {
-        const statements = entry.schema.split(';').map((s: string) => s.trim()).filter(Boolean);
-        for (const stmt of statements) {
-          try {
-            (this as any).sql.exec(stmt);
-          } catch (e: any) {
-            console.warn(`serveProjectApi: schema statement failed: ${e.message}`);
+        const schemaHash = hashString(entry.schema);
+        const hashes = this.appliedSchemaHashes ?? new Map<string, string>();
+        this.appliedSchemaHashes = hashes;
+        if (hashes.get(entryPath) !== schemaHash) {
+          for (const stmt of splitSqlStatements(entry.schema)) {
+            try {
+              assertSafeServerSchema(stmt);
+              (this as any).sql.exec(stmt);
+            } catch (e: any) {
+              console.warn(`serveProjectApi: schema statement rejected/failed: ${e?.message || e}`);
+            }
           }
+          hashes.set(entryPath, schemaHash);
         }
       }
 
-      const res = await dispatchServerApi(entry, request.method, apiPath, request, db);
+      // Bound handler execution time: a hanging async handler fails closed
+      // instead of burning Durable Object CPU. (Sync spins are bounded by the
+      // platform's per-request CPU limit; the sandbox also strips timers and
+      // microtask re-arming.)
+      const res = await withTimeout(
+        dispatchServerApi(entry, request.method, apiPath, request, guardedDb),
+        10_000,
+        'Backend handler timed out after 10s.'
+      );
       // Merge CORS headers onto whatever the handler returned.
       const merged = new Headers(res.headers);
       for (const [k, v] of Object.entries(corsHeaders)) merged.set(k, v);
@@ -1328,6 +1505,41 @@ Every app must look like a polished, professionally designed product, never a de
     } catch (e: any) {
       console.error('serveProjectApi error:', e);
       return json({ error: 'api-error', message: e?.message || 'Backend handler failed.' }, 500);
+    }
+  }
+
+  /**
+   * Persists a Workers AI image-generation result as a PNG asset in the
+   * project (/src/assets/ai-<ts>.png, base64 content). Returns the saved
+   * path, or null when the result held no recognizable image data.
+   */
+  private saveGeneratedImage(result: any): string | null {
+    try {
+      let base64: string | null = null;
+      if (typeof result === 'string') {
+        base64 = result;
+      } else if (result && typeof result.image === 'string') {
+        base64 = result.image;
+      } else if (result && result.image instanceof ArrayBuffer) {
+        const bytes = new Uint8Array(result.image);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        base64 = btoa(bin);
+      }
+      if (!base64) return null;
+      base64 = base64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '').trim();
+      // Reject obvious garbage; a tiny valid PNG is still legitimate.
+      if (base64.length < 32 || !/^[A-Za-z0-9+/=\s]+$/.test(base64.slice(0, 256))) return null;
+      if (base64.length > 8 * 1024 * 1024) return null; // ~6 MiB cap on stored assets
+
+      this.ensureTables();
+      const name = `/src/assets/ai-${Date.now().toString(36)}.png`;
+      this.runSql`INSERT INTO project_files (path, content) VALUES (${name}, ${base64})
+                 ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
+      return name;
+    } catch (e) {
+      console.warn('saveGeneratedImage failed:', e);
+      return null;
     }
   }
 
@@ -1585,8 +1797,10 @@ Every app must look like a polished, professionally designed product, never a de
 
     if (validationErrors.length > 0) {
       console.warn('Refusing to write files due to syntax errors:', validationErrors);
+      // Standard error shape: { type: 'error', error: <code>, message?: <human> }
       const errMsg = JSON.stringify({
         type: 'error',
+        error: 'syntax-error',
         message: `Generated code contains syntax errors. Nothing was saved.\n${validationErrors.join('\n')}`
       });
       try { connection.send(errMsg); } catch {}
@@ -1658,6 +1872,17 @@ Every app must look like a polished, professionally designed product, never a de
   async onRequest(request: Request): Promise<Response> {
     const upgradeHeader = request.headers.get('Upgrade');
     if (upgradeHeader && upgradeHeader.toLowerCase() === 'websocket') {
+      // The agent WebSocket is the control plane (chat, file sync, AI spend):
+      // it requires the owner capability token. When the project is unclaimed
+      // (no tokens yet) this first connection bootstraps them in onConnect.
+      this.ensureTables();
+      const existing = getProjectTokens(this.sqlTag);
+      if (existing && !tokensEqual(readRequestToken(request), existing.ownerToken)) {
+        return new Response(
+          JSON.stringify({ error: 'unauthorized', message: 'This project is claimed. A valid owner token is required to connect.' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
       return super.onRequest(request);
     }
 
@@ -1690,20 +1915,64 @@ Every app must look like a polished, professionally designed product, never a de
       this.ensureSchema();
 
       if (request.method === 'POST' && path.endsWith('/api/sync')) {
-        try {
-          const body: any = await request.json();
-          if (body.files && typeof body.files === 'object') {
-            for (const [fPath, fContent] of Object.entries(body.files)) {
-              const cleanPath = normalizePath(fPath);
-              this.runSql`INSERT INTO project_files (path, content) VALUES (${cleanPath}, ${fContent as string})
-                         ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
-            }
-            return new Response(JSON.stringify({ success: true, count: Object.keys(body.files).length }), {
+        // Control-plane write: owner token required. First-writer-wins
+        // bootstrap: an unclaimed project mints its token pair here and
+        // returns it so the creator can store it.
+        let tokens = getProjectTokens(this.sqlTag);
+        let minted: ProjectTokens | null = null;
+        if (!tokens) {
+          try {
+            tokens = mintProjectTokens(this.sqlTag);
+            minted = tokens;
+          } catch (e: any) {
+            return new Response(JSON.stringify({ success: false, error: 'token-mint-failed', message: e?.message || 'Could not mint project tokens.' }), {
+              status: 500,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
           }
+        } else if (!tokensEqual(readRequestToken(request), tokens.ownerToken)) {
+          return tokenDeniedResponse('owner', corsHeaders);
+        }
+        let body: any;
+        try {
+          body = await request.json();
+        } catch {
+          return new Response(JSON.stringify({ success: false, error: 'invalid-json', message: 'Request body is not valid JSON.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+        try {
+          if (body.files && typeof body.files === 'object') {
+            let count = 0;
+            for (const [fPath, fContent] of Object.entries(body.files)) {
+              if (typeof fPath !== 'string' || typeof fContent !== 'string') continue;
+              if (fContent.length > 5 * 1024 * 1024) {
+                return new Response(JSON.stringify({ success: false, error: 'file-too-large', message: `File "${fPath}" exceeds the 5 MiB per-file limit. Nothing was saved.` }), {
+                  status: 400,
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+              }
+              const cleanPath = normalizePath(fPath);
+              if (!cleanPath || cleanPath.length > 512) continue;
+              this.runSql`INSERT INTO project_files (path, content) VALUES (${cleanPath}, ${fContent as string})
+                         ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
+              count++;
+            }
+            // New project code invalidates any cached backend schema.
+            if (this.appliedSchemaHashes) this.appliedSchemaHashes.clear();
+            const payload: any = { success: true, count };
+            if (minted) payload.tokens = minted;
+            return new Response(JSON.stringify(payload), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+          }
+          return new Response(JSON.stringify({ success: false, error: 'bad-request', message: 'Expected JSON body with a "files" object.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
         } catch (e: any) {
-          return new Response(JSON.stringify({ success: false, error: e.message }), {
+          return new Response(JSON.stringify({ success: false, error: 'sync-failed', message: e?.message || 'Sync failed.' }), {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
@@ -1711,6 +1980,12 @@ Every app must look like a polished, professionally designed product, never a de
       }
 
       if (path.endsWith('/api/files')) {
+        // Control-plane read: full project source. Owner token required once
+        // the project is claimed (unclaimed projects only hold seed defaults).
+        const tokens = getProjectTokens(this.sqlTag);
+        if (tokens && !tokensEqual(readRequestToken(request), tokens.ownerToken)) {
+          return tokenDeniedResponse('owner', corsHeaders);
+        }
         let allFiles: Record<string, string> = {};
         try {
           const rows = [...this.sql`SELECT path, content FROM project_files`];
@@ -1726,7 +2001,23 @@ Every app must look like a polished, professionally designed product, never a de
       // Real full-stack backend: generated /server/* route handlers backed by
       // this project's own SQLite database. IDE endpoints (/api/sync, /api/files)
       // are matched above; everything else under /api/ is user backend code.
+      // Requires the per-project preview token (injected into the served
+      // preview page's fetch bridge) and is rate-limited per client IP.
       if (path.startsWith('/api/')) {
+        const tokens = getProjectTokens(this.sqlTag);
+        if (!tokens || !tokensEqual(readRequestToken(request), tokens.previewToken)) {
+          return tokenDeniedResponse('preview', corsHeaders);
+        }
+        const limiter = this.apiRateLimiter ?? new FixedWindowRateLimiter();
+        this.apiRateLimiter = limiter;
+        const clientIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+        const rl = limiter.check(`api:${clientIp}`, 240, 60_000);
+        if (!rl.allowed) {
+          return new Response(JSON.stringify({ error: 'rate-limited', message: 'Too many requests. Slow down and retry.' }), {
+            status: 429,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': String(Math.ceil(rl.retryAfterMs / 1000)) }
+          });
+        }
         return await this.serveProjectApi(path, request, corsHeaders);
       }
 
@@ -1738,6 +2029,11 @@ Every app must look like a polished, professionally designed product, never a de
         } catch (e) {}
         
         const dynamicImportMapJson = this.buildDynamicImportMap(allFiles);
+        // Capability token for the project's generated backend. The fetch
+        // bridge below attaches it to every /api/* call so the app's own
+        // frontend keeps working for preview viewers; it grants no
+        // file/control-plane access (see preview-auth.ts).
+        const previewTokens = getOrCreateProjectTokens(this.sqlTag);
 
         const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1775,6 +2071,7 @@ Every app must look like a polished, professionally designed product, never a de
       // are only used as a fallback when no backend route exists.
       const __bhProjectMatch = window.location.pathname.match(new RegExp('^/(?:preview|p)/([^/]+)'));
       const __bhProjectId = __bhProjectMatch ? __bhProjectMatch[1] : null;
+      const __bhApiToken = ${JSON.stringify(previewTokens.previewToken)};
       const originalFetch = window.fetch.bind(window);
       async function __bhLegacyMock(args) {
         try {
@@ -1805,7 +2102,9 @@ Every app must look like a polished, professionally designed product, never a de
         } catch (_) { return originalFetch(...args); }
         const isSameOriginApi = __bhProjectId && urlObj.origin === window.location.origin && urlObj.pathname.startsWith('/api/');
         if (isSameOriginApi) {
-          const target = '/preview/' + __bhProjectId + urlObj.pathname + urlObj.search;
+          try { urlObj.searchParams.set('token', __bhApiToken); } catch (_) {}
+          const qs = urlObj.searchParams.toString();
+          const target = '/preview/' + __bhProjectId + urlObj.pathname + (qs ? '?' + qs : '');
           const res = await originalFetch(target, args[1]);
           if (res.status === 404) {
             let body = null;
@@ -2467,6 +2766,35 @@ if (rootEl) {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Cache-Control': 'no-cache, no-store'
               }
+            });
+          }
+
+          // Binary image assets (e.g. AI-generated PNGs saved by the
+          // generate_image tool) are stored as base64 text; decode on serve.
+          const imageExt = cleanPath.match(/\.(png|jpg|jpeg|webp|gif|avif|bmp|ico)$/i)?.[1]?.toLowerCase();
+          if (imageExt) {
+            const bytes = base64ToBytes(content);
+            if (bytes) {
+              const mime =
+                imageExt === 'jpg' || imageExt === 'jpeg' ? 'image/jpeg'
+                : imageExt === 'webp' ? 'image/webp'
+                : imageExt === 'gif' ? 'image/gif'
+                : imageExt === 'avif' ? 'image/avif'
+                : imageExt === 'bmp' ? 'image/bmp'
+                : imageExt === 'ico' ? 'image/x-icon'
+                : 'image/png';
+              // base64ToBytes allocates an exact-size buffer, so .buffer is
+              // safe to hand to the Response constructor as an ArrayBuffer.
+              return new Response(bytes.buffer as ArrayBuffer, {
+                headers: { ...corsHeaders, 'Content-Type': mime, 'Cache-Control': 'no-cache, no-store' }
+              });
+            }
+          }
+
+          // SVGs are stored as XML text; serve with the image MIME type.
+          if (cleanPath.endsWith('.svg') && content.trimStart().startsWith('<')) {
+            return new Response(content, {
+              headers: { ...corsHeaders, 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'no-cache, no-store' }
             });
           }
 

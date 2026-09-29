@@ -164,7 +164,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab }) => 
     iframeRef.current?.contentWindow?.postMessage({
       type: 'sync-files',
       files
-    }, '*');
+    }, window.location.origin);
   }, [files]);
 
   const handleExportZip = async () => {
@@ -535,7 +535,9 @@ export const ${compName} = ${compName};
   // Synchronize iframe preview messages (transpile errors, runtime errors, and auto-fix requests)
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
-      // Security: Strictly verify the message originates from our active preview iframe
+      // Security: strictly verify the message originates from our active
+      // preview iframe — same origin AND the expected window object.
+      if (event.origin !== window.location.origin) return;
       if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
       if (!event.data || typeof event.data !== 'object') return;
       if (event.data.type === 'preview-error') {
@@ -559,7 +561,7 @@ export const ${compName} = ${compName};
         iframeRef.current?.contentWindow?.postMessage({
           type: 'sync-files',
           files: filesRef.current
-        }, '*');
+        }, window.location.origin);
       }
     };
 
@@ -1304,11 +1306,18 @@ export const ${compName} = ${compName};
                       ref={iframeRef}
                       key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
                       src={`/preview/${activeProjectId}/index.html`}
+                      // Security: sandbox the generated-app preview. Scripts
+                      // and same-origin access stay enabled so apps keep
+                      // working (fetch bridge, localStorage), but top-level
+                      // navigation hijacking, popups abuse, and plugins are
+                      // blocked. postMessage is additionally origin-checked
+                      // on both sides.
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
                       onLoad={() => {
                         iframeRef.current?.contentWindow?.postMessage({
                           type: 'sync-files',
                           files: filesRef.current
-                        }, '*');
+                        }, window.location.origin);
                       }}
                       style={{
                         width: '100%',

@@ -27,6 +27,52 @@ export function formatRelativeTime(timestamp: number): string {
 
 const STORAGE_KEY = 'brainhalf_projects';
 const ACTIVE_PROJECT_KEY = 'brainhalf_active_project';
+const PROJECT_TOKENS_PREFIX = 'bh_tokens_';
+
+/**
+ * Per-project capability tokens (see src/lib/preview-auth.ts). The owner
+ * token authorizes the agent WebSocket and control-plane HTTP endpoints;
+ * the preview token authorizes the project's generated backend. Stored only
+ * in this browser's localStorage — never transmitted except back to the
+ * project's own Durable Object.
+ */
+export interface ProjectTokens {
+  ownerToken: string;
+  previewToken: string;
+}
+
+export function getProjectTokens(projectId: string): ProjectTokens | null {
+  try {
+    if (typeof localStorage === 'undefined' || !projectId) return null;
+    const raw = localStorage.getItem(PROJECT_TOKENS_PREFIX + projectId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.ownerToken === 'string' && typeof parsed.previewToken === 'string') {
+      return { ownerToken: parsed.ownerToken, previewToken: parsed.previewToken };
+    }
+  } catch {
+    // corrupted entry: treat as absent
+  }
+  return null;
+}
+
+export function saveProjectTokens(projectId: string, tokens: ProjectTokens): void {
+  try {
+    if (typeof localStorage === 'undefined' || !projectId || !tokens?.ownerToken) return;
+    localStorage.setItem(PROJECT_TOKENS_PREFIX + projectId, JSON.stringify(tokens));
+  } catch (e) {
+    console.warn('Could not persist project tokens:', e);
+  }
+}
+
+export function clearProjectTokens(projectId: string): void {
+  try {
+    if (typeof localStorage === 'undefined' || !projectId) return;
+    localStorage.removeItem(PROJECT_TOKENS_PREFIX + projectId);
+  } catch {
+    // ignore
+  }
+}
 
 export function getProjects(): Project[] {
   try {

@@ -3,7 +3,7 @@ import { Send, Bot, Loader2, Trash2, X, User, CheckCircle2, ArrowRight, Square, 
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, applyEditsToFile, type CodeEdit } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
-import { getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName } from '../lib/project-store';
+import { getProjectMessages, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName, getProjectTokens, saveProjectTokens } from '../lib/project-store';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
 import CommandBlock from './CommandBlock';
@@ -157,13 +157,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         : window.location.host;
       const isHttpsOrRemote = window.location.protocol === 'https:' || isLocal;
       const protocol = isHttpsOrRemote ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${backendHost}/agents/chat-agent/${activeProjectId}`;
+      // Owner capability token: authorizes the control-plane WebSocket.
+      // Absent on first contact — the server mints the pair and returns it
+      // as a `project_tokens` message (first-writer-wins bootstrap).
+      const storedTokens = getProjectTokens(activeProjectId);
+      const tokenQuery = storedTokens?.ownerToken ? `?token=${encodeURIComponent(storedTokens.ownerToken)}` : '';
+      const wsUrl = `${protocol}//${backendHost}/agents/chat-agent/${activeProjectId}${tokenQuery}`;
+      let didOpen = false;
       
-      console.log(`Connecting to Durable Object session: ${activeProjectId} (${wsUrl})`);
+      console.log(`Connecting to Durable Object session: ${activeProjectId} (${protocol}//${backendHost}/agents/chat-agent/${activeProjectId})`);
       ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        didOpen = true;
         if (!isMounted) return;
         setIsConnected(true);
         console.log(`Connected to session: ${activeProjectId}`);
@@ -186,6 +193,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         if (!isMounted) return;
         try {
           const data = JSON.parse(event.data);
+
+          // Capability tokens minted by the server (first-writer-wins
+          // bootstrap). Persist so later sessions authenticate as owner.
+          if (data.type === 'project_tokens' && typeof data.ownerToken === 'string' && typeof data.previewToken === 'string') {
+            saveProjectTokens(activeProjectId, { ownerToken: data.ownerToken, previewToken: data.previewToken });
+            return;
+          }
           
           if (data.type === 'history') {
             if (Array.isArray(data.data) && data.data.length > 0) {
@@ -402,6 +416,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         }
         setIsGenerating(false);
         isGeneratingRef.current = false;
+        // If we presented an owner token but the handshake never completed,
+        // the token was rejected: this project is claimed by another browser.
+        // Do NOT retry in a loop — surface it instead.
+        if (!didOpen && storedTokens?.ownerToken) {
+          appEvents.emit('generation-status', {
+            status: 'Error',
+            error: 'Project access denied: this project is claimed by another browser session. Open it where it was created, or duplicate it to work on a copy.'
+          });
+          return;
+        }
         reconnectTimer = setTimeout(connect, 3000);
       };
 
