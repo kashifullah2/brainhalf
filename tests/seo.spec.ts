@@ -174,7 +174,7 @@ test('public content and navigation work without JavaScript', async ({ browser }
     await expect(details.locator('p')).toHaveText(question.acceptedAnswer.text);
   }
   await expect(page.locator('ol[aria-label="How it works"] > li')).toHaveCount(3);
-  await page.getByRole('link', { name: 'How to build an app with AI', exact: true }).click();
+  await page.getByRole('link', { name: 'Build guide', exact: true }).first().click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('How to build an app with AI');
   await expect(page.locator('.public-article')).toContainText('Start with one person and one job');
   await context.close();
@@ -196,20 +196,20 @@ test('example previews support keyboard navigation and preserve a prompt through
   await page.goto('/');
   await page.waitForLoadState('networkidle');
   const travel = page.getByRole('tab', { name: 'Inventory tool', exact: true });
-  const board = page.getByRole('tab', { name: 'Task manager', exact: true });
-  const analytics = page.getByRole('tab', { name: 'Simple CRM', exact: true });
+  const board = page.getByRole('tab', { name: 'Simple CRM', exact: true });
+  const analytics = page.getByRole('tab', { name: 'Booking app', exact: true });
   await expect(travel).toHaveAttribute('aria-selected', 'true');
   await travel.focus();
   await page.keyboard.press('ArrowRight');
   await expect(board).toBeFocused();
   await expect(board).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Task manager');
+  await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Simple CRM');
   await page.keyboard.press('End');
   await expect(analytics).toBeFocused();
-  await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Simple CRM');
+  await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Booking app');
   await page.keyboard.press('ArrowRight');
   await expect(travel).toBeFocused();
-  await page.getByRole('button', { name: 'Use this idea' }).click();
+  await page.getByRole('button', { name: /Inventory tool/ }).click();
   const prompt = page.getByLabel('Describe your app', { exact: true });
   await expect(prompt).toBeFocused();
   await expect(prompt).toHaveValue(/inventory tool/);
@@ -232,9 +232,9 @@ test('all example previews fit narrow and wide landing layouts in both themes', 
     }
     for (const width of [320, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const name of ['Inventory tool', 'Task manager', 'Simple CRM']) {
+      for (const name of ['Inventory tool', 'Simple CRM', 'Booking app']) {
         await page.getByRole('tab', { name, exact: true }).click();
-        const overflows = await page.locator('.landing-hero-shell').evaluate(element => {
+        const overflows = await page.locator('.landing-main-content').evaluate(element => {
           return [...element.querySelectorAll('button, textarea, .studio-browser, .sample-columns, .sample-metrics')]
             .filter(node => {
               const box = node.getBoundingClientRect();
