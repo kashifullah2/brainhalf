@@ -10,7 +10,7 @@ import { RepairBudget } from '../lib/repair-budget';
 import AssistantMarkdown from './AssistantMarkdown';
 import ActionMenu from './ActionMenu';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, ArrowDown, Plus, Copy, Check, ArrowUp, AlertCircle, AlertTriangle, RotateCcw, ChevronDown, MoreHorizontal, Upload, FileUp, Server, Activity, Loader2 } from 'lucide-react';
+import { Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, ArrowDown, Plus, Copy, Check, ArrowUp, AlertCircle, AlertTriangle, RotateCcw, ChevronDown, MoreHorizontal, Upload, FileUp, Server, Activity, Loader2, Play } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, parseMessageSegmentsMemoized, type ParseResult } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
@@ -153,6 +153,36 @@ export function shouldApplyIncomingHistory(local: Message[], incoming: Message[]
 }
 
 /**
+ * An interrupted generation that can be resumed from its saved files.
+ * Parsed from the server's `generation_interrupted` message or the
+ * `resumableJob` field of the history payload.
+ */
+export interface ResumableJobInfo {
+  id: string;
+  completedFiles: number;
+  error: string | null;
+  resumesLeft: number;
+}
+
+/**
+ * Normalizes a server-provided resumable-job object. Returns null for
+ * anything that is not a well-formed job reference, so a malformed payload
+ * can never surface a broken Resume button.
+ */
+export function toResumableJobInfo(raw: unknown): ResumableJobInfo | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const j = raw as Record<string, unknown>;
+  if (typeof j.id !== 'string' || !j.id) return null;
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
+  return {
+    id: j.id,
+    completedFiles: num(j.completedFiles),
+    error: typeof j.error === 'string' ? j.error : null,
+    resumesLeft: num(j.resumesLeft),
+  };
+}
+
+/**
  * The change-summary bar counts files, not write events: a model that rewrites
  * the same path twice (e.g. styles.css, then styles.css again) must show as
  * one file, not "AI generated 2 files · styles.css • styles.css".
@@ -226,6 +256,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const [copyErrorIndex, setCopyErrorIndex] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  /**
+   * An interrupted generation that can be resumed from its saved files.
+   * Set by the server's `generation_interrupted` message or the `resumableJob`
+   * field of the history payload (after a reload/reconnect).
+   */
+  const [resumableJob, setResumableJob] = useState<ResumableJobInfo | null>(null);
+  const resumableJobRef = useRef<ResumableJobInfo | null>(null);
+  resumableJobRef.current = resumableJob;
   const [confirmModalConfig, setConfirmModalConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -692,6 +730,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               setIsGenerating(true);
               appEvents.emit('generation-status', { status: 'Generating', projectId: activeProjectId, detail: 'Reconnected to the active generation' });
             }
+            // After a reload or reconnect with no live generation, surface an
+            // interrupted build so the user can resume it with one click.
+            if (!generation) {
+              const rj = toResumableJobInfo((data as { resumableJob?: unknown }).resumableJob);
+              if (rj) {
+                resumableJobRef.current = rj;
+                setResumableJob(rj);
+              }
+            }
             if (syncMode === 'pending') {
               syncMode = data.workspaceSync === 'snapshot-v2' ? 'snapshot-v2' : 'legacy';
               serverOwnsWorkspaceRef.current = syncMode === 'snapshot-v2';
@@ -910,6 +957,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           } else if (data.type === 'generation_notice') {
             if (isGeneratingRef.current && data.requestId === generationClockRef.current?.record.id && ['accepted', 'model'].includes(data.stage)) generationClockRef.current?.mark(data.stage);
             if (isGeneratingRef.current && typeof data.message === 'string') appEvents.emit('generation-status', { status: 'Generating', detail: data.message, projectId: activeProjectId });
+            // A notice for a generation this tab isn't tracking (e.g. started
+            // in another tab) supersedes any interrupted build server-side, so
+            // a stale Resume offer must not linger.
+            if (!isGeneratingRef.current && resumableJobRef.current) {
+              resumableJobRef.current = null;
+              setResumableJob(null);
+            }
           } else if (data.type === 'error') {
             if (writeInFlight) {
               writeInFlight = false;
@@ -964,6 +1018,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             messagesRef.current = current;
             setMessages(current);
             saveProjectMessages(activeProjectId, current);
+          } else if (data.type === 'generation_interrupted') {
+            // The server saved every completed file and marked the job
+            // resumable. Offer one-click resume instead of the dead-end
+            // "No response received" card.
+            if (data.resumable === true) {
+              const rj = toResumableJobInfo(data.job);
+              resumableJobRef.current = rj;
+              setResumableJob(rj);
+            } else {
+              resumableJobRef.current = null;
+              setResumableJob(null);
+            }
           } else if (data.type === 'tool_call') {
             if (isGeneratingRef.current) generationClockRef.current?.mark('activity');
             appEvents.emit('generation-status', {
@@ -1445,6 +1511,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     const turnAttachments = overrideMessage ? [] : attachments;
     if ((!textToSend.trim() && !turnAttachments.length) || isGeneratingRef.current || uploadBusy.current) return;
     if (!belongsToProject() || isGeneratingRef.current) return;
+    // A fresh prompt supersedes any interrupted build (the server does the
+    // same when the new generation's job row is created).
+    if (resumableJobRef.current) {
+      resumableJobRef.current = null;
+      setResumableJob(null);
+    }
 
     const userMessage = (textToSend.trim() || 'Read these attachments and summarize what they contain.') + (turnAttachments.length ? '\n\nAttached files: ' + turnAttachments.map(file => file.name).join(', ') : '');
     const historyBeforeEdit = !overrideMessage && editingMessageIndex !== null
@@ -1610,6 +1682,52 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   useEffect(() => {
     handleSendMessageRef.current = handleSendMessage;
   }, [handleSendMessage, activeProjectId]);
+
+  /**
+   * One-click resume of an interrupted generation. The server rebuilds the
+   * continuation prompt from the durable job record, so the client only sends
+   * the job id — the completed files never leave the server.
+   */
+  const handleResumeGeneration = useCallback(() => {
+    const job = resumableJobRef.current;
+    const ws = wsRef.current;
+    if (!job || !isCurrent() || !projectScope.active || isGeneratingRef.current) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    resumableJobRef.current = null;
+    setResumableJob(null);
+    bufferRef.current = '';
+    aiMessageRef.current = '';
+    generationTouchedFilesRef.current = false;
+    setElapsedSeconds(0);
+    setIsGenerating(true);
+    isGeneratingRef.current = true;
+    const modelObj = models.find(m => m.id === selectedModelId);
+    generationModelIdRef.current = modelObj?.id || selectedModelId;
+    try {
+      ws.send(JSON.stringify({
+        type: 'resume_generation',
+        jobId: job.id,
+        projectId: activeProjectId,
+        idempotencyKey: (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? crypto.randomUUID() : `resume-${Date.now()}`,
+        model: modelObj?.id || selectedModelId,
+        provider: modelObj?.provider,
+        executionTarget: exportOnly.current ? 'export' : 'managed',
+      }));
+    } catch {
+      setIsGenerating(false);
+      isGeneratingRef.current = false;
+      resumableJobRef.current = job;
+      setResumableJob(job);
+      return;
+    }
+    appEvents.emit('generation-status', {
+      status: 'Generating',
+      detail: job.completedFiles > 0
+        ? `Resuming your build (${job.completedFiles} file(s) already saved)…`
+        : 'Resuming your build…',
+      projectId: activeProjectId,
+    });
+  }, [activeProjectId, projectScope, models, selectedModelId]);
 
   const repairBudgetRef = useRef(new RepairBudget());
 
@@ -2071,6 +2189,35 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         flexDirection: 'column',
         position: 'relative'
       }}>
+        {resumableJob && !isGenerating && (
+          <div className="studio-resume-banner" role="status" aria-live="polite">
+            <div className="studio-resume-banner-icon" aria-hidden="true">
+              <RotateCcw size={16} />
+            </div>
+            <div className="studio-resume-banner-text">
+              <strong>Your build stopped, but nothing was lost.</strong>
+              <span>
+                {resumableJob.completedFiles > 0
+                  ? `${resumableJob.completedFiles} file${resumableJob.completedFiles === 1 ? '' : 's'} already saved — pick up right where it stopped.`
+                  : 'Pick up right where it stopped.'}
+                {resumableJob.error ? ` ${resumableJob.error}` : ''}
+              </span>
+            </div>
+            <div className="studio-resume-banner-actions">
+              <button type="button" className="studio-resume-primary" onClick={handleResumeGeneration}>
+                <Play size={14} /> Resume building
+              </button>
+              <button
+                type="button"
+                className="studio-resume-dismiss"
+                onClick={() => { resumableJobRef.current = null; setResumableJob(null); }}
+                aria-label="Dismiss resume offer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
         {mergeConflict && (
           <div style={{
             padding: '10px 14px',

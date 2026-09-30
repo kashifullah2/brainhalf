@@ -46,6 +46,7 @@ const GENERATION_TRANSIENT_RETRIES = 2;
 import { SourceHistory, sourceChanges } from './lib/source-history';
 import { readJson } from './runtime/integrations';
 import { MAX_GENERATION_RESUME_CHARS, type GenerationSession } from './lib/generation-session';
+import { GenerationJobs, MAX_RESUMES } from './lib/generation-jobs';
 import {
   STARTER_APP_JSX,
   STARTER_MAIN_JSX,
@@ -351,6 +352,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   // The running request prevents hibernation. Completed output is persisted in
   // messages; this bounded snapshot lets another authorized socket rejoin it.
   private activeGeneration: (GenerationSession & { epoch: number }) | null = null;
+  /**
+   * Durable id of the in-flight generation job (mirrors the accounting id in
+   * generation_usage). While set, every file written via upsertFile is
+   * recorded against the job so an interrupted generation can be resumed from
+   * its last completed file. Null outside a generation.
+   */
+  private activeJobId: string | null = null;
+  private generationJobs() {
+    return new GenerationJobs((sql, ...params) => this.runSql(sql.split('?') as unknown as TemplateStringsArray, ...params));
+  }
   private activeAccounting: { id: string; inputTokens: number | null; outputTokens: number | null; firstResponseAt: number | null; providerCalls: number } | null = null;
   /**
    * Consecutive truncation auto-retries within one retry chain. Reset whenever
@@ -899,6 +910,26 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   }
 
   private sendHistoryMessage(connection: Connection, workspaceEmpty: boolean) {
+    // A Durable Object can be evicted or restarted while a generation was
+    // marked running: the in-memory session is gone but the job row survives.
+    // Surface those orphans as resumable instead of letting them vanish.
+    // Best-effort; history delivery must never fail because of it.
+    let resumableJob: { id: string; completedFiles: number; error: string | null; resumesLeft: number } | null = null;
+    try {
+      const jobs = this.generationJobs();
+      if (!this.activeGeneration) {
+        jobs.markOrphanedRunning('The connection dropped while the builder was working. Your saved files are safe — you can resume.');
+      }
+      const resumable = jobs.latestResumable();
+      if (resumable) {
+        resumableJob = {
+          id: resumable.id,
+          completedFiles: resumable.completedFiles.length,
+          error: resumable.error,
+          resumesLeft: Math.max(0, MAX_RESUMES - resumable.resumeCount),
+        };
+      }
+    } catch { /* resumable state is auxiliary */ }
     try {
       const totalRows = [...this.sql`SELECT COUNT(*) as count FROM messages`];
       const total = Number(totalRows[0]?.count ?? 0);
@@ -909,10 +940,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         content: row.role === 'assistant' ? formatToolTranscript(String(row.content || '')) : row.content,
         internal: row.role === 'user' && isSystemContinuation(String(row.content || '')),
       }));
-      connection.send(JSON.stringify({ type: 'history', data: transcript, total, truncated: total > rows.length, workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot() }));
+      connection.send(JSON.stringify({ type: 'history', data: transcript, total, truncated: total > rows.length, workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot(), resumableJob }));
     } catch (e) {
       console.warn('Failed retrieving history onConnect:', e);
-      connection.send(JSON.stringify({ type: 'history', data: [], workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot() }));
+      connection.send(JSON.stringify({ type: 'history', data: [], workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot(), resumableJob }));
     }
     try { connection.send(JSON.stringify({ type: 'files_changed', revision: this.getFilesRevision() })); } catch { }
   }
@@ -941,6 +972,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     }
     this.runSql`INSERT INTO project_files (path, content) VALUES (${path}, ${content})
                ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
+    // Durable per-file checkpoint for resumable generations. Guarded by
+    // activeJobId so non-generation writes (sync, restore) are not tracked.
+    // Best-effort: tracking must never break a file write.
+    if (this.activeJobId) {
+      try { this.generationJobs().markFileComplete(this.activeJobId, path); }
+      catch { /* file is saved; only the resume checkpoint missed */ }
+    }
     return true;
   }
 
@@ -1171,6 +1209,70 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         }
       }
 
+      // Chains a resumed generation to the interrupted job it continues.
+      // Consumed at job creation below; null for brand-new prompts.
+      let resumeChain: { parentJobId: string; resumeCount: number; initialFiles: string[] } | null = null;
+
+      if (data.type === 'resume_generation') {
+        const jobs = this.generationJobs();
+        const requestedId = typeof (data as { jobId?: unknown }).jobId === 'string' ? String((data as { jobId: unknown }).jobId) : '';
+        const job = (requestedId ? jobs.get(requestedId) : null) ?? jobs.latestResumable();
+        if (!job || !jobs.canResume(job)) {
+          try {
+            connection.send(JSON.stringify({
+              type: 'error',
+              error: requestedId
+                ? 'That build can no longer be resumed. Send your request again to start a fresh build.'
+                : 'There is no interrupted build to resume. Send your request to start building.',
+            }));
+          } catch { }
+          return;
+        }
+        // Cumulative files across the resume chain: walk up through parents
+        // so a second resume still knows about the first attempt's files.
+        // The root job's prompt is the original user request — a resumed job
+        // stores the generated continuation, which must not be reused as the
+        // "original" on a later resume.
+        const cumulative: string[] = [];
+        const seen = new Set<string>();
+        let cursor: { completedFiles: string[]; parentJobId: string | null; prompt: string } | null = job;
+        let rootPrompt = job.prompt;
+        let depth = 0;
+        while (cursor && depth < 8) {
+          for (const p of cursor.completedFiles) {
+            if (!seen.has(p)) { seen.add(p); cumulative.push(p); }
+          }
+          if (cursor.parentJobId) {
+            const parent = jobs.get(cursor.parentJobId);
+            if (parent) rootPrompt = parent.prompt;
+            cursor = parent;
+          } else {
+            cursor = null;
+          }
+          depth++;
+        }
+        // The completed files are already durable in project_files; list them
+        // so the model writes only what is missing. Cap the list so the
+        // continuation prompt stays bounded.
+        const doneList = cumulative.slice(0, 120).map(p => `- ${p}`).join('\n');
+        const doneNote = cumulative.length > 120 ? `\n(and ${cumulative.length - 120} more)` : '';
+        const resumePrompt =
+          `[AUTO-CONTINUE] Continue building the app requested here: "${rootPrompt.slice(0, 2000)}".\n\n` +
+          `The previous build was interrupted after saving ${cumulative.length} file(s). ` +
+          `These files are already complete and saved — DO NOT rewrite them:\n${doneList}${doneNote}\n\n` +
+          `Write ONLY the remaining files needed to finish the app. Do not modify the completed files ` +
+          `unless one of them is broken and blocks the app from working.`;
+        resumeChain = { parentJobId: job.id, resumeCount: job.resumeCount + 1, initialFiles: cumulative };
+        data.prompt = resumePrompt;
+        try {
+          connection.send(JSON.stringify({
+            type: 'generation_notice',
+            message: `Picking up where the build stopped (${cumulative.length} file(s) already saved)…`,
+            resumedFrom: job.id,
+          }));
+        } catch { }
+      }
+
       let actualPrompt = String(data.prompt || data.message || 'Hello');
       let plannerMode = false;
       if (actualPrompt.startsWith('/plan ')) {
@@ -1285,7 +1387,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             plannerMode, executionTarget,
           });
           generationStarted = true;
-          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode);
+          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain);
         }, GENERATION_LOCK_TIMEOUT_MS);
       } catch (genErr) {
         // runGeneration's finally releases when !completed. If we never reached
@@ -1363,7 +1465,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     systemPrompt: string,
     actualPrompt: string,
     epoch: number,
-    plannerMode: boolean
+    plannerMode: boolean,
+    resumeChain?: { parentJobId: string; resumeCount: number; initialFiles: string[] } | null
   ): Promise<void> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
@@ -1385,7 +1488,28 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       this.runSql`INSERT INTO generation_usage(id,model,started_at,status) VALUES (${accounting.id},${String(data.model || DEFAULT_MODEL_ID).slice(0, 200)},${Date.now()},${'running'})`;
       this.runSql`DELETE FROM generation_usage WHERE id NOT IN (SELECT id FROM generation_usage ORDER BY started_at DESC LIMIT 200)`;
     } catch { console.warn('AI usage recording unavailable'); }
+    // Durable resume checkpoint for this generation. Shares the accounting id
+    // so generation_usage and generation_jobs stay 1:1. Best-effort: a missed
+    // row only loses resumability, never the generation itself.
+    try {
+      this.generationJobs().create({
+        id: accounting.id,
+        prompt: actualPrompt.slice(0, 4000),
+        model: String(data.model || DEFAULT_MODEL_ID).slice(0, 200),
+        parentJobId: resumeChain?.parentJobId ?? null,
+        resumeCount: resumeChain?.resumeCount ?? 0,
+        initialFiles: resumeChain?.initialFiles ?? [],
+      });
+      // Only track file checkpoints while the durable row exists; otherwise
+      // upsertFile writes would be attributed to a job that was never stored.
+      this.activeJobId = accounting.id;
+    } catch { console.warn('Generation resume checkpoint unavailable'); }
     let completed = false;
+    // Terminal resume bookkeeping, decided in the catch branches and applied
+    // in the finally: 'failed' = hard failure, never resume (quota, auth,
+    // bad model); 'interrupted' = the build can continue from its saved files
+    // (stream drop, timeout, user stop, disconnect).
+    let jobOutcome: { kind: 'failed' | 'interrupted'; error: string } | null = null;
     const genTimeout = setTimeout(
       () => abortController.abort(new Error(`Generation exceeded ${Math.round(generationTimeoutMs / 1000)}s. Please retry.`)),
       generationTimeoutMs
@@ -1993,6 +2117,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const aborted = (err instanceof Error && err.name === 'AbortError') || !this.writeEpoch.accepts(epoch);
       if (aborted) {
         console.log('Generation aborted by user or timeout');
+        // A timeout aborts with the custom 'Generation exceeded …' error as
+        // the reason; a user stop (or disconnect stop) aborts with no reason.
+        const reason = abortController.signal.reason;
+        const timedOut = reason instanceof Error && /Generation exceeded/.test(reason.message);
+        jobOutcome = {
+          kind: 'interrupted',
+          error: timedOut
+            ? 'The builder ran out of time before finishing your app.'
+            : 'The build was stopped.',
+        };
         return;
       }
       console.error('Error handling message in ChatAgent:', err);
@@ -2010,6 +2144,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         // wait-for-running-apps). Never conflate the two.
         const code = err.kind === 'daily' ? 'daily_budget_exhausted' : err.kind === 'concurrency' ? 'concurrency_limited' : 'rate_limited';
         sendError(cleanError, code);
+        // Quota, concurrency and rate limits are account states, not
+        // interruptions — resuming would just hit the same wall.
+        jobOutcome = { kind: 'failed', error: cleanError };
       } else {
         // A failed first prompt used to vanish from the server-side
         // conversation: only the 429 branch above preserved it. Without this,
@@ -2020,6 +2157,18 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           try { this.saveGenerationTurn(actualPrompt, cleanError, epoch); } catch { }
         }
         sendError(cleanError, err instanceof GenerationUserError ? err.code : undefined);
+        // Resume only what a fresh attempt could plausibly fix: the
+        // classifier's retryable categories (rate limit, overload, dropped
+        // connection, provider timeout). Auth, context-length and unknown
+        // hard failures stay terminal.
+        if (err instanceof GenerationUserError) {
+          const retryable = err.category === 'rate_limited' || err.category === 'overloaded'
+            || err.category === 'network' || err.category === 'timeout';
+          jobOutcome = { kind: retryable ? 'interrupted' : 'failed', error: cleanError };
+        } else {
+          const info = classifyGenerationError(err);
+          jobOutcome = { kind: info.retryable ? 'interrupted' : 'failed', error: info.retryable ? info.userMessage : cleanError };
+        }
       }
     } finally {
       clearTimeout(genTimeout);
@@ -2045,6 +2194,43 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (this.activeGeneration?.epoch === epoch) this.activeGeneration = null;
       if (this.currentAbortController === abortController) this.currentAbortController = null;
       if (!completed) this.idempotency?.release(data.idempotencyKey);
+      // Durable resume bookkeeping. Runs before the terminal events flush so
+      // the client learns the job is resumable right after the error itself.
+      // Best-effort: bookkeeping never breaks generation teardown.
+      try {
+        const jobs = this.generationJobs();
+        if (completed) {
+          jobs.complete(accounting.id);
+        } else if (jobOutcome) {
+          if (jobOutcome.kind === 'failed') jobs.fail(accounting.id, jobOutcome.error);
+          else jobs.interrupt(accounting.id, jobOutcome.error);
+          // Always tell the client the terminal job state: a resumable
+          // interruption offers one-click resume; a hard failure explicitly
+          // clears any stale resume offer (resuming would hit the same wall).
+          const job = jobs.get(accounting.id);
+          const resumable = jobOutcome.kind === 'interrupted' && !!job && jobs.canResume(job);
+          deferTerminal(() => {
+            const payload = JSON.stringify({
+              type: 'generation_interrupted',
+              // A terminal failure carries no job: there is nothing to resume.
+              job: resumable && job ? {
+                id: job.id,
+                completedFiles: job.completedFiles.length,
+                error: jobOutcome?.error ?? job.error,
+                resumesLeft: Math.max(0, MAX_RESUMES - job.resumeCount),
+              } : null,
+              resumable,
+            });
+            try { connection.send(payload); } catch { }
+            try { this.broadcast(payload, [connection.id]); } catch { }
+          });
+        } else {
+          // Defensive: reached the finally with no recorded outcome (an early
+          // return above the catch). Leave the saved files resumable.
+          jobs.interrupt(accounting.id, 'The build stopped before finishing. Your saved files are safe — you can resume.');
+        }
+      } catch { /* resume state is auxiliary; the files themselves are saved */ }
+      if (this.activeJobId === accounting.id) this.activeJobId = null;
       // No asynchronous cleanup remains after completion/retry is visible.
       // A client may immediately send its next turn after receiving these events.
       if (this.writeEpoch.accepts(epoch)) for (const publish of terminalEvents) publish();

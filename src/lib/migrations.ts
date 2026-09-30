@@ -82,6 +82,21 @@ export const AGENT_MIGRATIONS: Migration[] = [
     'ALTER TABLE generation_usage ADD COLUMN first_response_at INTEGER',
     'ALTER TABLE generation_usage ADD COLUMN provider_calls INTEGER',
   ] },
+  { version: 11, name: 'generation_jobs', statements: [
+    `CREATE TABLE IF NOT EXISTS generation_jobs (
+      id TEXT PRIMARY KEY,
+      prompt TEXT NOT NULL,
+      model TEXT NOT NULL,
+      status TEXT NOT NULL,
+      completed_files TEXT NOT NULL DEFAULT '[]',
+      error TEXT,
+      resume_count INTEGER NOT NULL DEFAULT 0,
+      parent_job_id TEXT,
+      started_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`,
+    'CREATE INDEX IF NOT EXISTS generation_jobs_status ON generation_jobs(status, updated_at DESC)',
+  ] },
 
 ];
 

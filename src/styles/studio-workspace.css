@@ -343,6 +343,23 @@
 .studio-recovery-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
 .studio-recovery-actions button { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 8px 10px; background: var(--bg-card); border: 1px solid var(--soft-error-border); border-radius: 5px; color: var(--soft-error-text); font-size: 12px; font-weight: 600; }
 .studio-recovery-actions button:hover { background: var(--soft-error-bg); }
+/* Resume banner: an interrupted build with saved files. Constructive tone
+   (not error red) — resuming is the happy path here. */
+.studio-resume-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--border-medium); border-left: 3px solid var(--accent); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.studio-resume-banner-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 50%; background: var(--accent-soft, rgba(59,130,246,0.12)); color: var(--accent); }
+.studio-resume-banner-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.studio-resume-banner-text strong { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.studio-resume-banner-text span { font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.studio-resume-banner-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.studio-resume-primary { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 8px 14px; background: var(--accent); border: none; border-radius: 6px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.studio-resume-primary:hover { filter: brightness(1.08); }
+.studio-resume-dismiss { min-height: 36px; padding: 8px 10px; background: transparent; border: none; border-radius: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; }
+.studio-resume-dismiss:hover { background: var(--bg-hover, rgba(0,0,0,0.05)); color: var(--text-primary); }
+@media (max-width: 560px) {
+  .studio-resume-banner { flex-wrap: wrap; }
+  .studio-resume-banner-actions { width: 100%; }
+  .studio-resume-primary { flex: 1; justify-content: center; min-height: 44px; }
+}
 .studio-preview-empty { background: var(--studio-paper); padding: 32px; }
 .studio-empty-window { width: 132px; height: 98px; margin-bottom: 24px; border-radius: 14px; transform: none; color: var(--accent-light); background: var(--bg-card); border-color: var(--border-medium); box-shadow: 0 6px 16px #19344706; }
 .studio-empty-window > div { border-color: var(--border-subtle); }
