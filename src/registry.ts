@@ -863,7 +863,7 @@ export class AuthRegistry {
         ).toArray() as Array<{ user_id: string; name: string; showcase: number }>;
         if (!source.length || source[0].showcase !== 1) return this.json(404, { error: 'This app is not listed in the gallery' });
         const live = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', body.userId).toArray()[0]?.total || 0);
-        if (live >= MAX_PROJECT_ROWS_PER_USER) return this.json(409, { error: 'You have reached the project limit. Delete a project to make room.' });
+        if (live >= MAX_PROJECTS_PER_USER) return this.json(409, { error: 'You have reached the project limit. Delete a project to make room.' });
         const projectId = crypto.randomUUID();
         const name = `${source[0].name.replace(/ \(remix\)$/u, '').slice(0, 112)} (remix)`;
         const now = Date.now();
