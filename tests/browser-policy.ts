@@ -12,6 +12,7 @@ export const LOCAL_BROWSER_SPECS = [
   '**/nontechnical-flow.spec.ts',
   '**/gallery.spec.ts',
   '**/agent-tools.spec.ts',
+  '**/ui-popover-menu.spec.ts',
 ];
 
 export function requireLiveTestOptIn(environment: Record<string, string | undefined>) {

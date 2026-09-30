@@ -1,10 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, BarChart3, ChevronDown, ClipboardList, Edit2,
   FolderOpen, GalleryHorizontalEnd, LayoutGrid, ListTodo, MessageSquare,
   MoreHorizontal, PanelsTopLeft, Search, ShoppingBag, Trash2, X,
 } from 'lucide-react';
 import { appEvents } from '../lib/events';
+import ActionMenu from './ActionMenu';
 import { isSystemContinuation } from '../lib/chat-transcript';
 import { formatRelativeTime, getProjectDisplayTitle, getProjectMessages, type Project } from '../lib/project-store';
 import { resolvePlatformStatusForProject } from '../lib/status-store';
@@ -47,10 +48,7 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
   const [filter, setFilter] = useState<ProjectCardStatus | 'all'>('all');
   const [limit, setLimit] = useState(PROJECT_PAGE_SIZE);
   const [collapsed, setCollapsed] = useState<Set<ProjectDateGroup>>(new Set());
-  const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState(() => ({ now: Date.now() }));
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const refresh = () => setSnapshot({ now: Date.now() });
@@ -59,24 +57,6 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
     const timer = window.setInterval(refresh, 60_000);
     return () => { unsubscribe(); window.clearInterval(timer); };
   }, []);
-
-  useEffect(() => {
-    if (!activeMenu) return;
-    const outside = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setActiveMenu(null);
-    };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setActiveMenu(null);
-      menuButtonRef.current?.focus();
-    };
-    document.addEventListener('mousedown', outside);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('mousedown', outside);
-      document.removeEventListener('keydown', escape);
-    };
-  }, [activeMenu]);
 
   const entries = useMemo<RecentProjectEntry[]>(() => {
     const now = snapshot.now;
@@ -99,11 +79,6 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
   const resetResults = () => {
     setLimit(PROJECT_PAGE_SIZE);
     setCollapsed(new Set());
-    setActiveMenu(null);
-  };
-  const closeMenu = () => {
-    setActiveMenu(null);
-    menuButtonRef.current?.focus();
   };
 
   const showFullControls = projects.length >= 5;
@@ -138,13 +113,12 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
         return <div className="recent-projects-group" key={group}>
           <h3 className="recent-projects-group-heading"><button type="button" aria-expanded={expanded} aria-controls={groupId} onClick={() => {
             setCollapsed(current => { const next = new Set(current); if (next.has(group)) next.delete(group); else next.add(group); return next; });
-            setActiveMenu(null);
           }}><ChevronDown size={16} aria-hidden="true" /><span>{group}</span><small>{results.filter(entry => entry.dateGroup === group).length}</small></button></h3>
           <div id={groupId} className="landing-projects-list" hidden={!expanded}>
             {expanded && groupEntries.map(entry => {
               const { project, title, description, category, status, untitled } = entry;
               const Icon = CATEGORIES[category].icon;
-              return <article className={`landing-project-card${activeMenu === project.id ? ' has-open-menu' : ''}`} key={project.id}>
+              return <article className="landing-project-card" key={project.id}>
                 <div className={`recent-project-thumbnail category-${category}`} title={`App type: ${CATEGORIES[category].label} — detected from what the app does`}>
                   <Icon size={28} strokeWidth={1.5} aria-hidden="true" /><span>{CATEGORIES[category].label}</span>
                 </div>
@@ -157,17 +131,14 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
                     <button type="button" className="landing-project-open" aria-label={`Open ${title}`} onClick={() => onOpenProject(project.id)}>Open <ArrowUpRight size={15} aria-hidden="true" /></button>
                   </div>
                 </div>
-                <div className="landing-card-actions" ref={activeMenu === project.id ? menuRef : undefined}>
-                  <button type="button" className="landing-card-menu-btn" title="Project actions" aria-label={`Project actions for ${title}`} aria-expanded={activeMenu === project.id} aria-controls={`${id}-actions-${project.id}`} onClick={event => {
-                    menuButtonRef.current = event.currentTarget;
-                    setActiveMenu(current => current === project.id ? null : project.id);
-                  }}><MoreHorizontal size={18} aria-hidden="true" /></button>
-                  {activeMenu === project.id && <div className="landing-card-dropdown" id={`${id}-actions-${project.id}`}>
-                    <button type="button" className="landing-card-dropdown-item" onClick={() => { closeMenu(); onOpenProject(project.id); }}><FolderOpen size={14} />Open</button>
-                    <button type="button" className="landing-card-dropdown-item" onClick={() => { closeMenu(); onRenameProject(project); }}><Edit2 size={14} />Rename</button>
-                    <hr className="landing-dropdown-divider" />
-                    <button type="button" className="landing-card-dropdown-item danger" onClick={() => { closeMenu(); onDeleteProject(project.id); }}><Trash2 size={14} />Delete</button>
-                  </div>}
+                <div className="landing-card-actions">
+                  <ActionMenu label={`Project actions for ${title}`} className="landing-card-menu-btn" items={[
+                    { label: 'Open', icon: <FolderOpen size={14} aria-hidden="true" />, onSelect: () => onOpenProject(project.id) },
+                    { label: 'Rename', icon: <Edit2 size={14} aria-hidden="true" />, onSelect: () => onRenameProject(project) },
+                    { label: 'Delete', icon: <Trash2 size={14} aria-hidden="true" />, onSelect: () => onDeleteProject(project.id), danger: true, separator: true },
+                  ]}>
+                    <MoreHorizontal size={18} aria-hidden="true" />
+                  </ActionMenu>
                 </div>
               </article>;
             })}

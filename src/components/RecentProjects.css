@@ -34,7 +34,6 @@
 .recent-projects .landing-project-card { display: flex; position: relative; gap: 18px; min-width: 0; padding: 18px; border: 1px solid var(--project-border); border-radius: 14px; background: var(--studio-white); cursor: pointer; transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
 .recent-projects .landing-project-card:hover { transform: translateY(-2px); border-color: var(--studio-blue); box-shadow: var(--project-hover-shadow); }
 .recent-projects .landing-project-card:focus-within { border-color: var(--studio-blue); }
-.recent-projects .landing-project-card.has-open-menu { z-index: 3; }
 .recent-project-thumbnail { --tile-start: #e7eff5; --tile-end: #d8e5ef; --tile-ink: #365b74; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; flex: none; width: 90px; min-height: 126px; padding: 12px 8px; border-radius: 10px; background: var(--tile-start); color: var(--tile-ink); }
 .recent-project-thumbnail span { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.35; }
 .recent-project-thumbnail.category-storefront { --tile-start: #f5eee2; --tile-end: #e9dbc5; --tile-ink: #765c30; }
@@ -64,7 +63,6 @@
 .recent-projects .landing-card-actions { position: absolute; z-index: 2; top: 11px; right: 10px; }
 .recent-projects .landing-card-menu-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--studio-muted); }
 .recent-projects .landing-card-menu-btn:hover, .recent-projects .landing-card-menu-btn[aria-expanded='true'] { background: var(--studio-wash); color: var(--studio-ink); }
-.recent-projects .landing-card-dropdown { border-color: var(--project-border); box-shadow: var(--shadow-overlay); }
 .recent-projects-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; }
 .recent-projects-pagination p { margin: 0; color: var(--studio-muted); font-size: 12px; }
 .recent-projects-pagination button, .recent-projects-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--studio-white); color: var(--studio-ink); font-size: 13px; font-weight: 500; }

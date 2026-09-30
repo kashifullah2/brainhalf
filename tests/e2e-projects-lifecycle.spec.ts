@@ -113,12 +113,12 @@ test.describe('E2E Project Lifecycle & Isolation Tests', () => {
     await expect(projectCard).toBeVisible();
 
     // Open the "..." actions menu
-    const actionsBtn = projectCard.locator('button[aria-label="Project actions"]');
+    const actionsBtn = projectCard.getByRole('button', { name: /^Project actions for/ });
     await actionsBtn.click();
     await page.waitForTimeout(200);
 
     // Click Delete in the dropdown
-    const deleteItem = page.locator('.landing-card-dropdown-item.danger');
+    const deleteItem = page.getByRole('menuitem', { name: 'Delete' });
     await expect(deleteItem).toBeVisible();
     await deleteItem.click();
     await page.waitForTimeout(200);
@@ -135,7 +135,7 @@ test.describe('E2E Project Lifecycle & Isolation Tests', () => {
     // Re-open menu and confirm deletion
     await actionsBtn.click();
     await page.waitForTimeout(200);
-    await page.locator('.landing-card-dropdown-item.danger').click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
     await page.waitForTimeout(200);
 
     const confirmModal2 = page.locator('[role="dialog"]').first();

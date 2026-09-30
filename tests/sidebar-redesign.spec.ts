@@ -69,11 +69,11 @@ test.describe('Landing Page Project List Verification', () => {
     await expect(p3Card).toBeVisible();
 
     // 3. Verify action menu opens on a project card
-    const actionsBtn = p1Card.locator('button[aria-label="Project actions"]');
+    const actionsBtn = p1Card.getByRole('button', { name: /^Project actions for/ });
     await actionsBtn.click();
     await page.waitForTimeout(200);
 
-    const deleteItem = page.locator('.landing-card-dropdown-item.danger').first();
+    const deleteItem = page.getByRole('menuitem', { name: 'Delete' }).first();
     await expect(deleteItem).toBeVisible();
 
     // Close menu
