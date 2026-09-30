@@ -211,6 +211,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <a href="#examples">Examples</a>
           <a href="#features">Features</a>
           <a href="#questions">FAQs</a>
+          <a href="/gallery">Gallery</a>
         </nav>
 
         <div className="landing-header-right">
