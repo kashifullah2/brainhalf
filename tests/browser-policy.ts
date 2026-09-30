@@ -13,6 +13,7 @@ export const LOCAL_BROWSER_SPECS = [
   '**/gallery.spec.ts',
   '**/agent-tools.spec.ts',
   '**/ui-popover-menu.spec.ts',
+  '**/ui-dashboard-header.spec.ts',
 ];
 
 export function requireLiveTestOptIn(environment: Record<string, string | undefined>) {

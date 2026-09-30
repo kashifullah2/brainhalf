@@ -213,7 +213,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     <main className="dashboard-main" id="dashboard-main">
       <button className="dashboard-back" type="button" onClick={onGoHome}><ArrowLeft size={15} /> Back to home</button>
       <section className="dashboard-welcome" aria-labelledby="dashboard-title">
-        <div><p className="studio-section-label">YOUR WORKSPACE</p><h1 id="dashboard-title">Projects</h1><p>Start something new or continue where you left off.</p><DashboardQuotaMeter onAtLimit={setAtQuotaLimit} /></div>
+        <div><p className="studio-section-label">YOUR WORKSPACE</p><h1 id="dashboard-title">Projects</h1><p className="dashboard-subtitle">Start something new or continue where you left off.</p><DashboardQuotaMeter onAtLimit={setAtQuotaLimit} /></div>
         <button className="dashboard-new-project" type="button" onClick={onCreateProject} disabled={creatingProject || atQuotaLimit} title={atQuotaLimit ? 'Project limit reached — delete a project to create another' : undefined}><Plus size={18} /> {creatingProject ? 'Creating…' : 'New project'}</button>
       </section>
       {cleanupError && <p className="dashboard-notice" role="status">{cleanupError}</p>}

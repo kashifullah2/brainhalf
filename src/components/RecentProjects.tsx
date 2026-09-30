@@ -84,9 +84,9 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
   const showFullControls = projects.length >= 5;
 
   return (
-    <section className="recent-projects landing-projects-section" aria-labelledby={`${id}-heading`}>
+    <section className="recent-projects landing-projects-section" aria-label="Your projects">
       <div className="recent-projects-heading">
-        <div><h2 id={`${id}-heading`}>Projects</h2><p>{projects.length === 1 ? '1 project' : `${projects.length} projects`} · pick up where you left off.</p></div>
+        <p>{projects.length === 1 ? '1 project' : `${projects.length} projects`} · pick up where you left off.</p>
       </div>
       <div className="recent-projects-controls">
         <label className="recent-projects-search">
