@@ -39,17 +39,24 @@ export function plainLanguageCause(message: string): string {
  * so the strip names the problem and offers a one-tap route to the app
  * spaces manager plus a retry.
  */
-export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenHostedSlots }: {
+export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenHostedSlots, hasAuthOrDataFeatures = true }: {
   backend: Backend;
   runtime: Runtime;
   status: string;
   filesRef: { current: Record<string, string> };
   onOpenHostedSlots?: () => void;
+  /** False when the project has no sign-in or saved-data features; hides the
+   *  strip's prompts. Build-failure and hosted-full states always stay visible. */
+  hasAuthOrDataFeatures?: boolean;
 }) {
   const failed = backend.failed;
   // A full account is a user-actionable state, not a build bug: name it and
   // route the user to the app-spaces manager instead of generic failure copy.
   const hostedFull = (failed && isHostedLimitError(backend.message)) || isHostedLimitError(runtime.error);
+  // No auth/data features and nothing wrong: the "test sign-in and saved
+  // data" prompts are irrelevant noise, so the strip stays out of the way.
+  // Fault, failure, and hosted-full states always stay visible.
+  if (!hasAuthOrDataFeatures && !failed && !hostedFull && !backend.fault) return null;
   const body = failed
     ? null
     : backend.message

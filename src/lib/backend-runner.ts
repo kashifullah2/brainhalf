@@ -290,6 +290,26 @@ export function isFullStackProject(files: ProjectFiles): boolean {
   return Object.keys(files).some(isBackendPath);
 }
 
+/**
+ * True when the generated project actually has sign-in or saved-data
+ * features worth previewing. Auth is a dedicated auth file or calls to the
+ * generated backend's /api/auth/* endpoints (see the AUTH ENDPOINTS section
+ * above). Data is backend data-store usage, browser persistence for saved
+ * app data, or IndexedDB. Used to hide the "test sign-in and saved data"
+ * prompts when there is nothing of the sort to test.
+ */
+export function projectHasAuthOrDataFeatures(files: ProjectFiles): boolean {
+  for (const [path, content] of Object.entries(files)) {
+    if (typeof content !== 'string') continue;
+    if (/auth/i.test(path)) return true;
+    if (/\/api\/auth\b/.test(content)) return true;
+    if (/store\.(findAll|findById|insert|save|update|remove)\b/.test(content)) return true;
+    if (/localStorage\.setItem\b/.test(content)) return true;
+    if (/\bindexedDB\b/.test(content)) return true;
+  }
+  return false;
+}
+
 function isBackendPath(path: string): boolean {
   return /^\/?server(?:\/|\.(?:js|ts|mjs|cjs)$)/.test(path);
 }

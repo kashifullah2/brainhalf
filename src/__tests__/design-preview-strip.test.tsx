@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { DesignPreviewStrip, plainLanguageCause } from '../components/DesignPreviewStrip';
+import { projectHasAuthOrDataFeatures } from '../lib/backend-runner';
 import { dedupeSegmentsByPath } from '../components/ChatPanel';
 import type { useAutomaticBackend } from '../lib/automatic-backend';
 import type { useProjectRuntime } from '../lib/project-runtime-client';
@@ -156,5 +157,73 @@ describe('DesignPreviewStrip', () => {
     );
     expect(html).toContain('has-fault');
     expect(html).toContain('Managed hosting is currently unavailable.');
+  });
+});
+
+describe('projectHasAuthOrDataFeatures', () => {
+  it('detects auth from a dedicated auth file', () => {
+    expect(projectHasAuthOrDataFeatures({ 'src/auth.ts': 'export const x = 1;' })).toBe(true);
+  });
+  it('detects auth from /api/auth calls in app code', () => {
+    expect(projectHasAuthOrDataFeatures({ 'src/App.tsx': "fetch('/api/auth/signup', { method: 'POST' })" })).toBe(true);
+  });
+  it('detects saved data from backend data-store usage', () => {
+    expect(projectHasAuthOrDataFeatures({ 'server/routes.js': 'const users = store.findAll("users");' })).toBe(true);
+    expect(projectHasAuthOrDataFeatures({ '/worker/index.ts': 'store.insert("notes", note);' })).toBe(true);
+  });
+  it('detects saved data from browser persistence', () => {
+    expect(projectHasAuthOrDataFeatures({ 'src/App.tsx': 'localStorage.setItem("todos", JSON.stringify(todos));' })).toBe(true);
+    expect(projectHasAuthOrDataFeatures({ 'src/db.ts': 'const db = indexedDB.open("app");' })).toBe(true);
+  });
+  it('returns false for a plain frontend app with no auth or data', () => {
+    expect(projectHasAuthOrDataFeatures({
+      'src/App.tsx': 'export default function App() { return <h1>Hello</h1>; }',
+      'src/styles.css': 'h1 { color: red; }',
+    })).toBe(false);
+  });
+  it('returns false for a backend with no auth or data endpoints', () => {
+    expect(projectHasAuthOrDataFeatures({
+      'server/routes.js': 'export function handler(req) { return { body: "pong" }; }',
+      'src/App.tsx': 'export default function App() { return <h1>Hello</h1>; }',
+    })).toBe(false);
+  });
+  it('returns false for an empty project', () => {
+    expect(projectHasAuthOrDataFeatures({})).toBe(false);
+  });
+});
+
+describe('DesignPreviewStrip auth/data gating', () => {
+  const idleStrip = (hasAuthOrDataFeatures?: boolean) =>
+    renderToStaticMarkup(
+      <DesignPreviewStrip
+        backend={mockBackend({ canStart: true })}
+        runtime={idleRuntime}
+        status="Ready"
+        filesRef={filesRef}
+        hasAuthOrDataFeatures={hasAuthOrDataFeatures}
+      />
+    );
+  it('hides the strip when the project has no auth or data features', () => {
+    expect(idleStrip(false)).toBe('');
+  });
+  it('keeps the strip when the project has auth or data features', () => {
+    const html = idleStrip(true);
+    expect(html).toContain('Design preview');
+    expect(html).toContain('test sign-in and saved data');
+  });
+  it('defaults to visible when the flag is not provided', () => {
+    expect(idleStrip(undefined)).toContain('Design preview');
+  });
+  it('still shows build failures even with no auth or data features', () => {
+    const html = renderToStaticMarkup(
+      <DesignPreviewStrip
+        backend={mockBackend({ failed: true, canStart: true, message: 'Build failed. Build output: error TS2322' })}
+        runtime={idleRuntime}
+        status="Ready"
+        filesRef={filesRef}
+        hasAuthOrDataFeatures={false}
+      />
+    );
+    expect(html).toContain('The app preview ran into a problem.');
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Globe2 } from 'lucide-react';
-import { authFetch } from '../lib/auth-client';
+import { authFetch, projectPublication } from '../lib/auth-client';
 
 interface ShowcaseState { showcase: boolean; description: string; remixCount: number }
 
@@ -10,6 +10,8 @@ export default function GalleryListing({ projectId }: { projectId: string }) {
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  // null = unknown (fail open; the backend 409 still guards the submit).
+  const [published, setPublished] = useState<boolean | null>(null);
   const origin = () => ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
   useEffect(() => {
     const controller = new AbortController();
@@ -24,6 +26,16 @@ export default function GalleryListing({ projectId }: { projectId: string }) {
         setDescription(data.description);
       })
       .catch(cause => { if (!controller.signal.aborted) setNotice(cause instanceof Error ? cause.message : 'Gallery listing state could not be loaded.'); });
+    return () => controller.abort();
+  }, [projectId]);
+  // The gallery links to the live app, so listing is only offered once the
+  // app is published. The backend 409 on PUT is the backstop; this disables
+  // the button up front with a one-line reason instead of an after-the-fact error.
+  useEffect(() => {
+    const controller = new AbortController();
+    projectPublication(projectId, controller.signal)
+      .then(setPublished)
+      .catch(() => { if (!controller.signal.aborted) setPublished(null); });
     return () => controller.abort();
   }, [projectId]);
   const save = async (showcase: boolean) => {
@@ -52,9 +64,12 @@ export default function GalleryListing({ projectId }: { projectId: string }) {
           <fieldset disabled={busy}>
             <label>Gallery description<textarea rows={2} maxLength={280} placeholder="What does your app do?" value={description} onChange={event => setDescription(event.target.value)} /></label>
             <div className="settings-actions">
-              <button type="submit">{state.showcase ? 'Save description' : 'List in gallery'}</button>
+              <button type="submit" disabled={published === false && !state.showcase}>{state.showcase ? 'Save description' : 'List in gallery'}</button>
               {state.showcase && <button type="button" onClick={() => void save(false)}>Remove from gallery</button>}
             </div>
+            {published === false && !state.showcase && (
+              <p className="settings-muted">Publish your app first — the gallery links to the live app.</p>
+            )}
           </fieldset>
         </form>
         {notice && <p role="status">{notice}</p>}
