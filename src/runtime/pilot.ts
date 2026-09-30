@@ -111,6 +111,31 @@ export class PilotCoordinator extends DurableObject<RuntimeEnv> {
       await txn.delete(`owner-project:${encodeURIComponent(scope.ownerId)}:${alias}`);
     });
   }
+  /** All hosted-slot registrations for one account — including orphans whose
+   *  projects no longer exist (deletion cleanup is best-effort and old clients
+   *  removed projects locally without server cleanup). Slots are accounting
+   *  only: releasing one never tears down a deployment, and a live project
+   *  simply re-registers on its next job. */
+  async listOwnerProjects(ownerId: string): Promise<Array<{ alias: string; projectId: string }>> {
+    const prefix = `owner-project:${encodeURIComponent(ownerId)}:`;
+    const rows = await this.ctx.storage.list({ prefix });
+    const hosted: Array<{ alias: string; projectId: string }> = [];
+    for (const [key] of rows) {
+      const alias = key.slice(prefix.length);
+      const scope = await this.ctx.storage.get<ProjectScope>(`project:${alias}`);
+      if (scope?.ownerId === ownerId) hosted.push({ alias, projectId: scope.projectId });
+    }
+    return hosted.sort((a, b) => a.projectId.localeCompare(b.projectId));
+  }
+  async forceRelease(alias: string, ownerId: string): Promise<{ released: boolean }> {
+    return this.ctx.storage.transaction(async txn => {
+      const existing = await txn.get<ProjectScope>(`project:${alias}`);
+      if (!existing || existing.ownerId !== ownerId) return { released: false };
+      await txn.delete(`project:${alias}`);
+      await txn.delete(`owner-project:${encodeURIComponent(ownerId)}:${alias}`);
+      return { released: true };
+    });
+  }
   async acquire(id: string, kind: 'sandbox' | 'browser', projectId: string): Promise<PilotAdmission> {
     return admit(() => this.ctx.storage.transaction(async txn => {
       const now = Date.now();

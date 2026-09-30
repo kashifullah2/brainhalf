@@ -374,6 +374,70 @@
   font-size: 13px;
 }
 
+.project-console .hosted-slot-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.project-console .hosted-slot-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.project-console .hosted-slot-id {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-console .hosted-slot-current {
+  color: var(--text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.project-console .hosted-slot-list button,
+.project-console .hosted-slot-refresh {
+  min-height: 32px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.project-console .hosted-slot-list button:hover,
+.project-console .hosted-slot-refresh:hover {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.project-console .hosted-slot-refresh:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+}
+
+.project-console .hosted-slot-list button:disabled,
+.project-console .hosted-slot-refresh:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 /* ── Environment toggle (Test / Live) ── */
 .project-console .console-environment {
   display: flex;

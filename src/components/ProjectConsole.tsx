@@ -13,6 +13,7 @@ import ProjectHistory from './ProjectHistory';
 import ProjectServices from './ProjectServices';
 import ProjectMonitor from './ProjectMonitor';
 import ProjectAgentUsage from './ProjectAgentUsage';
+import ProjectHostedSlots from './ProjectHostedSlots';
 import ProjectConnections from './ProjectConnections';
 import ProjectGrowthHub from './ProjectGrowthHub';
 import ConfirmModal from './ConfirmModal';
@@ -28,7 +29,7 @@ import './ProjectConsole.css';
 const sectionGroups = [
   { label: 'Ship', sections: ['Publish', 'Domain'] },
   { label: 'Run', sections: ['Database', 'Files', 'Users & email', 'Monitoring'] },
-  { label: 'Manage', sections: ['App versions', 'AI usage', 'Project settings'] },
+  { label: 'Manage', sections: ['App versions', 'AI usage', 'Hosted apps', 'Project settings'] },
 ] as const;
 const sections = sectionGroups.flatMap(group => group.sections);
 type Section = typeof sections[number];
@@ -43,6 +44,7 @@ const sectionHelp: Record<Section, string> = {
   'App versions': 'Saved versions of your app you can go back to.',
   'AI usage': 'How much builder work this project has used.',
   'Project settings': 'Your past requests and advanced builder settings.',
+  'Hosted apps': 'Hosting slots used by your apps. Release slots from projects you no longer use.',
 };
 
 const JOB_LABELS: Record<JobKind, string> = {
@@ -249,6 +251,7 @@ export default function ProjectConsole({ projectId, files, onClose }: { projectI
       {hostingReady && section === 'Monitoring' && <ProjectMonitor key={environment} projectId={projectId} environment={environment} />}
       {section === 'App versions' && <ProjectHistory projectId={projectId} />}
       {section === 'AI usage' && <ProjectAgentUsage projectId={projectId} />}
+      {section === 'Hosted apps' && <ProjectHostedSlots projectId={projectId} />}
       {section === 'Domain' && <CustomDomainSettings projectId={projectId} productionUrl={production.status?.productionUrl} />}
       {section === 'Project settings' && <ProjectGrowthHub projectId={projectId} />}
     </main>

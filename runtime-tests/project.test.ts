@@ -34,6 +34,7 @@ function context() {
 }
 async function project() {
   const state = context(); const pilot = { register: vi.fn(async () => ({ ok: true })), acquire: vi.fn(async () => ({ ok: true })), release: vi.fn(async () => {}), unregister: vi.fn(async () => {}), consumeUsage: vi.fn(async () => ({ ok: true })), usageStatus: vi.fn(async () => ({ day: '2026-09-23', used: { jobs: 0, requests: 0, emails: 0 }, limits: { jobs: 30, requests: 25000, emails: 50 }, storageBytes: 0, storageLimitBytes: 104857600 })) };
+  Object.assign(pilot, { listOwnerProjects: vi.fn(async () => []), forceRelease: vi.fn(async () => ({ released: false })) });
   const env: any = { PROJECT_SECRETS_KEY: btoa('k'.repeat(32)), RUNTIME_DOMAIN: 'apps.example.com', PILOT: { getByName: () => pilot }, Sandbox: {}, ARTIFACTS: { put: vi.fn(async () => {}) }, CF_ACCOUNT_ID: 'account', CF_API_TOKEN: 'platform-only', BROWSER: {} };
   const object = new ProjectRuntime(state.ctx, env); await state.ready(); await object.initialize({ projectId: 'project', ownerId: 'owner' }, 'a'.repeat(32));
   const call = (path: string, method = 'GET', body?: unknown, environment = 'development') => object.control(new Request(`https://control${path}?environment=${environment}`, { method, body: body === undefined ? undefined : JSON.stringify(body) }));
@@ -428,6 +429,8 @@ describe('Project runtime with real SQLite state', () => {
     expect(sandbox.exec.mock.calls.every(call => !JSON.stringify(call).includes('platform-only'))).toBe(true);
   });
   it('retries a failed dependency installation once with fresh resolution and strips model lockfiles', async () => {
+    // anchor-comment
+  });
     const p = await project(); const objects = new Map<string, string>();
     p.env.ARTIFACTS = { put: async (key: string, value: string) => objects.set(key, value), get: async (key: string) => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)!) } : null };
     const failing = { id: 'proc-fail', status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 1, timedOut: false, stdout: '', stderr: 'npm error code ETARGET\nnpm error ETARGET No matching version found for fake-dep@^9.9.9' }), kill: vi.fn(async () => {}) };

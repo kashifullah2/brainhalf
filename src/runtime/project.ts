@@ -174,6 +174,21 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     const url = new URL(request.url);
     const environment = environmentFrom(url.searchParams.get('environment') || 'development');
     const path = url.pathname;
+    // Owner-level hosted-slot management. Slots are accounting records in the
+    // pilot coordinator; orphaned slots (project deleted without cleanup, or
+    // pre-cleanup-era projects) block new jobs until released. Releasing a
+    // slot never deletes a deployment — a live project re-registers on its
+    // next job.
+    if (path === '/hosted' && request.method === 'GET') {
+      return Response.json({ hosted: await this.pilot().listOwnerProjects(this.scope.ownerId) });
+    }
+    if (path === '/hosted/release' && request.method === 'POST') {
+      const body = await readJson(request, 2_000) as { alias?: unknown };
+      if (typeof body?.alias !== 'string' || !/^[a-f0-9]{32}$/.test(body.alias)) throw new RuntimeError('A valid hosted slot id is required.', 400);
+      const result = await this.pilot().forceRelease(body.alias, this.scope.ownerId);
+      if (!result.released) throw new RuntimeError('Hosted slot not found on your account.', 404);
+      return Response.json(result);
+    }
     if (path === '/delete' && request.method === 'POST') {
       await this.ctx.storage.put('deleted', true);
       this.ctx.storage.sql.exec('UPDATE managed_emails SET next_at=NULL');
