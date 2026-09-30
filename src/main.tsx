@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, lazy, Suspense } from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
 import './index.css';
 import './styles/studio-fonts.css';
@@ -6,7 +6,9 @@ import App from './App';
 import './styles/studio-theme.css';
 import PublicPage from './components/PublicPage';
 import GalleryPage from './components/GalleryPage';
-import AdminPage from './components/AdminPage';
+// /admin is an operator tool: never prerendered, never indexed. Splitting it
+// keeps its code out of every public page's initial bundle.
+const AdminPage = lazy(() => import('./components/AdminPage'));
 import { ACCOUNT_PAGES, findPublicPage } from './seo/content';
 import AccountPage from './components/AccountPage';
 import { pageMetadata, isPrivateSearch } from './seo/metadata';
@@ -19,7 +21,7 @@ if (root && window.self === window.top && !/^\/(preview|p)(\/|$)/.test(window.lo
   const path = window.location.pathname.replace(/\/$/, '') || '/';
   const home = path === '/' || path === '/index.html';
   const appRoute = home || path === '/dashboard';
-  const content = appRoute ? <App /> : path === '/gallery' ? <GalleryPage /> : path === '/admin' ? <AdminPage /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
+  const content = appRoute ? <App /> : path === '/gallery' ? <GalleryPage /> : path === '/admin' ? <Suspense fallback={null}><AdminPage /></Suspense> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
   const tree = <StrictMode><ErrorBoundary>{content}</ErrorBoundary></StrictMode>;
   // /admin is an operator tool: never indexed, never canonicalized.
   const meta = path === '/admin' ? null : pageMetadata(home ? '/' : path);

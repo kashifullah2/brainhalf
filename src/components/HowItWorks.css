@@ -1,0 +1,307 @@
+/* How it works: scroll-driven steps, sticky visual, animated connecting line. */
+
+.hiw-section {
+  padding: 110px 0;
+}
+
+.hiw-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 72px;
+  align-items: start;
+}
+
+.hiw-steps {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The connecting line runs down the left, through the step dots. */
+.hiw-line {
+  position: absolute;
+  left: 23px;
+  top: 24px;
+  bottom: 24px;
+  width: 2px;
+  background: var(--studio-line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hiw-line-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--brand-solid);
+  transform-origin: top;
+  transform: scaleY(0);
+  transition: transform 500ms ease;
+}
+
+.hiw-step {
+  position: relative;
+  display: flex;
+  gap: 28px;
+  padding: 56px 0;
+}
+
+.hiw-step:first-child { padding-top: 8px; }
+.hiw-step:last-child { padding-bottom: 8px; }
+
+/* Inactive steps read as secondary content through color, never opacity,
+   so text contrast stays above AA in both themes. */
+.hiw-step-body > p { color: var(--studio-muted); }
+.hiw-step.is-active .hiw-step-body > p { color: var(--text-secondary); }
+
+.hiw-dot {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--studio-line);
+  background: var(--studio-white);
+  color: var(--text-secondary);
+  transition: background 300ms, border-color 300ms, color 300ms, box-shadow 300ms;
+}
+
+.hiw-step.is-active .hiw-dot {
+  background: var(--brand-solid);
+  border-color: var(--brand-solid);
+  color: var(--brand-on-solid);
+  box-shadow: 0 10px 24px -8px color-mix(in srgb, var(--brand-solid) 60%, transparent);
+}
+
+.hiw-step.is-done .hiw-dot {
+  background: color-mix(in srgb, var(--brand-solid) 12%, transparent);
+  border-color: var(--brand-solid);
+  color: var(--brand-solid);
+}
+
+.hiw-step-body { min-width: 0; }
+
+.hiw-step-num {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-solid);
+}
+
+.hiw-step-body h3 {
+  margin: 0 0 12px;
+  font-size: 26px;
+  letter-spacing: -0.5px;
+  color: var(--studio-ink);
+}
+
+.hiw-step-body p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.75;
+  color: var(--text-secondary);
+  max-width: 44ch;
+}
+
+/* Sticky visual on the right. */
+
+.hiw-sticky {
+  position: sticky;
+  top: 120px;
+  border: 1px solid var(--studio-line);
+  border-radius: 24px;
+  background: var(--studio-white);
+  box-shadow: var(--shadow-overlay);
+  padding: 30px;
+  overflow: hidden;
+}
+
+.hiw-sticky-label {
+  margin: 0 0 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.hiw-visual-stack {
+  position: relative;
+  min-height: 340px;
+}
+
+.hiw-visual {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px);
+  transition: opacity 400ms ease, transform 400ms ease, visibility 400ms;
+}
+
+.hiw-visual.is-active {
+  position: relative;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+.hiw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hiw-visual-label {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.3px;
+  color: var(--studio-ink);
+}
+
+.hiw-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--studio-line);
+  border-radius: 14px;
+  background: var(--studio-paper);
+  color: var(--studio-ink);
+  font-size: 14.5px;
+}
+
+.hiw-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hiw-plan span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand-solid) 8%, transparent);
+  color: var(--studio-ink);
+  font-size: 13.5px;
+  font-weight: 550;
+}
+
+.hiw-plan svg { color: var(--brand-solid); }
+
+.hiw-chat {
+  max-width: 320px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.hiw-chat-user {
+  margin-left: auto;
+  background: var(--brand-solid);
+  color: var(--brand-on-solid);
+  border-bottom-right-radius: 4px;
+}
+
+.hiw-chat-ai {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--studio-paper);
+  border: 1px solid var(--studio-line);
+  color: var(--studio-ink);
+  border-bottom-left-radius: 4px;
+}
+
+.hiw-mini-page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--studio-line);
+  border-radius: 14px;
+  background: var(--studio-paper);
+}
+
+.hiw-mini-row {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--studio-line);
+}
+
+.hiw-mini-row.hiw-mini-new {
+  height: auto;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--brand-solid) 12%, transparent);
+  color: var(--brand-solid);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.hiw-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hiw-checks span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--studio-ink);
+  font-weight: 550;
+}
+
+.hiw-checks svg { color: var(--brand-solid); }
+
+.hiw-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  padding: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--studio-line);
+  background: var(--studio-paper);
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.hiw-url strong { color: var(--brand-solid); }
+
+@media (max-width: 900px) {
+  .hiw-layout { grid-template-columns: 1fr; gap: 40px; }
+  .hiw-sticky { position: static; }
+  .hiw-visual-stack { min-height: 0; }
+  .hiw-step { padding: 36px 0; }
+}
+
+@media (max-width: 560px) {
+  .hiw-section { padding: 72px 0; }
+  .hiw-line { left: 19px; }
+  .hiw-dot { width: 40px; height: 40px; }
+  .hiw-step { gap: 20px; }
+  .hiw-step-body h3 { font-size: 21px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hiw-line-fill,
+  .hiw-step,
+  .hiw-dot,
+  .hiw-visual {
+    transition: none;
+  }
+  .hiw-visual { transform: none; }
+}

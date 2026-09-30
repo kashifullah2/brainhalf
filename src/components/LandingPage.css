@@ -82,58 +82,23 @@
 .landing-container h2 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(30px, 3.6vw, 42px); line-height: 1.15; letter-spacing: -1.1px; margin: 0; text-wrap: balance; }
 .landing-section-intro { max-width: 640px; margin-bottom: 44px; }
 .landing-section-lede { margin: 18px 0 0; color: var(--studio-muted); font-size: 15px; line-height: 1.75; text-wrap: pretty; }
-.landing-text-cta { display: inline-flex; align-items: center; gap: 10px; margin-top: 36px; padding: 8px 0; font-size: 14px; font-weight: 600; color: var(--studio-blue); }
-.landing-text-cta:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+/* Anchored sections clear the sticky navbar. */
+#examples, #how-it-works, #questions { scroll-margin-top: 96px; }
+
+/* Visible keyboard focus for links (buttons are covered by the global rule). */
+.landing-container a:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 /* (The hero lives in LandingHero.css now.) */
 
-/* Examples — the interactive showcase, starting ideas, and who it's for. */
-.landing-examples { padding: 110px 0; }
-.landing-idea-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 28px; }
-.landing-idea-chip { display: flex; align-items: flex-start; gap: 12px; padding: 18px 16px; border: 1px solid var(--studio-line); border-radius: 12px; background: var(--studio-white); color: var(--studio-ink); text-align: left; transition: border-color 150ms, transform 150ms, box-shadow 150ms; }
-.landing-idea-chip:hover { border-color: var(--studio-blue); transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,0.07); }
-.landing-idea-chip > svg:first-child { flex: none; margin-top: 2px; color: var(--studio-blue); }
-.landing-idea-chip > svg:last-child { flex: none; margin-left: auto; margin-top: 2px; color: var(--studio-muted); }
-.landing-idea-chip > span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.landing-idea-chip strong { font-size: 13px; font-weight: 600; }
-.landing-idea-chip small { color: var(--studio-muted); font-size: 12px; line-height: 1.6; }
-.landing-idea-hint { margin: 18px 0 0; color: var(--studio-muted); font-size: 12.5px; }
 .landing-audience-line { max-width: 640px; margin: 44px auto 0; text-align: center; color: var(--studio-muted); font-size: 14px; line-height: 1.8; text-wrap: pretty; }
 
-/* How it works — editorial steps, then everything included. */
-.landing-workflow { padding: 0 0 110px; }
-.landing-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; margin: 0; padding: 0; list-style: none; }
-.landing-step { border-top: 1px solid var(--border-medium); padding-top: 26px; }
-.landing-step-num { display: block; margin-bottom: 18px; font: 400 44px/1 var(--font-brand); letter-spacing: -1px; color: var(--step-num); }
-.landing-step h3 { margin: 0 0 10px; font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
-.landing-step p { margin: 0; color: var(--studio-muted); font-size: 14px; line-height: 1.75; }
-.landing-included { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 56px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
-.landing-included li { display: flex; align-items: center; gap: 10px; padding: 18px 20px 18px 0; font-size: 13.5px; font-weight: 500; color: var(--text-secondary); }
-.landing-included li + li { padding-left: 20px; border-left: 1px solid var(--border-subtle); }
-.landing-included svg { flex: none; color: var(--color-success, var(--studio-blue)); }
-
-/* FAQ */
-.studio-faq-section { padding: 88px 0; display: grid; grid-template-columns: 1fr 1.3fr; gap: 90px; }
-.studio-faq-list details { border-bottom: 1px solid var(--studio-line); }
-.studio-faq-list details:first-child { margin-top: -16px; }
-.studio-faq-list summary { min-height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; cursor: pointer; font-size: 14px; font-weight: 500; list-style: none; }
-.studio-faq-list summary::-webkit-details-marker { display: none; }
-.studio-faq-list summary h3 { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; margin: 0; font: inherit; line-height: 1.6; }
-.studio-content-updated { margin: 18px 0 0; color: var(--studio-muted); font-size: 12px; line-height: 1.8; }
-.studio-faq-list summary svg { flex: none; color: var(--studio-muted); transition: transform 150ms; }
-.studio-faq-list details[open] summary svg { transform: rotate(45deg); }
-.studio-faq-list details > p { font-size: 13px; line-height: 1.8; color: var(--studio-muted); max-width: 95%; margin: 0 0 20px; }
-
-/* Closing — a quiet dark panel, not a glossy CTA card. */
-.landing-closing { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 72px 64px; margin: 56px 0 0; border-radius: 20px; background: var(--closing-background); color: var(--closing-ink); }
-.landing-closing h2 { color: var(--closing-ink); max-width: 560px; font-size: clamp(34px, 4vw, 48px); line-height: 1.1; letter-spacing: -1.6px; }
-.landing-closing > div > p:last-child { color: var(--closing-muted); font-size: 15px; line-height: 1.7; margin: 20px 0 0; }
-.landing-closing a.landing-closing-link { display: inline-flex; align-items: center; justify-content: center; flex: none; gap: 18px; min-height: 50px; padding: 14px 22px; border-radius: 11px; color: #1b1b1e; background: #fff; font-size: 14px; font-weight: 600; transition: transform 180ms; }
-.landing-closing-link:hover { transform: translateY(-2px); }
-.landing-closing :is(a, button):focus-visible { outline-color: white; }
-
 /* Footer */
-.landing-footer { max-width: 1120px; padding: 64px 0 96px; margin: 24px auto 0; border-top: 1px solid var(--studio-line); }
+.landing-footer { max-width: 1200px; padding: 64px 0 96px; margin: 24px auto 0; border-top: 1px solid var(--studio-line); }
 .landing-footer-grid { display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: 40px; }
 .landing-footer-brand-col { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
 .landing-footer-brand { display: inline-flex; align-items: center; gap: 9px; width: fit-content; font-size: 18px; font-weight: 650; letter-spacing: -.5px; color: var(--studio-ink); text-decoration: none; }

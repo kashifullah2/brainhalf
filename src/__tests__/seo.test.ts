@@ -49,7 +49,12 @@ describe('Public HTML and search metadata', () => {
         expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         expect(sitemap()).toContain(`<loc>${SITE_URL}${path}</loc><lastmod>${date}</lastmod>`);
         expect(render(path).head).toContain(`"dateModified":"${date}"`);
-        expect(render(path).html).toMatch(new RegExp(`<time datetime="${date}"`, 'i'));
+        if (path === '/') {
+          // The landing page shows no visible "Updated <date>" line by design.
+          expect(render(path).html).not.toMatch(/<time datetime=/i);
+        } else {
+          expect(render(path).html).toMatch(new RegExp(`<time datetime="${date}"`, 'i'));
+        }
         expect(render(path).head).not.toContain('datePublished');
       }
     } finally {

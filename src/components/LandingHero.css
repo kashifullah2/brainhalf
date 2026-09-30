@@ -327,7 +327,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hero-frame-tilt { transform: none; transition: none; }
-  .hero-chip { transition: none; }
+  .hero-chip { transition: none; translate: none; }
   .hero-chip-float { animation: none; }
   .hero-cta-primary, .hero-cta-secondary { transition: none; }
+  .hero-prompt, .hero-prompt .landing-submit-btn { transition: none; }
 }

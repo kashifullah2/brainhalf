@@ -1,0 +1,79 @@
+.faq-section {
+  padding: 88px 0;
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 90px;
+}
+
+.faq-intro {
+  position: sticky;
+  top: 120px;
+  align-self: start;
+}
+
+.studio-faq-list {
+  border-top: 1px solid var(--studio-line);
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--studio-line);
+}
+
+/* One icon pattern everywhere: a plus that rotates into a cross when open. */
+.faq-summary {
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faq-summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-summary h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--studio-ink);
+}
+
+.faq-summary:hover h3 {
+  color: var(--brand-solid);
+}
+
+.faq-icon {
+  flex: none;
+  color: var(--text-secondary);
+  transition: transform 200ms;
+}
+
+.faq-item[open] .faq-icon {
+  transform: rotate(45deg);
+  color: var(--brand-solid);
+}
+
+.faq-item > p {
+  margin: 0 0 22px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  max-width: 95%;
+}
+
+@media (max-width: 900px) {
+  .faq-section { grid-template-columns: 1fr; gap: 36px; }
+  .faq-intro { position: static; }
+}
+
+@media (max-width: 560px) {
+  .faq-section { padding: 64px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .faq-icon { transition: none; }
+}

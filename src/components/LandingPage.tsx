@@ -1,20 +1,14 @@
-import { BUSINESS_APPS } from '../lib/business-apps';
 import React, { useState, useRef } from 'react';
-import {
-  ArrowRight,
-  Plus,
-  ArrowUpRight,
-  BarChart3,
-  LayoutGrid,
-  ShoppingCart,
-  Check,
-  Tractor,
-} from 'lucide-react';
 import SiteNavbar from './SiteNavbar';
 import LandingFooter from './LandingFooter';
 import LandingHero from './LandingHero';
-import LandingShowcase from './LandingShowcase';
-import { HOME_FAQS, HOME_MODIFIED, formatContentDate } from '../seo/content';
+import InteractiveDemo from './InteractiveDemo';
+import GalleryRow from './GalleryRow';
+import HowItWorks from './HowItWorks';
+import BentoGrid from './BentoGrid';
+import TrustSection from './TrustSection';
+import FaqSection from './FaqSection';
+import FinalCta from './FinalCta';
 import './LandingPage.css';
 import './PublicPage.css';
 
@@ -29,40 +23,10 @@ interface LandingPageProps {
 }
 
 const NAV_LINKS = [
-  { href: '#how-it-works', label: 'How it works' },
   { href: '#examples', label: 'Examples' },
+  { href: '#how-it-works', label: 'How it works' },
   { href: '#questions', label: 'FAQs' },
   { href: '/gallery', label: 'Gallery' },
-];
-
-const IDEA_ICONS = [ShoppingCart, Tractor, LayoutGrid, BarChart3];
-
-const AUDIENCES =
-  'retail shops, cafés & restaurants, farms, clinics, warehouses, schools, freelancers, and nonprofits';
-
-const HOW_IT_WORKS = [
-  {
-    title: 'Describe it in plain words',
-    detail:
-      'One job is enough to start: tracking stock, taking bookings, or following up with customers. Write it the way you would explain it to a person.',
-  },
-  {
-    title: 'Refine it by chatting',
-    detail:
-      'Click through your app, try things out, and ask for changes in plain language. The screens, the saved information, and sign-in all update together.',
-  },
-  {
-    title: 'Share it with the world',
-    detail:
-      'We check that everything works before anything goes live — and tell you in plain words if something needs fixing. Then your app gets its own web address to share with customers.',
-  },
-];
-
-const INCLUDED = [
-  'Screens and saved information, built together',
-  'Checked before it goes live',
-  'Customer sign-in with Google or email',
-  'Your own web address',
 ];
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -126,98 +90,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         onBrandClick={scrollToTop}
       />
 
-      {/* Hero */}
       <main className="landing-main-content" id="main-content" tabIndex={-1}>
-      <LandingHero
-        promptText={promptText}
-        onPromptTextChange={setPromptText}
-        textareaRef={textareaRef}
-        creatingProject={creatingProject}
-        onPromptSubmit={handlePromptSubmit}
-        onPromptKeyDown={handleKeyDown}
-        onFocusComposer={focusComposer}
-      />
+        <LandingHero
+          promptText={promptText}
+          onPromptTextChange={setPromptText}
+          textareaRef={textareaRef}
+          creatingProject={creatingProject}
+          onPromptSubmit={handlePromptSubmit}
+          onPromptKeyDown={handleKeyDown}
+          onFocusComposer={focusComposer}
+        />
 
-        {/* Examples — real apps, and who they're for */}
-        <section className="landing-examples" id="examples" aria-labelledby="examples-heading">
-          <div className="landing-section-intro">
-            <p className="landing-kicker">What you get</p>
-            <h2 id="examples-heading">Real apps, not mockups.</h2>
-            <p className="landing-section-lede">These are the kinds of working tools people build. Click through them — every button does something.</p>
-          </div>
-          <LandingShowcase />
-          <div className="landing-idea-row" aria-label="More starting ideas">
-            {BUSINESS_APPS.slice(0, 4).map((suggestion, index) => {
-              const Icon = IDEA_ICONS[index] ?? ShoppingCart;
-              return (
-                <button key={suggestion.label} type="button" className="landing-idea-chip" onClick={() => handleExamplePrompt(suggestion.prompt)}>
-                  <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
-                  <span><strong>{suggestion.label}</strong><small>{suggestion.detail}</small></span>
-                  <ArrowUpRight size={15} aria-hidden="true" />
-                </button>
-              );
-            })}
-          </div>
-          <p className="landing-idea-hint">Pick one to fill in your first prompt — change anything before you build.</p>
-          <p className="landing-audience-line">
-            Made for {AUDIENCES}. If you run it on spreadsheets and memory, it can be software.
-          </p>
-        </section>
+        <InteractiveDemo onUseIdea={handleExamplePrompt} />
 
-        {/* How it works — steps and everything included */}
-        <section className="landing-workflow" id="how-it-works" aria-labelledby="workflow-heading">
-          <div className="landing-section-intro">
-            <p className="landing-kicker">How it works</p>
-            <h2 id="workflow-heading">Describe. Refine. Share.</h2>
-            <p className="landing-section-lede">You set the direction and make the decisions. BrainHalf does the building.</p>
-          </div>
-          <ol className="landing-steps" aria-label="How it works" role="list">
-            {HOW_IT_WORKS.map((item, index) => (
-              <li key={item.title} className="landing-step">
-                <span className="landing-step-num" aria-hidden="true">{index + 1}</span>
-                <div>
-                  <h3>{item.title}</h3>
-                  <p>{item.detail}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <ul className="landing-included" aria-label="Included with every app">
-            {INCLUDED.map(item => (
-              <li key={item}><Check size={15} aria-hidden="true" />{item}</li>
-            ))}
-          </ul>
-          <a href="#start-building" className="landing-text-cta" onClick={focusComposer}>
-            Start with your first sentence <ArrowRight size={16} aria-hidden="true" />
-          </a>
-        </section>
+        <GalleryRow />
 
-        {/* FAQ */}
-        <section className="studio-faq-section" id="questions" aria-labelledby="faq-heading">
-          <div>
-            <p className="landing-kicker">Questions</p>
-            <h2 id="faq-heading">Before you begin.</h2>
-            <p className="studio-content-updated">Updated <time dateTime={HOME_MODIFIED}>{formatContentDate(HOME_MODIFIED)}</time></p>
-          </div>
-          <div className="studio-faq-list">
-            {HOME_FAQS.map((faq, index) => (
-              <details key={faq.id} id={faq.id} open={index === 0}>
-                <summary><h3>{faq.question}<Plus size={17} aria-hidden="true" /></h3></summary>
-                <p>{faq.answer}</p>
-              </details>
-            ))}
-          </div>
-        </section>
+        <HowItWorks />
 
-        {/* Closing */}
-        <section className="landing-closing" aria-labelledby="closing-heading">
-          <div>
-            <p className="landing-kicker landing-kicker-on-dark">Start free</p>
-            <h2 id="closing-heading">Your business,<br />running on software you described.</h2>
-            <p>Start with a sentence. See where it takes you.</p>
-          </div>
-          <a href="#start-building" className="landing-closing-link" onClick={focusComposer}>Build your app <ArrowUpRight size={18} /></a>
-        </section>
+        <BentoGrid />
+
+        <TrustSection />
+
+        <FaqSection />
+
+        <FinalCta onStartBuilding={focusComposer} />
       </main>
 
       <LandingFooter />

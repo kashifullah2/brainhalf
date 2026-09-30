@@ -196,17 +196,17 @@ test('example previews support keyboard navigation and preserve a prompt through
   await page.goto('/');
   await page.waitForLoadState('networkidle');
   const travel = page.getByRole('tab', { name: 'Inventory tool', exact: true });
-  const board = page.getByRole('tab', { name: 'Simple CRM', exact: true });
-  const analytics = page.getByRole('tab', { name: 'Booking app', exact: true });
+  const booking = page.getByRole('tab', { name: 'Booking app', exact: true });
+  const tasks = page.getByRole('tab', { name: 'Task manager', exact: true });
   await expect(travel).toHaveAttribute('aria-selected', 'true');
   await travel.focus();
   await page.keyboard.press('ArrowRight');
-  await expect(board).toBeFocused();
-  await expect(board).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Simple CRM');
-  await page.keyboard.press('End');
-  await expect(analytics).toBeFocused();
+  await expect(booking).toBeFocused();
+  await expect(booking).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Booking app');
+  await page.keyboard.press('End');
+  await expect(tasks).toBeFocused();
+  await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Task manager');
   await page.keyboard.press('ArrowRight');
   await expect(travel).toBeFocused();
   await page.getByRole('button', { name: /Inventory tool/ }).click();
@@ -232,10 +232,10 @@ test('all example previews fit narrow and wide landing layouts in both themes', 
     }
     for (const width of [320, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const name of ['Inventory tool', 'Simple CRM', 'Booking app']) {
+      for (const name of ['Inventory tool', 'Booking app', 'Simple CRM', 'Task manager']) {
         await page.getByRole('tab', { name, exact: true }).click();
         const overflows = await page.locator('.landing-main-content').evaluate(element => {
-          return [...element.querySelectorAll('button, textarea, .studio-browser, .sample-columns, .sample-metrics')]
+          return [...element.querySelectorAll('button, textarea, .demo-browser')]
             .filter(node => {
               const box = node.getBoundingClientRect();
               return box.width > 0 && (box.left < -1 || box.right > innerWidth + 1 || node.scrollWidth > node.clientWidth + 1);

@@ -207,13 +207,17 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                   <span className="landing-browser-dots"><i /><i /><i /></span>
                   <span className="landing-browser-url">The BrainHalf workspace</span>
                 </div>
-                <img
-                  src="/images/landing-workspace.png"
-                  alt="The BrainHalf workspace: a chat with the AI builder on the left and the app being built on the right"
-                  width={1440}
-                  height={684}
-                  loading="eager"
-                />
+                <picture>
+                  <source srcSet="/images/landing/landing-workspace.webp" type="image/webp" />
+                  <img
+                    src="/images/landing-workspace.png"
+                    alt="The BrainHalf workspace: a chat with the AI builder on the left and the app being built on the right"
+                    width={1440}
+                    height={684}
+                    loading="eager"
+                    fetchPriority="high"
+                  />
+                </picture>
               </div>
               <figcaption>The real workspace — describe on the left, watch your app take shape on the right.</figcaption>
             </figure>

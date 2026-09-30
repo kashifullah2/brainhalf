@@ -18,6 +18,7 @@ export const LOCAL_BROWSER_SPECS = [
   '**/ui-login-modal.spec.ts',
   '**/ui-scrollbars.spec.ts',
   '**/landing-hero.spec.ts',
+  '**/landing-sections.spec.ts',
 ];
 
 export function requireLiveTestOptIn(environment: Record<string, string | undefined>) {

@@ -25,9 +25,6 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
     links: [
       { label: 'Inventory apps', href: '/use-cases/ai-inventory-app-builder' },
       { label: 'Book inventory', href: '/use-cases/book-inventory-app-builder' },
-      { label: 'Warehouse stock control', href: '/use-cases/warehouse-inventory-app-builder' },
-      { label: 'Equipment & assets', href: '/use-cases/equipment-asset-inventory-app-builder' },
-      { label: 'Personal inventory', href: '/use-cases/personal-inventory-app-builder' },
       { label: 'Dashboards', href: '/use-cases/ai-dashboard-builder' },
       { label: 'Customer portals', href: '/use-cases/customer-dashboard-builder' },
       { label: 'Websites', href: '/use-cases/ai-website-builder' },

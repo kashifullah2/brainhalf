@@ -58,7 +58,12 @@ for (const path of paths) {
   const pageData = schema['@graph'].find(node => node['@id'] === `${origin}${path}#page`);
   const date = revisions.get(`${origin}${path}`);
   assert.equal(pageData?.dateModified, date, `${path}: schema and sitemap dates must agree`);
-  assert(new RegExp(`<time datetime="${date}"`, 'i').test(html), `${path}: the revision date must be visible`);
+  if (path === '/') {
+    // The landing page shows no visible "Updated <date>" line by design.
+    assert(!new RegExp('<time datetime=', 'i').test(html), `${path}: the revision date must not be visible`);
+  } else {
+    assert(new RegExp(`<time datetime="${date}"`, 'i').test(html), `${path}: the revision date must be visible`);
+  }
   const links = [...html.matchAll(/<a\b[^>]*href="(\/[^"?#]*)[^" ]*"/g)].map(([, href]) => href);
   for (const href of links) assert(paths.has(href) || accountPaths.has(href), `${path}: broken internal link ${href}`);
   publicLinks.set(path, links.filter(href => paths.has(href)));

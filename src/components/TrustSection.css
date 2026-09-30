@@ -1,0 +1,87 @@
+.trust-section {
+  padding: 110px 0;
+}
+
+.trust-benefits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trust-benefit {
+  border: 1px solid var(--studio-line);
+  border-radius: 20px;
+  background: var(--studio-white);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trust-benefit-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--brand-solid) 10%, transparent);
+  color: var(--brand-solid);
+}
+
+.trust-benefit h3 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.3px;
+  color: var(--studio-ink);
+}
+
+.trust-benefit p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-secondary);
+}
+
+/* Clearly marked slot for real testimonials — never faked. */
+.trust-testimonial-slot {
+  margin-top: 28px;
+  border: 1.5px dashed var(--studio-line);
+  border-radius: 20px;
+  background: transparent;
+  padding: 36px;
+  text-align: center;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.trust-testimonial-slot svg {
+  color: var(--brand-solid);
+  opacity: 0.7;
+}
+
+.trust-testimonial-slot p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  max-width: 52ch;
+}
+
+.trust-testimonial-slot strong {
+  color: var(--studio-ink);
+}
+
+@media (max-width: 900px) {
+  .trust-benefits { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .trust-section { padding: 72px 0; }
+  .trust-testimonial-slot { padding: 28px 22px; }
+}
