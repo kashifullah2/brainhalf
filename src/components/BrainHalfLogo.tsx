@@ -43,7 +43,7 @@ export const BrainHalfLogo: React.FC<BrainHalfLogoProps> = ({
       aria-hidden="true"
       {...rest}
     >
-      <image href="/brand/brainhalf-logo.png" width="512" height="512" />
+      <image href="/android-chrome-512x512.png" width="512" height="512" />
     </svg>
   );
 };

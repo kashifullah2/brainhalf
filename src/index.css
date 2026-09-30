@@ -529,6 +529,10 @@ h4,
   scrollbar-width: thin;
 }
 
+.top-nav-gallery-btn {
+  text-decoration: none;
+}
+
 /* FLUSH DOCKED WORKSPACE AREA (VS Code / Linear / Vercel layout - Items 18 & 19) */
 .workspace-area {
   flex: 1;
@@ -1995,6 +1999,10 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
     display: none !important;
   }
 
+  .top-nav-gallery-btn {
+    display: none !important;
+  }
+
   .browser-chrome {
     padding: 0 12px;
   }
@@ -2488,6 +2496,7 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   --bg-surface-hover: #e2e8f0;
   --bg-card: #ffffff;
   --bg-card-hover: #f1f5f9;
+  --bg-hover: #e2e8f0;
 
   --border-subtle: #e2e8f0;
   --border-medium: #cbd5e1;

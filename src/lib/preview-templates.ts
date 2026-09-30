@@ -510,11 +510,16 @@ class ErrorBoundary extends React.Component {
     console.error('Edge Preview Error:', error, errorInfo);
     try {
       if (window.parent !== window) {
+        // L14: target '*' like every other parent-directed postMessage in this
+        // file. window.location.origin is the string "null" in an opaque-origin
+        // sandbox, which would silently drop the error report because the
+        // parent frame is never opaque. The payload is a preview error string,
+        // the same trust class as the 'preview-success' message below.
         window.parent.postMessage({
           type: 'preview-error',
           file: 'src/App.jsx',
           error: error?.message || String(error)
-        }, window.location.origin);
+        }, '*');
       }
     } catch (_) {}
   }

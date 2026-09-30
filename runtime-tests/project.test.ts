@@ -33,12 +33,21 @@ function context() {
   return { ctx, map, db, ready: () => ready };
 }
 async function project() {
-  const state = context(); const pilot = { register: vi.fn(async () => ({ ok: true })), acquire: vi.fn(async () => ({ ok: true })), release: vi.fn(async () => {}), unregister: vi.fn(async () => {}), consumeUsage: vi.fn(async () => ({ ok: true })), usageStatus: vi.fn(async () => ({ day: '2026-09-23', used: { jobs: 0, requests: 0, emails: 0 }, limits: { jobs: 30, requests: 25000, emails: 50 }, storageBytes: 0, storageLimitBytes: 104857600 })) };
+  const state = context(); const pilot = { register: vi.fn(async () => ({ ok: true })), acquire: vi.fn(async () => ({ ok: true })), release: vi.fn(async () => {}), unregister: vi.fn(async () => {}), lookup: vi.fn(async () => null), unregisterCustomHostname: vi.fn(async () => {}), consumeUsage: vi.fn(async () => ({ ok: true })), usageStatus: vi.fn(async () => ({ day: '2026-09-23', used: { jobs: 0, requests: 0, emails: 0 }, limits: { jobs: 30, requests: 25000, emails: 50 }, storageBytes: 0, storageLimitBytes: 104857600 })) };
   Object.assign(pilot, { listOwnerProjects: vi.fn(async () => []), forceRelease: vi.fn(async () => ({ released: false })) });
-  const env: any = { PROJECT_SECRETS_KEY: btoa('k'.repeat(32)), RUNTIME_DOMAIN: 'apps.example.com', PILOT: { getByName: () => pilot }, Sandbox: {}, ARTIFACTS: { put: vi.fn(async () => {}) }, CF_ACCOUNT_ID: 'account', CF_API_TOKEN: 'platform-only', BROWSER: {} };
+  const deletedProjects = new Set<string>();
+  const r2objects = new Map<string, Uint8Array>();
+  const artifacts = {
+    put: vi.fn(async (key: string, bytes: Uint8Array) => { r2objects.set(key, bytes.slice()); return { key, size: bytes.length }; }),
+    get: vi.fn(async (key: string) => { const bytes = r2objects.get(key); return bytes ? { size: bytes.length, body: new Response(bytes).body } : null; }),
+    head: vi.fn(async (key: string) => { const bytes = r2objects.get(key); return bytes ? { size: bytes.length } : null; }),
+    delete: vi.fn(async (key: string | string[]) => { for (const item of Array.isArray(key) ? key : [key]) r2objects.delete(item); }),
+    list: vi.fn(async ({ prefix }: { prefix: string }) => ({ objects: [...r2objects.keys()].filter(key => key.startsWith(prefix)).map(key => ({ key })) })),
+  };
+  const env: any = { PROJECT_SECRETS_KEY: btoa('k'.repeat(32)), RUNTIME_DOMAIN: 'apps.example.com', PILOT: { getByName: () => pilot }, PROJECTS: { getByName: (projectId: string) => ({ isDeleted: async () => deletedProjects.has(projectId), currentAlias: async () => 'a'.repeat(32) }) }, Sandbox: {}, ARTIFACTS: artifacts, CF_ACCOUNT_ID: 'account', CF_API_TOKEN: 'platform-only', BROWSER: {} };
   const object = new ProjectRuntime(state.ctx, env); await state.ready(); await object.initialize({ projectId: 'project', ownerId: 'owner' }, 'a'.repeat(32));
   const call = (path: string, method = 'GET', body?: unknown, environment = 'development') => object.control(new Request(`https://control${path}?environment=${environment}`, { method, body: body === undefined ? undefined : JSON.stringify(body) }));
-  return { ...state, object, env, pilot, call };
+  return { ...state, object, env, pilot, call, deletedProjects };
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -140,32 +149,162 @@ describe('Hosting slot admission', () => {
     expect((await reading).status).toBe(200); expect((await starting).status).toBe(202);
     expect(order).toEqual(['released', 'registered']); expect(p.map.has('current')).toBe(true);
   });
-  it('lists hosted slots for the account owner and rejects unknown aliases on release', async () => {
+  it('lists hosted slots with liveness and guards live-slot release', async () => {
     const p = await project();
     p.pilot.listOwnerProjects.mockResolvedValue([
       { alias: 'a'.repeat(32), projectId: 'project' },
       { alias: 'b'.repeat(32), projectId: 'other-project' },
     ]);
-    const listed = await (await p.call('/hosted')).json() as { hosted: Array<{ alias: string; projectId: string }> };
+    const listed = await (await p.call('/hosted')).json() as { hosted: Array<{ alias: string; projectId: string; live: boolean }> };
     expect(listed.hosted).toHaveLength(2);
-    expect(listed.hosted[0]).toEqual({ alias: 'a'.repeat(32), projectId: 'project' });
+    expect(listed.hosted[0]).toEqual({ alias: 'a'.repeat(32), projectId: 'project', live: true });
     expect(p.pilot.listOwnerProjects).toHaveBeenCalledWith('owner');
 
     // Rejects a malformed alias.
-    const badAlias = await p.call('/hosted/release', 'POST', { alias: 'not-valid' });
+    const badAlias = await p.call('/hosted/release', 'POST', { alias: 'Bad Alias!!' });
     expect(badAlias.status).toBe(400);
     expect(p.pilot.forceRelease).not.toHaveBeenCalled();
 
-    // Returns 404 when the pilot reports the slot is not owned by this account.
+    // Returns 404 when the slot is not registered to this account.
+    p.pilot.lookup.mockResolvedValue(null);
     p.pilot.forceRelease.mockResolvedValue({ released: false });
     const missing = await p.call('/hosted/release', 'POST', { alias: 'b'.repeat(32) });
     expect(missing.status).toBe(404);
+    expect(p.pilot.forceRelease).not.toHaveBeenCalled();
 
-    // Succeeds when the pilot confirms the release.
+    // Refuses to release a live project's slot without explicit force.
+    p.pilot.lookup.mockResolvedValue({ ownerId: 'owner', projectId: 'other-project' });
+    const liveRefused = await p.call('/hosted/release', 'POST', { alias: 'b'.repeat(32) });
+    expect(liveRefused.status).toBe(409);
+    expect(p.pilot.forceRelease).not.toHaveBeenCalled();
+
+    // Succeeds for a live slot with explicit force.
     p.pilot.forceRelease.mockResolvedValue({ released: true });
-    const ok = await p.call('/hosted/release', 'POST', { alias: 'b'.repeat(32) });
-    expect(ok.status).toBe(200);
+    const forced = await p.call('/hosted/release', 'POST', { alias: 'b'.repeat(32), force: true });
+    expect(forced.status).toBe(200);
     expect(p.pilot.forceRelease).toHaveBeenCalledWith('b'.repeat(32), 'owner');
+
+    // Succeeds without force once the project is deleted (orphaned slot).
+    p.deletedProjects.add('other-project');
+    const orphan = await p.call('/hosted/release', 'POST', { alias: 'b'.repeat(32) });
+    expect(orphan.status).toBe(200);
+  });
+  it('marks deleted projects as not live in the hosted slot listing', async () => {
+    const p = await project();
+    p.pilot.listOwnerProjects.mockResolvedValue([
+      { alias: 'a'.repeat(32), projectId: 'project' },
+      { alias: 'b'.repeat(32), projectId: 'other-project' },
+    ]);
+    p.deletedProjects.add('project');
+    const listed = await (await p.call('/hosted')).json() as { hosted: Array<{ alias: string; projectId: string; live: boolean }> };
+    expect(listed.hosted.find(entry => entry.projectId === 'project')).toMatchObject({ live: false });
+    expect(listed.hosted.find(entry => entry.projectId === 'other-project')).toMatchObject({ live: true });
+  });
+  it('releases an orphaned custom-slug slot, not only digest aliases', async () => {
+    const p = await project();
+    p.pilot.lookup.mockImplementation(async (alias: string) => alias === 'my-app' ? { ownerId: 'owner', projectId: 'project' } : null);
+    p.pilot.forceRelease.mockResolvedValue({ released: true });
+    p.deletedProjects.add('project');
+    const released = await p.call('/hosted/release', 'POST', { alias: 'my-app' });
+    expect(released.status).toBe(200);
+    expect(p.pilot.forceRelease).toHaveBeenCalledWith('my-app', 'owner');
+  });
+});
+describe('Custom slug alias handling', () => {
+  it('keeps the stored slug across later control requests instead of clobbering it', async () => {
+    const p = await project();
+    expect(await p.object.currentAlias()).toBe('a'.repeat(32));
+    expect((await p.call('/slug', 'POST', { slug: 'my-app' })).status).toBe(200);
+    expect(await p.object.currentAlias()).toBe('my-app');
+    // Another control request must not revert the alias to the digest alias.
+    await p.object.initialize({ projectId: 'project', ownerId: 'owner' }, 'a'.repeat(32));
+    expect(await p.object.currentAlias()).toBe('my-app');
+    expect(await p.ctx.storage.get('alias')).toBe('my-app');
+    // Job admission re-registers the live slug, not the digest alias.
+    await p.call('/preview-ticket', 'POST', {});
+    expect(p.pilot.register).toHaveBeenCalledWith('my-app', { projectId: 'project', ownerId: 'owner' });
+  });
+  it('does not persist a rejected slug when pilot registration fails', async () => {
+    const p = await project();
+    expect((await p.call('/slug', 'POST', { slug: 'my-app' })).status).toBe(200);
+    p.pilot.register.mockResolvedValueOnce({ ok: false, error: 'Your account has reached its hosted project limit.', status: 429 });
+    const failed = await p.call('/slug', 'POST', { slug: 'other-app' });
+    expect(failed.status).toBe(429);
+    expect(await p.object.currentAlias()).toBe('my-app');
+    expect(await p.ctx.storage.get('alias')).toBe('my-app');
+  });
+  it('frees the previous slot before registering a rename so renames work at the project cap', async () => {
+    const p = await project();
+    expect((await p.call('/slug', 'POST', { slug: 'my-app' })).status).toBe(200);
+    p.pilot.unregister.mockClear(); p.pilot.register.mockClear();
+    expect((await p.call('/slug', 'POST', { slug: 'renamed-app' })).status).toBe(200);
+    const unregisterCalls = p.pilot.unregister.mock.calls.map(call => call[0]);
+    const registerCalls = p.pilot.register.mock.calls.map(call => call[0]);
+    expect(unregisterCalls).toContain('my-app');
+    expect(registerCalls).toContain('renamed-app');
+    // Unregister(old) ran before register(new): at the cap the new
+    // registration would otherwise be rejected.
+    const unregisterIndex = p.pilot.unregister.mock.invocationCallOrder[unregisterCalls.indexOf('my-app')];
+    const registerIndex = p.pilot.register.mock.invocationCallOrder[registerCalls.indexOf('renamed-app')];
+    expect(unregisterIndex).toBeLessThan(registerIndex);
+    expect(await p.object.currentAlias()).toBe('renamed-app');
+  });
+  it('rolls the old registration back when a rename fails after freeing the old slot', async () => {
+    const p = await project();
+    expect((await p.call('/slug', 'POST', { slug: 'my-app' })).status).toBe(200);
+    p.pilot.register.mockResolvedValueOnce({ ok: false, error: 'That name is already taken. Try a different one.', status: 409 });
+    const failed = await p.call('/slug', 'POST', { slug: 'taken-app' });
+    expect(failed.status).toBe(409);
+    expect(await p.object.currentAlias()).toBe('my-app');
+    // Old registration restored so the project keeps its slot.
+    expect(p.pilot.register).toHaveBeenCalledWith('my-app', { projectId: 'project', ownerId: 'owner' });
+  });
+  it('tears down under the live slug: pilot slot, R2 prefix, custom domain, and quota', async () => {
+    const p = await storageProject();
+    p.pilot.lookup.mockResolvedValue(null);
+    expect((await p.call('/slug', 'POST', { slug: 'my-app' })).status).toBe(200);
+    // Seed: R2 object under the slug prefix, a custom domain, and an upload
+    // (which reserves quota under the new stable quota id).
+    p.objects.set('my-app/sources/rev.json', new Uint8Array([1, 2, 3]));
+    await p.ctx.storage.put('custom-domain', { hostname: 'shop.example.com', cfId: 'cf-hostname-id-1' });
+    const deleteHostname = vi.spyOn((await import('../src/runtime/cloudflare-api')).CloudflareAPI.prototype, 'deleteCustomHostname').mockResolvedValue(undefined);
+    const { file } = await (await p.callFile('/api/storage', 'POST', 'data')).json() as any;
+    expect((await p.usage.usageStatus()).storageBytes).toBe(4);
+    expect((await p.call('/delete', 'POST')).status).toBe(200);
+    // Pilot slot released under the slug, not the digest alias.
+    expect(p.pilot.unregister).toHaveBeenCalledWith('my-app', { projectId: 'project', ownerId: 'owner' });
+    // R2 swept under the slug prefix — nothing orphaned.
+    expect(p.objects.size).toBe(0);
+    // Custom domain released from both the pilot and Cloudflare.
+    expect(p.pilot.unregisterCustomHostname).toHaveBeenCalledWith('shop.example.com', { projectId: 'project', ownerId: 'owner' });
+    expect(deleteHostname).toHaveBeenCalledWith('cf-hostname-id-1');
+    // Upload quota refunded even though the slug changed after upload.
+    expect((await p.usage.usageStatus()).storageBytes).toBe(0);
+    expect(file).toBeDefined();
+    deleteHostname.mockRestore();
+  });
+  it('keeps pre-rename uploads servable and refunds their quota after rename then delete', async () => {
+    const p = await storageProject();
+    const digestAlias = 'a'.repeat(32);
+    // Upload under the digest alias, before any rename.
+    const { file } = await (await p.callFile('/api/storage', 'POST', 'data')).json() as any;
+    expect(file?.id).toBeDefined();
+    expect([...p.objects.keys()].some(key => key.startsWith(`${digestAlias}/uploads/`))).toBe(true);
+    expect((await p.usage.usageStatus()).storageBytes).toBe(4);
+
+    // Rename moves the stored object under the slug so it stays servable.
+    expect((await p.call('/slug', 'POST', { slug: 'my-app' })).status).toBe(200);
+    expect([...p.objects.keys()].some(key => key.startsWith('my-app/uploads/'))).toBe(true);
+    expect([...p.objects.keys()].some(key => key.startsWith(`${digestAlias}/`))).toBe(false);
+
+    const served = await p.callFile(`/api/storage/${file.id}`, 'GET');
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe('data');
+
+    // Delete refunds the pre-rename reservation and leaves no orphaned objects.
+    expect((await p.call('/delete', 'POST')).status).toBe(200);
+    expect((await p.usage.usageStatus()).storageBytes).toBe(0);
+    expect(p.objects.size).toBe(0);
   });
 });
 describe('Project runtime with real SQLite state', () => {

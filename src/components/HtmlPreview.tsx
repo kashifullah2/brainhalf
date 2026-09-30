@@ -2,6 +2,57 @@ import React, { useEffect, useRef } from 'react';
 import { createPreviewModuleLoader, previewAssetUrl, previewCss } from '../lib/preview-runtime';
 import { resolvePreviewImport } from '../lib/preview-modules';
 
+/**
+ * Fail-fast tracking for preview script execution (N1). The first page error
+ * halts the remaining preview scripts; the halt is reported once through the
+ * callback instead of stalling silently with no error or completion signal.
+ */
+export function createPreviewFailureTracker(onFirstFailure: (message: string) => void) {
+  let failed: string | null = null;
+  let reported = false;
+  const messageOf = (event: ErrorEvent | PromiseRejectionEvent): string => {
+    // Duck-typed so the logic is testable without a DOM: a rejection carries
+    // `reason`, an error event carries `message`/`error`.
+    if (event && typeof event === 'object' && 'reason' in event) {
+      const reason = (event as PromiseRejectionEvent).reason;
+      return reason instanceof Error ? reason.message : String(reason);
+    }
+    const errorEvent = event as ErrorEvent;
+    return errorEvent?.error?.message || errorEvent?.message || 'Preview script failed';
+  };
+  return {
+    markFailed(event: ErrorEvent | PromiseRejectionEvent) {
+      if (failed !== null) return;
+      failed = messageOf(event);
+    },
+    /** True when the run must stop. Reports the captured error exactly once. */
+    checkFailed(): boolean {
+      if (failed === null) return false;
+      if (!reported) {
+        reported = true;
+        onFirstFailure(failed);
+      }
+      return true;
+    },
+    hasFailed(): boolean { return failed !== null; },
+  };
+}
+
+/**
+ * The in-page preview renames the app shell's `#root` so generated `#root`
+ * CSS cannot restyle the BrainHalf UI. The rename must be undone when the
+ * preview unmounts, otherwise the shell's own `html, body, #root` rules stop
+ * applying for the rest of the session (L12). Returns a restore function; a
+ * no-op when the host is not inside a `#root`.
+ */
+export function renameShellRootForPreview(host: HTMLElement): () => void {
+  const runtimeRoot = host.closest('#root');
+  if (!runtimeRoot) return () => {};
+  const previousId = runtimeRoot.id;
+  runtimeRoot.id = 'brainhalf-preview-root';
+  return () => { runtimeRoot.id = previousId; };
+}
+
 export function HtmlPreview({ files, entry, libraries, onError }: {
   files: Record<string, string>;
   entry: string;
@@ -12,11 +63,16 @@ export function HtmlPreview({ files, entry, libraries, onError }: {
   useEffect(() => {
     const host = container.current;
     if (!host) return;
-    const runtimeRoot = host.closest('#root');
-    if (runtimeRoot) runtimeRoot.id = 'brainhalf-preview-root';
+    const restoreShellRoot = renameShellRootForPreview(host);
     let active = true;
-    let failed = false;
-    const markFailed = () => { failed = true; };
+    // N1: the first page error halts the remaining preview scripts (fail fast),
+    // but the halt must be surfaced — previously the preview just stalled with
+    // no error and no completion signal.
+    const failureTracker = createPreviewFailureTracker(message => {
+      if (active) onError(`Preview stopped after an error: ${message}`);
+    });
+    const markFailed = (event: ErrorEvent | PromiseRejectionEvent) => failureTracker.markFailed(event);
+    const checkFailed = () => failureTracker.checkFailed();
     window.addEventListener('error', markFailed);
     window.addEventListener('unhandledrejection', markFailed);
     const headNodes: Element[] = [];
@@ -52,7 +108,7 @@ export function HtmlPreview({ files, entry, libraries, onError }: {
     const loader = createPreviewModuleLoader(files, libraries, React);
     const execute = async () => {
       for (const [index, script] of scripts.entries()) {
-        if (!active || failed) return;
+        if (!active || checkFailed()) return;
         const type = script.getAttribute('type') || '';
         if (type && !['module', 'text/javascript', 'application/javascript'].includes(type)) {
           host.append(script);
@@ -80,10 +136,10 @@ export function HtmlPreview({ files, entry, libraries, onError }: {
           }
         }
       }
-      if (!active || failed) return;
+      if (!active || checkFailed()) return;
       document.dispatchEvent(new Event('DOMContentLoaded'));
       window.dispatchEvent(new Event('load'));
-      if (!failed && window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, '*');
+      if (!failureTracker.hasFailed() && window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, '*');
     };
     void execute().catch(error => { if (active) onError(error instanceof Error ? error.message : String(error)); });
     return () => {
@@ -95,6 +151,7 @@ export function HtmlPreview({ files, entry, libraries, onError }: {
       document.body.className = previousClass;
       if (previousStyle === null) document.body.removeAttribute('style');
       else document.body.setAttribute('style', previousStyle);
+      restoreShellRoot();
     };
   }, [files, entry, libraries, onError]);
   return <div ref={container} style={{ display: 'contents' }} />;

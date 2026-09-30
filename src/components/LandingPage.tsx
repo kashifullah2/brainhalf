@@ -24,6 +24,7 @@ import { BrainHalfLogo } from './BrainHalfLogo';
 import LandingFooter from './LandingFooter';
 import LandingShowcase from './LandingShowcase';
 import SiteHeaderActions from './SiteHeaderActions';
+import { shouldCloseMenuOnPointerDown } from './MobileNav';
 import { HOME_FAQS, HOME_MODIFIED, formatContentDate } from '../seo/content';
 import './LandingPage.css';
 import './PublicPage.css';
@@ -125,6 +126,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const input = textareaRef.current;
@@ -144,7 +146,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideMenu = mobileMenuRef.current?.contains(target) ?? false;
+      const insideToggle = mobileMenuButtonRef.current?.contains(target) ?? false;
+      if (shouldCloseMenuOnPointerDown(insideMenu, insideToggle)) {
         setShowMobileMenu(false);
       }
     };
@@ -211,6 +216,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="landing-header-right">
           <button
             type="button"
+            ref={mobileMenuButtonRef}
             className="landing-mobile-menu-btn"
             aria-label={showMobileMenu ? 'Close menu' : 'Open menu'}
             aria-expanded={showMobileMenu}

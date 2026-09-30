@@ -90,6 +90,23 @@ describe('generated-app auth (Task 2.6)', () => {
 
   it('never returns the digest from the generic users listing', async () => {
     const store = new InMemoryDataStore();
+    const signedUp = await signup(store, 'a@b.c', 'hunter2-secret');
+
+    const res = await executeBackendRequest(FILES, {
+      method: 'GET',
+      url: 'http://localhost/api/users',
+      headers: { authorization: `Bearer ${signedUp.body.token}` },
+    }, store);
+    expect(res.status).toBe(200);
+    const body = res.body;
+    const rows = Array.isArray(body) ? body : body?.items ?? body?.users ?? [];
+    expect(rows).toHaveLength(1);
+    expect(JSON.stringify(res.body)).not.toContain('pbkdf2$');
+    expect(rows[0].password).toBeUndefined();
+  });
+
+  it('hides tenant-scoped rows from anonymous listings (M2)', async () => {
+    const store = new InMemoryDataStore();
     await signup(store, 'a@b.c', 'hunter2-secret');
 
     const res = await executeBackendRequest(FILES, {
@@ -98,10 +115,7 @@ describe('generated-app auth (Task 2.6)', () => {
       headers: {},
     }, store);
     expect(res.status).toBe(200);
-    const body = res.body;
-    const rows = Array.isArray(body) ? body : body?.items ?? body?.users ?? [];
-    expect(rows).toHaveLength(1);
-    expect(JSON.stringify(res.body)).not.toContain('pbkdf2$');
-    expect(rows[0].password).toBeUndefined();
+    // The signed-up user belongs to an org: anonymous callers see no rows.
+    expect(res.body).toEqual([]);
   });
 });

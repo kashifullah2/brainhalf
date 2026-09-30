@@ -1,7 +1,11 @@
 export const MIN_SESSION_SECRET_LENGTH = 32;
 
 export function validSessionSecret(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length >= MIN_SESSION_SECRET_LENGTH;
+  if (typeof value !== 'string') return false;
+  // Base64-style padding carries no entropy, so the "32 characters" the error
+  // message promises counts only non-padding characters.
+  const nonPadding = value.trim().replace(/=+$/, '');
+  return nonPadding.length >= MIN_SESSION_SECRET_LENGTH;
 }
 
 export const PROVIDER_CREDENTIALS = {

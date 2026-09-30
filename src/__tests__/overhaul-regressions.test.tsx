@@ -37,6 +37,12 @@ describe('dark-grey theme (no navy regression)', () => {
   it('theme-init.js sets the dark theme-color meta to the grey canvas', () => {
     expect(themeInit).toContain('#161616');
   });
+
+  it('theme.ts sets the dark theme-color meta to the grey canvas (M11)', () => {
+    const themeTs = readFileSync(resolve(__dirname, '../lib/theme.ts'), 'utf8');
+    expect(themeTs).toContain('#161616');
+    expect(themeTs.toLowerCase()).not.toContain('#0d1219');
+  });
 });
 
 describe('AdminPage smoke render', () => {

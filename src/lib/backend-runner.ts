@@ -772,6 +772,11 @@ export async function executeBackendRequest(
           if (currentUser && (resource === 'events' || items.some(i => i.orgId !== undefined))) {
             items = items.filter(item => item.orgId === currentUser.orgId);
           }
+          // Anonymous callers have no org to scope to, so tenant-scoped rows
+          // are hidden from them instead of leaking across organizations.
+          if (!currentUser) {
+            items = items.filter(item => item.orgId === undefined);
+          }
 
           // Date range filtering
           const startDate = searchParams.get('startDate') || searchParams.get('start_date');
@@ -865,11 +870,20 @@ export async function executeBackendRequest(
           }
 
           const bodyData = { ...req.body };
-          if (currentUser && bodyData.orgId !== undefined && bodyData.orgId !== currentUser.orgId) {
+          if (bodyData.orgId !== undefined && (!currentUser || bodyData.orgId !== currentUser.orgId)) {
             return backendError(403, 'Forbidden: Cross-tenant creation denied');
           }
           if (currentUser) {
             bodyData.orgId = currentUser.orgId;
+          } else {
+            // Anonymous callers cannot mint tenant-scoped rows.
+            delete bodyData.orgId;
+          }
+          if (resource === 'users') {
+            // Never store a plaintext password and never let a non-admin
+            // mint an admin account through the generic endpoint.
+            if (typeof bodyData.password === 'string' && bodyData.password) bodyData.password = await hashPassword(bodyData.password);
+            if (bodyData.role === 'admin' && (!currentUser || currentUser.role !== 'admin')) return backendError(403, 'Forbidden: Only administrators can create admin accounts');
           }
 
           // Atomic inventory management for e-commerce orders
@@ -914,7 +928,7 @@ export async function executeBackendRequest(
           return {
             status: 201,
             headers: { 'Content-Type': 'application/json' },
-            body: { success: true, responseId: created.id, data: created },
+            body: { success: true, responseId: created.id, data: stripSecrets(created) },
             layer: 'backend'
           };
         }
@@ -929,6 +943,15 @@ export async function executeBackendRequest(
               body: { error: `${resource} with id "${resourceId}" not found`, layer: 'backend' },
               layer: 'backend',
               error: 'Not Found'
+            };
+          }
+          if (!currentUser && item.orgId !== undefined) {
+            return {
+              status: 401,
+              headers: { 'Content-Type': 'application/json' },
+              body: { error: 'Unauthorized: Authentication required to access this resource', layer: 'backend' },
+              layer: 'backend',
+              error: 'Unauthorized'
             };
           }
           if (currentUser && item.orgId && item.orgId !== currentUser.orgId) {
@@ -949,7 +972,7 @@ export async function executeBackendRequest(
         }
 
         if (method === 'PUT' || method === 'PATCH') {
-          if (currentUser && req.body?.orgId !== undefined && req.body.orgId !== currentUser.orgId) return backendError(403, 'Forbidden: Cross-tenant update denied');
+          if (req.body?.orgId !== undefined && (!currentUser || req.body.orgId !== currentUser.orgId)) return backendError(403, 'Forbidden: Cross-tenant update denied');
           const existing = store.findById(resource, resourceId);
           if (!existing) {
             return {
@@ -960,7 +983,8 @@ export async function executeBackendRequest(
               error: 'Not Found'
             };
           }
-          if (currentUser && existing.orgId && existing.orgId !== currentUser.orgId) {
+          if (existing.orgId !== undefined && (!currentUser || existing.orgId !== currentUser.orgId)) {
+            if (!currentUser) return backendError(401, 'Unauthorized: Authentication required');
             return {
               status: 403,
               headers: { 'Content-Type': 'application/json' },
@@ -969,7 +993,17 @@ export async function executeBackendRequest(
               error: 'Forbidden'
             };
           }
-          const updated = store.update(resource, resourceId, req.body || {});
+          const updates = { ...(req.body || {}) };
+          if (resource === 'users') {
+            // Identity rows are never anonymously mutable: without this, anyone
+            // could rewrite another account's password, role, or org.
+            if (!currentUser) return backendError(401, 'Unauthorized: Authentication required');
+            const isSelf = String(existing.id) === String(currentUser.id);
+            if (!isSelf && currentUser.role !== 'admin') return backendError(403, 'Forbidden: Only administrators can update other accounts');
+            if (updates.role !== undefined && updates.role !== existing.role && currentUser.role !== 'admin') return backendError(403, 'Forbidden: Only administrators can change roles');
+            if (typeof updates.password === 'string' && updates.password) updates.password = await hashPassword(updates.password);
+          }
+          const updated = store.update(resource, resourceId, updates);
           return {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
@@ -989,7 +1023,8 @@ export async function executeBackendRequest(
               error: 'Not Found'
             };
           }
-          if (currentUser && existing.orgId && existing.orgId !== currentUser.orgId) {
+          if (existing.orgId !== undefined && (!currentUser || existing.orgId !== currentUser.orgId)) {
+            if (!currentUser) return backendError(401, 'Unauthorized: Authentication required');
             return {
               status: 403,
               headers: { 'Content-Type': 'application/json' },
@@ -998,6 +1033,7 @@ export async function executeBackendRequest(
               error: 'Forbidden'
             };
           }
+          if (resource === 'users' && !currentUser) return backendError(401, 'Unauthorized: Authentication required');
           store.delete(resource, resourceId);
           return {
             status: 200,

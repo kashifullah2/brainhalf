@@ -7,6 +7,10 @@ describe('Runtime configuration', () => {
     expect(validSessionSecret('a'.repeat(31))).toBe(false);
     expect(validSessionSecret(' '.repeat(40))).toBe(false);
     expect(validSessionSecret(' short '.padEnd(40))).toBe(false);
+    // Padding carries no entropy and does not count (L4).
+    expect(validSessionSecret('='.repeat(32))).toBe(false);
+    expect(validSessionSecret('a'.repeat(31) + '=')).toBe(false);
+    expect(validSessionSecret('a'.repeat(32) + '==')).toBe(true);
   });
 
   it('accepts a deduplicated explicit provider policy and rejects malformed policies', () => {

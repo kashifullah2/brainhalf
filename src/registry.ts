@@ -693,7 +693,10 @@ export class AuthRegistry {
         if (!rows.length || rows[0].deleted_at != null) return this.json(404, { error: 'Project not found' });
         if (rows[0].user_id !== userId) return this.json(403, { error: 'Not the project owner' });
         if (method === 'PUT') {
-          this.sql.exec('UPDATE project_owners SET published = ?, updated_at = ? WHERE project_id = ?', body!.published ? 1 : 0, Date.now(), projectId as string);
+          // Gallery listings link to the live app, so only a published app can
+          // stay listed. Taking an app offline removes it from the gallery; the
+          // owner can list it again after republishing.
+          this.sql.exec('UPDATE project_owners SET published = ?, showcase = CASE WHEN ? = 1 THEN showcase ELSE 0 END, updated_at = ? WHERE project_id = ?', body!.published ? 1 : 0, body!.published ? 1 : 0, Date.now(), projectId as string);
         }
         return this.json(200, { published: method === 'PUT' ? body!.published : rows[0].published === 1 });
       }
@@ -842,18 +845,15 @@ export class AuthRegistry {
           .exec('SELECT user_id, deleted_at FROM project_owners WHERE project_id = ?', projectId as string)
           .toArray() as Array<{ user_id: string; deleted_at: number | null }>;
         if (rows.length && rows[0].user_id !== userId) return this.json(403, { error: 'Not the project owner' });
-        if (!rows.length) {
-          const count = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id=?', userId).toArray()[0]?.total || 0);
-          if (count >= MAX_PROJECT_ROWS_PER_USER) return this.json(409, { error: 'Project reservation limit reached. Contact support to remove an unregistered draft.' });
-        }
+        // L11: a never-claimed id has no owner, so there is nothing to delete.
+        // Creating a tombstone here would let any verified user permanently
+        // reserve an arbitrary unclaimed id via DELETE.
+        if (!rows.length) return this.json(404, { error: 'Project not found' });
         const cleanup = this.cleanup();
         await this.state.storage.setAlarm(Date.now() + 100);
         // Persist the retry intent and the access tombstone as one transaction.
         this.state.storage.transactionSync(() => {
-          if (!rows.length) {
-            const deletedAt = Date.now();
-            this.sql.exec('INSERT INTO project_owners (project_id, user_id, name, created_at, updated_at, deleted_at, published) VALUES (?, ?, ?, ?, ?, ?, 0)', projectId, userId, 'Deleted draft', deletedAt, deletedAt, deletedAt);
-          } else this.sql.exec("UPDATE project_owners SET deleted_at = ?, published = 0, name = 'Deleted project' WHERE project_id = ?", Date.now(), projectId as string);
+          this.sql.exec("UPDATE project_owners SET deleted_at = ?, published = 0, name = 'Deleted project' WHERE project_id = ?", Date.now(), projectId as string);
           cleanup.enqueue(projectId, userId);
         });
         await cleanup.schedule();

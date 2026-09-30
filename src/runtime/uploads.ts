@@ -11,11 +11,15 @@ interface StorageQuota {
 }
 
 export class ProjectUploads {
-  constructor(private storage: DurableObjectStorage, private bucket: R2Bucket, private quota: StorageQuota, private alias: string) {
+  constructor(private storage: DurableObjectStorage, private bucket: R2Bucket, private quota: StorageQuota, private alias: string, private projectId: string) {
     storage.sql.exec("CREATE TABLE IF NOT EXISTS uploads (id TEXT PRIMARY KEY, environment TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, content_type TEXT NOT NULL, size INTEGER NOT NULL, created INTEGER NOT NULL, state TEXT NOT NULL)");
     storage.sql.exec('CREATE INDEX IF NOT EXISTS uploads_owner ON uploads(environment,user_id,created)');
   }
   private key(row: UploadRow) { return `${this.alias}/uploads/${row.environment}/${row.id}`; }
+  /** Quota-ledger id. Unlike the R2 key it must not contain the alias: a slug
+   *  rename changes the alias, and the delete-time release has to find the
+   *  exact reservation id that was recorded at upload time. */
+  private quotaId(row: UploadRow) { return `upload:${this.projectId}:${row.environment}/${row.id}`; }
   private publicRow(row: UploadRow): ProjectUpload {
     return { id: row.id, name: row.name, contentType: row.content_type, size: row.size, createdAt: row.created, url: `/api/storage/${row.id}` };
   }
@@ -25,7 +29,10 @@ export class ProjectUploads {
   private async remove(row: UploadRow) {
     this.storage.sql.exec("UPDATE uploads SET state='deleting' WHERE id=?", row.id);
     await this.bucket.delete(this.key(row));
-    await this.quota.releaseStorage(this.key(row));
+    await this.quota.releaseStorage(this.quotaId(row));
+    // Best-effort release for reservations recorded under the old alias-based
+    // scheme before the stable quota id existed. Unknown ids are a no-op.
+    await this.quota.releaseStorage(this.key(row)).catch(() => {});
     this.storage.sql.exec('DELETE FROM uploads WHERE id=?', row.id);
   }
   async removeAll() {
@@ -106,7 +113,7 @@ export class ProjectUploads {
     // Persist intent before any external write. Pending files count against the limit.
     this.storage.sql.exec('INSERT INTO uploads VALUES (?,?,?,?,?,?,?,?)', row.id, row.environment, row.user_id, row.name, row.content_type, row.size, row.created, row.state);
     try {
-      requireAdmission(await this.quota.reserveStorage(this.key(row), size));
+      requireAdmission(await this.quota.reserveStorage(this.quotaId(row), size));
       await this.writable();
       const bytes = new Uint8Array(size); let offset = 0;
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }

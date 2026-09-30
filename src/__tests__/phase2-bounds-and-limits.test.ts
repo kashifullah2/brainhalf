@@ -55,10 +55,15 @@ describe('RateLimiter (shared by the Worker gates and the generation gate)', () 
     }
   });
 
-  it('fails open for a bucket it does not know', () => {
+  it('fails closed for a bucket it does not know (L3)', () => {
     const limiter = new RateLimiter({ gen: { limit: 1, windowMs: 10_000 } });
-    // An unconfigured bucket must not silently deny service.
-    expect(limiter.check('unknown-bucket', 'user-a')).toEqual({ ok: true, retryAfter: 0 });
+    // An unconfigured bucket is always a programming error; silently allowing
+    // it would remove the gate entirely, so the limiter denies loudly instead.
+    const refused = limiter.check('unknown-bucket', 'user-a');
+    expect(refused.ok).toBe(false);
+    expect(refused.retryAfter).toBeGreaterThan(0);
+    // And it keeps refusing: the unknown bucket never starts allowing.
+    expect(limiter.check('unknown-bucket', 'user-a').ok).toBe(false);
   });
 
   it('reclaims expired windows so the map cannot grow without bound', () => {

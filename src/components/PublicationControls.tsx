@@ -15,6 +15,17 @@ import './PublicationControls.css';
 export const stages = ['Build app', 'Test the app', 'Connect services', 'Put app online', 'Final checks', 'Live'];
 export const stageKeys = ['build', 'verify', 'services', 'deploy', 'check', 'live'];
 
+/**
+ * Index of the currently active publish stage for the stepper, or -1 when no
+ * stage is active. A queued job has not started any stage yet, so it must not
+ * present "Build app" as in progress.
+ */
+export function publishStageIndex(status: string | undefined, publishStage: string | undefined): number {
+  if (status === 'passed') return stageKeys.length - 1;
+  if (status === 'queued') return -1;
+  return stageKeys.indexOf(publishStage || 'build');
+}
+
 export default function PublicationControls({ projectId, files, publishOnOpen, onManage }: { projectId: string; files: SourceFiles; publishOnOpen?: SourceFiles; onManage?: () => void }) {
   const runtime = useProjectRuntime(projectId, 'production');
   const [revision, setRevision] = useState('');
@@ -51,7 +62,7 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
   const busy = submitting || publishing || actionBusy;
   const release = status?.activeRelease;
   const currentIsLive = !!revision && release?.revision === revision;
-  const stage = job?.status === 'passed' ? 5 : stageKeys.indexOf(job?.publishStage || 'build');
+  const stage = publishStageIndex(job?.status, job?.publishStage);
   const ready = status?.enabled && status.availability?.state === 'ready';
 
   const publish = async (source = filesRef.current) => {
@@ -119,10 +130,29 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
   };
   const unpublish = async () => {
     setActionBusy(true); setError('');
-    try { await runtimeRequest(projectId, '/unpublish', 'production', { method: 'POST', body: '{}' }); setAccepted(null); setConfirmOffline(false); runtime.refresh(); }
+    try {
+      await runtimeRequest(projectId, '/unpublish', 'production', { method: 'POST', body: '{}' });
+      setAccepted(null); setConfirmOffline(false); runtime.refresh();
+      // The app is offline: it must no longer count as published, and the
+      // registry drops any gallery listing with it.
+      await projectPublication(projectId, AbortSignal.timeout(15_000), false).catch(() => {});
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'The app could not be taken offline.'); }
     finally { setActionBusy(false); }
   };
+
+  // The registry's published flag gates gallery listing ("List in gallery"
+  // refuses with 409 while published is false). Mark it the moment a publish
+  // job goes live, and backfill it when the console opens on an already-live
+  // publish — nothing else ever sets this flag.
+  const markedPublishedJob = useRef<string | null>(null);
+  useEffect(() => {
+    if (job?.kind !== 'publish' || job.status !== 'passed' || markedPublishedJob.current === job.id) return;
+    markedPublishedJob.current = job.id;
+    const controller = new AbortController();
+    void projectPublication(projectId, controller.signal, true).catch(() => {});
+    return () => controller.abort();
+  }, [projectId, job?.id, job?.status, job?.kind]);
 
   const runtimeDomain = (runtime.status as (typeof runtime.status & { productionUrl?: string }))?.productionUrl?.replace(/https?:\/\/[^.]+\./, '') || 'apps.brainhalf.com';
 
@@ -201,7 +231,6 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
       {publishing && <button type="button" className="button-ghost" disabled={submitting || actionBusy} onClick={() => void stopJob(job)}>Cancel publishing</button>}
     </div>
     <p className="publication-footnote">Publishing saves this version. Later edits stay private until you publish again. The live app keeps its own saved information — test entries are not copied over.</p>
-    <LegacyPreviewAccess projectId={projectId} />
   </section>;
 }
 
@@ -241,28 +270,4 @@ function PublicationFailure({ projectId, job, canRepair }: { projectId: string; 
     </details>}
     {details && !logs && !checks.length && <p>No build log was recorded for this job.</p>}
   </div>;
-}
-
-/** Old preview links expose the editable preview independently of production releases. */
-function LegacyPreviewAccess({ projectId }: { projectId: string }) {
-  const [published, setPublished] = useState(() => !!getProjects().find(project => project.id === projectId)?.published);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    void projectPublication(projectId, controller.signal).then(value => {
-      if (!controller.signal.aborted) setPublished(value);
-    }).catch(() => {});
-    return () => controller.abort();
-  }, [projectId]);
-  if (!published) return null;
-  const revoke = async () => {
-    setBusy(true); setError('');
-    try {
-      if (await projectPublication(projectId, AbortSignal.timeout(15_000), false)) throw new Error('The preview link could not be made private.');
-      setPublished(false);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Try again.'); }
-    finally { setBusy(false); }
-  };
-  return <div className="publication-notice"><p>Your older public test link is still shared and may show your latest edits. Making it private does not affect the published app.</p><button type="button" className="button-ghost" disabled={busy} onClick={() => void revoke()}>Make old test link private</button>{error && <p role="alert">{error}</p>}</div>;
 }

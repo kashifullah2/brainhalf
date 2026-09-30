@@ -170,6 +170,30 @@ describe('P3 Redirect re-validation', () => {
     expect(res.error).toMatch(/timeout/);
   }, 10000);
 
+  it('enforces one wall-clock timeout across redirect hops (L2)', async () => {
+    // Every hop answers with a slow redirect. The old per-hop timer gave each
+    // hop a fresh budget, so two 400ms hops succeeded under a 500ms timeout.
+    // The deadline is wall-clock: the second hop only gets the time remaining.
+    const slowRedirect = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 400);
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new Error('The operation was aborted'));
+        });
+      });
+      const headers = new Headers();
+      headers.set('location', 'https://good.example.com/next');
+      return new Response('', { status: 302, headers });
+    };
+    const start = Date.now();
+    const res = await safeFetchText('https://good.example.com/start', slowRedirect as typeof fetch, { timeoutMs: 500 });
+    const elapsed = Date.now() - start;
+    expect(res.error).toMatch(/timeout/);
+    // Two full 400ms hops would take >= 800ms; the wall-clock deadline aborts ~500ms.
+    expect(elapsed).toBeLessThan(750);
+  });
+
   it('never calls fetch for a refused URL', async () => {
     let called = false;
     const impl = async () => {

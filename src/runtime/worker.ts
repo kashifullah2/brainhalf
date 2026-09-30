@@ -9,7 +9,17 @@ export { Sandbox } from '@cloudflare/sandbox';
 export { ProjectRuntime } from './project';
 export { PilotCoordinator } from './pilot';
 
-export function runtimeError(error: unknown): Response {
+export /** Best-effort read of a project's live slug alias. Falls back to null (the
+ *  caller then uses the digest alias) if the DO stub does not expose it. */
+async function projectAlias(env: Pick<RuntimeBindings, 'PROJECTS'>, projectId: string): Promise<string | null> {
+  try {
+    const project = env.PROJECTS.getByName(projectId) as { currentAlias?: () => Promise<string> } | null;
+    if (project && typeof project.currentAlias === 'function') return await project.currentAlias();
+  } catch { /* fall through to the digest-alias fallback */ }
+  return null;
+}
+
+function runtimeError(error: unknown): Response {
   return Response.json({ error: error instanceof RuntimeError ? error.message : 'The project runtime could not complete this request. Try again.' }, { status: error instanceof RuntimeError ? error.status : 503, headers: { 'Cache-Control': 'no-store' } });
 }
 // This entrypoint is reachable only through BrainHalf's authenticated service binding.
@@ -33,13 +43,17 @@ export class RuntimeControl extends WorkerEntrypoint<RuntimeEnv> {
         // deleted project stops counting against the hosted-project limit the
         // moment the delete is accepted, instead of waiting for the async
         // cleanup queue (which also unregisters, as a harmless no-op).
-        const alias = (await digest(scope.projectId)).slice(0, 32);
+        // The DO's stored alias is the source of truth: a slug-renamed project
+        // must release its live slug, not the digest alias.
+        const alias = await projectAlias(this.env, scope.projectId) || (await digest(scope.projectId)).slice(0, 32);
         await this.env.PILOT.getByName('pilot').unregister(alias, scope);
         return Response.json({ ok: true });
       }
       if (new URL(request.url).pathname === '/delete') {
         const project = this.env.PROJECTS.getByName(scope.projectId);
-        await project.initialize(scope, (await digest(scope.projectId)).slice(0, 32));
+        // No alias argument: initialize must keep the stored slug so teardown
+        // (pilot unregister, R2 sweep, quota release) runs under the live alias.
+        await project.initialize(scope);
         return await project.control(request);
       }
       const availability = runtimeAvailability(this.env, scope.ownerId);
@@ -57,9 +71,11 @@ export class RuntimeControl extends WorkerEntrypoint<RuntimeEnv> {
         throw new RuntimeError(availability.message, 503);
       }
       if (availability.state === 'setup_required' && new URL(request.url).pathname === '/jobs') throw new RuntimeError(availability.message, 503);
-      const alias = (await digest(scope.projectId)).slice(0, 32);
       const project = this.env.PROJECTS.getByName(scope.projectId);
-      if (!await project.initialize(scope, alias)) throw new RuntimeError('This project has been deleted.', 410);
+      // The digest alias is only a first-init default: initialize keeps the
+      // stored alias (custom slug) on later calls instead of clobbering it.
+      if (!await project.initialize(scope, (await digest(scope.projectId)).slice(0, 32))) throw new RuntimeError('This project has been deleted.', 410);
+      const alias = await projectAlias(this.env, scope.projectId) || (await digest(scope.projectId)).slice(0, 32);
       const pilot = this.env.PILOT.getByName('pilot');
       const response = await project.control(request);
       if (response.status === 410) await pilot.unregister(alias, scope);
@@ -74,7 +90,9 @@ export class AppServicesAPI extends WorkerEntrypoint<RuntimeEnv> {
     try {
       if (this.env.RUNTIME_ENABLED !== 'true') throw new RuntimeError('App services are temporarily unavailable.', 503);
       const scope = await verifyServiceCapability((request.headers.get('Authorization') || '').replace(/^Bearer /, ''), this.env.PROJECT_SECRETS_KEY || '');
-      const alias = (await digest(scope.projectId)).slice(0, 32);
+      // Resolve the alias from the project's stored state: a slug-renamed
+      // project is registered under its slug, not the digest alias.
+      const alias = await projectAlias(this.env, scope.projectId) || (await digest(scope.projectId)).slice(0, 32);
       const current = await this.env.PILOT.getByName('pilot').lookup(alias);
       if (!current || current.ownerId !== scope.ownerId || current.projectId !== scope.projectId || !runtimeOwnerAllowed(this.env, scope.ownerId)) throw new RuntimeError('App services are unavailable.', 403);
       return await this.env.PROJECTS.getByName(scope.projectId).backendService(request, scope.environment);

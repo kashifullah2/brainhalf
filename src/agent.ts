@@ -2453,6 +2453,95 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     if (opts.deferTerminal) opts.deferTerminal(publishRetry); else publishRetry();
   }
 
+  /**
+   * Splits model output into `<file>` write operations.
+   *
+   * Phase 1 parses properly closed blocks with a stack, so a literal
+   * `<file path="…">` inside file content (documentation, a code sample, …)
+   * stays verbatim content instead of truncating the outer file and spawning
+   * a phantom second write (L10). Phase 2 runs the legacy pattern over
+   * whatever Phase 1 did not consume, preserving the missing-closing-tag
+   * salvage and the truncation detection the existing tests pin.
+   */
+  private collectFileWrites(text: string): { writes: Array<{ index: number; path: string; content: string }>; sawFileTag: boolean; wasTruncated: boolean } {
+    const writes: Array<{ index: number; path: string; content: string }> = [];
+    let sawFileTag = false;
+    let wasTruncated = false;
+
+    // Phase 1: stack-parse properly closed blocks. An opener inside an open
+    // block is nested literal content, not a new operation.
+    const tokens: Array<{ kind: 'open' | 'close'; index: number; end: number; path?: string }> = [];
+    for (const m of text.matchAll(/<file\s+path=["']([^"']+)["']>/gi)) {
+      tokens.push({ kind: 'open', index: m.index, end: m.index + m[0].length, path: m[1] });
+    }
+    for (const m of text.matchAll(/<\/file>/gi)) {
+      tokens.push({ kind: 'close', index: m.index, end: m.index + m[0].length });
+    }
+    tokens.sort((a, b) => a.index - b.index);
+
+    const stack: Array<{ path: string; index: number; contentStart: number; nested: boolean }> = [];
+    const consumed: Array<[number, number]> = [];
+    for (const token of tokens) {
+      if (token.kind === 'open') {
+        stack.push({ path: token.path as string, index: token.index, contentStart: token.end, nested: stack.length > 0 });
+        continue;
+      }
+      const block = stack.pop();
+      if (!block) continue; // stray closing tag
+      if (block.nested) continue; // literal markup inside file content
+      let filePath = normalizePath(block.path);
+      const fileContent = this.cleanCodeBlock(text.slice(block.contentStart, token.index));
+      if (this.isHarnessEntry(filePath)) {
+        // The harness owns main.jsx. A model writing an App-shaped component
+        // there meant the App, so redirect it; anything else is dropped.
+        if (/export default|function App|return \(/.test(fileContent)) {
+          filePath = '/src/App.jsx';
+        } else {
+          continue;
+        }
+      }
+      writes.push({ index: block.index, path: filePath, content: fileContent });
+      consumed.push([block.index, token.end]);
+      sawFileTag = true;
+    }
+
+    // Phase 2: legacy salvage over the regions Phase 1 did not consume.
+    consumed.sort((a, b) => a[0] - b[0]);
+    const segments: Array<{ start: number; text: string }> = [];
+    let cursor = 0;
+    for (const [start, end] of consumed) {
+      if (start > cursor) segments.push({ start: cursor, text: text.slice(cursor, start) });
+      cursor = Math.max(cursor, end);
+    }
+    if (cursor < text.length) segments.push({ start: cursor, text: text.slice(cursor) });
+
+    for (const segment of segments) {
+      const fileRegex = /<file\s+path=["']([^"']+)["']>([\s\S]*?)(?:<\/file>|(?=<(?:file|edit|delete)\s+path=)|$)/gi;
+      let match;
+      while ((match = fileRegex.exec(segment.text)) !== null) {
+        sawFileTag = true;
+        if (fileRegex.lastIndex === segment.text.length && !/<\/file>$/i.test(match[0])) {
+          wasTruncated = true;
+          continue;
+        }
+        let filePath = normalizePath(match[1]);
+        const fileContent = this.cleanCodeBlock(match[2]);
+        if (this.isHarnessEntry(filePath)) {
+          // The harness owns main.jsx. A model writing an App-shaped component
+          // there meant the App, so redirect it; anything else is dropped.
+          if (/export default|function App|return \(/.test(fileContent)) {
+            filePath = '/src/App.jsx';
+          } else {
+            continue;
+          }
+        }
+        writes.push({ index: segment.start + match.index, path: filePath, content: fileContent });
+      }
+    }
+
+    return { writes, sawFileTag, wasTruncated };
+  }
+
   private extractAndSaveFiles(text: string, connection: Connection, epoch?: number): ExtractionSummary {
     const summary: ExtractionSummary = {
       writtenCount: 0,
@@ -2498,27 +2587,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       operations.push({ index: editMatch.index, path: filePath, type: 'edit', edits });
     }
 
-    const fileRegex = /<file\s+path=["']([^"']+)["']>([\s\S]*?)(?:<\/file>|(?=<(?:file|edit|delete)\s+path=)|$)/gi;
-    let match;
-    let sawClosedFileTag = false;
-    while ((match = fileRegex.exec(text)) !== null) {
-      sawClosedFileTag = true;
-      if (fileRegex.lastIndex === text.length && !/<\/file>$/i.test(match[0])) {
-        wasTruncated = true;
-        continue;
-      }
-      let filePath = normalizePath(match[1]);
-      const fileContent = this.cleanCodeBlock(match[2]);
-      if (this.isHarnessEntry(filePath)) {
-        // The harness owns main.jsx. A model writing an App-shaped component
-        // there meant the App, so redirect it; anything else is dropped.
-        if (/export default|function App|return \(/.test(fileContent)) {
-          filePath = '/src/App.jsx';
-        } else {
-          continue;
-        }
-      }
-      operations.push({ index: match.index, path: filePath, type: 'write', content: fileContent });
+    const fileExtraction = this.collectFileWrites(text);
+    let sawClosedFileTag = fileExtraction.sawFileTag;
+    wasTruncated = fileExtraction.wasTruncated;
+    for (const write of fileExtraction.writes) {
+      operations.push({ index: write.index, path: write.path, type: 'write', content: write.content });
     }
 
     // Capture a trailing unclosed block (the model hit its token limit). An

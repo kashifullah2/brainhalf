@@ -44,6 +44,28 @@ export function publishProgressView(job: Pick<RuntimeJob, 'status' | 'message' |
   };
 }
 
+export type PublishDialogStep = 'name' | 'publishing' | 'success' | 'failed' | 'stopped' | 'idle';
+
+/**
+ * Decide which PublishDialog screen to show. A stopped (cancelled) job must
+ * show the cancelled screen even when an older release exists — otherwise the
+ * dialog keeps displaying the previous success as if the cancelled publish
+ * had succeeded.
+ */
+export function resolvePublishDialogStep(opts: {
+  showNameStep: boolean;
+  showPublishing: boolean;
+  release: boolean;
+  jobStatus: string | undefined;
+}): PublishDialogStep {
+  if (opts.showNameStep) return 'name';
+  if (opts.showPublishing) return 'publishing';
+  if (opts.jobStatus === 'failed') return 'failed';
+  if (opts.release && (!opts.jobStatus || opts.jobStatus === 'passed')) return 'success';
+  if (opts.jobStatus === 'stopped' || opts.jobStatus === 'stopping') return 'stopped';
+  return 'idle';
+}
+
 export default function PublishDialog({ projectId, files, publishOnOpen, onClose, onManage }: {
   projectId: string; files: SourceFiles; publishOnOpen?: SourceFiles; onClose: () => void; onManage: () => void;
 }) {
@@ -160,9 +182,15 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
 
   const showNameStep = needsName && !error && !submitting;
   const showPublishing = publishing || submitting;
-  const showSuccess = !showNameStep && !showPublishing && release && (job?.status === 'passed' || (!job || job.status !== 'failed'));
-  const showFailed = !showNameStep && !showPublishing && job?.status === 'failed';
-  const showStopped = !showNameStep && !showPublishing && !showFailed && !showSuccess && (job?.status === 'stopped' || job?.status === 'stopping');
+  const dialogStep = resolvePublishDialogStep({
+    showNameStep,
+    showPublishing,
+    release: !!release,
+    jobStatus: job?.status,
+  });
+  const showSuccess = dialogStep === 'success';
+  const showFailed = dialogStep === 'failed';
+  const showStopped = dialogStep === 'stopped';
 
   useEffect(() => { if (showNameStep) nameInputRef.current?.focus(); }, [showNameStep]);
 
@@ -176,7 +204,7 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
 
           {/* ─── Name step ─── */}
           {showNameStep && (
-            <div className="pub-step pub-step-name">
+            <div className="pub-step">
               <div className="pub-icon-wrap"><Rocket size={28} /></div>
               <p className="pub-heading">Name your app</p>
               <p className="pub-subtitle">Choose a name — this becomes your app's public web address.</p>
@@ -260,7 +288,7 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
 
           {/* ─── Success ─── */}
           {showSuccess && (
-            <div className="pub-step pub-step-success">
+            <div className="pub-step">
               <div className="pub-success-badge"><Check size={32} /></div>
               <p className="pub-heading">{currentIsLive ? 'This version is live' : 'Your published version'}</p>
 

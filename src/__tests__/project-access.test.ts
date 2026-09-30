@@ -180,7 +180,12 @@ describe('Project access through the Worker and real Registry SQLite', () => {
     expect((await request(`/api/projects/${projectId}`, 'owner', { method: 'DELETE' })).status).toBe(202);
     expect((await request(`/api/projects/${projectId}`, 'other', { method: 'DELETE' })).status).toBe(403);
     expect(database.prepare('SELECT published FROM project_owners WHERE project_id = ?').get(projectId)?.published).toBe(0);
-    expect((await request('/api/projects/unclaimed-draft', 'owner', { method: 'DELETE' })).status).toBe(202);
+    // L11: deleting a never-claimed id is a 404 and must not tombstone it —
+    // otherwise any verified user could permanently reserve arbitrary ids.
+    expect((await request('/api/projects/unclaimed-draft', 'owner', { method: 'DELETE' })).status).toBe(404);
+    expect(database.prepare('SELECT COUNT(*) AS count FROM project_owners WHERE project_id = ?').get('unclaimed-draft')?.count).toBe(0);
+    // And the id stays claimable afterwards: no squat happened.
+    expect((await registry.fetch(new Request('https://registry/projects/claim', { method: 'POST', body: JSON.stringify({ projectId: 'unclaimed-draft', userId: 'owner' }) }))).status).toBe(200);
   });
 
   it('persists explicit publication and revokes public reads immediately on unpublish', async () => {

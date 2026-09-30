@@ -98,6 +98,16 @@ describe('P4 file extraction commits deletes and writes as one batch', () => {
     expect(files.get('/src/styles.css')).toBe('body { margin: 0; }');
   });
 
+  it('keeps a literal <file> example inside file content instead of truncating (L10)', () => {
+    const files = new Map<string, string>();
+    const { agent } = makeAgent(files);
+    const guide = 'Here is how you write a file:\n<file path="/src/App.jsx">\nexport default function App() { return <h1>Hi</h1>; }\n</file>\nThat is the whole protocol.';
+    agent.extractAndSaveFiles(`<file path="/docs/guide.md">${guide}</file>`, { id: 'connection' });
+    // The inner markup is documentation, not a second file operation.
+    expect(files.get('/docs/guide.md')).toBe(guide);
+    expect(files.has('/src/App.jsx')).toBe(false);
+  });
+
   it('preserves the existing file on truncation and asks for a complete replacement', () => {
     const files = new Map([['/src/App.jsx', 'export default function App() { return <h1>Existing</h1>; }']]);
     const original = files.get('/src/App.jsx');

@@ -1,6 +1,6 @@
 import ThemeToggle from './ThemeToggle';
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, Pencil } from 'lucide-react';
+import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import ActionMenu from './ActionMenu';
@@ -192,10 +192,17 @@ const TopNav: React.FC<TopNavProps> = ({
             aria-label="Open dashboard"
           ><LayoutDashboard size={16} strokeWidth={1.7} /></button>
         )}
+        <a
+          href="/gallery"
+          className="top-nav-gallery-btn icon-btn"
+          title="Gallery — apps built with BrainHalf"
+          aria-label="Open gallery"
+        ><LayoutGrid size={16} strokeWidth={1.7} /></a>
         <ThemeToggle />
 
         <ActionMenu label="User profile and menu" className="studio-account-trigger" items={[
           ...(onOpenDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={15} />, onSelect: onOpenDashboard }] : []),
+          { label: 'Gallery', icon: <LayoutGrid size={15} />, onSelect: () => { window.location.assign('/gallery'); } },
           ...(onGoHome ? [{ label: 'Back to home', icon: <Home size={15} />, onSelect: onGoHome }] : []),
           ...(onLogout ? [{ label: 'Sign out', icon: <LogOut size={15} />, onSelect: () => { void onLogout(); }, separator: true }] : []),
         ]}>

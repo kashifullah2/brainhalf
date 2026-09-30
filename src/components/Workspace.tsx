@@ -333,7 +333,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
 
   const theme = useTheme();
   const [readOnlyProjectId, setReadOnlyProjectId] = useState<string | null>(null);
-  const isReadOnlyProject = readOnlyProjectId === activeProjectId;
+  const isReadOnlyProject = isReadOnlyProjectView(readOnlyProjectId, activeProjectId);
 
   const [tipIndex, setTipIndex] = useState(0);
   useEffect(() => {
@@ -1179,8 +1179,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
 
   const handleEditorChange = useCallback((value: string | undefined) => {
     if (value === undefined) return;
+    if (isReadOnlyProject) return;
     commitFiles({ ...filesRef.current, [activeFileRef.current]: value }, { debounce: true });
-  }, [commitFiles]);
+  }, [commitFiles, isReadOnlyProject]);
 
   const handleRefresh = useCallback(() => {
     appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
@@ -1720,7 +1721,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                       wordWrap,
                       scrollBeyondLastLine: false,
                       automaticLayout: true,
-                      tabSize: 2
+                      tabSize: 2,
+                      readOnly: isReadOnlyProject
                     }}
                   />
                 ) : (
@@ -1926,5 +1928,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     </div>
   );
 };
+
+/** True when the project is open read-only (ownership was denied). Guards both
+ *  the Monaco editor option and the commit path so a read-only project can
+ *  never accept or persist edits. */
+export function isReadOnlyProjectView(readOnlyProjectId: string | null, activeProjectId: string): boolean {
+  return readOnlyProjectId !== null && readOnlyProjectId === activeProjectId;
+}
 
 export default Workspace;

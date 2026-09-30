@@ -17,7 +17,10 @@ beforeEach(async () => {
 const call = (path: string, method = 'GET', body?: unknown) => registry.fetch(new Request(`https://registry${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
 const claim = (projectId: string, userId: string, name = 'My App') => call('/projects/claim', 'POST', { projectId, userId, name });
 const publish = (projectId: string, userId: string) => call(`/projects/publication?projectId=${projectId}&userId=${userId}`, 'PUT', { published: true });
+const unpublish = (projectId: string, userId: string) => call(`/projects/publication?projectId=${projectId}&userId=${userId}`, 'PUT', { published: false });
 const showcase = (projectId: string, userId: string, body: unknown) => call(`/projects/showcase?projectId=${projectId}&userId=${userId}`, 'PUT', body);
+const galleryApps = async () => ((await (await call('/gallery')).json()) as { apps: unknown[] }).apps;
+const showcaseStatus = async (projectId: string) => ((await (await call(`/projects/showcase-status?projectId=${projectId}`)).json()) as { showcase: boolean }).showcase;
 
 describe('gallery showcase', () => {
   it('lists only published apps whose owners opted in, without private data', async () => {
@@ -55,6 +58,33 @@ describe('gallery showcase', () => {
     await showcase('app-one', 'owner-1', { showcase: true });
     expect(((await (await call('/projects/showcase-status?projectId=app-one')).json()) as { showcase: boolean }).showcase).toBe(true);
     expect((await call('/projects/showcase-status?projectId=bad id!')).status).toBe(400);
+  });
+
+  it('drops the gallery listing when the app is taken offline, and requires a live app to re-list', async () => {
+    await claim('app-one', 'owner-1', 'Inventory Tracker');
+    await publish('app-one', 'owner-1');
+    await showcase('app-one', 'owner-1', { showcase: true, description: 'Tracks stock levels.' });
+    expect(await galleryApps()).toHaveLength(1);
+    // Taking the app offline clears the published flag AND the gallery listing,
+    // so the gallery never links to a dead app.
+    expect((await unpublish('app-one', 'owner-1')).status).toBe(200);
+    expect(await galleryApps()).toHaveLength(0);
+    expect(await showcaseStatus('app-one')).toBe(false);
+    // Re-listing while offline is refused; republishing re-enables it.
+    expect((await showcase('app-one', 'owner-1', { showcase: true })).status).toBe(409);
+    await publish('app-one', 'owner-1');
+    expect((await showcase('app-one', 'owner-1', { showcase: true, description: 'Tracks stock levels.' })).status).toBe(200);
+    expect(await galleryApps()).toHaveLength(1);
+  });
+
+  it('re-marking a live app as published keeps its gallery listing', async () => {
+    await claim('app-one', 'owner-1', 'Inventory Tracker');
+    await publish('app-one', 'owner-1');
+    await showcase('app-one', 'owner-1', { showcase: true });
+    // The client re-marks published when a publish job goes live; that must be
+    // idempotent and must not disturb an existing listing.
+    expect((await publish('app-one', 'owner-1')).status).toBe(200);
+    expect(await galleryApps()).toHaveLength(1);
   });
 });
 

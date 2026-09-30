@@ -3,7 +3,7 @@ import { isSafeFilePath, normalizePath } from './utils';
 
 const OMIT_PATH = /(^|\/)(?:\.git|node_modules|\.wrangler|\.next|dist|dist-worker|coverage|test-results|playwright-report)(?:\/|$)/i;
 const PRIVATE_FILE = /(^|\/)(?:\.dev\.vars(?:\..*)?|\.npmrc|\.netrc|\.pypirc|\.aws|\.ssh)(?:\/|$)/i;
-const SECRET_VALUE = /(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bcfut_[A-Za-z0-9]{30,}|\bbhsvc_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|\b(?:ghp_|github_pat_)[A-Za-z0-9_]{30,}|\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}|\bre_[A-Za-z0-9]{24,}|\bsk_live_[A-Za-z0-9]{20,})/;
+const SECRET_VALUE = /(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bcfut_[A-Za-z0-9]{30,}|\bbhsvc_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+|\b(?:ghp_|github_pat_)[A-Za-z0-9_]{30,}|\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}|\bre_[A-Za-z0-9]{24,}|\bsk_live_[A-Za-z0-9]{20,}|\b(?:AKIA|ASIA)[0-9A-Z]{16}\b)/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]{1,80}$/;
 const INLINE_SECRET = /\b(?:api_?key|client_?secret|secret_?key|session_?secret|database_?url|access_?token|auth_?token)\s*[=:]\s*["']([^"'\r\n]{12,})["']/gi;
 const PLATFORM_KEYS = new Set(['BRAINHALF_SERVICE_TOKEN', 'BRAINHALF_SERVICES', 'BRAINHALF_MANAGED', 'PROJECT_SECRETS_KEY', 'CF_API_TOKEN', 'PILOT_OWNER_IDS', 'DISPATCH_NAMESPACE', 'RUNTIME_SERVICE_NAME', 'RUNTIME_ENABLED']);

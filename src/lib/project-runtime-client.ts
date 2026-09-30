@@ -87,7 +87,7 @@ export function runtimeBase(projectId: string): string {
   return `${origin}/api/projects/${encodeURIComponent(projectId)}/runtime`;
 }
 
-export interface HostedSlot { alias: string; projectId: string }
+export interface HostedSlot { alias: string; projectId: string; live?: boolean }
 
 /** Lists this account's hosted-slot registrations, including orphans whose
  *  projects no longer exist. Routed through any project the account owns. */
@@ -96,10 +96,12 @@ export async function listHostedSlots(projectId: string): Promise<HostedSlot[]> 
   return Array.isArray(result.hosted) ? result.hosted : [];
 }
 
-/** Releases a hosted slot. Accounting only — live projects re-register on their next job. */
-export async function releaseHostedSlot(projectId: string, alias: string): Promise<void> {
+/** Releases a hosted slot. Releasing a LIVE project's slot takes its app
+ *  offline until its next build, so callers must pass force:true explicitly
+ *  (after user confirmation) for live slots; orphaned slots release freely. */
+export async function releaseHostedSlot(projectId: string, alias: string, force = false): Promise<void> {
   await runtimeRequest(projectId, '/hosted/release', 'development', {
-    method: 'POST', body: JSON.stringify({ alias }), signal: AbortSignal.timeout(10_000),
+    method: 'POST', body: JSON.stringify({ alias, force }), signal: AbortSignal.timeout(10_000),
   });
 }
 

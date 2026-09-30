@@ -62,4 +62,14 @@ describe('7.3 extracted preview templates', () => {
     expect(module).toContain('el.textContent = "body { color: #fff; }"');
     expect(module).toContain('export default "body { color: #fff; }"');
   });
+
+  it('reports preview errors to the parent with a reachable target origin (L14)', () => {
+    // In an opaque-origin sandbox window.location.origin is the string "null",
+    // so posting the preview-error there would silently drop it: the parent
+    // frame is never opaque. Every parent-directed postMessage in this file
+    // uses '*', and the error boundary must match.
+    const html = buildPreviewIndexHtml('{ "imports": {} }');
+    expect(html).toContain("type: 'preview-error'");
+    expect(html).not.toMatch(/postMessage\(\{[^}]*type: 'preview-error'[^}]*\},\s*window\.location\.origin\)/s);
+  });
 });

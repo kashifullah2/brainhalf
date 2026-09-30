@@ -29,6 +29,20 @@ interface DatabaseRecoveryPoint { id: string; label: string; bookmark: string; d
 const authPath = (value: string) => /^\/__brainhalf\/auth(?:\?mode=(?:verify|reset|magic)#token=[A-Za-z0-9_-]{43})?$/.test(value);
 const active = <T extends RuntimeJob>(job?: T): job is T => !!job && ['queued', 'running', 'stopping'].includes(job.status);
 
+/**
+ * N3: an expired single-use preview ticket used to return a JSON error, which
+ * the embed iframe rendered as a document — firing onLoad and looking like a
+ * successful preview. For embed loads, return an HTML page that reports the
+ * failure to the parent frame (which shows its retry UI) instead.
+ */
+export function embedPreviewErrorPage(message: string): Response {
+  const safe = message.replace(/[<>&"]/g, character => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[character]!));
+  // Escape `<` so a message containing `</script>` cannot break out of the script block; JSON.parse revives \u003c.
+  const payload = JSON.stringify({ type: 'preview-error', error: message }).replace(/</g, '\\u003c');
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preview unavailable</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f7fa;color:#142334;font:16px/1.5 system-ui,sans-serif;padding:24px}p{max-width:440px;text-align:center}</style></head><body><p>${safe}</p><script>try{window.parent.postMessage(${payload},'*')}catch(e){}</script></body></html>`;
+  return new Response(html, { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+}
+
 /** Pulls the actionable lines out of a failed job command's output so the job
  *  message names the real cause (bad dependency version, TypeScript error,
  *  unresolved import) instead of a bare exit code. Covers npm, tsc, and
@@ -64,11 +78,23 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       for (const sql of REQUEST_MONITOR_SCHEMA) ctx.storage.sql.exec(sql);
     });
   }
-  async initialize(scope: ProjectScope, alias: string) {
+  async initialize(scope: ProjectScope, alias?: string) {
     if (this.scope && (this.scope.ownerId !== scope.ownerId || this.scope.projectId !== scope.projectId)) throw new RuntimeError('Project ownership mismatch.', 403);
-    this.scope = scope; this.alias = alias;
-    await this.ctx.storage.put({ scope, alias });
+    this.scope = scope;
+    // The stored alias is the source of truth. A passed alias is adopted only
+    // on first initialize (fresh DO with nothing stored); later calls must
+    // never clobber a custom slug back to the digest alias.
+    if (!this.alias) this.alias = alias || (await this.ctx.storage.get<string>('alias')) || '';
+    await this.ctx.storage.put({ scope, alias: this.alias });
     return !await this.ctx.storage.get<boolean>('deleted');
+  }
+  /** This project's current alias, read from storage. Never mutates state. */
+  async currentAlias(): Promise<string> {
+    return this.alias || (await this.ctx.storage.get<string>('alias')) || '';
+  }
+  /** Whether /delete has run for this project. Never mutates state. */
+  async isDeleted(): Promise<boolean> {
+    return (await this.ctx.storage.get<boolean>('deleted')) === true;
   }
   private api() { return new CloudflareAPI(this.env.CF_ACCOUNT_ID, this.env.CF_API_TOKEN, this.env.CF_ZONE_ID); }
   private url(environment: ProjectEnvironment) { return `https://${runtimeHost(this.alias, environment, this.env.RUNTIME_DOMAIN)}`; }
@@ -98,7 +124,38 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
   private async serviceBindings(environment: ProjectEnvironment) {
     return this.env.RUNTIME_SERVICE_NAME ? { service: this.env.RUNTIME_SERVICE_NAME, capability: await serviceCapability(this.scope, environment, this.env.PROJECT_SECRETS_KEY || '') } : undefined;
   }
-  private uploads() { return new ProjectUploads(this.ctx.storage, this.env.ARTIFACTS, this.ownerUsage(), this.alias); }
+  private uploads() { return new ProjectUploads(this.ctx.storage, this.env.ARTIFACTS, this.ownerUsage(), this.alias, this.scope.projectId); }
+  /** Moves every stored object from one alias prefix to another, then repoints
+   *  stored release records at the moved artifacts, so a slug rename never
+   *  orphans uploads, sources, artifacts, or screenshots. */
+  private async migrateAliasPrefix(previous: string, next: string): Promise<void> {
+    let cursor: string | undefined;
+    for (;;) {
+      const listed = await this.env.ARTIFACTS.list({ prefix: `${previous}/`, limit: 1000, ...(cursor ? { cursor } : {}) });
+      for (const object of listed.objects) {
+        const target = `${next}/${object.key.slice(previous.length + 1)}`;
+        const source = await this.env.ARTIFACTS.get(object.key);
+        if (source) {
+          const bytes = new Uint8Array(await new Response(source.body).arrayBuffer());
+          await this.env.ARTIFACTS.put(target, bytes, source.httpMetadata ? { httpMetadata: source.httpMetadata } : undefined);
+        }
+        await this.env.ARTIFACTS.delete(object.key);
+      }
+      if (!listed.truncated) break;
+      cursor = listed.cursor;
+    }
+    // Release records pin their artifact keys; repoint them at the moved objects.
+    const updates: Record<string, ProjectRelease> = {};
+    for (const [key, release] of await this.ctx.storage.list<ProjectRelease>({ prefix: 'release:' })) {
+      if (release?.artifactKey?.startsWith(`${previous}/`)) updates[key] = { ...release, artifactKey: `${next}/${release.artifactKey.slice(previous.length + 1)}` };
+    }
+    for (const environment of ['development', 'production'] as const) {
+      const activeKey = `active:${environment}` as const;
+      const current = await this.ctx.storage.get<ProjectRelease>(activeKey);
+      if (current?.artifactKey?.startsWith(`${previous}/`)) updates[activeKey] = { ...current, artifactKey: `${next}/${current.artifactKey.slice(previous.length + 1)}` };
+    }
+    if (Object.keys(updates).length) await this.ctx.storage.put(updates);
+  }
   private async uploadRequest(request: Request, environment: ProjectEnvironment, userId: string | null, admin = false): Promise<Response> {
     if (this.pendingUploads.size >= PILOT_LIMITS.parallelUploads) throw new RuntimeError('Other file operations are in progress. Retry shortly.', 429);
     const work = this.uploads().handle(request, environment, userId, admin);
@@ -177,14 +234,35 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     // Owner-level hosted-slot management. Slots are accounting records in the
     // pilot coordinator; orphaned slots (project deleted without cleanup, or
     // pre-cleanup-era projects) block new jobs until released. Releasing a
-    // slot never deletes a deployment — a live project re-registers on its
-    // next job.
+    // slot never deletes a deployment, but releasing a LIVE project's slot
+    // takes its app offline (public routing 404s) until the project's next
+    // job re-registers it — /hosted/release refuses live slots without
+    // explicit force.
     if (path === '/hosted' && request.method === 'GET') {
-      return Response.json({ hosted: await this.pilot().listOwnerProjects(this.scope.ownerId) });
+      const hosted = await this.pilot().listOwnerProjects(this.scope.ownerId);
+      // Annotate each slot with whether its project is still live, so the UI
+      // can tell orphaned slots apart from ones whose release would take an
+      // app offline. Liveness checks are best-effort; unknown reads as live.
+      const withLiveness = await Promise.all(hosted.map(async entry => {
+        let live = true;
+        try { live = !(await this.env.PROJECTS.getByName(entry.projectId).isDeleted()); }
+        catch { live = true; }
+        return { ...entry, live };
+      }));
+      return Response.json({ hosted: withLiveness });
     }
     if (path === '/hosted/release' && request.method === 'POST') {
-      const body = await readJson(request, 2_000) as { alias?: unknown };
-      if (typeof body?.alias !== 'string' || !/^[a-f0-9]{32}$/.test(body.alias)) throw new RuntimeError('A valid hosted slot id is required.', 400);
+      const body = await readJson(request, 2_000) as { alias?: unknown; force?: unknown };
+      if (typeof body?.alias !== 'string' || !/^([a-f0-9]{32}|[a-z][a-z0-9-]{2,38}[a-z0-9])$/.test(body.alias)) throw new RuntimeError('A valid hosted slot id is required.', 400);
+      const registered = await this.pilot().lookup(body.alias).catch(() => null);
+      if (!registered || registered.ownerId !== this.scope.ownerId) throw new RuntimeError('Hosted slot not found on your account.', 404);
+      // Releasing a live project's slot takes its app offline (public routing
+      // 404s) until the project's next build re-registers it. Refuse without
+      // explicit confirmation; orphaned (deleted-project) slots release freely.
+      let live = true;
+      try { live = !(await this.env.PROJECTS.getByName(registered.projectId).isDeleted()); }
+      catch { live = true; }
+      if (live && body?.force !== true) throw new RuntimeError('This slot belongs to a live project — releasing it would take the app offline until its next publish. Confirm to release it anyway.', 409);
       const result = await this.pilot().forceRelease(body.alias, this.scope.ownerId);
       if (!result.released) throw new RuntimeError('Hosted slot not found on your account.', 404);
       return Response.json(result);
@@ -197,6 +275,15 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       await this.stop();
       if (this.databaseOperation) await Promise.allSettled([this.databaseOperation]);
       await Promise.allSettled([...this.pendingUploads]);
+      // Release the custom domain before the blanket key wipe below, or the
+      // Cloudflare hostname and pilot routing survive deletion forever and the
+      // domain can never be re-attached (register → 409 already-registered).
+      const customDomain = await this.ctx.storage.get<{ hostname: string; cfId: string }>('custom-domain');
+      if (customDomain) {
+        await this.api().deleteCustomHostname(customDomain.cfId).catch(() => {});
+        await this.pilot().unregisterCustomHostname(customDomain.hostname, this.scope).catch(() => {});
+      }
+      await this.uploads().removeAll();
       await this.uploads().removeAll();
       for (const env of ['development', 'production']) {
         const releases = await this.ctx.storage.list<ProjectRelease>({ prefix: `release:${env}:` });
@@ -330,13 +417,31 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       if (!/^[a-z][a-z0-9-]{2,38}[a-z0-9]$/.test(slug)) throw new RuntimeError('App name must be 4–40 lowercase letters, numbers, or hyphens, and start with a letter.', 400);
       if (slug === this.alias) return Response.json({ slug, url: this.url('production') });
       await this.withControlLock(async () => {
+        // Renaming mid-build would skew the in-flight job's stored R2 keys, so
+        // it waits like the other mutating operations do.
+        if (active(await this.ctx.storage.get<StoredJob>('current'))) throw new RuntimeError('Wait for the running build or release before renaming the app.', 409);
         const taken = await this.pilot().lookup(slug);
         if (taken && (taken.ownerId !== this.scope.ownerId || taken.projectId !== this.scope.projectId)) throw new RuntimeError('That name is already taken. Try a different one.', 409);
         const previous = this.alias;
+        // Free the previous slot first so a rename at the 10-project cap can
+        // succeed. Only persist the new alias after registration succeeds, and
+        // roll the old registration back if the new one fails — a failed
+        // rename must never leave the project aliased to a dead slug.
+        if (previous && previous !== slug) await this.pilot().unregister(previous, this.scope).catch(() => {});
+        try {
+          requireAdmission(await this.pilot().register(slug, this.scope));
+        } catch (error) {
+          if (previous && previous !== slug) await this.pilot().register(previous, this.scope).catch(() => {});
+          throw error;
+        }
         this.alias = slug;
         await this.ctx.storage.put('alias', slug);
-        requireAdmission(await this.pilot().register(slug, this.scope));
-        if (previous && previous !== slug) await this.pilot().unregister(previous, this.scope).catch(() => {});
+        // Move already-stored objects (uploads, sources, artifacts,
+        // screenshots) under the new alias. Per-row deletes, serving, and the
+        // delete-time sweep all address the live alias, so objects left under
+        // the old prefix would 404 after the rename and survive project
+        // deletion as orphans.
+        if (previous && previous !== slug) await this.migrateAliasPrefix(previous, slug);
       });
       return Response.json({ slug, url: this.url('production') });
     }
@@ -873,11 +978,15 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     const url = new URL(request.url);
     if (url.pathname === '/__brainhalf/open' && request.method === 'GET' && environment === 'development') {
       const ticket = await this.session(url.searchParams.get('ticket') || undefined, 'ticket', environment, true);
-      if (!ticket) throw new RuntimeError('Preview link expired. Use Open running app in your workspace to get a new link.', 401);
+      const embed = url.searchParams.get('embed') === '1';
+      if (!ticket) {
+        const message = 'Preview link expired. Use Open running app in your workspace to get a new link.';
+        if (embed) return embedPreviewErrorPage(message);
+        throw new RuntimeError(message, 401);
+      }
       let next = ticket.next === '/__brainhalf/auth' ? ticket.next : '/';
       if (typeof ticket.mailId === 'string') next = this.emailActionPath((await this.services().mail.detail(environment, ticket.mailId)).text, environment);
       const session = await this.createSession('preview', environment, {}, 3600);
-      const embed = url.searchParams.get('embed') === '1';
       const cookieValue = embed
         ? embeddedPreviewCookie('__Host-bh_preview', session, 3600)
         : secureCookie('__Host-bh_preview', session, 3600);

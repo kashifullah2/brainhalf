@@ -20,11 +20,12 @@ export default function ProjectHostedSlots({ projectId }: { projectId: string })
     return () => controller.abort();
   }, [load]);
 
-  const release = async (alias: string) => {
+  const release = async (alias: string, live: boolean) => {
     if (releasing) return;
+    if (live && !window.confirm('This slot belongs to a live project. Releasing it will take the app offline until its next publish. Release it anyway?')) return;
     setReleasing(alias); setError('');
     try {
-      await releaseHostedSlot(projectId, alias);
+      await releaseHostedSlot(projectId, alias, live);
       setSlots(current => (current || []).filter(slot => slot.alias !== alias));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Release failed. Try again.');
@@ -37,8 +38,8 @@ export default function ProjectHostedSlots({ projectId }: { projectId: string })
     <h3>Hosted app slots</h3>
     <p className="settings-muted">
       Every app that has been built or published holds one hosting slot on your account. Slots from deleted or
-      unused projects can stay behind and block new builds — release them here. Releasing a slot never deletes
-      a live app; an app you still use simply takes its slot back the next time it builds.
+      unused projects can stay behind and block new builds — release the unused ones here. Releasing a slot that
+      belongs to a live app takes that app offline until its next publish, so those ask for confirmation first.
     </p>
     {error && <p role="alert" className="settings-error">{error}</p>}
     {slots === null && !error && <p className="settings-muted">Loading hosted apps…</p>}
@@ -48,9 +49,12 @@ export default function ProjectHostedSlots({ projectId }: { projectId: string })
         {slots.map(slot => (
           <li key={slot.alias}>
             <span className="hosted-slot-id" title={`Slot ${slot.alias}`}>Project {slot.projectId}</span>
+            {slot.live === false
+              ? <span className="hosted-slot-orphan">Unused</span>
+              : <span className="hosted-slot-live">Live</span>}
             {slot.projectId === projectId
               ? <span className="hosted-slot-current">This project</span>
-              : <button type="button" disabled={releasing !== null} onClick={() => void release(slot.alias)}>
+              : <button type="button" disabled={releasing !== null} onClick={() => void release(slot.alias, slot.live !== false)}>
                   {releasing === slot.alias ? 'Releasing…' : 'Release slot'}
                 </button>}
           </li>

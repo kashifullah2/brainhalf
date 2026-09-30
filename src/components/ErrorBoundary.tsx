@@ -10,6 +10,17 @@ interface State {
   error: Error | null;
 }
 
+/**
+ * Hard-reset URL: keeps the current query string (e.g. `?project=…`) and only
+ * bumps the `v` cache-buster (N2). Rebuilding from origin + pathname would
+ * silently drop the project context.
+ */
+export function hardResetUrl(href: string, now: number = Date.now()): string {
+  const url = new URL(href);
+  url.searchParams.set('v', String(now));
+  return url.toString();
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
@@ -36,7 +47,7 @@ export class ErrorBoundary extends Component<Props, State> {
         });
       }
     } catch {}
-    window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+    window.location.href = hardResetUrl(window.location.href);
   };
 
   public render() {

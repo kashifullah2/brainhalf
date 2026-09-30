@@ -407,6 +407,23 @@
   flex-shrink: 0;
 }
 
+.project-console .hosted-slot-live,
+.project-console .hosted-slot-orphan {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.project-console .hosted-slot-live {
+  color: var(--color-success);
+  background: rgba(34, 197, 94, 0.12);
+}
+.project-console .hosted-slot-orphan {
+  color: var(--text-muted);
+  background: var(--studio-wash);
+}
+
 .project-console .hosted-slot-list button,
 .project-console .hosted-slot-refresh {
   min-height: 32px;

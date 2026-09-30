@@ -15,6 +15,12 @@ describe('source export boundary', () => {
     expect(result.environmentKeys).not.toContain('CF_API_TOKEN');
     expect(result.files['/.gitignore']).toContain('.dev.vars.*');
   });
+  it('refuses AWS access key IDs in exported source', () => {
+    expect(() => prepareProjectExport({ '/worker.ts': 'const key = "AKIAIOSFODNN7EXAMPLE";' })).toThrow('contains a credential');
+    expect(() => prepareProjectExport({ '/worker.ts': 'const key = "ASIAIOSFODNN7EXAMPLE";' })).toThrow('contains a credential');
+    // Ordinary identifiers that merely resemble the shape must not trip the filter.
+    expect(prepareProjectExport({ '/worker.ts': 'const AKIA = 1;' }).files['/worker.ts']).toContain('const AKIA = 1;');
+  });
   it('refuses inline credentials and conflicting aliases before making network requests', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
     await expect(exportToGitHub({ '/worker.ts': 'const key = "cfut_' + 'a'.repeat(45) + '";' }, 'app', 'token')).rejects.toThrow('contains a credential');

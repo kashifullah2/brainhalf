@@ -58,4 +58,14 @@ describe('Public hosting access', () => {
     expect((await services.fetch(request())).status).toBe(403);
     expect(f.project.backendService).toHaveBeenCalledOnce();
   });
+  it('looks the pilot slot up under the live slug for a slug-renamed project', async () => {
+    const f = fixture();
+    f.project.currentAlias = vi.fn(async () => 'my-app');
+    const services = new AppServicesAPI({} as any, f.env);
+    const credential = await serviceCapability(f.scope, 'production', f.env.PROJECT_SECRETS_KEY);
+    const response = await services.fetch(new Request('https://services/email', { method: 'POST', headers: { Authorization: 'Bearer ' + credential } }));
+    expect(response.status).toBe(200);
+    expect(f.pilot.lookup).toHaveBeenCalledWith('my-app');
+    expect(f.project.backendService).toHaveBeenCalledOnce();
+  });
 });

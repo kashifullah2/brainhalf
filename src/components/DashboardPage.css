@@ -44,3 +44,12 @@
   background-size: 800px 100%;
   animation: skeleton-shimmer 1.4s infinite linear;
 }
+
+.dashboard-cleanup { margin-top: 40px; padding: 20px 22px; border: 1px solid var(--studio-line); border-radius: 14px; background: var(--studio-wash); }
+.dashboard-cleanup h2 { margin: 0 0 6px; font-size: 17px; }
+.dashboard-cleanup p { margin: 0 0 12px; color: var(--studio-muted); font-size: 13px; }
+.dashboard-cleanup ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.dashboard-cleanup li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--studio-line); border-radius: 10px; background: var(--bg-surface); font-size: 13px; }
+.dashboard-cleanup-pending { font-weight: 600; color: var(--color-warning); }
+.dashboard-cleanup-done { font-weight: 600; color: var(--color-success); }
+.dashboard-cleanup-id { color: var(--studio-muted); font-size: 12px; font-variant-numeric: tabular-nums; }

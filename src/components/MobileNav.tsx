@@ -4,6 +4,17 @@ import { Menu, X } from 'lucide-react';
 export interface MobileNavLink { href: string; label: string; current?: boolean }
 
 /**
+ * Whether a pointer-down outside the menu should close it. The hamburger
+ * toggle button manages its own open/close state, so a press on it must not
+ * be treated as an "outside" press — otherwise the outside handler closes the
+ * menu on mousedown and the button's click handler immediately reopens it,
+ * making the menu impossible to close via the button.
+ */
+export function shouldCloseMenuOnPointerDown(insideMenu: boolean, insideToggleButton: boolean): boolean {
+  return !insideMenu && !insideToggleButton;
+}
+
+/**
  * Hamburger menu for the public site header on small screens, where
  * `.studio-navigation` is hidden (see LandingPage.css @media max-width: 640px).
  * Mirrors the inline mobile menu on LandingPage: Escape closes it, clicking
@@ -12,6 +23,7 @@ export interface MobileNavLink { href: string; label: string; current?: boolean 
 export default function MobileNav({ links }: { links: MobileNavLink[] }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
@@ -21,7 +33,10 @@ export default function MobileNav({ links }: { links: MobileNavLink[] }) {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      const insideMenu = menuRef.current?.contains(target) ?? false;
+      const insideToggle = buttonRef.current?.contains(target) ?? false;
+      if (shouldCloseMenuOnPointerDown(insideMenu, insideToggle)) setOpen(false);
     };
     if (open) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -30,6 +45,7 @@ export default function MobileNav({ links }: { links: MobileNavLink[] }) {
   return <>
     <button
       type="button"
+      ref={buttonRef}
       className="landing-mobile-menu-btn"
       aria-label={open ? 'Close menu' : 'Open menu'}
       aria-expanded={open}

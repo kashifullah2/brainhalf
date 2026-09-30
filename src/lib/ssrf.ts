@@ -165,9 +165,16 @@ export async function safeFetchText(
   }
 
   let currentUrl = rawUrl;
+  // One wall-clock deadline for the whole redirect chain: each hop only gets
+  // the time remaining, so a slow redirect chain cannot multiply the timeout.
+  const deadline = Date.now() + timeoutMs;
   for (let hop = 0; hop <= FETCH_MAX_REDIRECTS; hop++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      return { status: 0, data: '', url: currentUrl, error: `fetch_api exceeded the ${timeoutMs / 1000}s timeout` };
+    }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error('fetch_api exceeded the timeout')), timeoutMs);
+    const timer = setTimeout(() => controller.abort(new Error('fetch_api exceeded the timeout')), remaining);
     try {
       const res = await fetchImpl(currentUrl, {
         redirect: 'manual',
@@ -221,7 +228,7 @@ export async function safeFetchText(
         status: 0,
         data: '',
         url: currentUrl,
-        error: aborted ? `fetch_api exceeded the ${FETCH_TIMEOUT_MS / 1000}s timeout` : (e?.message || String(e)),
+        error: aborted ? `fetch_api exceeded the ${timeoutMs / 1000}s timeout` : (e?.message || String(e)),
       };
     } finally {
       clearTimeout(timer);

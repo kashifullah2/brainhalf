@@ -70,6 +70,30 @@ function dedupe(projects: Project[]) {
   });
 }
 
+/** One row from GET /api/account/deletions (the server strips user_id). */
+export interface CleanupStatus {
+  project_id: string;
+  step: number;
+  attempts: number;
+  next_at: number;
+  completed_at: number | null;
+}
+
+/** Plain-language status for a deletion cleanup job (L13). */
+export function cleanupJobStatus(job: CleanupStatus): string {
+  return job.completed_at != null ? 'Deletion finished' : 'Finishing deletion…';
+}
+
+/** Pending cleanups first, then most recently completed. */
+export function sortCleanupStatus(jobs: CleanupStatus[]): CleanupStatus[] {
+  return [...jobs].sort((a, b) => {
+    const aPending = a.completed_at == null ? 0 : 1;
+    const bPending = b.completed_at == null ? 0 : 1;
+    if (aPending !== bPending) return aPending - bPending;
+    return (b.completed_at ?? b.next_at) - (a.completed_at ?? a.next_at);
+  });
+}
+
 export default function DashboardPage({ currentUser, onOpenProject, onCreateProject, creatingProject = false, onGoHome, onLogout }: DashboardPageProps) {
   const [projects, setProjects] = useState<Project[]>(() => dedupe(getProjects()));
   const [hydrated, setHydrated] = useState(false);
@@ -79,7 +103,10 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
   const [renamedName, setRenamedName] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  const [_cleanupStatus, setCleanupStatus] = useState<Array<{ project_id: string; completed_at: number | null; attempts: number }>>([]);
+  // L13: the delete dialog promises cleanup can be tracked "here on the
+  // dashboard", so this status is rendered below (it used to be polled and
+  // discarded).
+  const [cleanupStatus, setCleanupStatus] = useState<CleanupStatus[]>([]);
   const [cleanupError, setCleanupError] = useState('');
   useEffect(() => {
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>;
@@ -152,6 +179,20 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
         <RecentProjects projects={projects} onOpenProject={onOpenProject} onRenameProject={project => { setProjectToRename(project); setRenamedName(project.name); }} onDeleteProject={setProjectToDelete} />
       ) : (
         <section className="dashboard-empty"><span><Plus size={22} /></span><h2>Create your first project</h2><p>Open a blank workspace and describe the app you want to make.</p><button type="button" onClick={onCreateProject} disabled={creatingProject}>{creatingProject ? 'Creating…' : 'Create new project'}</button></section>
+      )}
+      {cleanupStatus.length > 0 && (
+        <section className="dashboard-cleanup" aria-label="Deletion cleanup">
+          <h2>Deletion cleanup</h2>
+          <p>Deleted projects are erased by an automatic cleanup job. You can track it here.</p>
+          <ul>
+            {sortCleanupStatus(cleanupStatus).map(job => (
+              <li key={job.project_id}>
+                <span className={job.completed_at != null ? 'dashboard-cleanup-done' : 'dashboard-cleanup-pending'}>{cleanupJobStatus(job)}</span>
+                <span className="dashboard-cleanup-id">Project {job.project_id.slice(0, 8)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </main>
     {projectToDelete && <ConfirmModal isOpen title="Delete Project" message="Delete this project, its published apps, and its saved data? Access is revoked immediately. Your files and conversation history are removed first; everything else is erased by an automatic cleanup job that you can track here on the dashboard." confirmLabel={deleting ? 'Deleting…' : 'Delete Project'} pending={deleting} error={deleteError} isDestructive onConfirm={handleDelete} onCancel={() => { if (!deletionPending.current) { setProjectToDelete(null); setDeleteError(''); } }} />}

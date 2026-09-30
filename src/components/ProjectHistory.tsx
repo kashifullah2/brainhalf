@@ -35,6 +35,19 @@ export function displayLabel(label: string) {
   return label.replace('Before agent changes', 'Auto-saved before builder change').replace('Before restore', 'Auto-saved before restore');
 }
 
+export type ReviewLoadAction = 'collapse' | 'ensure';
+
+/**
+ * Decide what a history-row click should do with the review panel.
+ * "See changes" toggles the panel open/closed. "Restore" must never collapse
+ * it: collapsing clears the review, so the confirm dialog would open with no
+ * review and its confirm button would silently do nothing.
+ */
+export function resolveReviewLoad(expandedId: string | null, targetId: string, forRestore: boolean): ReviewLoadAction {
+  if (!forRestore && expandedId === targetId) return 'collapse';
+  return 'ensure';
+}
+
 const CHANGE_ICON: Record<string, JSX.Element> = {
   modify:  <FileText size={11} style={{ flexShrink: 0, color: 'var(--color-info)' }} />,
   restore: <FilePlus  size={11} style={{ flexShrink: 0, color: 'var(--color-success)' }} />,
@@ -86,8 +99,8 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Action failed.'); } finally { setBusy(false); }
   }
 
-  async function loadReview(id: string) {
-    if (expandedId === id) { setExpandedId(null); setReview(null); return; }
+  async function loadReview(id: string, opts?: { forRestore?: boolean }) {
+    if (resolveReviewLoad(expandedId, id, opts?.forRestore ?? false) === 'collapse') { setExpandedId(null); setReview(null); return; }
     await perform(async () => {
       const data = await request(`?id=${encodeURIComponent(id)}`);
       setReview({ ...data, id });
@@ -132,7 +145,7 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
               type="button"
               className="button-secondary"
               disabled={busy}
-              onClick={() => { void loadReview(item.id).then(() => setConfirm(true)); }}
+              onClick={() => { void loadReview(item.id, { forRestore: true }).then(() => setConfirm(true)); }}
               title="Restore this version"
             >
               <RotateCcw size={12} />Restore
@@ -235,7 +248,7 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
         error={error || undefined}
         onCancel={() => setConfirm(false)}
         onConfirm={() => void perform(async () => {
-          if (!review) return;
+          if (!review) { setConfirm(false); return; }
           await request('/restore', { method: 'POST', body: JSON.stringify({ id: review.id, revision: review.revision }) });
           setConfirm(false);
           setReview(null);
