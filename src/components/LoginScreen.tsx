@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, X } from 'lucide-react';
+import { ArrowRight, X, Eye, EyeOff } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import { login, signup, startGoogleSignIn, type SessionUser } from '../lib/auth-client';
 import { useModalFocus } from '../lib/use-modal-focus';
@@ -31,6 +31,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
   const [error, setError] = useState<string | null>(initialError || null);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState<'email' | 'google' | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const dialogRef = useModalFocus(true, onClose);
   useEffect(() => { emailRef.current?.focus(); }, []);
@@ -97,10 +98,10 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
       </div>
       <div className="studio-auth-tabs" role="tablist" aria-label="Authentication mode">
         {(['login', 'signup'] as Mode[]).map((item, index) => <button type="button" key={item} id={`auth-tab-${item}`} role="tab" aria-controls="auth-panel" aria-selected={mode === item} tabIndex={mode === item ? 0 : -1} disabled={!!busy}
-          onClick={() => { setMode(item); setError(null); }} onKeyDown={event => {
+          onClick={() => { setMode(item); setError(null); setShowPassword(false); }} onKeyDown={event => {
             if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
               event.preventDefault(); const next = event.key === 'Home' ? 'login' : event.key === 'End' ? 'signup' : index === 0 ? 'signup' : 'login';
-              setMode(next); setError(null); document.getElementById(`auth-tab-${next}`)?.focus();
+              setMode(next); setError(null); setShowPassword(false); document.getElementById(`auth-tab-${next}`)?.focus();
             }
           }}>{item === 'login' ? 'Sign in' : 'Sign up'}</button>)}
       </div>
@@ -109,11 +110,22 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
         <div className="studio-auth-divider"><span>or continue with email</span></div>
         <form onSubmit={handleSubmit} noValidate className="studio-auth-form" aria-busy={!!busy}>
           <label htmlFor="login-email">Email address<input id="login-email" ref={emailRef} type="email" aria-label="Email Address" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" spellCheck={false} required disabled={!!busy} /></label>
-          <label htmlFor="login-password">Password<input id="login-password" type="password" aria-label="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder="At least 8 characters" required minLength={8} disabled={!!busy} /></label>
+          <label htmlFor="login-password">
+            <span className="studio-auth-labelrow">
+              <span>Password</span>
+              {mode === 'login' && <button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleForgotPassword()}>Forgot password?</button>}
+            </span>
+            <span className="studio-auth-passwordwrap">
+              <input id="login-password" type={showPassword ? 'text' : 'password'} aria-label="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder="At least 8 characters" required minLength={8} disabled={!!busy} />
+              <button type="button" className="studio-auth-peek" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} disabled={!!busy} onClick={() => setShowPassword(value => !value)}>
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </span>
+          </label>
           {error && <div className="studio-auth-error" role="alert">{error}</div>}
           {notice && <div className="account-notice" role="status">{notice}</div>}
-          {mode === 'login' && <div className="account-links"><button type="button" disabled={!!busy} onClick={() => void handleForgotPassword()}>Forgot password?</button><button type="button" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
           <button type="submit" className="studio-auth-submit" disabled={!!busy}>{busy === 'email' ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}<ArrowRight size={17} /></button>
+          {mode === 'login' && <div className="studio-auth-resend"><button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
         </form>
       </div>
     </div>

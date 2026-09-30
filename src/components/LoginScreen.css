@@ -4,7 +4,7 @@
 .studio-auth-topline, .studio-auth-brand, .studio-auth-controls { display: flex; align-items: center; }
 .studio-auth-topline { justify-content: space-between; gap: 16px; }
 .studio-auth-brand { gap: 9px; font-size: 20px; font-weight: 600; letter-spacing: -.7px; }
-.studio-auth-controls { gap: 8px; }
+.studio-auth-topline-actions { display: flex; align-items: center; gap: 8px; }
 .studio-auth-close { display: grid; place-items: center; width: 36px; height: 40px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .studio-auth-close:hover { background: var(--bg-surface); }
 .studio-auth-heading { margin: 26px 0 22px; }
@@ -22,6 +22,14 @@
 .studio-auth-form input { width: 100%; min-height: 46px; padding: 11px 12px; border: 1px solid var(--border-medium); border-radius: 10px; background: var(--studio-white); color: var(--text-primary); font-size: 16px; outline: none; }
 .studio-auth-form input::placeholder { color: var(--text-muted); }
 .studio-auth-form input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+.studio-auth-labelrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.studio-auth-textlink { border: 0; background: none; padding: 2px 0; color: var(--studio-blue); font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.studio-auth-textlink:hover { text-decoration: underline; }
+.studio-auth-passwordwrap { position: relative; display: block; }
+.studio-auth-passwordwrap input { padding-right: 46px; }
+.studio-auth-peek { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.studio-auth-peek:hover { background: var(--bg-surface); color: var(--text-primary); }
+.studio-auth-resend { display: flex; justify-content: center; }
 .studio-auth-error { padding: 11px 12px; background: var(--color-error-bg); border: 1px solid var(--color-error-border); border-radius: 7px; color: var(--color-error); font-size: 13px; line-height: 1.6; }
 .studio-auth-submit { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; min-height: 48px; padding: 11px 16px; border: 0; border-radius: 10px; background: var(--brand-solid); color: var(--brand-on-solid); font-size: 15px; font-weight: 600; letter-spacing: -0.2px; cursor: pointer; transition: background 140ms, box-shadow 140ms; }
 .studio-auth-submit:hover { background: var(--brand-solid-hover); box-shadow: 0 4px 12px var(--focus-ring); }
