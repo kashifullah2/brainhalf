@@ -16,6 +16,24 @@ const USER_KEY = 'bh_session_user';
 const GOOGLE_PROMPT_KEY = 'bh_google_pending_prompt';
 let sessionRevision = 0;
 
+/**
+ * Auth failure that preserves the server's machine-readable error code
+ * (e.g. 'EMAIL_VERIFICATION_REQUIRED') so UI can branch on it instead of
+ * matching message text.
+ */
+export class AuthError extends Error {
+  readonly code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'AuthError';
+    this.code = code;
+  }
+}
+
+function authErrorCode(body: unknown): string | undefined {
+  return body && typeof body === 'object' && 'code' in body && typeof body.code === 'string' ? body.code : undefined;
+}
+
 export function saveGooglePrompt(prompt: { prompt: string } | null): void {
   try {
     if (prompt) sessionStorage.setItem(GOOGLE_PROMPT_KEY, JSON.stringify({ ...prompt, savedAt: Date.now() }));
@@ -190,7 +208,7 @@ export async function login(email: string, password: string): Promise<SessionUse
   const body = await res.json().catch(() => ({ error: 'Login failed' }));
   const user = sessionUser(body?.user);
   if (revision !== sessionRevision || previousToken !== getToken()) throw new Error('Session changed. Sign in again.');
-  if (!res.ok || typeof body?.token !== 'string' || !user) throw new Error(body?.error || 'Login failed');
+  if (!res.ok || typeof body?.token !== 'string' || !user) throw new AuthError(body?.error || 'Login failed', authErrorCode(body));
   persist(body.token, user);
   await restoreOwnedProjects(body.token);
   if (revision !== sessionRevision || body.token !== getToken()) throw new Error('Session changed. Sign in again.');

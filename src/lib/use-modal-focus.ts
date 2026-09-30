@@ -2,6 +2,24 @@ import { useEffect, useRef } from 'react';
 
 const modalStack: HTMLElement[] = [];
 
+// Body scroll locking is reference-counted so stacked modals don't restore
+// scrolling while another modal is still open.
+let bodyScrollLocks = 0;
+let previousBodyOverflow = '';
+
+function lockBodyScroll() {
+  if (bodyScrollLocks === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  bodyScrollLocks += 1;
+}
+
+function unlockBodyScroll() {
+  bodyScrollLocks = Math.max(0, bodyScrollLocks - 1);
+  if (bodyScrollLocks === 0) document.body.style.overflow = previousBodyOverflow;
+}
+
 export function useModalFocus(isOpen: boolean, onClose?: () => void) {
   const containerRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -12,6 +30,7 @@ export function useModalFocus(isOpen: boolean, onClose?: () => void) {
     if (!isOpen || !container) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     modalStack.push(container);
+    lockBodyScroll();
     const isTopModal = () => modalStack[modalStack.length - 1] === container;
     const focusable = () => Array.from(container.querySelectorAll<HTMLElement>(
       'button, a[href], input, select, textarea, [tabindex]'
@@ -46,6 +65,7 @@ export function useModalFocus(isOpen: boolean, onClose?: () => void) {
       document.removeEventListener('keydown', handleKey, true);
       const position = modalStack.indexOf(container);
       if (position !== -1) modalStack.splice(position, 1);
+      unlockBodyScroll();
       if (previousFocus?.isConnected) previousFocus.focus();
     };
   }, [isOpen]);

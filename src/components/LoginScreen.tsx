@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, X, Eye, EyeOff } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
-import { login, signup, startGoogleSignIn, type SessionUser } from '../lib/auth-client';
+import { login, signup, startGoogleSignIn, AuthError, type SessionUser } from '../lib/auth-client';
 import { useModalFocus } from '../lib/use-modal-focus';
 import ThemeToggle from './ThemeToggle';
 import './LoginScreen.css';
@@ -30,6 +30,9 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(initialError || null);
   const [notice, setNotice] = useState('');
+  // True only right after a sign-in attempt failed with EMAIL_VERIFICATION_REQUIRED:
+  // the resend link is relevant then, and only then.
+  const [verificationRequired, setVerificationRequired] = useState(false);
   const [busy, setBusy] = useState<'email' | 'google' | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -40,6 +43,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     event.preventDefault();
     if (busy) return;
     setError(null);
+    setVerificationRequired(false);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setBusy('email');
@@ -48,7 +52,10 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
       if ('verificationRequired' in result) { setNotice(result.message); setMode('login'); setPassword(''); }
       else onAuthenticated(result);
     }
-    catch (err) { setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.'); }
+    catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.');
+      setVerificationRequired(err instanceof AuthError && err.code === 'EMAIL_VERIFICATION_REQUIRED');
+    }
     finally { setBusy(null); }
   };
   const handleGoogle = async () => {
@@ -98,10 +105,10 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
       </div>
       <div className="studio-auth-tabs" role="tablist" aria-label="Authentication mode">
         {(['login', 'signup'] as Mode[]).map((item, index) => <button type="button" key={item} id={`auth-tab-${item}`} role="tab" aria-controls="auth-panel" aria-selected={mode === item} tabIndex={mode === item ? 0 : -1} disabled={!!busy}
-          onClick={() => { setMode(item); setError(null); setShowPassword(false); }} onKeyDown={event => {
+          onClick={() => { setMode(item); setError(null); setVerificationRequired(false); setShowPassword(false); }} onKeyDown={event => {
             if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
               event.preventDefault(); const next = event.key === 'Home' ? 'login' : event.key === 'End' ? 'signup' : index === 0 ? 'signup' : 'login';
-              setMode(next); setError(null); setShowPassword(false); document.getElementById(`auth-tab-${next}`)?.focus();
+              setMode(next); setError(null); setVerificationRequired(false); setShowPassword(false); document.getElementById(`auth-tab-${next}`)?.focus();
             }
           }}>{item === 'login' ? 'Sign in' : 'Sign up'}</button>)}
       </div>
@@ -116,7 +123,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
               {mode === 'login' && <button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleForgotPassword()}>Forgot password?</button>}
             </span>
             <span className="studio-auth-passwordwrap">
-              <input id="login-password" type={showPassword ? 'text' : 'password'} aria-label="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder="At least 8 characters" required minLength={8} disabled={!!busy} />
+              <input id="login-password" type={showPassword ? 'text' : 'password'} aria-label="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder={mode === 'login' ? 'Enter your password' : 'At least 8 characters'} required minLength={8} disabled={!!busy} />
               <button type="button" className="studio-auth-peek" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} disabled={!!busy} onClick={() => setShowPassword(value => !value)}>
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -125,7 +132,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
           {error && <div className="studio-auth-error" role="alert">{error}</div>}
           {notice && <div className="account-notice" role="status">{notice}</div>}
           <button type="submit" className="studio-auth-submit" disabled={!!busy}>{busy === 'email' ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}<ArrowRight size={17} /></button>
-          {mode === 'login' && <div className="studio-auth-resend"><button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
+          {mode === 'login' && verificationRequired && <div className="studio-auth-resend"><button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
         </form>
       </div>
     </div>
