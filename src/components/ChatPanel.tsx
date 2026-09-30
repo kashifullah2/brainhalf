@@ -436,6 +436,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     });
   }, []);
 
+  // On first open, cached messages render from localStorage before any WS
+  // history arrives: jump straight to the latest instead of the top.
+  useEffect(() => {
+    scheduleAutoScroll('instant');
+  }, [scheduleAutoScroll]);
+
   const startTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -820,6 +826,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 appEvents.emit('generation-status', { status: 'Ready', detail: 'Fresh project ready', projectId: activeProjectId });
               }
             }
+            // History applied (whichever branch above ran): land on the latest
+            // message instead of opening at the top of a long conversation.
+            // 'instant' avoids a slow swoosh through the whole transcript.
+            scheduleAutoScroll('instant');
           } else if (data.type === 'stream') {
             if (!isGeneratingRef.current) return;
             if (data.chunk?.response) {
@@ -876,6 +886,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   }
                   messagesRef.current = streamMsgs;
                   setMessages(streamMsgs);
+                  // Follow the stream: keep the latest tokens in view unless
+                  // the user scrolled up to read earlier messages.
+                  scheduleAutoScroll('auto');
                 });
               }
             }
