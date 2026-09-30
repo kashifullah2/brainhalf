@@ -19,6 +19,11 @@ test.describe('Landing hero redesign', () => {
       test.setTimeout(60000);
       await page.setViewportSize({ width, height });
       await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
+      // Headless Chrome reports light prefers-color-scheme; force dark explicitly.
+      await page.evaluate(() => {
+        document.documentElement.dataset.theme = 'dark';
+        document.documentElement.style.colorScheme = 'dark';
+      });
 
       const hero = page.locator('.landing-hero-redesign');
       await expect(hero).toBeVisible();
