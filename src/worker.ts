@@ -544,8 +544,25 @@ export default {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
       const sourceId = remixMatch[1];
+      // Translate the agent's internal error strings into plain, actionable
+      // messages. Only whitelisted messages pass through; anything unexpected
+      // becomes a generic failure so internal details never leak to the client.
+      const remixErrorMessage = (agentError: unknown): string => {
+        const map: Record<string, string> = {
+          'This app is not listed in the gallery': 'This app is no longer listed in the gallery, so it cannot be remixed.',
+          'Wait for generation to finish before remixing.': 'The app is still being built. Wait for it to finish, then try again.',
+          'Project deleted': 'This project was deleted and cannot be remixed.',
+          'Remix exceeds the project file limit.': 'This app is too large to remix. Try a smaller app instead.',
+        };
+        return (typeof agentError === 'string' && map[agentError]) || 'Remix could not be completed.';
+      };
       try {
         const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
+        // Best-effort cleanup so a failed copy never leaves a broken or empty
+        // project behind counting against the user's project limit.
+        const cleanupRemixProject = async (projectId: string): Promise<void> => {
+          await registry.fetch(`https://registry/projects/${encodeURIComponent(projectId)}?userId=${encodeURIComponent(user.userId)}`, { method: 'DELETE' }).catch(() => {});
+        };
         const created = await registry.fetch('https://registry/projects/remix', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.userId, sourceProjectId: sourceId }),
@@ -554,15 +571,21 @@ export default {
         const { projectId, name } = await created.json() as { projectId: string; name: string };
         const exportResponse = await env.ChatAgent.get(env.ChatAgent.idFromName(sourceId))
           .fetch(new Request('https://agent/internal/remix-export', { headers: { 'x-bh-project': sourceId } }));
-        if (!exportResponse.ok) throw new Error(`Remix export failed: ${exportResponse.status}`);
+        if (!exportResponse.ok) {
+          const agentError = (await exportResponse.json().catch(() => ({})) as { error?: unknown }).error;
+          await cleanupRemixProject(projectId);
+          console.error('Remix export failed:', sourceId, exportResponse.status, agentError);
+          return withCors(jsonError(remixErrorMessage(agentError), exportResponse.status === 502 || exportResponse.status === 503 ? 502 : exportResponse.status), origin);
+        }
         const imported = await env.ChatAgent.get(env.ChatAgent.idFromName(projectId))
           .fetch(injectUserId(new Request('https://agent/internal/remix-import', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'x-bh-project': projectId }, body: await exportResponse.text(),
           }), user.userId));
         if (!imported.ok) {
-          // Best-effort cleanup so a failed copy never leaves a broken project behind.
-          await registry.fetch(`https://registry/projects/${encodeURIComponent(projectId)}?userId=${encodeURIComponent(user.userId)}`, { method: 'DELETE' }).catch(() => {});
-          throw new Error(`Remix import failed: ${imported.status}`);
+          const agentError = (await imported.json().catch(() => ({})) as { error?: unknown }).error;
+          await cleanupRemixProject(projectId);
+          console.error('Remix import failed:', projectId, imported.status, agentError);
+          return withCors(jsonError(remixErrorMessage(agentError), imported.status === 502 || imported.status === 503 ? 502 : imported.status), origin);
         }
         return withCors(Response.json({ projectId, name }), origin);
       } catch (error) {

@@ -620,7 +620,38 @@ describe('Gallery remix orchestration', () => {
     const agents = remixAgents({ importOk: false });
     const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/source-app/remix', { method: 'POST' });
     const response = await worker.fetch(request, envWith(remixRegistry(deleted), { ChatAgent: agents.binding }), {} as any);
-    expect(response.status).toBe(502);
+    // The agent's 413 passes through (not collapsed to 502) so the client
+    // sees the real failure; the message is whitelisted to avoid leaking internals.
+    expect(response.status).toBe(413);
+    expect((await response.json() as { error: string }).error).toBe('Remix could not be completed.');
+    expect(deleted).toEqual(['copy-1']);
+  });
+
+  it('cleans up the new project when the source export fails', async () => {
+    const deleted: string[] = [];
+    const agents = remixAgents({ exportOk: false });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/source-app/remix', { method: 'POST' });
+    const response = await worker.fetch(request, envWith(remixRegistry(deleted), { ChatAgent: agents.binding }), {} as any);
+    // Export returned 403 with a non-JSON body; the orphaned registry project
+    // must be deleted and the client gets a specific, non-technical message.
+    expect(response.status).toBe(403);
+    expect(deleted).toEqual(['copy-1']);
+  });
+
+  it('translates agent export errors into plain messages', async () => {
+    const deleted: string[] = [];
+    const agents = remixAgents();
+    // Override the export to return a whitelisted agent error.
+    agents.fetch.mockImplementation(async (request: Request) => {
+      if (new URL(request.url).pathname === '/internal/remix-export') {
+        return Response.json({ error: 'This app is not listed in the gallery' }, { status: 403 });
+      }
+      return new Response('unexpected', { status: 500 });
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/source-app/remix', { method: 'POST' });
+    const response = await worker.fetch(request, envWith(remixRegistry(deleted), { ChatAgent: agents.binding }), {} as any);
+    expect(response.status).toBe(403);
+    expect((await response.json() as { error: string }).error).toBe('This app is no longer listed in the gallery, so it cannot be remixed.');
     expect(deleted).toEqual(['copy-1']);
   });
 
