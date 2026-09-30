@@ -7,18 +7,14 @@ import {
   BarChart3,
   LayoutGrid,
   ShoppingCart,
-  MessageSquare,
   Check,
   Layers,
-  Database,
   Rocket,
   Globe,
   KeyRound,
-  Link2,
-  History,
-  Activity,
   Menu,
   X,
+  Tractor,
 } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import LandingFooter from './LandingFooter';
@@ -39,13 +35,13 @@ interface LandingPageProps {
   onOpenDashboard?: () => void;
 }
 
-const IDEA_ICONS = [ShoppingCart, LayoutGrid, BarChart3, MessageSquare];
+const IDEA_ICONS = [ShoppingCart, Tractor, LayoutGrid, BarChart3];
 
 const AUDIENCES = [
   'Retail shops',
   'Cafés & restaurants',
+  'Farms',
   'Clinics',
-  'Studios & agencies',
   'Warehouses',
   'Schools',
   'Freelancers',
@@ -65,51 +61,31 @@ const HOW_IT_WORKS = [
   },
   {
     step: '03',
-    title: 'Publish when it is ready',
-    detail: 'Automatic checks run before anything goes live. Then your app gets its own address on the web — or bring your own domain.',
+    title: 'Share it with the world',
+    detail: 'We check that everything works, then your app gets its own web address to share with customers.',
   },
 ];
 
 const FEATURES = [
   {
     icon: Layers,
-    title: 'Screens and backend, together',
-    detail: 'The interface and the server behind it are built from the same description, so buttons actually save, load, and update.',
-  },
-  {
-    icon: Database,
-    title: 'Your own database',
-    detail: 'Every app gets an isolated database. Your records are never mixed with another project\u2019s.',
+    title: 'Screens and saved information, together',
+    detail: 'Everything is built from your description, so buttons actually save and load your information.',
   },
   {
     icon: Rocket,
-    title: 'Publishing with safety checks',
-    detail: 'Each publish runs automatic checks first. If one fails, nothing goes live — and you get a plain-language explanation.',
+    title: 'Checked before it goes live',
+    detail: 'Before your app is shared, we check that it works. If something is wrong, nothing is shared until it is fixed — and we tell you what happened in plain words.',
   },
   {
     icon: KeyRound,
-    title: 'Sign-in for your users',
-    detail: 'Google, GitHub, or email sign-in for the people who use your app, with private workspaces per account.',
+    title: 'Sign-in for your customers',
+    detail: 'Let people sign in with Google or email. Each person only sees their own information.',
   },
   {
     icon: Globe,
-    title: 'Your own domain',
-    detail: 'Point a domain you own at your app. Secure connections are set up automatically.',
-  },
-  {
-    icon: Link2,
-    title: 'Shareable preview links',
-    detail: 'Send a working link while you build — no publish needed to show progress to a partner or client.',
-  },
-  {
-    icon: History,
-    title: 'Every version kept',
-    detail: 'Each change is checkpointed. Step back to any earlier version of your app at any time.',
-  },
-  {
-    icon: Activity,
-    title: 'Watch it run',
-    detail: 'Requests, errors, and AI usage are visible in the project console, so you always know what your app is doing.',
+    title: 'Your own web address',
+    detail: 'Your app gets its own address on the web to share with customers. Already have a website name? You can use that too.',
   },
 ];
 
@@ -257,8 +233,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <p className="landing-hero-eyebrow"><Check size={12} aria-hidden="true" /> AI app builder for small businesses</p>
             <h1 id="hero-heading">From a sentence<br />to working software.</h1>
             <p className="landing-hero-description">
-              Describe what your business needs. BrainHalf builds the screens, the database,
-              and the hosting — then refines it with you, in plain words. No code required.
+              Tell us what your business needs, in your own words. BrainHalf builds the app
+              and puts it on the web for you — then refines it with you, in plain words.
+              No coding, no technical skills needed.
             </p>
             <form className="landing-prompt-box" id="start-building" onSubmit={handlePromptSubmit}>
               <label htmlFor="app-idea" className="landing-input-label">Describe your app</label>
@@ -266,7 +243,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 id="app-idea"
                 ref={textareaRef}
                 className="landing-prompt-textarea"
-                placeholder="An inventory app for my bookshop, with low-stock alerts…"
+                placeholder="A crop tracker for my wheat farm, with harvest reminders…"
                 aria-describedby="prompt-help"
                 value={promptText}
                 onChange={event => setPromptText(event.target.value)}
@@ -305,7 +282,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         {/* Who it's for */}
         <section className="landing-audience" aria-labelledby="audience-heading">
-          <p className="studio-section-label">MADE FOR REAL BUSINESSES</p>
+          <p className="studio-section-label">Made for real businesses</p>
           <h2 id="audience-heading">If you run it on spreadsheets and memory, it can be software.</h2>
           <ul className="landing-audience-list" aria-label="Businesses BrainHalf is built for">
             {AUDIENCES.map(audience => <li key={audience}>{audience}</li>)}
@@ -315,7 +292,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* How it works */}
         <section className="landing-workflow" id="how-it-works" aria-labelledby="workflow-heading">
           <div className="landing-section-intro">
-            <p className="studio-section-label">THE WAY FROM IDEA TO APP</p>
+            <p className="studio-section-label">How it works</p>
             <h2 id="workflow-heading">Describe. Refine. Publish.</h2>
             <p className="landing-section-lede">You set the direction and make the decisions. BrainHalf does the building.</p>
           </div>
@@ -338,7 +315,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* Examples */}
         <section className="landing-examples" id="examples" aria-labelledby="examples-heading">
           <div className="landing-section-intro">
-            <p className="studio-section-label">WHAT COMES OUT</p>
+            <p className="studio-section-label">What you get</p>
             <h2 id="examples-heading">Real apps, not mockups.</h2>
             <p className="landing-section-lede">These are the kinds of working tools people build. Click through them — every button does something.</p>
           </div>
@@ -361,7 +338,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* Features */}
         <section className="landing-features" id="features" aria-labelledby="features-heading">
           <div className="landing-section-intro">
-            <p className="studio-section-label">UNDER THE HOOD</p>
+            <p className="studio-section-label">Included</p>
             <h2 id="features-heading">Everything your app needs, built in.</h2>
             <p className="landing-section-lede">No plugins to wire up, no servers to rent, no database to configure. It is all part of the workspace.</p>
           </div>
@@ -376,30 +353,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </ul>
         </section>
 
-        {/* Network proof */}
-        <section className="studio-proof-section" aria-labelledby="proof-heading">
-          <div className="studio-proof-intro">
-            <p className="studio-section-label">THE NETWORK UNDER YOUR APP</p>
-            <h2 id="proof-heading">Fast for everyone who opens it.</h2>
-            <p>Published apps run on Cloudflare&#8217;s global edge network, the same infrastructure BrainHalf itself is served from.</p>
-          </div>
-          <div className="studio-proof-grid">
-            <div className="studio-proof-stat">
-              <strong>~50 ms</strong>
-              <span>from 95% of the world&#8217;s Internet-connected population</span>
-            </div>
-            <div className="studio-proof-stat">
-              <strong>300+</strong>
-              <span>cities serving your published app, close to every visitor</span>
-            </div>
-          </div>
-          <p className="studio-proof-source">Network figures: <a href="https://www.cloudflare.com/network/" target="_blank" rel="noopener noreferrer">Cloudflare&#8217;s global network <ArrowUpRight size={12} aria-hidden="true" /></a></p>
-        </section>
-
         {/* FAQ */}
         <section className="studio-faq-section" id="questions" aria-labelledby="faq-heading">
           <div>
-            <p className="studio-section-label">GOOD TO KNOW</p>
+            <p className="studio-section-label">Questions</p>
             <h2 id="faq-heading">Before you begin.</h2>
             <p className="studio-content-updated">Updated <time dateTime={HOME_MODIFIED}>{formatContentDate(HOME_MODIFIED)}</time></p>
           </div>
@@ -416,12 +373,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* Closing */}
         <section className="studio-closing" aria-labelledby="closing-heading">
           <div>
-            <p className="studio-section-label">READY WHEN YOU ARE</p>
-            <h2 id="closing-heading">Give your idea<br />a real home.</h2>
+            <h2 id="closing-heading">Your business,<br />running on software you described.</h2>
             <p>Start with a sentence. See where it takes you.</p>
           </div>
           <a href="#start-building" className="studio-closing-link" onClick={focusComposer}>Build your app <ArrowUpRight size={18} /></a>
-          <div className="studio-closing-mark" aria-hidden="true"><BrainHalfLogo size={240} color="currentColor" /></div>
         </section>
       </main>
 

@@ -46,7 +46,8 @@
   /* Rich Dark Teal */
   --accent-light: #2dd4bf;
   /* Vibrant Cyan-Teal */
-  --accent-gradient: #0f766e;
+  --accent-gradient: #3659d9;
+  /* Solid brand blue (name kept for compatibility; studio theme overrides) */
   --accent-glow: rgba(20, 184, 166, 0.15);
   --accent-glow-strong: rgba(45, 212, 191, 0.3);
   --color-accent: var(--accent-primary);
@@ -107,19 +108,16 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
-  --radius-asym-card: 12px;
-  --radius-asym-sm: 6px;
-  --radius-asym-pill: 6px;
 
   /* Standard Box Shadows */
   --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.25);
   --shadow-panel: none;
   --shadow-overlay: 0 16px 36px rgba(0, 0, 0, 0.5);
 
-  /* Distinctive Typography - Prioritizing Apple SF Pro Stack */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", 'Plus Jakarta Sans', system-ui, sans-serif;
-  --font-brand: -apple-system, BlinkMacSystemFont, "SF Pro Display", 'Space Grotesk', var(--font-sans);
-  --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Typography (studio-fonts.css provides the actual families) */
+  --font-sans: 'Instrument Sans', system-ui, sans-serif;
+  --font-brand: 'Bricolage Grotesque', 'Instrument Sans', system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, monospace;
 
   /* ==========================================================================
      macOS Vibrancy & Material System (Sonoma / Sequoia)
@@ -132,76 +130,6 @@
   --macos-window-border: 1px solid rgba(255, 255, 255, 0.09);
   --macos-rim-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
   --macos-shadow-window: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-
-/* ==========================================================================
-   macOS Window Controls (Traffic Lights)
-   ========================================================================== */
-.macos-traffic-lights {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
-  padding: 2px 0;
-}
-
-.traffic-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  position: relative;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  outline: none;
-  padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), filter 0.12s ease;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.25);
-}
-
-.traffic-dot:hover {
-  filter: brightness(1.08);
-}
-
-.traffic-dot:active {
-  transform: scale(0.92);
-  filter: brightness(0.88);
-}
-
-.traffic-dot.close {
-  background: #ff5f56;
-  border-color: #e0443e;
-}
-
-.traffic-dot.minimize {
-  background: #ffbd2e;
-  border-color: #dea123;
-}
-
-.traffic-dot.zoom {
-  background: #27c93f;
-  border-color: #1aab29;
-}
-
-/* Hover glyphs appear like native macOS */
-.traffic-dot .dot-glyph {
-  opacity: 0;
-  transition: opacity 0.1s ease;
-  color: rgba(0, 0, 0, 0.6);
-  font-weight: 800;
-  font-size: 8px;
-  line-height: 1;
-  pointer-events: none;
-  font-family: -apple-system, sans-serif;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.macos-traffic-lights:hover .traffic-dot .dot-glyph {
-  opacity: 1;
 }
 
 /* ==========================================================================
@@ -607,15 +535,6 @@ h4,
   border-radius: 0;
 }
 
-/* Generic Glass Panel fallback */
-.glass-panel {
-  background: var(--bg-surface);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-}
-
 /* ==========================================================================
    Workspace Active Tabs & Brand Underline
    ========================================================================== */
@@ -652,7 +571,7 @@ h4,
 
 .workspace-tab.active {
   color: #ffffff;
-  background: rgba(168, 85, 247, 0.12);
+  background: rgba(255, 255, 255, 0.08);
   font-weight: 600;
 }
 
@@ -866,7 +785,6 @@ h4,
   border-radius: 9999px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  box-shadow: 0 0 10px var(--accent-glow);
 }
 
 /* ==========================================================================
@@ -1149,23 +1067,19 @@ h4,
 
 .status-dot.idle {
   background: var(--color-success);
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
 }
 
 .status-dot.generating {
   background: var(--accent-primary);
-  box-shadow: 0 0 8px rgba(13, 148, 136, 0.7);
   animation: status-pulse 1.6s ease-in-out infinite;
 }
 
 .status-dot.ready {
   background: var(--color-success);
-  box-shadow: 0 0 6px var(--color-success);
 }
 
 .status-dot.error {
   background: var(--color-error);
-  box-shadow: 0 0 6px var(--color-error);
 }
 
 /* ==========================================================================
@@ -1534,12 +1448,10 @@ h4,
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(18, 20, 28, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(20, 184, 166, 0.35);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(20, 184, 166, 0.2);
-  border-radius: var(--radius-asym-card, 22px 8px 24px 14px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-lg);
   padding: 28px 36px;
   display: flex;
   flex-direction: column;
@@ -1691,24 +1603,6 @@ h4,
 
 .segmented-tab.active svg {
   color: #ffffff;
-}
-
-@keyframes pulseSparkle {
-
-  0%,
-  100% {
-    transform: scale(1);
-    filter: drop-shadow(0 0 6px rgba(45, 212, 191, 0.6));
-  }
-
-  50% {
-    transform: scale(1.12);
-    filter: drop-shadow(0 0 14px rgba(45, 212, 191, 0.9));
-  }
-}
-
-.pulse-sparkle {
-  animation: pulseSparkle 2.2s infinite ease-in-out;
 }
 
 /* ==========================================================================
@@ -2167,7 +2061,7 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
 .browser-action-btn:focus-visible,
 .deploy-menu-item:focus-visible,
 .icon-btn:focus-visible {
-  outline: 2px solid var(--accent-light, #818cf8);
+  outline: 2px solid var(--accent-light, #a8c7f6);
   outline-offset: 2px;
 }
 
@@ -2198,21 +2092,6 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
 .panel-resize-handle:focus-visible {
   outline: 2px solid var(--accent-light);
   outline-offset: 2px;
-}
-
-/* ==========================================================================
-   Preview Matrix Code Backdrop (Workspace Showcase)
-   ========================================================================== */
-.preview-matrix-backdrop {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.16;
-  background-image:
-    radial-gradient(circle at center, rgba(9, 10, 15, 0.4) 10%, rgba(9, 10, 15, 0.95) 90%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Ctext x='15' y='25' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.4'%3EK%3C/text%3E%3Ctext x='15' y='60' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.25'%3E9%3C/text%3E%3Ctext x='15' y='95' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.35'%3EF%3C/text%3E%3Ctext x='15' y='130' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.2'%3E2%3C/text%3E%3Ctext x='50' y='18' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.2'%3E7%3C/text%3E%3Ctext x='50' y='52' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.4'%3EJ%3C/text%3E%3Ctext x='50' y='88' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.3'%3EB%3C/text%3E%3Ctext x='50' y='124' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.15'%3EM%3C/text%3E%3Ctext x='85' y='32' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.35'%3EX%3C/text%3E%3Ctext x='85' y='68' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.18'%3EQ%3C/text%3E%3Ctext x='85' y='104' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.4'%3EW%3C/text%3E%3Ctext x='120' y='22' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.25'%3E8%3C/text%3E%3Ctext x='120' y='58' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.35'%3ER%3C/text%3E%3Ctext x='120' y='94' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.2'%3E0%3C/text%3E%3Ctext x='120' y='132' fill='%23ffffff' font-family='monospace' font-size='10' opacity='0.3'%3E%26%3C/text%3E%3C/svg%3E");
-  background-repeat: repeat;
-  z-index: 1;
 }
 
 .message-actions {

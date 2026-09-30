@@ -1,8 +1,8 @@
-import ThemeToggle from './ThemeToggle';
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil } from 'lucide-react';
+import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
+import { setTheme, useTheme } from '../lib/theme';
 import ActionMenu from './ActionMenu';
 import BrainHalfLogo from './BrainHalfLogo';
 
@@ -35,6 +35,7 @@ const TopNav: React.FC<TopNavProps> = ({
   onNewProject,
   creatingProject = false,
 }) => {
+  const theme = useTheme();
   const [overrideName, setOverrideName] = useState<string | null>(null);
   const [prevId, setPrevId] = useState(activeProjectId);
   if (prevId !== activeProjectId) {
@@ -183,51 +184,19 @@ const TopNav: React.FC<TopNavProps> = ({
 
       {/* Appearance and account actions */}
       <div className="top-nav-right-cluster" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
-        {onOpenDashboard && (
-          <button
-            type="button"
-            className="top-nav-dashboard-btn icon-btn"
-            onClick={onOpenDashboard}
-            title="Dashboard"
-            aria-label="Open dashboard"
-          ><LayoutDashboard size={16} strokeWidth={1.7} /></button>
-        )}
-        <a
-          href="/gallery"
-          className="top-nav-gallery-btn icon-btn"
-          title="Gallery — apps built with BrainHalf"
-          aria-label="Open gallery"
-        ><LayoutGrid size={16} strokeWidth={1.7} /></a>
-        <ThemeToggle />
+
 
         <ActionMenu label="User profile and menu" className="studio-account-trigger" items={[
           ...(onOpenDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={15} />, onSelect: onOpenDashboard }] : []),
           { label: 'Gallery', icon: <LayoutGrid size={15} />, onSelect: () => { window.location.assign('/gallery'); } },
           ...(onGoHome ? [{ label: 'Back to home', icon: <Home size={15} />, onSelect: onGoHome }] : []),
+          { label: theme === 'light' ? 'Dark mode' : 'Light mode', icon: theme === 'light' ? <Moon size={15} /> : <Sun size={15} />, onSelect: () => setTheme(theme === 'light' ? 'dark' : 'light') },
           ...(onLogout ? [{ label: 'Sign out', icon: <LogOut size={15} />, onSelect: () => { void onLogout(); }, separator: true }] : []),
         ]}>
           <span className="studio-account-avatar">{userInitial}</span>
           {!isMobile && <span className="studio-account-name">{currentUser?.name || currentUser?.email || 'Account'}</span>}
           <ChevronDown size={13} />
         </ActionMenu>
-        {!isMobile && currentUser?.devMode && (
-          <span
-            title="Anonymous development mode is active on this deployment. Project isolation is disabled."
-            style={{
-              fontSize: '10px',
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              color: 'var(--color-warning)',
-              background: 'rgba(234,179,8,0.1)',
-              border: '1px solid rgba(234,179,8,0.3)',
-              borderRadius: '9999px',
-              padding: '3px 8px',
-            }}
-          >
-            Dev
-          </span>
-        )}
       </div>
 
 

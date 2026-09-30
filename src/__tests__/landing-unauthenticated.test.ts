@@ -61,8 +61,8 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
     );
 
     expect(html).toContain('Inventory tool');
+    expect(html).toContain('Farm records');
     expect(html).toContain('Booking app');
-    expect(html).toContain('Task manager');
     expect(html).toContain('Simple CRM');
   });
 

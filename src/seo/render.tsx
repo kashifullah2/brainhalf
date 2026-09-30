@@ -12,7 +12,7 @@ export const paths = ['/', ...PUBLIC_PAGES.map(page => page.path), ...Object.key
 export function render(path: string) {
   const meta = pageMetadata(path);
   const schema = structuredData(path);
-  const content = path === '/' ? <LandingPage onOpenProject={() => {}} onSubmitInitialPrompt={() => {}} currentUser={null} /> : path === '/gallery' ? <GalleryPage /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
+  const content = path === '/' ? <LandingPage onOpenProject={() => {}} onSubmitInitialPrompt={() => {}} onLoginRequest={() => {}} currentUser={null} /> : path === '/gallery' ? <GalleryPage /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
   const head = [
     `<title>${escape(meta.title)}</title>`,
     `<meta name="description" content="${escape(meta.description)}" />`,

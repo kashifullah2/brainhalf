@@ -100,10 +100,10 @@
 .tracker-badge-completed { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
 .tracker-badge-failed { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
 .tracker-badge-stopped { background: rgba(107, 114, 128, 0.1); color: var(--text-muted); }
-.tracker-badge-running { background: rgba(99, 102, 241, 0.12); color: #818cf8; }
+.tracker-badge-running { background: rgba(54, 89, 217, 0.12); color: #a8c7f6; }
 .tracker-badge-warn { background: rgba(234, 179, 8, 0.12); color: #facc15; }
 .tracker-badge-error { background: rgba(239, 68, 68, 0.12); color: #f87171; }
-.tracker-badge-info { background: rgba(99, 102, 241, 0.08); color: #818cf8; }
+.tracker-badge-info { background: rgba(54, 89, 217, 0.08); color: #a8c7f6; }
 
 /* Pipeline milestones */
 .agent-tracker-pipeline {
@@ -135,7 +135,7 @@
   background: var(--border-subtle);
 }
 
-.pipeline-connector-done { background: var(--accent-light, #6366f1); }
+.pipeline-connector-done { background: var(--accent-light, #3659d9); }
 
 .pipeline-dot {
   width: 11px;
@@ -148,8 +148,8 @@
 }
 
 .pipeline-done .pipeline-dot {
-  background: var(--accent-light, #6366f1);
-  border-color: var(--accent-light, #6366f1);
+  background: var(--accent-light, #3659d9);
+  border-color: var(--accent-light, #3659d9);
 }
 
 .pipeline-label {
@@ -162,7 +162,7 @@
 
 .pipeline-time {
   font-size: 11px;
-  color: var(--accent-light, #6366f1);
+  color: var(--accent-light, #3659d9);
   font-family: var(--font-mono, monospace);
   text-align: center;
 }
@@ -193,7 +193,7 @@
 
 .agent-tracker-nav button[aria-pressed="true"] {
   color: var(--text-primary);
-  border-bottom-color: var(--accent-light, #6366f1);
+  border-bottom-color: var(--accent-light, #3659d9);
   font-weight: 600;
 }
 
@@ -262,7 +262,7 @@
 
 .tracker-event.tracker-event-error   .tracker-event-icon { color: #ef4444; }
 .tracker-event.tracker-event-issue   .tracker-event-icon { color: #f59e0b; }
-.tracker-event.tracker-event-file_write .tracker-event-icon { color: var(--accent-light, #6366f1); }
+.tracker-event.tracker-event-file_write .tracker-event-icon { color: var(--accent-light, #3659d9); }
 .tracker-event.tracker-event-preview .tracker-event-icon { color: #22c55e; }
 
 .tracker-event-body {

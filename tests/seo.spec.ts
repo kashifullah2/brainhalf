@@ -55,7 +55,7 @@ test.describe('versioned theme startup before the application loads', () => {
       });
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       await expect(page.locator('html')).toHaveAttribute('data-theme', scenario.expected);
-      await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', scenario.expected === 'dark' ? '#0d1219' : '#f8f9fc');
+      await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', scenario.expected === 'dark' ? '#161616' : '#f8f9fc');
     });
   }
 });
@@ -117,7 +117,17 @@ for (const path of paths) test(`public HTML and hydration work for ${path}`, asy
   page.on('pageerror', error => problems.push(error.message));
   page.on('console', message => { if (message.type() === 'error') problems.push(message.text()); });
   page.on('request', request => loads.push(request.url()));
-  await page.route('**/*', route => new URL(route.request().url()).hostname === 'localhost' ? route.continue() : route.abort());
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === 'localhost') return route.continue();
+    // The AdSense script is intentionally blocked in tests to avoid external
+    // network calls. Fulfill with empty JS instead of aborting, so the browser
+    // doesn't log a "Failed to load resource" console error.
+    if (url.hostname === 'pagead2.googlesyndication.com') {
+      return route.fulfill({ status: 200, contentType: 'application/javascript', body: '/* ads disabled in test */' });
+    }
+    return route.abort();
+  });
   await page.goto(path);
   await page.waitForLoadState('networkidle');
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);

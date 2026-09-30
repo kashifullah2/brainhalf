@@ -24,7 +24,7 @@ describe('Workspace initialization', () => {
     expect(html).not.toContain('src="/preview/fresh-project/index.html"');
     expect(html).toContain('studio-preview-empty');
     expect(html).toContain('A place for your next idea.');
-    expect(html).toContain('Generate an app in chat before publishing');
+    expect(html).toContain('Generate an app in chat first');
     expect(projectStore.saveProjectFiles).not.toHaveBeenCalled();
   });
 
@@ -37,7 +37,7 @@ describe('Workspace initialization', () => {
 
     expect(html).toContain('Connecting your preview');
     expect(html).toContain('studio-preview-empty');
-    expect(html).toContain('Generate an app in chat before publishing');
+    expect(html).toContain('Generate an app in chat first');
     expect(projectStore.saveProjectFiles).not.toHaveBeenCalled();
   });
 
@@ -50,7 +50,7 @@ describe('Workspace initialization', () => {
     const html = renderToString(React.createElement(Workspace, { activeProjectId: 'legacy-project' }));
 
     expect(html).toContain('Connecting your preview');
-    expect(html).toContain('Generate an app in chat before publishing');
+    expect(html).toContain('Generate an app in chat first');
     expect(files['/src/App.jsx']).toContain('BrainHalf Studio');
     expect(projectStore.saveProjectFiles).not.toHaveBeenCalled();
   });
@@ -65,7 +65,7 @@ describe('Workspace initialization', () => {
     expect(html).toContain('Connecting your preview');
     expect(html).not.toContain('src="/preview/generated-project/index.html"');
     expect(html).not.toContain('studio-preview-empty');
-    expect(html).toContain('title="Open publishing in the project console"');
+    expect(html).toContain('title="Put your app on the web"');
     expect(projectStore.saveProjectFiles).not.toHaveBeenCalled();
   });
 
@@ -75,7 +75,7 @@ describe('Workspace initialization', () => {
       '/src/App.tsx': 'export default function App() { return <h1>Generated TSX</h1>; }',
     });
     const html = renderToString(React.createElement(Workspace, { activeProjectId: 'tsx-project' }));
-    expect(html).toContain('title="Open publishing in the project console"');
+    expect(html).toContain('title="Put your app on the web"');
     expect(html).not.toContain('studio-preview-empty');
   });
 });

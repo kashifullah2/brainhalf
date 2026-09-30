@@ -7,7 +7,7 @@ import {
   Code2, Columns2, Monitor, Loader2,
   Terminal, Copy, Check, FolderCode, Download,
   WrapText, ListFilter,
-  Server, Eye, MoreHorizontal, RotateCcw,
+  Server, Eye, Settings, RotateCcw,
   Share2, Cloud, GitBranch, HelpCircle, ArrowUpRight, PanelLeft, AlertCircle, MessageSquare
 } from 'lucide-react';
 import Editor, { loader } from '@monaco-editor/react';
@@ -34,7 +34,6 @@ import ConfirmModal from './ConfirmModal';
 import BuildProgress, { type FileProgress } from './BuildProgress';
 import GenerationProgress from './GenerationProgress';
 import ProjectConsole from './ProjectConsole';
-import CommandPalette from './CommandPalette';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
@@ -337,7 +336,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   // On project switch, clear undo state (GitHub state resets inside useGithubSync)
   useEffect(() => { setUndoCheckpoint(null); }, [activeProjectId]);
 
-  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [splitView, setSplitView] = useState(false);
 
   const theme = useTheme();
@@ -618,18 +616,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   useEffect(() => {
     if (resolvedActiveTab === 'logs') logsEndRef.current?.scrollIntoView({ block: 'end' });
   }, [buildLogs, resolvedActiveTab]);
-
-  // Cmd+K / Ctrl+K opens the command palette
-  useEffect(() => {
-    const handleCmdK = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setCmdPaletteOpen(prev => !prev);
-      }
-    };
-    document.addEventListener('keydown', handleCmdK);
-    return () => document.removeEventListener('keydown', handleCmdK);
-  }, []);
 
   const handleCreateFile = useCallback((path: string) => {
     if (!path || files[path] !== undefined) return;
@@ -1322,58 +1308,25 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       <div className="workspace-toolbar">
         <div className="studio-workspace-tabs" aria-label="Workspace view" data-mobile={mobileTab !== undefined || undefined}>
           {mobileTab === undefined && <button type="button" onClick={() => selectTab('preview')} aria-pressed={resolvedActiveTab === 'preview'} className={resolvedActiveTab === 'preview' ? 'active' : ''}><Monitor size={15} />Preview</button>}
-          {mobileTab === undefined && <button type="button" onClick={() => selectTab('code')} aria-pressed={resolvedActiveTab === 'code'} className={resolvedActiveTab === 'code' ? 'active' : ''}><Code2 size={15} />Code</button>}
-          {mobileTab === undefined && <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'} className={resolvedActiveTab === 'console' ? 'active' : ''}><Terminal size={15} />Console</button>}
-          {mobileTab === undefined && viewportWidth >= 900 && <button type="button" onClick={() => { setSplitView(v => !v); if (!splitView) setActiveTab('code'); }} aria-pressed={splitView} className={splitView ? 'active' : ''} title={splitView ? 'Exit split view' : 'Split view: code + preview'}><Columns2 size={15} /></button>}
           {mobileTab !== undefined && <span className="studio-mobile-workspace-label">{isEditorTab ? 'Project files' : resolvedActiveTab === 'console' ? 'Console' : resolvedActiveTab === 'logs' ? 'Activity' : 'Your app'}</span>}
           {(isEditorTab || splitView) && <button type="button" className="studio-files-toggle" onClick={() => setFileExplorerOverride(!showFileExplorer)} aria-pressed={showFileExplorer} title={showFileExplorer ? 'Hide project files' : 'Show project files'} aria-label={showFileExplorer ? 'Hide project files' : 'Show project files'}><PanelLeft size={14} /></button>}
         </div>
 
         <div className="studio-workspace-actions">
-          <ActionMenu label="Project actions" className="studio-project-actions" items={[
-            { label: 'Project console', icon: <Server />, onSelect: () => selectTab('console') },
-            { label: 'Download ZIP', icon: <Download />, onSelect: () => { void handleExportZip(); }, disabled: !Object.keys(files).length, separator: true },
-            { label: 'Export to GitHub', icon: <GitBranch />, onSelect: () => github.openModal(), disabled: !Object.keys(files).length },
-            { label: 'Check app for issues', icon: <ListFilter />, onSelect: runReadinessAudit, separator: true },
-            { label: 'App-building guide', icon: <HelpCircle />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
-            { label: 'Reset workspace', icon: <RotateCcw />, onSelect: () => setShowResetConfirm(true), danger: true, separator: true },
-          ]}><MoreHorizontal size={18} /></ActionMenu>
+          <ActionMenu label="Advanced options" className="studio-project-actions" items={[
+            { label: 'View code', icon: <Code2 />, onSelect: () => selectTab('code'), disabled: !Object.keys(files).length },
+            { label: 'Project console', icon: <Server />, onSelect: () => selectTab('console'), separator: true },
+            { label: 'Download ZIP', icon: <Download />, onSelect: () => { void handleExportZip(); }, disabled: !Object.keys(files).length },
+            { label: 'Export to GitHub', icon: <GitBranch />, onSelect: () => github.openModal(), disabled: !Object.keys(files).length, separator: true },
+            { label: 'Help & guides', icon: <HelpCircle />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
+            { label: 'Start over', icon: <RotateCcw />, onSelect: () => setShowResetConfirm(true), danger: true, separator: true },
+          ]}><Settings size={18} /></ActionMenu>
 
-          <button
-            className="studio-share-button"
-            onClick={async () => {
-              const shareUrl = `${window.location.origin}${window.location.pathname}?project=${activeProjectId}`;
-              const ok = await copyText(shareUrl);
-              if (ok) {
-                setShareCopied(true);
-              } else {
-                setShareFallback(shareUrl);
-              }
-            }}
-            style={{
-              background: 'rgba(36, 60, 75, 0.05)',
-              border: '1px solid rgba(36, 60, 75, 0.08)',
-              borderRadius: '8px',
-              padding: '5px 12px',
-              color: 'var(--text-primary)',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-            title="Copy a link that opens this project (requires sign-in)"
-            aria-label="Copy project link"
-          >
-            <Share2 size={14} strokeWidth={1.8} />
-            <span aria-live="polite">{shareCopied ? 'Copied!' : 'Copy link'}</span>
-          </button>
 
           <button
             onClick={() => {
               if (hasGeneratedApp) {
-                setConsoleSectionRequest({ section: 'Publish', nonce: Date.now() });
+                setConsoleSectionRequest({ section: 'Go live', nonce: Date.now() });
                 selectTab('console');
               }
             }}
@@ -1394,11 +1347,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               boxShadow: hasGeneratedApp ? '0 2px 8px var(--focus-ring)' : 'none',
               transition: 'all 0.15s ease'
             }}
-            title={hasGeneratedApp ? "Open publishing in the project console" : "Generate an app in chat before publishing"}
-            aria-label={hasGeneratedApp ? "Open publishing in the project console" : "Generate an app in chat before publishing"}
+            title={hasGeneratedApp ? "Put your app on the web" : "Generate an app in chat first"}
+            aria-label={hasGeneratedApp ? "Put your app on the web" : "Generate an app in chat first"}
           >
             <Cloud size={14} strokeWidth={2} />
-            <span>Publish</span>
+            <span>Go live</span>
           </button>
 
         </div>
@@ -1914,29 +1867,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         )}
       </div>
 
-      <footer className="studio-workspace-footer">
-        <div className="studio-build-meta" aria-label="Build information">
-          <span>{Object.keys(files).length} files</span>
-          {/* No Console button here — the workspace tab bar already has one. */}
-          <button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
-        </div>
-      </footer>
-
       {/* GitHub export modal */}
       {github.modalElement}
 
 
-      <CommandPalette
-        open={cmdPaletteOpen}
-        onClose={() => setCmdPaletteOpen(false)}
-        files={files}
-        onSelectFile={(path) => { setActiveFile(path); selectTab('code'); }}
-        onSwitchTab={selectTab}
-        onExportZip={() => void handleExportZip()}
-        onOpenGithub={() => github.openModal()}
-        onPublish={() => { if (hasGeneratedApp) { setConsoleSectionRequest({ section: 'Publish', nonce: Date.now() }); selectTab('console'); } }}
-        onUndo={undoCheckpoint ? () => void quickUndo() : undefined}
-      />
     </div>
   );
 };

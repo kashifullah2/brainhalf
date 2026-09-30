@@ -120,9 +120,11 @@ describe('single publish UI (duplicate PublishDialog removed)', () => {
     expect(events).not.toContain('open-deploy-modal');
   });
 
-  it('the header Publish button and command palette open the console Publish section', () => {
+  it('the header Go live button opens the console Go live section', () => {
     const workspace = readFileSync(resolve(__dirname, '../components/Workspace.tsx'), 'utf8');
-    expect(workspace).toContain("section: 'Publish'");
+    expect(workspace).toContain("section: 'Go live'");
     expect(workspace).toContain("selectTab('console')");
+    // Command palette removed for farmer-friendly simplicity
+    expect(workspace).not.toContain('CommandPalette');
   });
 });

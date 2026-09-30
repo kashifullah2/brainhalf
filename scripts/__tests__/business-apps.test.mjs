@@ -8,8 +8,8 @@ test('the initial live smoke check uses exactly the default model unless all mod
   assert.deepEqual(selectedModels([]).map(model => model.name), [DEFAULT_MODEL_ID]);
   assert.ok(selectedModels(['--all-models']).length > 1);
 });
-test('five domain acceptance prompts require persistent data, real identity and independent verification', () => {
-  assert.deepEqual(BUSINESS_APPS.map(app => app.id), ['inventory', 'booking', 'crm', 'tasks', 'portal']);
+test('six domain acceptance prompts require persistent data, real identity and independent verification', () => {
+  assert.deepEqual(BUSINESS_APPS.map(app => app.id), ['inventory', 'farm', 'booking', 'crm', 'tasks', 'portal']);
   for (const app of BUSINESS_APPS) {
     const prompt = businessValidationPrompt(app, 'Acceptance app');
     assert.match(prompt, /managed authentication/); assert.match(prompt, /direct D1 assertions/);

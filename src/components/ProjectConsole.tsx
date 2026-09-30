@@ -28,24 +28,24 @@ import './ProjectConsole.css';
 // Grouped by intent so non-technical users see three jobs — ship it, run it,
 // manage it — with plain-language names instead of engineering jargon.
 const sectionGroups = [
-  { label: 'Ship', hint: 'Put your app on the internet', sections: ['Publish', 'Domain'] },
-  { label: 'Run', hint: "Your app's data, files and activity", sections: ['Database', 'Files', 'Users & email', 'Monitoring'] },
-  { label: 'Manage', hint: 'Versions, usage and project settings', sections: ['App versions', 'AI usage', 'App spaces', 'Project settings'] },
+  { label: 'Ship', hint: 'Put your app on the internet', sections: ['Go live', 'Web address'] },
+  { label: 'Run', hint: "Your app's data, files and activity", sections: ['Data', 'Files', 'People', 'Monitoring'] },
+  { label: 'Manage', hint: 'Versions, usage and project settings', sections: ['History', 'Usage', 'My live apps', 'Settings'] },
 ] as const;
 const sections = sectionGroups.flatMap(group => group.sections);
 type Section = typeof sections[number];
 
 const sectionHelp: Record<Section, string> = {
-  Publish: 'Test your app, then put it on the internet for visitors.',
-  Domain: 'Use your own web address (like www.yourbusiness.com) for the live app.',
-  Database: 'See and edit the information your app saves.',
+  'Go live': 'Test your app, then put it on the internet for visitors.',
+  'Web address': 'Use your own web address (like www.yourbusiness.com) for the live app.',
+  'Data': 'See and edit the information your app saves.',
   Files: 'Files that people uploaded through your app.',
-  'Users & email': 'How people sign in, and the emails your app sends.',
+  'People': 'How people sign in, and the emails your app sends.',
   Monitoring: 'How your app is doing: usage, problems, and speed.',
-  'App versions': 'Saved versions of your app you can go back to.',
-  'AI usage': 'How much builder work this project has used.',
-  'Project settings': 'Your past requests and advanced builder settings.',
-  'App spaces': `Your ${HOSTED_APP_LIMIT} app spaces. Remove apps you no longer use to make room.`,
+  'History': 'Saved versions of your app you can go back to.',
+  'Usage': 'How much builder work this project has used.',
+  'Settings': 'Your past requests and advanced builder settings.',
+  'My live apps': `Your ${HOSTED_APP_LIMIT} app spaces. Remove apps you no longer use to make room.`,
 };
 
 const JOB_LABELS: Record<JobKind, string> = {
@@ -80,13 +80,19 @@ function Step({ number, title, help, state, children }: { number: number; title:
 }
 
 export default function ProjectConsole({ projectId, files, onClose, sectionRequest }: { projectId: string; files: SourceFiles; onClose: () => void; sectionRequest?: { section: string; nonce: number } | null }) {
-  const [section, setSection] = useState<Section>('Publish');
+  const [section, setSection] = useState<Section>('Go live');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   // Lets the workspace header jump straight to a console section (e.g. the
-  // header "Publish" button opens the Publish section). The nonce makes
+  // header "Go live" button opens the Go live section). The nonce makes
   // repeat requests fire even when the section name is unchanged.
   useEffect(() => {
     if (sectionRequest && (sections as string[]).includes(sectionRequest.section)) {
       setSection(sectionRequest.section as Section);
+      // If requesting an advanced section, show the advanced groups
+      const advancedSections = ['Data', 'Files', 'People', 'Monitoring', 'History', 'Usage', 'My live apps', 'Settings'];
+      if (advancedSections.includes(sectionRequest.section)) {
+        setShowAdvanced(true);
+      }
       setError('');
     }
   }, [sectionRequest]);
@@ -172,7 +178,7 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
     : !revision ? 'Save a version of your app first (Ship → Build your app).'
     : busy ? 'Please wait a moment and try again.'
     : 'The build service is getting ready. Try again in a moment.';
-  const hostedSection = ['Database', 'Files', 'Users & email', 'Monitoring'].includes(section);
+  const hostedSection = ['Data', 'Files', 'People', 'Monitoring'].includes(section);
 
   return <div className="project-console-page"><div ref={dialogRef} className="project-console" role="dialog" aria-modal="true" aria-labelledby="project-console-title" tabIndex={-1}>
     <header>
@@ -182,16 +188,38 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
       </div>
       <button type="button" aria-label="Close project console" disabled={busy} onClick={onClose}><X size={20} /></button>
     </header>
-    <nav aria-label="Project console sections">{sectionGroups.map(group => (
-      <div className="console-nav-group" key={group.label}>
-        <span className="console-nav-label" title={group.hint}>{group.label}</span>
-        <div className="console-nav-buttons" role="group" aria-label={group.label}>
-          {group.sections.map(value => <button type="button" key={value} aria-pressed={section === value} disabled={busy} onClick={() => { setSection(value as Section); setError(''); }}>{value}</button>)}
+    <nav aria-label="Project console sections">
+      {/* Ship group always visible - the farmer's main job */}
+      {sectionGroups.filter(g => g.label === 'Ship').map(group => (
+        <div className="console-nav-group" key={group.label}>
+          <span className="console-nav-label" title={group.hint}>{group.label}</span>
+          <div className="console-nav-buttons" role="group" aria-label={group.label}>
+            {group.sections.map(value => <button type="button" key={value} aria-pressed={section === value} disabled={busy} onClick={() => { setSection(value as Section); setError(''); }}>{value}</button>)}
+          </div>
         </div>
+      ))}
+      {/* Advanced toggle for Run/Manage groups */}
+      <div className="console-nav-group">
+        <button
+          type="button"
+          className="console-advanced-toggle"
+          onClick={() => setShowAdvanced(v => !v)}
+          aria-expanded={showAdvanced}
+        >
+          {showAdvanced ? 'Hide advanced' : 'Show advanced'}
+        </button>
       </div>
-    ))}</nav>
+      {showAdvanced && sectionGroups.filter(g => g.label !== 'Ship').map(group => (
+        <div className="console-nav-group" key={group.label}>
+          <span className="console-nav-label" title={group.hint}>{group.label}</span>
+          <div className="console-nav-buttons" role="group" aria-label={group.label}>
+            {group.sections.map(value => <button type="button" key={value} aria-pressed={section === value} disabled={busy} onClick={() => { setSection(value as Section); setError(''); }}>{value}</button>)}
+          </div>
+        </div>
+      ))}
+    </nav>
     <main>
-      {(section === 'Publish' || hostedSection) && (
+      {(section === 'Go live' || hostedSection) && (
         <div className="console-environment" role="group" aria-label="Environment">
           <button type="button" aria-pressed={environment === 'development'} disabled={busy} onClick={() => { setEnvironment('development'); setError(''); }}>Test</button>
           <button type="button" aria-pressed={environment === 'production'} disabled={busy} onClick={() => { setEnvironment('production'); setError(''); }}>Live</button>
@@ -200,14 +228,14 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
       )}
       {error && <p role="alert" className="settings-error">
         {isHostedLimitError(error)
-          ? <>All {HOSTED_APP_LIMIT} of your app spaces are in use, so this can’t start. <button type="button" className="button-ghost" onClick={() => { setError(''); setSection('App spaces'); }}>Choose an app to remove</button></>
+          ? <>All {HOSTED_APP_LIMIT} of your app spaces are in use, so this can’t start. <button type="button" className="button-ghost" onClick={() => { setError(''); setSection('My live apps'); }}>Choose an app to remove</button></>
           : error}
       </p>}
-      {(section === 'Publish' || hostedSection) && <>
+      {(section === 'Go live' || hostedSection) && <>
         {(runtime.error || !hostingReady) && <p role="status" className="settings-notice">{runtime.error || status?.availability?.message || 'Checking hosting availability…'}{runtime.error && <button type="button" className="button-ghost" onClick={runtime.refresh}>Retry connection</button>}</p>}
       </>}
-      {section === 'Publish' && <>
-        <PublicationControls key={projectId} projectId={projectId} files={files} onManage={() => { setEnvironment('production'); setSection('Users & email'); }} onOpenHostedSlots={() => setSection('App spaces')} />
+      {section === 'Go live' && <>
+        <PublicationControls key={projectId} projectId={projectId} files={files} onManage={() => { setEnvironment('production'); setSection('People'); }} onOpenHostedSlots={() => setSection('My live apps')} />
         <GalleryListing projectId={projectId} />
         {fullStack && <section className="settings-card">
           <h3>Get your app ready</h3>
@@ -265,15 +293,15 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
           <p className="settings-muted">Ready for visitors? Use Publish above to put this version on your public address.</p>
         </section>}
       </>}
-      {hostingReady && section === 'Database' && <ProjectDatabase key={environment} projectId={projectId} environment={environment} onChanged={refresh} />}
+      {hostingReady && section === 'Data' && <ProjectDatabase key={environment} projectId={projectId} environment={environment} onChanged={refresh} />}
       {hostingReady && section === 'Files' && <ProjectFiles key={environment} projectId={projectId} environment={environment} onChanged={refresh} />}
-      {hostingReady && section === 'Users & email' && <div key={environment}><ProjectServices projectId={projectId} environment={environment} connectionsVersion={String(connectionsVersion)} /><ProjectConnections projectId={projectId} environment={environment} onChanged={() => { setConnectionsVersion(value => value + 1); refresh(); }} /></div>}
+      {hostingReady && section === 'People' && <div key={environment}><ProjectServices projectId={projectId} environment={environment} connectionsVersion={String(connectionsVersion)} /><ProjectConnections projectId={projectId} environment={environment} onChanged={() => { setConnectionsVersion(value => value + 1); refresh(); }} /></div>}
       {hostingReady && section === 'Monitoring' && <ProjectMonitor key={environment} projectId={projectId} environment={environment} />}
-      {section === 'App versions' && <ProjectHistory projectId={projectId} />}
-      {section === 'AI usage' && <ProjectAgentUsage projectId={projectId} />}
-      {section === 'App spaces' && <ProjectHostedSlots projectId={projectId} />}
-      {section === 'Domain' && <CustomDomainSettings projectId={projectId} productionUrl={production.status?.productionUrl} />}
-      {section === 'Project settings' && <ProjectGrowthHub projectId={projectId} />}
+      {section === 'History' && <ProjectHistory projectId={projectId} />}
+      {section === 'Usage' && <ProjectAgentUsage projectId={projectId} />}
+      {section === 'My live apps' && <ProjectHostedSlots projectId={projectId} />}
+      {section === 'Web address' && <CustomDomainSettings projectId={projectId} productionUrl={production.status?.productionUrl} />}
+      {section === 'Settings' && <ProjectGrowthHub projectId={projectId} />}
     </main>
     <ConfirmModal isOpen={!!confirmation} title="Make this version live?" message="Your app switches to this version right away. Saved information stays as it is; a version that needs a different data layout will not apply." confirmLabel="Make live" pending={busy} error={error || undefined} onCancel={() => { if (!busy) setConfirmation(null); }} onConfirm={() => void perform(async () => {
       if (!confirmation) return;

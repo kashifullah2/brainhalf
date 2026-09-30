@@ -59,7 +59,7 @@
 .landing-breadcrumb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Shared section furniture */
-.studio-section-label { margin: 0 0 15px; color: var(--studio-muted); font: 10px/1.6 var(--font-mono); font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; }
+.studio-section-label { margin: 0 0 15px; color: var(--studio-muted); font: 10px/1.6 var(--font-mono); font-weight: 500; letter-spacing: 1.5px; }
 .landing-container h2 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(30px, 3.6vw, 42px); line-height: 1.15; letter-spacing: -1.1px; margin: 0; text-wrap: balance; }
 .landing-section-intro { max-width: 640px; margin-bottom: 44px; }
 .landing-section-lede { margin: 18px 0 0; color: var(--studio-muted); font-size: 15px; line-height: 1.75; text-wrap: pretty; }
