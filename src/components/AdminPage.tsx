@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Users, BadgeCheck, Activity, FolderKanban, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
+import MobileNav from './MobileNav';
 import { authFetch } from '../lib/auth-client';
 import './AdminPage.css';
 
@@ -116,6 +117,11 @@ export default function AdminPage() {
           <a href="#health">Product health</a>
           <a href="#accounts">Accounts</a>
         </nav>
+        <MobileNav links={[
+          { href: '#overview', label: 'Overview' },
+          { href: '#health', label: 'Product health' },
+          { href: '#accounts', label: 'Accounts' },
+        ]} />
         <SiteHeaderActions />
       </div>
     </header>

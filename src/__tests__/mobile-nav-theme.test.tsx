@@ -14,6 +14,7 @@ import ThemeToggle from '../components/ThemeToggle';
 import MobileNav from '../components/MobileNav';
 import PublicPage from '../components/PublicPage';
 import GalleryPage from '../components/GalleryPage';
+import AdminPage from '../components/AdminPage';
 
 describe('ThemeToggle hydration safety', () => {
   it('renders the light-theme markup on first paint even when the theme is dark', () => {
@@ -48,6 +49,12 @@ describe('interior page mobile navigation', () => {
 
   it('GalleryPage renders the hamburger menu button', () => {
     const html = renderToStaticMarkup(<GalleryPage />);
+    expect(html).toContain('landing-mobile-menu-btn');
+    expect(html).toContain('aria-label="Open menu"');
+  });
+
+  it('AdminPage renders the hamburger menu button (its nav hides under 720px)', () => {
+    const html = renderToStaticMarkup(<AdminPage />);
     expect(html).toContain('landing-mobile-menu-btn');
     expect(html).toContain('aria-label="Open menu"');
   });
