@@ -33,7 +33,9 @@
 /* ---- The one public navbar (SiteNavbar). The older .landing-header rules
    stay for the app-internal pages (Dashboard, Gallery, Account, Admin). ---- */
 .site-navbar,
-.landing-header { max-width: 1280px; min-height: 68px; margin: auto; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; z-index: 120; background: color-mix(in srgb, var(--studio-paper) 88%, transparent); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); }
+.landing-header { --site-nav-h: 68px; max-width: 1280px; min-height: var(--site-nav-h); margin: auto; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; z-index: 120; background: color-mix(in srgb, var(--studio-paper) 88%, transparent); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); transition: min-height 200ms ease, background 200ms ease; }
+/* Condensed on scroll: slimmer bar, deeper blur. Toggled by SiteNavbar. */
+.site-navbar.site-navbar-condensed { --site-nav-h: 54px; background: color-mix(in srgb, var(--studio-paper) 94%, transparent); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08); }
 .site-navbar-right,
 .landing-header-left, .landing-header-right, .landing-auth-buttons { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .site-brand,
@@ -50,7 +52,7 @@
 .studio-navigation a:hover { color: var(--studio-ink); background: var(--bg-surface-hover); }
 .landing-signin-btn { min-height: 44px; padding: 8px 0; border: 0; background: none; color: var(--studio-ink); font-size: 13px; font-weight: 500; }
 .landing-mobile-menu-btn { display: none; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--border-subtle); border-radius: 8px; background: none; color: var(--studio-ink); cursor: pointer; }
-.landing-mobile-nav { position: fixed; top: 68px; left: 0; right: 0; z-index: 200; background: var(--studio-paper); border-bottom: 1px solid var(--border-subtle); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.landing-mobile-nav { position: fixed; top: var(--site-nav-h, 68px); left: 0; right: 0; z-index: 200; background: var(--studio-paper); border-bottom: 1px solid var(--border-subtle); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
 .landing-mobile-nav nav { display: flex; flex-direction: column; padding: 8px 20px 16px; gap: 0; }
 .landing-mobile-nav nav a { display: block; padding: 14px 0; font-size: 15px; font-weight: 500; color: var(--studio-ink); border-bottom: 1px solid var(--border-subtle); transition: color 150ms; }
 .landing-mobile-nav nav a:last-child { border-bottom: none; }
@@ -83,36 +85,7 @@
 .landing-text-cta { display: inline-flex; align-items: center; gap: 10px; margin-top: 36px; padding: 8px 0; font-size: 14px; font-weight: 600; color: var(--studio-blue); }
 .landing-text-cta:hover { text-decoration: underline; text-underline-offset: 4px; }
 
-/* Hero — one clear message, the composer, then the real product. */
-.landing-hero { padding: 84px 0 40px; }
-.landing-hero-copy { max-width: 760px; margin: 0 auto; text-align: center; }
-.landing-hero-eyebrow { display: inline-flex; align-items: center; gap: 7px; margin: 0 0 24px; color: var(--studio-muted); font-size: 13px; font-weight: 500; }
-.landing-hero-eyebrow svg { color: var(--color-success, var(--studio-blue)); flex-shrink: 0; }
-.landing-hero-copy h1 { margin: 0; font: 400 clamp(46px, 6vw, 76px)/1.05 var(--font-brand); letter-spacing: -2.6px; text-wrap: balance; }
-.landing-hero-description { max-width: 560px; margin: 24px auto 32px; color: var(--text-secondary); font-size: 17px; line-height: 1.75; text-wrap: pretty; }
-.landing-prompt-box { display: flex; flex-direction: column; width: 100%; max-width: 640px; margin: 0 auto; padding: 20px; background: var(--studio-white); border: 1px solid var(--border-medium); border-radius: 16px; box-shadow: var(--desk-shadow); text-align: left; transition: border-color 150ms, box-shadow 150ms; }
-.landing-prompt-box:focus-within { border-color: var(--studio-blue); box-shadow: 0 0 0 3px var(--focus-ring); }
-.landing-input-label { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-.landing-prompt-textarea { min-width: 0; width: 100%; min-height: 86px; max-height: 180px; padding: 3px 4px 12px; border: 0; resize: none; outline: none; background: transparent; color: var(--studio-ink); font: 16px/26px var(--font-sans); }
-.landing-prompt-textarea::placeholder { color: var(--studio-muted); opacity: 1; }
-.landing-prompt-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
-.landing-prompt-actions > span { display: flex; align-items: center; gap: 6px; color: var(--studio-muted); font-size: 11px; }
-.landing-submit-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; padding: 0 15px; border: 0; border-radius: 9px; background: var(--brand-solid); color: var(--brand-on-solid); font-size: 12px; font-weight: 600; transition: background 150ms; }
-.landing-submit-btn:disabled { background: var(--studio-wash); color: var(--studio-muted); cursor: not-allowed; }
-.landing-submit-btn:not(:disabled):hover { background: var(--brand-solid-hover); }
-
-/* The real workspace, framed like a product shot. */
-.landing-hero-shot { margin: 64px 0 0; }
-.landing-browser-frame { overflow: hidden; border: 1px solid var(--border-medium); border-radius: 16px; background: #101010; box-shadow: var(--shot-shadow); }
-.landing-browser-bar { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--frame-bar); border-bottom: 1px solid var(--border-subtle); }
-.landing-browser-dots { display: flex; gap: 7px; }
-.landing-browser-dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--border-medium); }
-.landing-browser-dots i:first-child { background: #e0655a; }
-.landing-browser-dots i:nth-child(2) { background: #e0a93e; }
-.landing-browser-dots i:nth-child(3) { background: #4cc38a; }
-.landing-browser-url { font-size: 12px; color: var(--studio-muted); font-weight: 500; }
-.landing-browser-frame img { display: block; width: 100%; height: auto; }
-.landing-hero-shot figcaption { margin-top: 18px; text-align: center; color: var(--studio-muted); font-size: 13px; }
+/* (The hero lives in LandingHero.css now.) */
 
 /* Examples — the interactive showcase, starting ideas, and who it's for. */
 .landing-examples { padding: 110px 0; }
@@ -193,7 +166,6 @@
  .landing-footer-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
  .landing-footer-brand-col { grid-column: 1 / -1; }
  .landing-footer-tagline { max-width: 420px; }
- .landing-hero { padding: 64px 0 32px; }
  .landing-steps { grid-template-columns: 1fr; gap: 32px; }
  .landing-included { grid-template-columns: repeat(2, minmax(0, 1fr)); }
  .landing-included li:nth-child(3) { padding-left: 0; border-left: 0; }
@@ -204,7 +176,7 @@
  .landing-examples { padding: 80px 0; }
 }
 @media (max-width: 640px) {
- .site-navbar, .landing-header { min-height: 72px; padding: 0 20px; gap: 12px; }
+ .site-navbar, .landing-header { --site-nav-h: 72px; min-height: var(--site-nav-h); padding: 0 20px; gap: 12px; }
  .site-navbar-right, .landing-header-right, .landing-auth-buttons { gap: 10px; }
  .landing-main-content, .landing-footer { margin-left: 20px; margin-right: 20px; }
  .site-nav, .studio-navigation { display: none; }
@@ -216,16 +188,6 @@
  .landing-get-started-btn { gap: 7px; padding: 9px 12px; min-height: 40px; font-size: 12px; }
  .landing-get-started-btn svg { display: none; }
  .landing-user-menu-email { display: none; }
- .landing-hero { padding: 48px 0 24px; }
- .landing-hero-copy h1 { font-size: clamp(40px, 10.7vw, 58px); letter-spacing: -1.8px; }
- .landing-hero-description { font-size: 15px; margin: 20px auto 26px; }
- .landing-prompt-box { padding: 14px; border-radius: 14px; }
- .landing-prompt-textarea { min-height: 80px; }
- .landing-prompt-actions > span { font-size: 10px; gap: 4px; }
- .landing-prompt-actions > span svg { display: none; }
- .landing-submit-btn { padding: 0 12px; }
- .landing-hero-shot { margin-top: 44px; }
- .landing-browser-frame { border-radius: 12px; }
  .landing-container h2 { font-size: 30px; letter-spacing: -.8px; }
  .landing-examples { padding: 72px 0; }
  .landing-workflow { padding-bottom: 72px; }

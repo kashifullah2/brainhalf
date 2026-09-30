@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import MobileNav, { type MobileNavLink } from './MobileNav';
 import SiteHeaderActions, { type HeaderUser } from './SiteHeaderActions';
@@ -34,6 +34,17 @@ export const SiteNavbar: React.FC<SiteNavbarProps> = ({
   hideDashboard = false,
   onBrandClick,
 }) => {
+  const [condensed, setCondensed] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+
+  // Condense the sticky nav once the page scrolls: slimmer bar, deeper blur.
+  useEffect(() => {
+    const onScroll = () => setCondensed(window.scrollY > 24);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const handleBrandClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (onBrandClick) {
       event.preventDefault();
@@ -42,7 +53,7 @@ export const SiteNavbar: React.FC<SiteNavbarProps> = ({
   };
 
   return (
-    <header className="site-navbar">
+    <header ref={headerRef} className={`site-navbar${condensed ? ' site-navbar-condensed' : ''}`}>
       <a
         className="site-brand"
         href="/"

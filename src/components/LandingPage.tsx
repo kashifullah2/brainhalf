@@ -1,5 +1,5 @@
 import { BUSINESS_APPS } from '../lib/business-apps';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ArrowRight,
   Plus,
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import SiteNavbar from './SiteNavbar';
 import LandingFooter from './LandingFooter';
+import LandingHero from './LandingHero';
 import LandingShowcase from './LandingShowcase';
 import { HOME_FAQS, HOME_MODIFIED, formatContentDate } from '../seo/content';
 import './LandingPage.css';
@@ -76,13 +77,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    const input = textareaRef.current;
-    if (!input) return;
-    input.style.height = 'auto';
-    input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
-  }, [promptText]);
-
   const handlePromptSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (creatingProject) return;
@@ -134,59 +128,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Hero */}
       <main className="landing-main-content" id="main-content" tabIndex={-1}>
-        <section className="landing-hero" aria-labelledby="hero-heading">
-          <div className="landing-hero-copy">
-            <p className="landing-hero-eyebrow">
-              <Check size={13} aria-hidden="true" /> AI app builder for small businesses
-            </p>
-            <h1 id="hero-heading">From a sentence<br />to working software.</h1>
-            <p className="landing-hero-description">
-              Tell us what your business needs, in your own words. BrainHalf builds the app
-              and puts it on the web for you — then refines it with you, in plain words.
-              No coding, no technical skills needed.
-            </p>
-            <form className="landing-prompt-box" id="start-building" onSubmit={handlePromptSubmit}>
-              <label htmlFor="app-idea" className="landing-input-label">Describe your app</label>
-              <textarea
-                id="app-idea"
-                ref={textareaRef}
-                className="landing-prompt-textarea"
-                placeholder="A crop tracker for my wheat farm, with harvest reminders…"
-                aria-describedby="prompt-help"
-                value={promptText}
-                onChange={event => setPromptText(event.target.value)}
-                onKeyDown={handleKeyDown}
-                rows={3}
-              />
-              <div className="landing-prompt-actions">
-                <span id="prompt-help"><Check size={13} aria-hidden="true" /> Free to start &nbsp;·&nbsp; No coding required</span>
-                <button
-                  type="submit"
-                  className="landing-submit-btn"
-                  disabled={!promptText.trim() || creatingProject}
-                  title="Start building (Enter)"
-                >
-                  <span>{creatingProject ? 'Creating…' : 'Start building'}</span><ArrowRight size={16} aria-hidden="true" />
-                </button>
-              </div>
-            </form>
-          </div>
-          <figure className="landing-hero-shot">
-            <div className="landing-browser-frame">
-              <div className="landing-browser-bar" aria-hidden="true">
-                <span className="landing-browser-dots"><i /><i /><i /></span>
-                <span className="landing-browser-url">The BrainHalf workspace</span>
-              </div>
-              <img
-                src="/images/landing-workspace.png"
-                alt="The BrainHalf workspace: a chat with the AI builder on the left and the app being built on the right"
-                width={1440}
-                height={684}
-              />
-            </div>
-            <figcaption>The real workspace — describe on the left, watch your app take shape on the right.</figcaption>
-          </figure>
-        </section>
+      <LandingHero
+        promptText={promptText}
+        onPromptTextChange={setPromptText}
+        textareaRef={textareaRef}
+        creatingProject={creatingProject}
+        onPromptSubmit={handlePromptSubmit}
+        onPromptKeyDown={handleKeyDown}
+        onFocusComposer={focusComposer}
+      />
 
         {/* Examples — real apps, and who they're for */}
         <section className="landing-examples" id="examples" aria-labelledby="examples-heading">
