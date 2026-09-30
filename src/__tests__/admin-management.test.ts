@@ -97,10 +97,16 @@ describe('Admin project and user management', () => {
     expect((await registry.fetch(new Request('https://registry/admin/users/' + 'x'.repeat(200), { method: 'DELETE' }))).status).toBe(400);
   });
 
-  it('hard-delete still removes the registry row when storage cleanup fails', async () => {
+  it('hard-delete keeps the registry row when storage cleanup fails, and succeeds on retry', async () => {
     env.RUNTIME.fetch = vi.fn(async () => new Response('busy', { status: 500 }));
-    const res = await registry.fetch(new Request('https://registry/admin/projects/proj-two', { method: 'DELETE' }));
-    expect(res.status).toBe(200);
+    const failed = await registry.fetch(new Request('https://registry/admin/projects/proj-two', { method: 'DELETE' }));
+    expect(failed.status).toBe(500);
+    const body = await failed.json() as { failedSteps?: string[] };
+    expect(JSON.stringify(body.failedSteps)).toContain('runtime');
+    expect(database.prepare('SELECT * FROM project_owners WHERE project_id = ?').all('proj-two')).toHaveLength(1);
+    env.RUNTIME.fetch = vi.fn(async () => Response.json({ ok: true }));
+    const retried = await registry.fetch(new Request('https://registry/admin/projects/proj-two', { method: 'DELETE' }));
+    expect(retried.status).toBe(200);
     expect(database.prepare('SELECT * FROM project_owners WHERE project_id = ?').all('proj-two')).toHaveLength(0);
   });
 });

@@ -402,15 +402,25 @@ export class AuthRegistry {
         if (!rows.length) return this.json(404, { error: 'Project not found' });
         const ownerId = rows[0].user_id;
         const deps = this.cleanupDependencies();
+        // Storage must be erased BEFORE the registry row is removed. If any
+        // cleanup step fails the row is kept (and a 5xx returned) so the id
+        // stays owned and the delete can be retried — deleting the row anyway
+        // would orphan the Durable Object storage/R2 backups and free the id
+        // for reclaim by another user.
+        const failedSteps: string[] = [];
         try {
           await deps.removeRuntime(projectId, ownerId);
-        } catch (err) { console.error('Admin hard delete: runtime removal failed:', (err as Error)?.message); }
+        } catch (err) { failedSteps.push(`runtime: ${(err as Error)?.message}`); }
         try {
           await deps.eraseAgent(projectId, ownerId);
-        } catch (err) { console.error('Admin hard delete: agent erase failed:', (err as Error)?.message); }
+        } catch (err) { failedSteps.push(`agent: ${(err as Error)?.message}`); }
         try {
           await deps.removeBackups(projectId);
-        } catch (err) { console.error('Admin hard delete: backup removal failed:', (err as Error)?.message); }
+        } catch (err) { failedSteps.push(`backups: ${(err as Error)?.message}`); }
+        if (failedSteps.length > 0) {
+          console.error(`Admin hard delete failed for project ${projectId} (owner ${ownerId}); registry row kept. Failures: ${failedSteps.join('; ')}`);
+          return this.json(500, { error: 'Project cleanup failed; the project was not deleted.', failedSteps });
+        }
         this.state.storage.transactionSync(() => {
           this.sql.exec('DELETE FROM project_owners WHERE project_id = ?', projectId);
           // The cleanup queue table is created by ProjectCleanup's constructor;
