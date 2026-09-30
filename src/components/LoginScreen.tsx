@@ -93,7 +93,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
       </div>
       <div className="studio-auth-heading">
         <h1 id="login-title">{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
-        <p>{mode === 'login' ? 'Sign in to continue building' : 'Start building for free'}</p>
+        <p>{mode === 'login' ? 'Sign in to keep working on your app' : 'Start making your app for free'}</p>
       </div>
       <div className="studio-auth-tabs" role="tablist" aria-label="Authentication mode">
         {(['login', 'signup'] as Mode[]).map((item, index) => <button type="button" key={item} id={`auth-tab-${item}`} role="tab" aria-controls="auth-panel" aria-selected={mode === item} tabIndex={mode === item ? 0 : -1} disabled={!!busy}

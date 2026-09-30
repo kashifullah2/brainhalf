@@ -36,10 +36,10 @@ import { reconcileWorkspaceSnapshot } from '../lib/workspace-reconciliation';
 import { getReliabilityControls, pushUsageEvent, savePromptVersion, setOnboardingState } from '../lib/project-growth';
 
 const STARTER_PROMPTS = [
-  { title: 'Full-Stack E-commerce Store', desc: 'React frontend with an Express API for products & cart' },
-  { title: 'Real-time Chat App', desc: 'React UI with a WebSocket backend and user presence' },
-  { title: 'SaaS Dashboard with Auth', desc: 'Full-stack metrics dashboard with simulated authentication' },
-  { title: 'Interactive Kanban Board', desc: 'Drag-and-drop tasks with column states & tags' },
+  { title: 'Online Store', desc: 'A shop with products, a cart, and checkout' },
+  { title: 'Real-time Chat App', desc: 'Messages that arrive instantly, with online presence' },
+  { title: 'Business Dashboard', desc: 'Metrics at a glance, with sign-in' },
+  { title: 'Kanban Board', desc: 'Drag-and-drop tasks with columns and tags' },
 ];
 
 interface ModelDef {
@@ -1028,12 +1028,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             snapshotRetries = 0;
             beginSnapshot();
           } else if (data.type === 'files_snapshot' && data.protocol !== 2) {
-            reportSnapshotError('The server does not support safe snapshot synchronization; existing files were preserved. Reload after the server is updated.');
+            reportSnapshotError('Your files couldn’t be synced safely, so they were left untouched. Reload once the service is updated.');
           } else if (data.type === 'files_snapshot_stale' && snapshots.matches(data.requestId)) {
             if (snapshotRetries++ < 3) beginSnapshot();
-            else reportSnapshotError('Workspace changed repeatedly during synchronization; existing files were preserved.');
+            else reportSnapshotError('Your files kept changing while syncing, so they were left untouched.');
           } else if (data.type === 'files_snapshot_error' && snapshots.matches(data.requestId)) {
-            reportSnapshotError('Workspace synchronization failed; existing files were preserved.');
+            reportSnapshotError('Your workspace couldn’t be synced; your files are safe.');
           } else if (data.type === 'files_snapshot') {
             try {
               const restoringConnection = syncMode === 'snapshot-v2' && !workspaceReadyRef.current;
@@ -1069,7 +1069,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     awaitingLocalSync = false;
                     writeInFlight = false;
                     workspaceWritePendingRef.current = false;
-                    reportSnapshotError('Saving local files timed out; local files were preserved. Reconnect before continuing.');
+                    reportSnapshotError('Saving your files timed out, but nothing was lost. Reconnect before continuing.');
                   }, WS_SNAPSHOT_SYNC_TIMEOUT);
                 };
                 if (restoringConnection && initialWorkspaceEmpty && reconciled.hasLocalChanges) {
@@ -1081,7 +1081,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 } else applyServerFiles();
               }
             } catch (error) {
-              reportSnapshotError(error instanceof Error ? error.message : 'Invalid workspace snapshot');
+              reportSnapshotError(error instanceof Error ? error.message : 'The file update couldn’t be read.');
             }
           } else if (data.type === 'trigger-auto-reply') {
             // Server detected a truncated generation (<file> block left open by
@@ -1166,7 +1166,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           setHistoryLoaded(true);
           appEvents.emit('generation-status', {
             status: 'Error',
-            error: 'Connection to workspace session lost. Please refresh the page.',
+            error: 'Connection lost. Please refresh the page.',
             projectId: activeProjectId,
           });
           return;
@@ -1236,10 +1236,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         pendingSendRef.current = null;
         setIsGenerating(false);
         isGeneratingRef.current = false;
-        appEvents.emit('generation-status', { status: 'Error', error: 'Network disconnected' });
+        appEvents.emit('generation-status', { status: 'Error', error: 'Internet disconnected' });
         const interruptedMessages: Message[] = [
           ...messagesRef.current,
-          { role: 'ai', content: 'Network disconnected. Generation interrupted.' },
+          { role: 'ai', content: 'Your internet disconnected, so the request stopped.' },
         ];
         messagesRef.current = interruptedMessages;
         setMessages(interruptedMessages);
@@ -1464,7 +1464,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       pendingSendRef.current = null;
       setIsGenerating(false); isGeneratingRef.current = false;
       generationClockRef.current?.finish('failed');
-      const error = 'The workspace did not become ready. No model request was sent. Reconnect and try again.';
+      const error = 'Your workspace didn’t finish loading, so nothing was sent. Reconnect and try again.';
       appEvents.emit('generation-status', { status: 'Error', error, projectId: activeProjectId });
       const updated = [...messagesRef.current];
       if (updated[updated.length - 1]?.role === 'ai' && !updated[updated.length - 1].content.trim()) updated[updated.length - 1] = { role: 'ai', content: error, timestamp: Date.now() };
@@ -1493,7 +1493,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           pendingRequest.cancel();
           setIsGenerating(false);
           isGeneratingRef.current = false;
-          appEvents.emit('generation-status', { status: 'Error', error: 'Connection lost before the prompt was sent. Retry when connected.', projectId: activeProjectId });
+          appEvents.emit('generation-status', { status: 'Error', error: 'Connection lost before your message was sent. Try again once you’re connected.', projectId: activeProjectId });
           return;
         }
         currentFilesRef.current = { ...files };
@@ -1587,7 +1587,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       if (payload.projectId && payload.projectId !== activeProjectId) return;
       if (!isGeneratingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
         if (!repairBudgetRef.current.take(activeProjectId, payload.error)) {
-          appEvents.emit('generation-status', { status: 'Error', error: 'Automatic repairs paused after repeated errors. Review the checks or describe the problem in chat.' });
+          appEvents.emit('generation-status', { status: 'Error', error: 'Automatic repairs paused after repeated errors. Describe the problem in the chat and the builder will take it from there.' });
           return;
         }
         const fileTarget = payload.file ? ` in ${payload.file}` : '';
@@ -1632,10 +1632,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
   return (
     <div className="chat-panel-container" style={{ width: width ? `${width}px` : '100%', minWidth: width ? Math.min(360, width) : 0, display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-chat-panel)', position: 'relative' }}>
-      <ConfirmModal isOpen={!!exportPrompt} title="Choose where your backend will run" message={`${exportPrompt?.notice || ''} Build a standalone app with setup instructions to download and run on your own hosting? BrainHalf will preview its frontend; the backend will not run here.`} confirmLabel="Build downloadable app" onCancel={() => setExportPrompt(null)} onConfirm={() => {
+      <ConfirmModal isOpen={!!exportPrompt} title="Choose where your app’s data features run" message={`${exportPrompt?.notice || ''} I can build a downloadable version with setup instructions you can run on your own hosting. BrainHalf will preview the app’s screens; the data features won’t run here.`} confirmLabel="Build downloadable version" onCancel={() => setExportPrompt(null)} onConfirm={() => {
         const resume = exportPrompt?.resume;
         exportOnly.current = true;
-        setTargetNotice('Export target: backend code is prepared for your own hosting. Hosted backend execution is unavailable for this project.');
+        setTargetNotice('Downloadable version: your data features are packaged for your own hosting. They won’t run here.');
         setExportPrompt(null);
         resume?.();
       }} />
@@ -1783,7 +1783,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     <button type="button" title="Copy message" aria-label="Copy message" onClick={async () => {
                       setCopyErrorIndex(null);
                       try {
-                        const content = isAi ? formatToolTranscript(msg.content).replace(/<agent-tools>([\s\S]*?)<\/agent-tools>/g, (_block, names: string) => `Agent used tools (${names.split('|').length})`) : msg.content;
+                        const content = isAi ? formatToolTranscript(msg.content).replace(/<agent-tools>([\s\S]*?)<\/agent-tools>/g, (_block, names: string) => `The builder used tools (${names.split('|').length})`) : msg.content;
                         await navigator.clipboard.writeText(content);
                         setCopiedIndex(idx);
                         setTimeout(() => setCopiedIndex(null), 2000);
@@ -1943,7 +1943,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                                 }}>
                                   <summary style={{ cursor: 'pointer', fontWeight: 500, outline: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     {seg.isStreaming && <Loader2 size={13} className="lucide-spin" />}
-                                    {seg.isStreaming ? 'Agent is thinking...' : 'Thought Process'}
+                                    {seg.isStreaming ? 'The builder is thinking…' : 'Thought process'}
                                     {seg.isStreaming && <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>{elapsedSeconds}s</span>}
                                   </summary>
                                   <div style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: '12px', maxHeight: '200px', overflow: 'auto' }}>
@@ -2083,7 +2083,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 alignSelf: 'flex-start'
               }}
             >
-              Resolve Conflicts with AI Agent
+              Resolve with the AI builder
             </button>
           </div>
         )}
@@ -2116,7 +2116,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           {attachments.some(file => file.mime.startsWith('image/')) && !acceptsImageInput(selectedModelId) && <div className="composer-upload-status">To analyze an image, choose Kimi K2.7 Code or Claude Sonnet 4.6 from the model picker. Your current model can still add the image to your app.</div>}
           {uploading && <div className="composer-upload-status" role="status">Reading and uploading files…</div>}
           {uploadError && <div className="composer-upload-status" role="alert">{uploadError}</div>}
-          {targetNotice && <div className="composer-upload-status" role="status">{targetNotice}<button type="button" disabled={isGenerating} onClick={() => { exportOnly.current = false; setTargetNotice(''); }}>Check hosting on next request</button></div>}
+          {targetNotice && <div className="composer-upload-status" role="status">{targetNotice}<button type="button" disabled={isGenerating} onClick={() => { exportOnly.current = false; setTargetNotice(''); }}>Check hosting again on the next message</button></div>}
           {attachments.some(file => file.note) && <div className="composer-upload-status">{attachments.filter(file => file.note).map(file => `${file.name}: ${file.note}`).join(' ')}</div>}
 
           <textarea
@@ -2331,7 +2331,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           </div>
 
         </div>
-        <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{isGenerating ? 'Draft now. Send when the agent finishes.' : 'Your changes start here.'}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
+        <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{isGenerating ? 'Draft now. Send when the builder finishes.' : 'Your changes start here.'}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
       </div>
 
       {/* Accessible Non-Blocking Chat Dialog */}

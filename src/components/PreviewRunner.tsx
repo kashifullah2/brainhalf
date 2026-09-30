@@ -10,6 +10,7 @@ import { loadPreviewDependencies } from '../lib/preview-modules';
 import { createPreviewFetch } from '../lib/preview-fetch';
 import { createPreviewModuleLoader, previewCss } from '../lib/preview-runtime';
 import { HtmlPreview } from './HtmlPreview';
+import { plainLanguageError } from '../lib/verification-copy';
 
 const nativeFetch = window.fetch.bind(window);
 
@@ -139,8 +140,15 @@ function PreviewErrorPanel({
             wordBreak: 'break-word',
           }}
         >
-          {message || 'An error occurred during rendering.'}
+          {message ? plainLanguageError(message) : 'Something went wrong while showing your app.'}{' '}
+          The builder can usually fix this — ask it to take a look.
         </p>
+        {message && (
+          <details style={{ marginBottom: '16px', textAlign: 'left', fontSize: '12px', color: '#657580' }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Technical details</summary>
+            <code style={{ display: 'block', marginTop: '6px', padding: '8px', background: '#f4f7f9', borderRadius: '6px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{message}</code>
+          </details>
+        )}
         <button
           onClick={requestAutoFix}
           style={{
@@ -155,7 +163,7 @@ function PreviewErrorPanel({
             fontWeight: 500,
           }}
         >
-          Request AI Auto-Fix
+          Ask the builder to fix it
         </button>
       </div>
     </div>
@@ -165,9 +173,35 @@ function PreviewErrorPanel({
 function classifyError(message: string): { title: string; layer: 'frontend' | 'backend' } {
   const isBackend = message.includes('[Backend Error]');
   return {
-    title: isBackend ? 'Backend Server Error' : 'Preview Runtime Error',
+    title: isBackend ? 'A data feature ran into a problem' : 'This preview ran into a problem',
     layer: isBackend ? 'backend' : 'frontend',
   };
+}
+
+// How long after the last file sync an unresolved-local-import error is
+// still treated as mid-stream noise. The parent debounces preview syncs
+// during generation at 800ms, so 5s comfortably covers gaps between
+// streaming deltas without hiding genuine errors for long.
+const TRANSIENT_STREAM_WINDOW_MS = 5_000;
+
+/**
+ * True when `error` looks like a failed *local* module resolution, e.g. the
+ * preview loader's `Cannot resolve module "./components/LandingPage"
+ * imported from "/src/App.jsx"`.
+ *
+ * The builder saves App.tsx before the files it imports, and the preview
+ * evaluates immediately — so while file syncs are still landing, these are
+ * expected mid-stream noise, not real breakage. A bare specifier (an npm
+ * package like "clsx") never counts as transient: no later file sync can
+ * make it resolve.
+ */
+export function isTransientResolutionError(error: string | null | undefined): boolean {
+  if (!error) return false;
+  return /(?:cannot (?:find|resolve) module|failed to resolve import|module not found|unknown (?:file|module)|no such (?:file|module))\s*:?\s*['"`](?:\.{1,2}\/|@\/|~\/|\/)/i.test(error);
+}
+
+function PreparingPreview() {
+  return <div role="status" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#edf3f7', color: '#657580', fontFamily: 'system-ui, sans-serif', fontSize: 13 }}>Preparing your preview…</div>;
 }
 
 interface ErrorBoundaryProps {
@@ -239,6 +273,15 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   );
   const waitingForFilesRef = useRef(waitingForFiles);
 
+  // File-stream activity signal. The parent posts `sync-files` /
+  // `sync-files-delta` each time generated files land in the preview; while
+  // those keep arriving, the builder is still streaming and
+  // unresolved-local-import errors are expected mid-stream noise.
+  const lastFileSyncAtRef = useRef(0);
+  // Tick to force a re-render once the transient window elapses, so a
+  // genuine error that survived the stream still reaches the error card.
+  const [, setTransientTick] = useState(0);
+
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const reportRuntimeError = useCallback((error: string) => {
     setRuntimeError(error);
@@ -251,6 +294,8 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   // previewed app for arbitrary code.
   useEffect(() => {
     const applyFiles = (next: Record<string, string>) => {
+      // A sync just landed: the file stream is active.
+      lastFileSyncAtRef.current = Date.now();
       const initialSync = waitingForFilesRef.current;
       waitingForFilesRef.current = false;
       setWaitingForFiles(false);
@@ -598,20 +643,41 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
     }
   }, [buildError]);
 
-  if (buildError || runtimeError) {
-    const message = buildError || runtimeError!;
-    const { title, layer } = classifyError(message);
+  const activeError = buildError || runtimeError;
+  // The builder saves App.tsx before the files it imports, and the preview
+  // evaluates immediately — so while file syncs are still landing, an
+  // unresolved-local-import error is expected mid-stream noise. Show the
+  // calm "Preparing your preview…" state instead of the error card; once
+  // syncs settle, genuine errors surface normally.
+  const filesStreaming = Date.now() - lastFileSyncAtRef.current < TRANSIENT_STREAM_WINDOW_MS;
+  const transientStreamError = !!activeError && filesStreaming && isTransientResolutionError(activeError);
+
+  // Nothing re-renders on its own once the syncs stop, so re-render when the
+  // transient window elapses — a genuine error that survived the stream must
+  // still reach the error card instead of lingering on "Preparing…".
+  useEffect(() => {
+    if (!transientStreamError) return;
+    const remaining = TRANSIENT_STREAM_WINDOW_MS - (Date.now() - lastFileSyncAtRef.current);
+    const id = setTimeout(() => setTransientTick((t) => t + 1), Math.max(0, remaining));
+    return () => clearTimeout(id);
+  });
+
+  if (activeError) {
+    if (transientStreamError) {
+      return <PreparingPreview />;
+    }
+    const { title, layer } = classifyError(activeError);
     return (
       <PreviewErrorPanel
         title={buildError && !buildError.includes('[Backend Error]') ? 'Transpilation Error' : title}
-        message={message}
+        message={activeError}
         layer={layer}
       />
     );
   }
 
   if (waitingForFiles || !dependencies || dependencies.files !== files) {
-    return <div role="status" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#edf3f7', color: '#657580', fontFamily: 'system-ui, sans-serif', fontSize: 13 }}>Preparing your preview…</div>;
+    return <PreparingPreview />;
   }
 
   return (

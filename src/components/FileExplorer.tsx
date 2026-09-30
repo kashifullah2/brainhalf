@@ -155,7 +155,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         </span>
         {isServer && !isHovered && (
           <span style={{ marginLeft: 'auto', fontSize: '9px', color: 'var(--color-code-violet)', opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
-            API
+            Data
           </span>
         )}
         {canEdit && isHovered && (
@@ -225,14 +225,14 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         {serverFiles.length > 0 ? (
           <>
             <div style={{ padding: '6px 8px 4px', fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>Client (Frontend)</span>
+              <span>App screens</span>
               <span style={{ fontSize: '9px', opacity: 0.7 }}>{clientFiles.length}</span>
             </div>
             {clientFiles.map(renderFileItem)}
 
             <div style={{ padding: '12px 8px 4px', fontSize: '10px', fontWeight: 600, color: 'var(--color-code-violet)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Server size={11} strokeWidth={2} /> Backend
+                <Server size={11} strokeWidth={2} /> Behind the scenes
               </span>
               <span style={{ fontSize: '9px', opacity: 0.7 }}>{serverFiles.length}</span>
             </div>

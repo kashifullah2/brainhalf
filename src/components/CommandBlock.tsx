@@ -45,7 +45,7 @@ const CommandBlock: React.FC<CommandBlockProps> = ({ command, isStreaming }) => 
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
         <Terminal size={16} strokeWidth={1.75} color="var(--accent-primary)" />
-        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Terminal</span>
+        <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Command</span>
         <div role="status" aria-live="polite" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span>{status === 'completed' ? 'Completed' : status === 'running' ? 'Running' : 'Pending'}</span>
           {status === 'running' ? (

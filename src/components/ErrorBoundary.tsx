@@ -88,12 +88,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
             <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.5, margin: '0 0 24px 0' }}>
               {isChunkOrSyntax
-                ? 'A new version of BrainHalf has been deployed. Please reload to load the latest code and assets.'
-                : 'An unexpected runtime issue occurred. Your project files and settings are safely stored.'}
+                ? 'A new version of BrainHalf is ready. Reload to get the latest version.'
+                : 'An unexpected problem occurred. Your project files and settings are safely stored.'}
             </p>
 
             {this.state.error?.message && (
-              <div style={{
+              <>
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 0 6px 0', textAlign: 'left' }}>Technical details</p>
+                <div style={{
                 backgroundColor: 'var(--bg-surface)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: '8px',
@@ -108,6 +110,7 @@ export class ErrorBoundary extends Component<Props, State> {
               }}>
                 {this.state.error.message}
               </div>
+              </>
             )}
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
@@ -129,7 +132,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 }}
               >
                 <RefreshCw size={16} />
-                Reload Application
+                Reload
               </button>
 
               <button
@@ -148,7 +151,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 }}
               >
                 <Trash2 size={16} />
-                Clear Cache & Refresh
+                Clear cache & reload
               </button>
             </div>
           </div>
@@ -189,7 +192,7 @@ export class SectionErrorBoundary extends Component<SectionProps, State> {
           color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center',
         }}>
           <AlertTriangle size={20} style={{ color: 'var(--color-error)' }} />
-          <span>{this.props.name} encountered an error.</span>
+          <span>{this.props.name} ran into a problem.</span>
           {this.state.error?.message && (
             <code style={{ fontSize: '11px', color: 'var(--color-error)', maxWidth: '300px', wordBreak: 'break-word' }}>
               {this.state.error.message.slice(0, 150)}

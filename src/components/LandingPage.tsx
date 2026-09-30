@@ -335,7 +335,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <h2 id="examples-heading">Real apps, not mockups.</h2>
             <p className="landing-section-lede">These are the kinds of working tools people build. Click through them — every button does something.</p>
           </div>
-          <LandingShowcase onUsePrompt={handleExamplePrompt} />
+          <LandingShowcase />
           <div className="landing-idea-row" aria-label="More starting ideas">
             {BUSINESS_APPS.slice(0, 4).map((suggestion, index) => {
               const Icon = IDEA_ICONS[index] ?? ShoppingCart;
@@ -385,10 +385,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <strong>300+</strong>
               <span>cities serving your published app, close to every visitor</span>
             </div>
-            <div className="studio-proof-stat">
-              <strong>1</strong>
-              <span>isolated database per app — your records are never mixed with another project&#8217;s</span>
-            </div>
           </div>
           <p className="studio-proof-source">Network figures: <a href="https://www.cloudflare.com/network/" target="_blank" rel="noopener noreferrer">Cloudflare&#8217;s global network <ArrowUpRight size={12} aria-hidden="true" /></a></p>
         </section>
@@ -409,18 +405,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             ))}
           </div>
         </section>
-
-        <nav className="landing-usecase-links" aria-label="Build guides by use case">
-          <span>Start from a guide</span>
-          <a href="/use-cases/ai-inventory-app-builder">Inventory apps</a>
-          <a href="/use-cases/book-inventory-app-builder">Book inventory</a>
-          <a href="/use-cases/warehouse-inventory-app-builder">Warehouse stock control</a>
-          <a href="/use-cases/equipment-asset-inventory-app-builder">Equipment &amp; assets</a>
-          <a href="/use-cases/personal-inventory-app-builder">Personal inventory</a>
-          <a href="/use-cases/ai-dashboard-builder">Dashboards</a>
-          <a href="/use-cases/customer-dashboard-builder">Customer portals</a>
-          <a href="/use-cases/ai-website-builder">Websites</a>
-        </nav>
 
         {/* Closing */}
         <section className="studio-closing" aria-labelledby="closing-heading">

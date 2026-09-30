@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeVerificationFailure, isVerificationFailure, plainLanguageCheck } from '../lib/verification-copy';
+import { describeVerificationFailure, isVerificationFailure, plainLanguageCheck, plainLanguageError } from '../lib/verification-copy';
 
 describe('describeVerificationFailure', () => {
   it('leads with a plain headline and reassurance, no jargon', () => {
@@ -33,5 +33,19 @@ describe('describeVerificationFailure', () => {
   it('detects verification failures by job message', () => {
     expect(isVerificationFailure('Verification failed. Review the runtime check results before publishing.')).toBe(true);
     expect(isVerificationFailure('Build failed: npm run build exited 1')).toBe(false);
+  });
+});
+
+describe('plainLanguageError', () => {
+  it('translates common technical failures into plain sentences', () => {
+    expect(plainLanguageError('Preview timed out after 20s')).toBe('A step took too long and stopped.');
+    expect(plainLanguageError('GET /api/users 503')).toBe('The behind-the-scenes part of the app returned an error.');
+    expect(plainLanguageError('404 not found')).toBe('A page or part of the app could not be found.');
+    expect(plainLanguageError('TypeError: Failed to fetch')).toBe('The app could not be reached over the network.');
+    expect(plainLanguageError('Rate limit exceeded')).toBe('Too many requests were made at once — wait a moment and try again.');
+  });
+
+  it('falls back to a neutral sentence for unrecognized errors', () => {
+    expect(plainLanguageError('Something completely unexpected')).toBe('Something went wrong while showing your app.');
   });
 });

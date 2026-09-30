@@ -73,12 +73,10 @@
 .sample-chart-bars > div:last-child > span { background: #426e59; }
 .sample-chart-bars small { font-size: 8px; color: #6a7770; background: #fff; }
 .sample-analytics-foot { display: flex; align-items: center; gap: 6px; margin-top: 13px; color: #57715f; font-size: 8px; }
-.studio-example-brief { display: flex; align-items: flex-end; gap: 18px; padding: 19px 5px 0; }
-.studio-example-brief > div { flex: 1; min-width: 0; }
+.studio-example-brief { padding: 19px 5px 0; }
+.studio-example-brief > div { min-width: 0; }
 .studio-example-brief-label { display: block; color: var(--studio-muted); font: 8px/1.6 var(--font-mono); letter-spacing: .8px; }
 .studio-example-brief p { min-height: 61px; margin: 7px 0 0; font-size: 12px; line-height: 1.7; color: var(--text-secondary); }
-.studio-example-note { flex: none; display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px 0 8px 8px; background: none; border: 0; color: var(--studio-blue); font-size: 11px; font-weight: 600; white-space: nowrap; }
-.studio-example-note:hover { text-decoration: underline; text-underline-offset: 4px; }
 .studio-example-caption { margin: 11px 5px 0; color: var(--studio-muted); font-size: 10px; line-height: 1.6; }
 @media (max-width: 1000px) {
  .studio-showcase { width: 100%; max-width: 620px; margin: 0 auto; }
@@ -104,9 +102,8 @@
  .sample-column-heading { font-size: 7px; gap: 3px; }
  .sample-column-heading > span { display: none; }
  .sample-chart-bars { gap: 11px; }
- .studio-example-brief { align-items: flex-start; flex-direction: column; gap: 5px; padding-top: 16px; }
+ .studio-example-brief { padding-top: 16px; }
  .studio-example-brief p { min-height: 61px; }
- .studio-example-note { padding-left: 0; }
  .studio-example-caption { margin-top: 4px; }
 }
 

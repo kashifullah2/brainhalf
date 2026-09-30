@@ -158,7 +158,7 @@ export const GenerationChanges: React.FC<GenerationChangesProps> = ({ changes, c
                         aria-expanded={diffOpen}
                         style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: '5px', padding: '2px 8px', fontSize: '10.5px', color: 'var(--text-secondary)', cursor: 'pointer' }}
                       >
-                        {diffOpen ? 'Hide diff' : 'Diff'}
+                        {diffOpen ? 'Hide changes' : 'Show changes'}
                       </button>
                     )}
                     {change.kind !== 'deleted' && (

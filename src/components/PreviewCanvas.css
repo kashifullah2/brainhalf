@@ -2,9 +2,9 @@
 .preview-canvas-toolbar { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; min-height: 50px; padding: 6px 12px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-card); }
 .preview-canvas-dimensions { color: var(--text-muted); font: 10px var(--font-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .preview-canvas-tools { display: flex; align-items: center; gap: 4px; margin-left: auto; }
-.preview-canvas-tools select { max-width: 98px; min-height: 32px; padding: 4px 5px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-secondary); background: var(--bg-card); font: 11px var(--font-sans); cursor: pointer; }
+.preview-canvas-tools select { max-width: 98px; min-height: 36px; padding: 4px 5px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-secondary); background: var(--bg-card); font: 12px var(--font-sans); cursor: pointer; }
 .preview-canvas-tools button:disabled { opacity: .35; cursor: default; }
-.studio-preview-inspect { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; min-width: 32px; border-radius: 6px; border: 1px solid var(--border-subtle); background: transparent; color: var(--text-secondary); cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s; }
+.studio-preview-inspect { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; min-width: 36px; border-radius: 6px; border: 1px solid var(--border-subtle); background: transparent; color: var(--text-secondary); cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s; }
 .studio-preview-inspect:hover:not(:disabled) { background: var(--bg-hover, rgba(54,89,217,0.08)); color: var(--accent-primary, #3659D9); border-color: var(--accent-primary, #3659D9); }
 .studio-preview-inspect.active { background: rgba(54,89,217,0.15); color: #3659D9; border-color: #3659D9; }
 .preview-canvas-scroll { flex: 1; min-height: 0; min-width: 0; display: flex; padding: 20px; overflow: auto; }
@@ -29,10 +29,10 @@
 .live-preview-failed button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 13px; font-weight: 600; padding: 9px 16px; cursor: pointer; }
 .preview-health-strip { min-height: 36px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); border-top: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 12px; }
 .preview-health-strip > span, .preview-health-strip > .preview-health-strip-body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.preview-build-detail { margin-top: 4px; font-size: 11px; }
+.preview-build-detail { margin-top: 4px; font-size: 12px; }
 .preview-build-detail > summary { cursor: pointer; font-weight: 600; color: var(--text-primary); display: inline-block; }
 .preview-build-detail > code { display: block; margin-top: 4px; padding: 6px 8px; border-radius: 6px; background: rgba(0, 0, 0, 0.25); font-family: var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-.preview-health-strip button { flex: none; font: inherit; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-subtle); border-radius: 6px; background: transparent; color: inherit; padding: 6px 10px; cursor: pointer; min-height: 34px; }
+.preview-health-strip button { flex: none; font: inherit; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-subtle); border-radius: 6px; background: transparent; color: inherit; padding: 6px 10px; cursor: pointer; min-height: 36px; }
 .preview-health-strip.has-error button, .preview-health-strip.has-fault button { border-color: var(--soft-error-border); }
 .preview-health-strip.has-error, .preview-health-strip.has-fault { color: var(--soft-error-text); background: var(--soft-error-bg); }
 .preview-canvas :is(button, select):focus-visible, .preview-health-strip button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }

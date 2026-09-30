@@ -2,7 +2,7 @@
 .dashboard-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 76px; max-width: 1280px; margin: 0 auto; padding: 0 40px; border-bottom: 1px solid var(--border-subtle); }
 .dashboard-header-actions { display: flex; align-items: center; gap: 12px; }
 .dashboard-user-dropdown-info { border-bottom: 1px solid var(--studio-line); margin-bottom: 4px; }
-.dashboard-account-usage { margin: 6px 0 2px; max-width: 300px; color: var(--studio-muted); font-size: 11px; line-height: 1.45; text-align: left; }
+.dashboard-account-usage { margin: 6px 0 2px; max-width: 360px; color: var(--studio-muted); font-size: 12px; line-height: 1.5; text-align: left; }
 .dashboard-account-usage-error { color: var(--status-error, #be3348); }
 .dashboard-main { max-width: 1120px; margin: 0 auto; padding: 38px 0 80px; }
 .dashboard-back { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0; border: 0; background: transparent; color: var(--studio-muted); font-size: 13px; }
@@ -24,7 +24,7 @@
 .dashboard-rename input { width: 100%; margin-bottom: 18px; padding: 10px 12px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--studio-white); color: var(--studio-ink); font-size: 16px; }
 .dashboard-rename > div { display: flex; justify-content: flex-end; gap: 8px; }
 @media (max-width: 1200px) { .dashboard-main { margin-inline: 40px; } }
-@media (max-width: 640px) { .dashboard-header { min-height: 68px; padding-inline: 20px; } .dashboard-main { margin-inline: 20px; padding-top: 24px; } .dashboard-welcome { align-items: stretch; flex-direction: column; padding: 32px 0 28px; } .dashboard-new-project { width: 100%; } .dashboard-page .recent-projects { margin-top: 28px; } .dashboard-account-usage { max-width: 220px; font-size: 10px; } }
+@media (max-width: 640px) { .dashboard-header { min-height: 68px; padding-inline: 20px; } .dashboard-main { margin-inline: 20px; padding-top: 24px; } .dashboard-welcome { align-items: stretch; flex-direction: column; padding: 32px 0 28px; } .dashboard-new-project { width: 100%; } .dashboard-page .recent-projects { margin-top: 28px; } .dashboard-account-usage { max-width: 280px; font-size: 11px; } }
 @keyframes skeleton-shimmer {
   0%   { background-position: -400px 0; }
   100% { background-position: 400px 0; }

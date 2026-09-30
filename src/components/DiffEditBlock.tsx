@@ -84,7 +84,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
               {filePath}
             </span>
             <span style={{ fontSize: '10px', color: 'var(--color-info)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span>Targeted Fix Applied</span> • {edits.length} {edits.length === 1 ? 'replacement' : 'replacements'}
+              <span>Fix applied</span> • {edits.length} {edits.length === 1 ? 'replacement' : 'replacements'}
             </span>
           </div>
         </div>
@@ -110,7 +110,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
                 background: 'var(--accent-light)',
                 animation: 'pulse 1.5s infinite'
               }} />
-              Patching...
+              Applying fix…
             </span>
           ) : (
             <span style={{
@@ -121,7 +121,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
               borderRadius: '4px',
               fontWeight: 500
             }}>
-              Patched
+              Fixed
             </span>
           )}
 
@@ -203,7 +203,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
                   wordBreak: 'break-word'
                 }}>
                   <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-error)', marginBottom: '2px', textTransform: 'uppercase' }}>
-                    - Buggy Code Replaced
+                    - Removed
                   </div>
                   {edit.search}
                 </div>
@@ -221,7 +221,7 @@ export const DiffEditBlock: React.FC<DiffEditBlockProps> = ({ filePath, edits, i
                   wordBreak: 'break-word'
                 }}>
                   <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-success)', marginBottom: '2px', textTransform: 'uppercase' }}>
-                    + Corrected Logic
+                    + Added
                   </div>
                   {edit.replace}
                 </div>

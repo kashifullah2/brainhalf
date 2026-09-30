@@ -34,24 +34,24 @@ export default function ProjectAgentUsage({ projectId }: { projectId: string }) 
     void runtimeRequest<RuntimeStatus>(projectId, '/status', 'development', { signal: controller.signal }).then(status => { if (!controller.signal.aborted) setVerification(status.verification); }).catch(() => { if (!controller.signal.aborted) setVerification(null); });
     return () => controller.abort();
   }, [projectId, version]);
-  return <section className="settings-card"><h3>AI usage and app verification</h3>
-    <button onClick={() => setVersion(value => value + 1)}>Refresh usage</button>
-    <p>Response completion and working-app verification are separate. Provider-reported token counts stay blank when unavailable.</p>
-    <h4>Your app outcomes</h4>
-    <p>Across your account, since measurement began. App checks apply to the exact generated revision; they do not guarantee every possible workflow.</p>
-    {outcomesError && <p role="status">{outcomesError}</p>}
+  return <section className="settings-card"><h3>AI usage &amp; app checks</h3>
+    <p>Builder activity and automatic app checks are counted separately. Numbers stay blank when the AI provider doesn't report them.</p>
+    <div className="settings-actions"><button type="button" className="button-secondary" onClick={() => setVersion(value => value + 1)}>Refresh</button></div>
+    <h4>Your results</h4>
+    <p>Across your whole account, since we started measuring. App checks tested one exact version — they can't cover every possible thing a visitor might do.</p>
+    {outcomesError && <p role="status" className="settings-error">{outcomesError}</p>}
     {outcomes && <dl className="product-outcome-grid">
-      <div><dt>Verified apps / generations</dt><dd>{outcomes.verifiedWorkingGenerations} / {outcomes.generations}</dd></div>
-      <div><dt>Successful publishing</dt><dd>{outcomes.published} / {outcomes.publishAttempts}</dd></div>
+      <div><dt>Working apps / builds</dt><dd>{outcomes.verifiedWorkingGenerations} / {outcomes.generations}</dd></div>
+      <div><dt>Successful publishes</dt><dd>{outcomes.published} / {outcomes.publishAttempts}</dd></div>
       <div><dt>Time to first live app</dt><dd>{outcomes.medianTimeToFirstLiveMs === null ? 'No live app yet' : `${Math.max(1, Math.round(outcomes.medianTimeToFirstLiveMs / 60000))} min`}</dd></div>
-      <div><dt>Returned in week one</dt><dd>{outcomes.weekOneRetention === null ? 'Awaiting full 14-day window' : outcomes.returnedWeekOneAccounts ? 'Yes' : 'No'}</dd></div>
+      <div><dt>Came back in week one</dt><dd>{outcomes.weekOneRetention === null ? 'Awaiting full 14-day window' : outcomes.returnedWeekOneAccounts ? 'Yes' : 'No'}</dd></div>
     </dl>}
-    {allowanceError && <p role="status">{allowanceError}</p>}
-    {usage && <div className="settings-notice"><strong>Account allowance · {usage.day} UTC</strong><p>{usage.calls} / {usage.limits.dailyCalls} provider calls · {usage.reservedOutputTokens?.toLocaleString() ?? '—'} / {usage.limits.dailyOutputTokens?.toLocaleString() ?? '—'} output tokens reserved · {usage.activeGenerations} / {usage.limits.concurrentGenerations} active generations.</p><p>Shared across all projects and model tests. Each provider call reserves its maximum output before starting, including retries. Unused reservations are retained until midnight UTC. This is a protective allowance, not a monetary bill or a count of tokens actually used.</p></div>}
-    {error && <p role="status">{error}</p>}{!error && !generations.length && <p>No recorded generations yet.</p>}
+    {allowanceError && <p role="status" className="settings-error">{allowanceError}</p>}
+    {usage && <div className="settings-notice"><strong>Daily AI allowance · {usage.day}</strong><p>{usage.calls} / {usage.limits.dailyCalls} AI requests · {usage.reservedOutputTokens?.toLocaleString() ?? '—'} / {usage.limits.dailyOutputTokens?.toLocaleString() ?? '—'} writing space reserved · {usage.activeGenerations} / {usage.limits.concurrentGenerations} builds running now.</p><p>Shared across all your projects. Each AI request sets aside its maximum writing space up front, including retries. Unused space is released at midnight. This is a safety limit — not a bill, and not a count of words actually written.</p></div>}
+    {error && <p role="status" className="settings-error">{error}</p>}{!error && !generations.length && <p className="settings-muted">No builder activity recorded yet.</p>}
     {!!generations.length && <>
-      <p className="settings-muted">First response measures time from generation start to the first text or tool activity. Provider calls include tool rounds and retries. Older generations show a dash when these measurements are unavailable.</p>
-      <div className="settings-table-scroll" role="region" aria-label="Agent generation activity" tabIndex={0}><table><thead><tr><th>Model</th><th>Response</th><th>App checks</th><th>Input / output tokens</th><th>First response</th><th>Provider calls</th><th>Duration</th></tr></thead><tbody>{generations.map((item, index) => <tr key={index}><td>{item.model === 'claude-sonnet-6' ? 'Claude Sonnet 4.6' : item.model}</td><td>{item.status}</td><td>{item.source_revision && verification?.revision === item.source_revision ? verification.passed ? 'Passed for this revision' : 'Failed for this revision' : 'No matching verification'}</td><td>{item.input_tokens?.toLocaleString() ?? '—'} / {item.output_tokens?.toLocaleString() ?? '—'}</td><td>{item.first_response_at != null ? `${Math.max(0, (item.first_response_at - item.started_at) / 1000).toFixed(1)}s` : '—'}</td><td>{item.provider_calls ?? '—'}</td><td>{item.finished_at ? `${Math.round((item.finished_at - item.started_at) / 1000)}s` : '—'}</td></tr>)}</tbody></table></div>
+      <p className="settings-muted">First response measures how long until the builder first does something visible. AI calls include retries. Older activity shows a dash when measurements are missing.</p>
+      <div className="settings-table-scroll" role="region" aria-label="Builder activity" tabIndex={0}><table><thead><tr><th>AI model</th><th>Status</th><th>Checks</th><th>Text in / out</th><th>First response</th><th>AI requests</th><th>Duration</th></tr></thead><tbody>{generations.map((item, index) => <tr key={index}><td>{item.model === 'claude-sonnet-6' ? 'Claude Sonnet 4.6' : item.model}</td><td>{item.status}</td><td>{item.source_revision && verification?.revision === item.source_revision ? verification.passed ? 'Passed on this version' : 'Failed on this version' : 'Not checked'}</td><td>{item.input_tokens?.toLocaleString() ?? '—'} / {item.output_tokens?.toLocaleString() ?? '—'}</td><td>{item.first_response_at != null ? `${Math.max(0, (item.first_response_at - item.started_at) / 1000).toFixed(1)}s` : '—'}</td><td>{item.provider_calls ?? '—'}</td><td>{item.finished_at ? `${Math.round((item.finished_at - item.started_at) / 1000)}s` : '—'}</td></tr>)}</tbody></table></div>
     </>}
   </section>;
 }

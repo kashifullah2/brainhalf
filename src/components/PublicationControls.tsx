@@ -12,8 +12,8 @@ import { publicationTarget } from '../runtime/publication';
 import type { RuntimeJob, SourceFiles } from '../runtime/types';
 import './PublicationControls.css';
 
-const stages = ['Build app', 'Test frontend & backend', 'Connect production services', 'Deploy app', 'Check deployment', 'Live'];
-const stageKeys = ['build', 'verify', 'services', 'deploy', 'check', 'live'];
+export const stages = ['Build app', 'Test the app', 'Connect services', 'Put app online', 'Final checks', 'Live'];
+export const stageKeys = ['build', 'verify', 'services', 'deploy', 'check', 'live'];
 
 export default function PublicationControls({ projectId, files, publishOnOpen, onManage }: { projectId: string; files: SourceFiles; publishOnOpen?: SourceFiles; onManage?: () => void }) {
   const runtime = useProjectRuntime(projectId, 'production');
@@ -169,38 +169,38 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
   }
 
   return <section className="publication-controls" aria-label="Project publication">
-    <p>Publish a complete, tested version of your app. BrainHalf builds your frontend and backend, prepares the production database, and checks the release before it goes live.</p>
-    {sourceError && <p role="alert" className="publication-error">{sourceError}</p>}
-    {sourceError.includes('Workers deployment entry') && <button type="button" className="button-ghost" disabled={busy || generating || !!active} onClick={prepareBackend}>Prepare backend for publishing</button>}
+    <p>Put a finished, tested version of your app on the internet. BrainHalf builds your app, gets its saved information ready, and runs final checks before it goes live.</p>
+    {sourceError && <p role="alert" className="publication-error">{sourceError.includes('Workers deployment entry') ? 'This app is not set up for publishing yet. The builder can get it ready for you.' : sourceError}</p>}
+    {sourceError.includes('Workers deployment entry') && <button type="button" className="button-secondary" disabled={busy || generating || !!active} onClick={prepareBackend}>Get app ready for publishing</button>}
     {generating && <p role="status">Wait for the app to finish generating before publishing.</p>}
-    {active && active.kind !== 'publish' && <div className="publication-notice"><p role="status">{canReplacePreview ? 'Publishing will stop the development preview and build your saved app for production.' : `Another app job is running: ${active.message}. Stop it or wait for it to finish before publishing.`}</p><button type="button" className="button-ghost" disabled={busy} onClick={() => void stopJob(active)}>Stop running job</button></div>}
+    {active && active.kind !== 'publish' && <div className="publication-notice"><p role="status">{canReplacePreview ? 'Publishing will close the test version and build your saved app for visitors.' : `Another app job is running: ${active.message}. Stop it or wait for it to finish before publishing.`}</p><button type="button" className="button-ghost" disabled={busy} onClick={() => void stopJob(active)}>Stop running job</button></div>}
     {job && (job.status !== 'passed' || (release && job.releaseId === release.id)) && <div className="publication-progress" aria-live="polite">
       <p className="publication-status">{publishing && <Loader2 size={17} className="publication-spinner" />}{job.status === 'passed' && <Check size={17} />} {job.message}</p>
       <ol>{stages.map((label, index) => <li key={label} aria-current={index === stage ? 'step' : undefined} className={index < stage || job.status === 'passed' ? 'is-complete' : ''}><span aria-hidden="true">{index < stage || job.status === 'passed' ? '✓' : index + 1}</span>{label}</li>)}</ol>
-      {publishing && <p>You can close this panel. Publishing continues on the server.</p>}
+      {publishing && <p>You can close this — publishing keeps running in the background.</p>}
     </div>}
     {error && <p role="alert" className="publication-error">{error}</p>}
     {job?.status === 'failed' && <>
-      <p role="alert" className="publication-error">Publishing stopped: {job.message} {release ? 'Your previous live version is still available.' : 'No public release was activated.'}</p>
+      <p role="alert" className="publication-error">Publishing stopped: {job.message} {release ? 'Your live app is unchanged.' : 'Nothing was published.'}</p>
       <PublicationFailure key={job.id} projectId={projectId} job={job} canRepair={!busy && !generating && !active} />
     </>}
     {release && status?.productionUrl && <div className="publication-live">
       <strong>{currentIsLive ? 'This version is live' : 'Your published version'}</strong>
       <a href={status.productionUrl} target="_blank" rel="noopener noreferrer">{status.productionUrl}<ExternalLink size={15} /></a>
-      <button type="button" className="button-ghost" onClick={() => { void navigator.clipboard.writeText(status.productionUrl).then(() => setCopied(true)).catch(() => setError('Copy the public URL shown above. Clipboard access is unavailable.')); }}><Copy size={14} />{copied ? 'Copied' : 'Copy public link'}</button>
+      <button type="button" className="button-secondary" onClick={() => { void navigator.clipboard.writeText(status.productionUrl).then(() => setCopied(true)).catch(() => setError('Copy the public URL shown above. Clipboard access is unavailable.')); }}><Copy size={14} />{copied ? 'Copied' : 'Copy public link'}</button>
       {!currentIsLive && <p>Publish again to put your latest changes online.</p>}
-      {!confirmOffline ? <button type="button" className="button-ghost" disabled={busy || !!active} onClick={() => setConfirmOffline(true)}>Take app offline</button> : <div>
-        <p>The public app and its APIs will stop accepting requests. Your database and saved releases stay available for publishing again.</p>
+      {!confirmOffline ? <button type="button" className="button-ghost" disabled={busy || !!active} onClick={() => setConfirmOffline(true)}>Take app offline</button> : <div className="publication-offline-confirm">
+        <p>Your app will stop working for visitors. Your saved information and versions stay safe — you can publish again any time.</p>
         <button type="button" className="button-ghost" disabled={busy} onClick={() => setConfirmOffline(false)}>Keep app live</button>
-        <button type="button" className="button-ghost" disabled={busy} onClick={() => void unpublish()}>Confirm take offline</button>
+        <button type="button" className="button-danger" disabled={busy} onClick={() => void unpublish()}>Confirm take offline</button>
       </div>}
     </div>}
     <div className="publication-actions">
       <button type="button" className="button-primary" disabled={!ready || !revision || busy || (!!active && !canReplacePreview) || generating || currentIsLive} onClick={() => startPublish()}>{submitting || publishing ? 'Publishing…' : currentIsLive ? 'Up to date' : release ? 'Publish changes' : 'Publish app'}</button>
-      {onManage && <button type="button" className="button-ghost" onClick={onManage}>Manage services</button>}
+      {onManage && <button type="button" className="button-ghost" onClick={onManage}>Set up sign-in &amp; email</button>}
       {publishing && <button type="button" className="button-ghost" disabled={submitting || actionBusy} onClick={() => void stopJob(job)}>Cancel publishing</button>}
     </div>
-    <p className="publication-footnote">Publishing saves this version. Later edits stay in your workspace until you publish again. Production uses its own database; development test records are not copied.</p>
+    <p className="publication-footnote">Publishing saves this version. Later edits stay private until you publish again. The live app keeps its own saved information — test entries are not copied over.</p>
     <LegacyPreviewAccess projectId={projectId} />
   </section>;
 }
@@ -223,7 +223,7 @@ function PublicationFailure({ projectId, job, canRepair }: { projectId: string; 
   const technical = !!checks.length || !!logs;
   return <div className="publication-failure">
     {!details && !error && <p role="status">Loading the failed check…</p>}
-    {error && <p role="status">{error} <button type="button" className="button-ghost" onClick={() => setAttempt(value => value + 1)}>Retry loading error</button></p>}
+    {error && <p role="status">{error} <button type="button" className="button-ghost" onClick={() => setAttempt(value => value + 1)}>Retry</button></p>}
     {copy && <div className="publication-failure-plain">
       <p className="publication-failure-headline">{copy.headline}</p>
       <ul>{copy.plainChecks.map((line, index) => <li key={index}>{line}</li>)}</ul>
@@ -264,5 +264,5 @@ function LegacyPreviewAccess({ projectId }: { projectId: string }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Try again.'); }
     finally { setBusy(false); }
   };
-  return <div className="publication-notice"><p>Your older public preview link is still shared and may show workspace changes. Its access is separate from the published app.</p><button type="button" className="button-ghost" disabled={busy} onClick={() => void revoke()}>Make old preview private</button>{error && <p role="alert">{error}</p>}</div>;
+  return <div className="publication-notice"><p>Your older public test link is still shared and may show your latest edits. Making it private does not affect the published app.</p><button type="button" className="button-ghost" disabled={busy} onClick={() => void revoke()}>Make old test link private</button>{error && <p role="alert">{error}</p>}</div>;
 }

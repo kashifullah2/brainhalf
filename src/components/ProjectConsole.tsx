@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { CheckCircle2, CircleAlert, CircleDashed, Hammer, Loader2, Play, Rocket, ShieldCheck, X } from 'lucide-react';
+import { CheckCircle2, CircleAlert, CircleDashed, Hammer, Loader2, Play, ShieldCheck, X } from 'lucide-react';
 import { runtimeRequest, useProjectRuntime } from '../lib/project-runtime-client';
 import { sourceSnapshot } from '../runtime/source';
 import type { JobKind, ProjectEnvironment, RuntimeJob, SourceFiles, VerificationReport } from '../runtime/types';
@@ -20,6 +20,7 @@ import PublicationControls from './PublicationControls';
 import GalleryListing from './GalleryListing';
 import CustomDomainSettings from './CustomDomainSettings';
 import { pushUsageEvent, setOnboardingState } from '../lib/project-growth';
+import { plainLanguageCheck } from '../lib/verification-copy';
 import './ProjectConsole.css';
 
 // Grouped by intent so non-technical users see three jobs — ship it, run it,
@@ -27,29 +28,29 @@ import './ProjectConsole.css';
 const sectionGroups = [
   { label: 'Ship', sections: ['Publish', 'Domain'] },
   { label: 'Run', sections: ['Database', 'Files', 'Users & email', 'Monitoring'] },
-  { label: 'Manage', sections: ['Source history', 'AI usage', 'Project settings'] },
+  { label: 'Manage', sections: ['App versions', 'AI usage', 'Project settings'] },
 ] as const;
 const sections = sectionGroups.flatMap(group => group.sections);
 type Section = typeof sections[number];
 
 const sectionHelp: Record<Section, string> = {
-  Publish: 'Build your app, run its checks, and put it on the internet.',
-  Domain: 'Use your own web address for the live app.',
-  Database: 'See and edit the information your app stores.',
-  Files: 'Pictures and documents uploaded through your app.',
-  'Users & email': 'Sign-in options and the emails your app sends.',
-  Monitoring: 'Traffic, errors, and speed for the live app.',
-  'Source history': 'Saved versions of your app you can return to.',
-  'AI usage': 'How much builder time this project has used.',
-  'Project settings': 'Visibility, sharing, and advanced options.',
+  Publish: 'Test your app, then put it on the internet for visitors.',
+  Domain: 'Use your own web address (like www.yourbusiness.com) for the live app.',
+  Database: 'See and edit the information your app saves.',
+  Files: 'Files that people uploaded through your app.',
+  'Users & email': 'How people sign in, and the emails your app sends.',
+  Monitoring: 'How your app is doing: usage, problems, and speed.',
+  'App versions': 'Saved versions of your app you can go back to.',
+  'AI usage': 'How much builder work this project has used.',
+  'Project settings': 'Your past requests and advanced builder settings.',
 };
 
 const JOB_LABELS: Record<JobKind, string> = {
   build: 'Build',
   preview: 'Test app',
   verify: 'Checks',
-  deploy: 'Deploy',
-  migrate: 'Database update',
+  deploy: 'Go live',
+  migrate: 'Database change',
   publish: 'Publish',
 };
 
@@ -176,12 +177,12 @@ export default function ProjectConsole({ projectId, files, onClose }: { projectI
         <div className="console-environment" role="group" aria-label="Environment">
           <button type="button" aria-pressed={environment === 'development'} disabled={busy} onClick={() => { setEnvironment('development'); setError(''); }}>Test</button>
           <button type="button" aria-pressed={environment === 'production'} disabled={busy} onClick={() => { setEnvironment('production'); setError(''); }}>Live</button>
-          <span className="console-environment-hint">{environment === 'development' ? 'A safe sandbox — nothing here is public.' : 'Your real app — visitors use this.'}</span>
+          <span className="console-environment-hint">{environment === 'development' ? 'A safe practice space — nothing here is public.' : 'Your real app — visitors use this.'}</span>
         </div>
       )}
       {error && <p role="alert" className="settings-error">{error}</p>}
       {(section === 'Publish' || hostedSection) && <>
-        {(runtime.error || !hostingReady) && <p role="status" className="settings-notice">{runtime.error || status?.availability?.message || 'Checking hosting availability…'}{runtime.error && <button onClick={runtime.refresh}>Retry connection</button>}</p>}
+        {(runtime.error || !hostingReady) && <p role="status" className="settings-notice">{runtime.error || status?.availability?.message || 'Checking hosting availability…'}{runtime.error && <button type="button" className="button-ghost" onClick={runtime.refresh}>Retry connection</button>}</p>}
       </>}
       {section === 'Publish' && <>
         <PublicationControls key={projectId} projectId={projectId} files={files} onManage={() => { setEnvironment('production'); setSection('Users & email'); }} />
@@ -193,23 +194,23 @@ export default function ProjectConsole({ projectId, files, onClose }: { projectI
           {sourceError && <p className="settings-notice">{sourceError}</p>}
           {generating && <p role="status" className="settings-notice"><Loader2 size={13} className="lucide-spin" /> The builder is still working — wait for it to finish before building or checking.</p>}
           <ol className="ship-steps">
-            <Step number={1} title="Build" help="Packages your app so it can run online." state={buildStepState}>
-              <button disabled={!canRunJobs} onClick={() => void perform(() => startJob('build', 'development'))}><Hammer size={13} />Build app</button>
+            <Step number={1} title="Build your app" help="Puts your app together so it can run online." state={buildStepState}>
+              <button type="button" className={buildStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs} onClick={() => void perform(() => startJob('build', 'development'))}><Hammer size={14} />Build app</button>
             </Step>
-            <Step number={2} title="Run checks" help="Opens your app in a real browser and tests the important parts with throwaway data." state={checkStepState}>
-              <button disabled={!canRunJobs || !workers} onClick={() => void perform(() => startJob('verify', 'development'))}><ShieldCheck size={13} />Run checks</button>
-              {report && report.revision !== revision && <span className="settings-muted">Source changed since the last check.</span>}
+            <Step number={2} title="Run checks" help="Opens your app in a real browser and tests the important parts using throwaway data." state={checkStepState}>
+              <button type="button" className={checkStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs || !workers} onClick={() => void perform(() => startJob('verify', 'development'))}><ShieldCheck size={14} />Run checks</button>
+              {report && report.revision !== revision && <span className="settings-muted">Your latest edits aren't covered by the last check.</span>}
             </Step>
-            <Step number={3} title="Try it live" help="Opens a temporary address that runs your app for real." state={tryStepState}>
+            <Step number={3} title="Try it" help="Opens a temporary address that runs your app for real." state={tryStepState}>
               {testAppReady
-                ? <button disabled={busy} onClick={() => void perform(openPreview)}><Play size={13} />Open test app</button>
-                : <button disabled={!canRunJobs} onClick={() => void perform(() => startJob('preview', 'development'))}><Play size={13} />Start test app</button>}
+                ? <button type="button" className={tryStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={busy} onClick={() => void perform(openPreview)}><Play size={14} />Open test app</button>
+                : <button type="button" className={tryStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs} onClick={() => void perform(() => startJob('preview', 'development'))}><Play size={14} />Start test app</button>}
             </Step>
           </ol>
           {activeJob && (
             <div className="settings-job">
               <p role="status"><Loader2 size={13} className="lucide-spin" /> {JOB_LABELS[activeJob.kind]}: {activeJob.message}</p>
-              <button disabled={busy} onClick={() => void perform(async () => { await runtimeRequest(projectId, '/stop', activeJob.environment, { method: 'POST', body: JSON.stringify({ expectedJobId: activeJob.id }) }); })}>Stop</button>
+              <button type="button" className="button-ghost" disabled={busy} onClick={() => void perform(async () => { await runtimeRequest(projectId, '/stop', activeJob.environment, { method: 'POST', body: JSON.stringify({ expectedJobId: activeJob.id }) }); })}>Stop</button>
             </div>
           )}
           {report && (
@@ -217,41 +218,41 @@ export default function ProjectConsole({ projectId, files, onClose }: { projectI
               <h4>Latest check results</h4>
               <ul>{report.checks.map((check, index) => (
                 <li key={index} className={check.passed ? 'console-check-passed' : 'console-check-failed'}>
-                  <strong>{check.passed ? 'Passed' : 'Failed'}: {check.name}</strong>
-                  <p>{check.detail}</p>
+                  <strong>{check.passed ? `Passed: ${check.name}` : 'Failed: ' + plainLanguageCheck(check)}</strong>
+                  {!check.passed && <details><summary>Technical details</summary><p>{check.name}: {check.detail}</p></details>}
                 </li>
               ))}</ul>
-              {!report.passed && report.revision === revision && <button disabled={busy || generating || !!activeJob} onClick={() => void perform(requestRepair)}>Ask AI to fix the failed checks</button>}
+              {!report.passed && report.revision === revision && <button type="button" className="button-secondary" disabled={busy || generating || !!activeJob} onClick={() => void perform(requestRepair)}>Ask AI to fix the failed checks</button>}
             </div>
           )}
           <details className="console-advanced">
-            <summary>Activity log</summary>
+            <summary>Recent activity</summary>
             {status?.jobs.length
-              ? <ul>{status.jobs.filter(job => job.environment === environment).map(job => <li key={job.id}>{JOB_LABELS[job.kind]} — {job.status}: {job.message}</li>)}</ul>
+              ? <ul>{status.jobs.filter(job => job.environment === environment).map(job => <li key={job.id}>{JOB_LABELS[job.kind]} — {job.status === 'passed' ? 'Done' : job.status}: {job.message}</li>)}</ul>
               : <p>Nothing has run yet.</p>}
           </details>
-          <h4>{environment === 'production' ? 'Live versions' : 'Test versions'}</h4>
+          <h4>{environment === 'production' ? 'Saved live versions' : 'Saved test versions'}</h4>
           {status?.releases.length
             ? status.releases.map(release => (
               <div className="settings-job" key={release.id}>
                 <span>{new Date(release.createdAt).toLocaleString()}{release.id === status.activeRelease?.id ? ' · Live now' : ''}</span>
-                {release.id !== status.activeRelease?.id && <button disabled={busy || !!activeJob} onClick={() => setConfirmation({ kind: 'rollback', revision: release.revision, releaseId: release.id })}>Make live</button>}
+                {release.id !== status.activeRelease?.id && <button type="button" className="button-secondary" disabled={busy || !!activeJob} onClick={() => setConfirmation({ kind: 'rollback', revision: release.revision, releaseId: release.id })}>Make live</button>}
               </div>
             ))
             : <p className="settings-muted">No versions yet — they appear after the first build.</p>}
-          <p className="settings-muted">Ready for visitors? Use the <Rocket size={12} /> publish controls above to put this version on your public address.</p>
+          <p className="settings-muted">Ready for visitors? Use Publish above to put this version on your public address.</p>
         </section>}
       </>}
       {hostingReady && section === 'Database' && <ProjectDatabase key={environment} projectId={projectId} environment={environment} onChanged={refresh} />}
       {hostingReady && section === 'Files' && <ProjectFiles key={environment} projectId={projectId} environment={environment} onChanged={refresh} />}
       {hostingReady && section === 'Users & email' && <div key={environment}><ProjectServices projectId={projectId} environment={environment} connectionsVersion={String(connectionsVersion)} /><ProjectConnections projectId={projectId} environment={environment} onChanged={() => { setConnectionsVersion(value => value + 1); refresh(); }} /></div>}
       {hostingReady && section === 'Monitoring' && <ProjectMonitor key={environment} projectId={projectId} environment={environment} />}
-      {section === 'Source history' && <ProjectHistory projectId={projectId} />}
+      {section === 'App versions' && <ProjectHistory projectId={projectId} />}
       {section === 'AI usage' && <ProjectAgentUsage projectId={projectId} />}
       {section === 'Domain' && <CustomDomainSettings projectId={projectId} productionUrl={production.status?.productionUrl} />}
       {section === 'Project settings' && <ProjectGrowthHub projectId={projectId} />}
     </main>
-    <ConfirmModal isOpen={!!confirmation} title="Make this version live?" message="Your app switches to this version right away. Stored information stays as it is; versions needing a different database shape are rejected." confirmLabel="Make live" pending={busy} error={error || undefined} onCancel={() => { if (!busy) setConfirmation(null); }} onConfirm={() => void perform(async () => {
+    <ConfirmModal isOpen={!!confirmation} title="Make this version live?" message="Your app switches to this version right away. Saved information stays as it is; a version that needs a different data layout will not apply." confirmLabel="Make live" pending={busy} error={error || undefined} onCancel={() => { if (!busy) setConfirmation(null); }} onConfirm={() => void perform(async () => {
       if (!confirmation) return;
       await runtimeRequest(projectId, '/rollback', environment, { method: 'POST', body: JSON.stringify({ releaseId: confirmation.releaseId }) });
       setConfirmation(null);

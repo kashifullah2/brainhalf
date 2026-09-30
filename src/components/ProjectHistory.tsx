@@ -27,8 +27,12 @@ function absTime(ts: number): string {
   return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function isAutoSave(label: string) {
+export function isAutoSave(label: string) {
   return label === 'Before agent changes' || label === 'Before restore';
+}
+
+export function displayLabel(label: string) {
+  return label.replace('Before agent changes', 'Auto-saved before builder change').replace('Before restore', 'Auto-saved before restore');
 }
 
 const CHANGE_ICON: Record<string, JSX.Element> = {
@@ -57,7 +61,7 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
       headers: { 'Content-Type': 'application/json' },
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Source history is unavailable.');
+    if (!response.ok) throw new Error(data.error || 'Version history is unavailable.');
     return data;
   }
 
@@ -100,40 +104,36 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
     const expandedReview = expanded && review?.id === item.id ? review : null;
 
     return (
-      <div key={item.id} style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '1px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', flexWrap: 'wrap' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, color: auto ? 'var(--text-muted)' : 'var(--accent-primary)' }}>
-            {auto ? <Zap size={13} strokeWidth={2} /> : <Save size={13} strokeWidth={2} />}
+      <div key={item.id} className="history-item">
+        <div className="history-item-row">
+          <span className="history-item-icon" style={{ color: auto ? 'var(--text-muted)' : 'var(--accent-primary)' }}>
+            {auto ? <Zap size={14} strokeWidth={2} /> : <Save size={14} strokeWidth={2} />}
           </span>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <strong style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {auto ? item.label.replace('Before agent changes', 'Auto-save before generation').replace('Before restore', 'Auto-save before restore') : item.label}
-            </strong>
-            <span style={{ display: 'flex', gap: '8px', fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', flexWrap: 'wrap' }}>
-              <span title={absTime(item.createdAt)} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                <Clock size={10} />{relativeTime(item.createdAt)}
-              </span>
+          <span className="history-item-main">
+            <strong className="history-item-title">{displayLabel(item.label)}</strong>
+            <span className="history-item-meta">
+              <span title={absTime(item.createdAt)}><Clock size={10} />{relativeTime(item.createdAt)}</span>
               <span>·</span>
               <span>{item.fileCount} file{item.fileCount === 1 ? '' : 's'}</span>
               {item.bytes > 0 && <><span>·</span><span>{Math.round(item.bytes / 1024)} KB</span></>}
             </span>
           </span>
-          <span style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+          <span className="history-item-actions">
             <button
               type="button"
+              className="button-ghost"
               disabled={busy}
               onClick={() => void loadReview(item.id)}
-              style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '4px 9px', fontSize: '11px', color: 'var(--text-secondary)', cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
             >
               {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              {expanded ? 'Hide diff' : 'View diff'}
+              {expanded ? 'Hide changes' : 'See changes'}
             </button>
             <button
               type="button"
+              className="button-secondary"
               disabled={busy}
               onClick={() => { void loadReview(item.id).then(() => setConfirm(true)); }}
-              title="Restore this checkpoint"
-              style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '4px 9px', fontSize: '11px', color: 'var(--text-secondary)', cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              title="Restore this version"
             >
               <RotateCcw size={12} />Restore
             </button>
@@ -141,18 +141,16 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
         </div>
 
         {expandedReview && (
-          <div style={{ marginBottom: '10px', background: 'var(--bg-surface)', borderRadius: '8px', padding: '10px 12px', fontSize: '12px' }}>
+          <div className="history-diff">
             {expandedReview.changes.length === 0 ? (
-              <span style={{ color: 'var(--text-muted)' }}>No differences — these files already match the current project.</span>
+              <span className="settings-muted">No differences — these files already match the current project.</span>
             ) : (
-              <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <ul>
                 {expandedReview.changes.map(ch => (
-                  <li key={ch.path} style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
+                  <li key={ch.path}>
                     {CHANGE_ICON[ch.change] ?? CHANGE_ICON.modify}
-                    <code style={{ fontSize: '11px', color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ch.path}
-                    </code>
-                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0, background: 'rgba(0,0,0,0.06)', padding: '1px 6px', borderRadius: '4px', textTransform: 'capitalize' }}>
+                    <code>{ch.path}</code>
+                    <span className="history-diff-tag">
                       {ch.change}
                       {ch.change === 'modify' && ` ${ch.before > ch.after ? '▼' : '▲'} ${Math.abs(ch.after - ch.before).toLocaleString()} chars`}
                     </span>
@@ -160,12 +158,12 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
                 ))}
               </ul>
             )}
-            <div style={{ marginTop: '10px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <div className="history-diff-actions">
               <button
                 type="button"
+                className="button-primary"
                 disabled={busy}
                 onClick={() => setConfirm(true)}
-                style={{ background: 'var(--accent-primary)', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', color: '#fff', cursor: busy ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 500 }}
               >
                 <RotateCcw size={13} />Restore this version
               </button>
@@ -178,28 +176,28 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
 
   return (
     <section className="settings-card source-history">
-      <h3><History size={17} />Source history</h3>
-      <p>Save named checkpoints before experimenting. The agent auto-saves before every code change.</p>
+      <h3><History size={17} />App versions</h3>
+      <p>Save a named version before trying something new. The builder automatically saves one before every change.</p>
 
       <form className="settings-actions" onSubmit={e => {
         e.preventDefault();
         void perform(async () => {
-          await request('', { method: 'POST', body: JSON.stringify({ label: label.trim() || 'Manual checkpoint', revision }) });
+          await request('', { method: 'POST', body: JSON.stringify({ label: label.trim() || 'Manual version', revision }) });
           setLabel('');
           await refresh();
         });
       }}>
         <input
-          aria-label="Checkpoint name"
+          aria-label="Version name"
           maxLength={120}
           placeholder="e.g. Working login flow"
           value={label}
           onChange={e => setLabel(e.target.value)}
         />
-        <button type="submit" disabled={busy || revision === null}>
-          <Save size={14} />Save checkpoint
+        <button type="submit" className="button-primary" disabled={busy || revision === null}>
+          <Save size={14} />Save version
         </button>
-        <button type="button" disabled={busy} onClick={() => void perform(() => refresh())}>
+        <button type="button" className="button-secondary" disabled={busy} onClick={() => void perform(() => refresh())}>
           Refresh
         </button>
       </form>
@@ -207,36 +205,32 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
       {error && <p role="alert" className="settings-error">{error}</p>}
 
       {items.length === 0 && revision !== null && (
-        <p className="settings-muted" style={{ padding: '12px 0' }}>No checkpoints yet. The agent will save one automatically before the next generation.</p>
+        <p className="settings-muted">No saved versions yet. The builder saves one automatically before its next change.</p>
       )}
 
       {userSaves.length > 0 && (
-        <div style={{ marginBottom: '8px' }}>
-          <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '8px 0 4px' }}>
-            Saved by you
-          </div>
+        <div>
+          <div className="history-group-label">Saved by you</div>
           {userSaves.map(renderItem)}
         </div>
       )}
 
       {autoSaves.length > 0 && (
         <div>
-          <div style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '8px 0 4px' }}>
-            Auto-saves
-          </div>
+          <div className="history-group-label">Automatic saves</div>
           {autoSaves.map(renderItem)}
         </div>
       )}
 
-      <p className="settings-muted" style={{ marginTop: '14px', fontSize: '11px' }}>
-        Up to 12 versions · max 20 MB. Restoring pre-saves your current files first. Database records and deployed releases are not versioned.
+      <p className="settings-muted" style={{ marginTop: '14px', fontSize: '12px' }}>
+        Keeps up to 12 versions. Restoring first saves your current files as a new version. Saved data and live releases are not included.
       </p>
 
       <ConfirmModal
         isOpen={confirm}
-        title="Restore this source version?"
-        message="This replaces all project files with the checkpoint snapshot. Your current source will be saved as a recovery checkpoint first. Database records and deployed releases are not affected."
-        confirmLabel="Restore source"
+        title="Go back to this version?"
+        message="This replaces all your app's files with the saved version. Your current files are saved as a new version first. Saved data and live releases are not affected."
+        confirmLabel="Restore version"
         isDestructive
         error={error || undefined}
         onCancel={() => setConfirm(false)}

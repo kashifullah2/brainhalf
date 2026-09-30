@@ -55,7 +55,7 @@ function DashboardUsageExtra() {
   }, []);
 
   if (accountAiUsage) {
-    return <p className="dashboard-account-usage">AI usage today ({accountAiUsage.day} UTC): {accountAiUsage.calls}/{accountAiUsage.limits.dailyCalls} calls · {accountAiUsage.reservedOutputTokens?.toLocaleString() ?? '—'}/{accountAiUsage.limits.dailyOutputTokens?.toLocaleString() ?? '—'} tokens · {accountAiUsage.activeGenerations}/{accountAiUsage.limits.concurrentGenerations} active</p>;
+    return <p className="dashboard-account-usage">AI usage today ({accountAiUsage.day} UTC): {accountAiUsage.calls}/{accountAiUsage.limits.dailyCalls} requests · {accountAiUsage.reservedOutputTokens?.toLocaleString() ?? '—'}/{accountAiUsage.limits.dailyOutputTokens?.toLocaleString() ?? '—'} words · {accountAiUsage.activeGenerations}/{accountAiUsage.limits.concurrentGenerations} running</p>;
   }
   if (accountAiUsageError) return <p className="dashboard-account-usage dashboard-account-usage-error">{accountAiUsageError}</p>;
   return null;
@@ -90,7 +90,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
         const body = await response.json();
         if (!response.ok || !Array.isArray(body.deletions)) throw new Error('Cleanup status is unavailable.');
         if (!controller.signal.aborted) { setCleanupStatus(body.deletions); setCleanupError(''); }
-      } catch { if (!controller.signal.aborted) setCleanupError('Cleanup status could not be loaded. It will retry automatically.'); }
+      } catch { if (!controller.signal.aborted) setCleanupError('Project deletion status couldn’t be loaded. It will retry automatically.'); }
       if (!controller.signal.aborted) timer = setTimeout(refresh, 15_000);
     };
     void refresh(); return () => { controller.abort(); clearTimeout(timer); };
@@ -154,7 +154,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
         <section className="dashboard-empty"><span><Plus size={22} /></span><h2>Create your first project</h2><p>Open a blank workspace and describe the app you want to make.</p><button type="button" onClick={onCreateProject} disabled={creatingProject}>{creatingProject ? 'Creating…' : 'Create new project'}</button></section>
       )}
     </main>
-    {projectToDelete && <ConfirmModal isOpen title="Delete Project" message="Delete this project, its app deployments, and databases? Access is revoked immediately. Local files and conversation history are removed after the request is accepted; server source, attachments, credentials and backups are erased by an automatically retried cleanup job. Track completion on the dashboard." confirmLabel={deleting ? 'Deleting…' : 'Delete Project'} pending={deleting} error={deleteError} isDestructive onConfirm={handleDelete} onCancel={() => { if (!deletionPending.current) { setProjectToDelete(null); setDeleteError(''); } }} />}
+    {projectToDelete && <ConfirmModal isOpen title="Delete Project" message="Delete this project, its published apps, and its saved data? Access is revoked immediately. Your files and conversation history are removed first; everything else is erased by an automatic cleanup job that you can track here on the dashboard." confirmLabel={deleting ? 'Deleting…' : 'Delete Project'} pending={deleting} error={deleteError} isDestructive onConfirm={handleDelete} onCancel={() => { if (!deletionPending.current) { setProjectToDelete(null); setDeleteError(''); } }} />}
     {projectToRename && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rename-title" ref={renameDialogRef} tabIndex={-1} onClick={() => setProjectToRename(null)}><div className="modal-card dashboard-rename" onClick={event => event.stopPropagation()}><h2 id="rename-title">Rename project</h2><label htmlFor="project-rename-input">Project name</label><input id="project-rename-input" className="text-input" value={renamedName} onChange={event => setRenamedName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveRename(); }} /><div><button className="button-secondary" type="button" onClick={() => setProjectToRename(null)}>Cancel</button><button className="button-primary" type="button" onClick={saveRename}>Save</button></div></div></div>}
   </div>;
 }

@@ -50,3 +50,26 @@ export function describeVerificationFailure(checks: FailedCheck[]): Verification
 export function isVerificationFailure(jobMessage: string): boolean {
   return /verif/i.test(jobMessage);
 }
+
+const ERROR_PATTERNS: Array<[RegExp, string]> = [
+  [/timed?\s?out/i, 'A step took too long and stopped.'],
+  [/\b5\d\d\b|server error/i, 'The behind-the-scenes part of the app returned an error.'],
+  [/\b404\b|not found/i, 'A page or part of the app could not be found.'],
+  [/\b401\b|\b403\b|unauthorized|forbidden/i, 'Access was denied.'],
+  [/connection refused|econnrefused|failed to fetch|fetch failed|\bnetwork\b/i, 'The app could not be reached over the network.'],
+  [/out of memory|heap/i, 'The app ran out of memory while starting.'],
+  [/context length|context window|too many tokens|maximum context/i, 'The request was too large to process.'],
+  [/rate.?limit|too many requests|\b429\b/i, 'Too many requests were made at once — wait a moment and try again.'],
+];
+
+/**
+ * Turn a raw technical error string (preview iframe errors, job messages)
+ * into one plain sentence. Callers keep the raw message behind a
+ * "Technical details" expander for the agent and power users.
+ */
+export function plainLanguageError(message: string): string {
+  for (const [pattern, plain] of ERROR_PATTERNS) {
+    if (pattern.test(message)) return plain;
+  }
+  return 'Something went wrong while showing your app.';
+}

@@ -15,7 +15,7 @@ const PLAIN_LANGUAGE_CAUSES: { pattern: RegExp; cause: string }[] = [
   { pattern: /ERESOLVE|ETARGET|Could not resolve|No matching version|notarget/i, cause: 'Some of the app\u2019s building blocks didn\u2019t fit together.' },
   { pattern: /network|fetch failed|request to|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i, cause: 'The internet hiccupped while fetching the app\u2019s building blocks.' },
   { pattern: /error TS\d+|Type error|Failed to resolve import|Transform failed|is not exported by|RollupError/i, cause: 'The app has a small code hiccup.' },
-  { pattern: /out of memory|heap out of memory|JavaScript heap/i, cause: 'The app ran out of workspace memory while building.' },
+  { pattern: /out of memory|heap out of memory|JavaScript heap/i, cause: 'The app ran out of space while being put together.' },
 ];
 
 export function plainLanguageCause(message: string): string {
@@ -44,7 +44,7 @@ export function DesignPreviewStrip({ backend, runtime, status, filesRef }: {
     : backend.message
       || runtime.error
       || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '')
-      || 'Start your app preview to connect its backend.';
+      || 'Start your app preview to connect its data features.';
 
   return (
     <div className={`preview-health-strip${backend.fault || failed ? ' has-fault' : ''}`} role="status">

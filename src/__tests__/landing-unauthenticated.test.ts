@@ -79,6 +79,20 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
     expect(html).toContain('landing-footer');
   });
 
+  it('renders exactly one id="examples" — the showcase must not duplicate the page anchor', () => {
+    const html = renderToString(
+      React.createElement(LandingPage, {
+        onOpenProject: vi.fn(),
+        onSubmitInitialPrompt: vi.fn(),
+        currentUser: null,
+      })
+    );
+
+    const matches = html.match(/id="examples"/g) ?? [];
+    expect(matches).toHaveLength(1);
+    expect(html).toContain('href="#examples"');
+  });
+
   it('renders LoginScreen in modal mode with signup mode for Get Started', () => {
     const onClose = vi.fn();
     const html = renderToString(
@@ -90,7 +104,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
     );
 
     expect(html).toContain('Create account');
-    expect(html).toContain('Start building for free');
+    expect(html).toContain('Start making your app for free');
     expect(html).toContain('aria-label="Close"');
   });
 
@@ -102,7 +116,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
       })
     );
 
-    expect(html).toContain('Sign in to continue building');
+    expect(html).toContain('Sign in to keep working on your app');
     expect(html).toContain('Sign in');
   });
 });

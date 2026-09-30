@@ -62,7 +62,14 @@ export function useAutomaticBuildFix(projectId: string, runtime: Runtime, isGene
           onAccepted: () => {},
         });
       })
-      .catch((err: unknown) => { console.warn('[auto-fix] Failed to fetch build logs:', err); });
+      .catch((err: unknown) => {
+        console.warn('[auto-fix] Failed to fetch build logs:', err);
+        // The job was marked processed before the fetch; unmark it so a later
+        // status change retries instead of dropping this repair forever. The
+        // effect only re-fires on status changes and RepairBudget caps actual
+        // repairs, so a persistently failing fetch cannot spam.
+        processedJobs.current.delete(failedJob.id);
+      });
 
     return () => controller.abort();
   }, [projectId, runtime.status, isGenerating]);

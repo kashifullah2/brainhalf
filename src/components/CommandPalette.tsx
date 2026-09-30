@@ -60,13 +60,13 @@ export default function CommandPalette({
     const items: PaletteItem[] = [
       { id: 'tab:preview', label: 'Preview', detail: 'Switch to preview tab', icon: <Monitor size={15} />, section: 'action', onSelect: () => { onSwitchTab('preview'); onClose(); } },
       { id: 'tab:code', label: 'Code', detail: 'Switch to code editor', icon: <Code2 size={15} />, section: 'action', onSelect: () => { onSwitchTab('code'); onClose(); } },
-      { id: 'tab:build', label: 'Build / Console', detail: 'Open build & project console', icon: <Terminal size={15} />, section: 'action', onSelect: () => { onSwitchTab('console'); onClose(); } },
-      { id: 'act:publish', label: 'Publish', detail: 'Deploy your project', icon: <Upload size={15} />, section: 'action', onSelect: () => { onPublish(); onClose(); } },
+      { id: 'tab:build', label: 'Console', detail: 'Open the project console', icon: <Terminal size={15} />, section: 'action', onSelect: () => { onSwitchTab('console'); onClose(); } },
+      { id: 'act:publish', label: 'Publish', detail: 'Put your project on the internet', icon: <Upload size={15} />, section: 'action', onSelect: () => { onPublish(); onClose(); } },
       { id: 'act:zip', label: 'Download ZIP', detail: 'Export project as ZIP archive', icon: <Download size={15} />, section: 'action', onSelect: () => { onExportZip(); onClose(); } },
       { id: 'act:github', label: 'Export to GitHub', detail: 'Push to GitHub repository', icon: <GitBranch size={15} />, section: 'action', onSelect: () => { onOpenGithub(); onClose(); } },
     ];
     if (onUndo) {
-      items.push({ id: 'act:undo', label: 'Undo last AI change', detail: 'Restore to before the last generation', icon: <RotateCcw size={15} />, section: 'action', onSelect: () => { onUndo(); onClose(); } });
+      items.push({ id: 'act:undo', label: 'Undo the builder’s last change', detail: 'Restore to before the last generation', icon: <RotateCcw size={15} />, section: 'action', onSelect: () => { onUndo(); onClose(); } });
     }
     return items;
   }, [onSwitchTab, onExportZip, onOpenGithub, onPublish, onUndo, onClose]);

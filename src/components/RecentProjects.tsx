@@ -25,7 +25,7 @@ const CATEGORIES = {
   forms: { label: 'Forms & booking', icon: ClipboardList },
   app: { label: 'App', icon: LayoutGrid },
 };
-const STATUS_LABELS = { draft: 'Draft', building: 'Building', deployed: 'Deployed', error: 'Error' };
+const STATUS_LABELS = { draft: 'Draft', building: 'In progress', deployed: 'Live', error: 'Needs attention' };
 
 interface RecentProjectsProps {
   projects: Project[];

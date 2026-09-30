@@ -81,7 +81,11 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   const start = useCallback((files: Record<string, string>, retry = false) => {
     setOpenError('');
     if (retry) attempted.current = '';
-    if (!isFullStackProject(files)) return;
+    // A non-full-stack snapshot supersedes any pending full-stack one. Without
+    // this, start() returns early but the older snapshot stays pending, and the
+    // next status change builds it — the preview would show stale files after
+    // a frontend-only update.
+    if (!isFullStackProject(files)) { pending.current = null; return; }
     pending.current = { ...files }; void flush();
   }, [flush]);
   const open = useCallback(async () => {

@@ -156,6 +156,60 @@ const AUTO_RETRY_FULL_APP_MARKER = '[AUTO-RETRY-FULL-APP]';
 const MIN_FULL_APP_RESPONSE_CHARS = 260;
 const MIN_FULL_APP_RESPONSE_LINES = 5;
 
+/**
+ * Sent to the client when a response ends with an unfinished file block. The
+ * client re-sends it as a follow-up prompt so the model regenerates the
+ * unfinished file from its beginning. Extracted so the server can recognize
+ * its own retry prompt (via isSystemContinuation) and cap the retry loop.
+ */
+export const TRUNCATION_RETRY_MESSAGE = 'The previous response ended with an unfinished file. Regenerate each unfinished file from its beginning using <file path="/...">FULL FILE CONTENT</file>. Keep already completed files unchanged. Do not send a raw continuation or partial snippets.';
+// A file that does not fit the model's output window truncates on every
+// attempt; without a cap the trigger-auto-reply loop spins forever, burning
+// the user's token budget while the UI never resolves.
+const MAX_TRUNCATION_RETRIES = 2;
+
+/**
+ * Backend-owned write paths for the mandatory write-order rule. Covers the
+ * managed Workers layout (/worker, /migrations, /shared) and the
+ * downloadable/simulated backend (/server) — the latter used to slip through
+ * the ordering guard entirely.
+ */
+export function isBackendWritePath(cleanPath: string): boolean {
+  return /^\/(?:worker|migrations|shared|server)\//i.test(cleanPath);
+}
+
+/**
+ * Backend paths that must wait for /src/App.tsx: the served entry points.
+ * /migrations and /shared are deliberately excluded — they are inert data
+ * files the staged pipeline writes first by design, and nothing in the preview
+ * or the build depends on their write order.
+ */
+export function isAppFirstBackendPath(cleanPath: string): boolean {
+  return /^\/(?:worker|server)\//i.test(cleanPath);
+}
+
+/**
+ * Returns the kind of response block whose opening tag never closes — i.e.
+ * the model was cut off mid-block. A self-closing <delete .../> counts as
+ * closed. Previously only <file> was checked, so an unterminated <edit> was
+ * dropped silently by the edit regex and the requested fix never applied.
+ */
+export function findUnterminatedBlock(text: string): 'file' | 'edit' | 'delete' | null {
+  const lower = text.toLowerCase();
+  const blocks: Array<{ kind: 'file' | 'edit' | 'delete'; open: string; closes: string[] }> = [
+    { kind: 'file', open: '<file ', closes: ['</file>'] },
+    { kind: 'edit', open: '<edit ', closes: ['</edit>'] },
+    { kind: 'delete', open: '<delete ', closes: ['</delete>', '/>'] },
+  ];
+  for (const block of blocks) {
+    const openAt = lower.lastIndexOf(block.open);
+    if (openAt < 0) continue;
+    const tail = lower.slice(openAt + block.open.length);
+    if (!block.closes.some(close => tail.includes(close))) return block.kind;
+  }
+  return null;
+}
+
 type ExtractionSummary = {
   writtenCount: number;
   deletedCount: number;
@@ -298,6 +352,19 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   // messages; this bounded snapshot lets another authorized socket rejoin it.
   private activeGeneration: (GenerationSession & { epoch: number }) | null = null;
   private activeAccounting: { id: string; inputTokens: number | null; outputTokens: number | null; firstResponseAt: number | null; providerCalls: number } | null = null;
+  /**
+   * Consecutive truncation auto-retries within one retry chain. Reset whenever
+   * a brand-new user prompt starts; the chain only continues across the
+   * server's own TRUNCATION_RETRY_MESSAGE continuation prompts.
+   */
+  private truncationRetries = 0;
+  /**
+   * Epoch of the generation whose turn was last persisted via
+   * saveGenerationTurn. Lets the failure handler preserve the user's prompt
+   * without duplicating a turn that was already saved (e.g. a completed
+   * stage-1 save before a stage-2 failure).
+   */
+  private turnSavedForEpoch = -1;
 
   private captureUsage(input: unknown, output: unknown) {
     const accounting = this.activeAccounting;
@@ -645,6 +712,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     } catch (e) {
       console.warn('Failed saving turn to SQLite:', e);
     }
+  }
+
+  /**
+   * Persists one user/assistant turn and records which generation epoch it
+   * belongs to, so a failure handler can preserve the user's prompt without
+   * duplicating a turn that was already saved for the same epoch.
+   */
+  private saveGenerationTurn(prompt: string, response: string, epoch?: number) {
+    if (typeof epoch === 'number') this.turnSavedForEpoch = epoch;
+    this.saveTurn(prompt, response);
   }
 
   private backupKey(): string {
@@ -1288,6 +1365,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     epoch: number,
     plannerMode: boolean
   ): Promise<void> {
+    // A brand-new user prompt breaks any truncation-retry streak: the counter
+    // only tracks consecutive truncations within one retry chain, which the
+    // server recognizes via its own continuation prompts.
+    if (!isSystemContinuation(actualPrompt)) this.truncationRetries = 0;
     const controls = generationControls(data);
     const generationTimeoutMs = controls.timeoutMs;
     const maxSteps = controls.maxSteps;
@@ -1419,18 +1500,22 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               const cleanPath = normalizePath(path);
               if (this.isHarnessEntry(cleanPath)) return { success: false, error: 'This entry point is owned by the preview.' };
               // Enforce frontend-first write order:
-              // (1) Block backend/component writes until App.tsx is written.
+              // (1) Block served-backend/component writes until App.tsx is written.
+              //     /migrations and /shared are exempt: they are inert data files
+              //     the staged pipeline writes first by design, and nothing in
+              //     the preview or build depends on their write order.
               // (2) Block backend writes if any already-written frontend file has an
               //     unresolved local component import — the agent must write those files first.
               // On edits to an existing real app the checks are skipped so normal edits work.
               if (!plannerMode) {
-                const isBackendPath = /^\/(?:worker|migrations|shared)\//i.test(cleanPath);
+                const isBackendPath = isBackendWritePath(cleanPath);
+                const isAppFirstPath = isAppFirstBackendPath(cleanPath);
                 const isComponentPath = /^\/src\/components\//i.test(cleanPath) && !/AppBoundary\.tsx$/i.test(cleanPath);
                 const appTsxWrittenByTool = toolWrittenPaths.has('/src/App.tsx') || toolWrittenPaths.has('src/App.tsx');
                 const existingAppTsx = this.runSql`SELECT content FROM project_files WHERE path = '/src/App.tsx'`[0]?.content ?? '';
                 const appTsxIsStarter = !existingAppTsx || isStarterApp(existingAppTsx);
-                // Rule 1: App.tsx must be written before any other component or backend file.
-                if ((isBackendPath || isComponentPath) && !appTsxWrittenByTool && appTsxIsStarter) {
+                // Rule 1: App.tsx must be written before any other component or served backend file.
+                if ((isAppFirstPath || isComponentPath) && !appTsxWrittenByTool && appTsxIsStarter) {
                   return { success: false, error: `Write /src/App.tsx before writing ${cleanPath}. Per the MANDATORY WRITE ORDER rule, the frontend entry point must be saved first so the preview is never left empty if context runs out.` };
                 }
                 // Rule 2: When trying to write a backend file during fresh generation, check that
@@ -1826,7 +1911,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...stageNewPaths])];
                   extraction.writtenCount = extraction.writtenPaths.length;
 
-                  this.saveTurn(stageIdx === 0 ? actualPrompt : 'Continue to the next stage.', displayContent || (stageNewPaths.size ? `Updated ${[...stageNewPaths].join(', ')}.` : ''));
+                  this.saveGenerationTurn(stageIdx === 0 ? actualPrompt : 'Continue to the next stage.', displayContent || (stageNewPaths.size ? `Updated ${[...stageNewPaths].join(', ')}.` : ''), epoch);
 
                   if (stageNewPaths.size > 0) {
                     flushFrame();
@@ -1915,10 +2000,21 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (err instanceof AiBudgetError && err.status === 429) {
         // Preserve the user's prompt in the server-side conversation history even
         // when the concurrent generation limit is exceeded, so it survives a
-        // page reload and cross-device sessions.
-        try { this.saveTurn(actualPrompt, cleanError); } catch { }
+        // page reload and cross-device sessions. Skipped when a turn was already
+        // saved for this epoch (e.g. a completed stage before a later failure).
+        if (this.turnSavedForEpoch !== epoch) {
+          try { this.saveGenerationTurn(actualPrompt, cleanError, epoch); } catch { }
+        }
         sendError(cleanError, 'rate_limited');
       } else {
+        // A failed first prompt used to vanish from the server-side
+        // conversation: only the 429 branch above preserved it. Without this,
+        // a new tab or device loading history — or the next turn's model
+        // context — never sees what the user asked. (Aborts return earlier;
+        // an intentional stop stays unsaved.)
+        if (this.turnSavedForEpoch !== epoch) {
+          try { this.saveGenerationTurn(actualPrompt, cleanError, epoch); } catch { }
+        }
         sendError(cleanError, err instanceof GenerationUserError ? err.code : undefined);
       }
     } finally {
@@ -2207,7 +2303,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const extraction = this.extractAndSaveFiles(outputContent, connection, epoch);
       extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...assetPaths])];
       extraction.writtenCount = extraction.writtenPaths.length;
-      this.saveTurn(actualPrompt, displayContent || (assetPaths.size ? `Updated ${[...assetPaths].join(', ')}.` : ''));
+      this.saveGenerationTurn(actualPrompt, displayContent || (assetPaths.size ? `Updated ${[...assetPaths].join(', ')}.` : ''), epoch);
       this.handleIncompleteAppGeneration({
         actualPrompt,
         responseText: outputContent,
@@ -2425,11 +2521,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       operations.push({ index: match.index, path: filePath, type: 'write', content: fileContent });
     }
 
-    // Capture a trailing unclosed <file> block (the model hit its token limit).
-    // Only worth trying when the tail really is unterminated.
-    const lastOpen = text.toLowerCase().lastIndexOf('<file ');
-    const lastClose = text.toLowerCase().lastIndexOf('</file>');
-    if (lastOpen > lastClose) {
+    // Capture a trailing unclosed block (the model hit its token limit). An
+    // unterminated <edit> or <delete> used to be dropped silently — the edit
+    // regex above needs its closing tag — so the requested fix never applied
+    // and nothing told the user. Treat any unterminated block as truncation.
+    if (findUnterminatedBlock(text)) {
       wasTruncated = true;
     }
 
@@ -2478,12 +2574,26 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
     summary.wasTruncated = wasTruncated;
     if (wasTruncated) {
-      try {
-        connection.send(JSON.stringify({
-          type: 'trigger-auto-reply',
-          message: 'The previous response ended with an unfinished file. Regenerate each unfinished file from its beginning using <file path="/...">FULL FILE CONTENT</file>. Keep already completed files unchanged. Do not send a raw continuation or partial snippets.',
-        }));
-      } catch { }
+      // The retry used to fire on every truncated response with no cap: a file
+      // that genuinely does not fit the output window truncates on every
+      // attempt, so the loop spun forever — burning the user's token budget
+      // while the UI never resolved. After MAX_TRUNCATION_RETRIES consecutive
+      // truncations, stop and say so in plain language instead.
+      const retriesSoFar = typeof this.truncationRetries === 'number' ? this.truncationRetries : 0;
+      if (retriesSoFar >= MAX_TRUNCATION_RETRIES) {
+        this.truncationRetries = 0;
+        try {
+          connection.send(JSON.stringify({
+            type: 'error',
+            error: 'The app files are too large to finish in one response, even after several tries. Ask for a smaller piece first (for example, one screen at a time), then say "continue".',
+          }));
+        } catch { }
+      } else {
+        this.truncationRetries = retriesSoFar + 1;
+        try {
+          connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: TRUNCATION_RETRY_MESSAGE }));
+        } catch { }
+      }
     }
     if (pendingWrites.size === 0 && pendingDeletes.size === 0) return summary;
 
@@ -2530,18 +2640,33 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // with another must not leave both, and a mid-batch failure must not leave the
     // workspace half-migrated between the old and the new app.
     const written: string[] = [];
+    let oversizePath: string | null = null;
     try {
       this.transact(() => {
         for (const path of pendingDeletes) {
           this.runSql`DELETE FROM project_files WHERE path = ${path}`;
         }
         for (const [path, content] of pendingWrites.entries()) {
-          if (this.upsertFile(path, content)) written.push(path);
+          // An oversized write used to be skipped silently, leaving a
+          // "successful" generation with a missing file. Fail the batch
+          // atomically instead — the transaction rolls back — and name the file.
+          if (!this.upsertFile(path, content)) {
+            oversizePath = path;
+            throw new Error(`Generated file exceeds the per-file size limit: ${path}`);
+          }
+          written.push(path);
         }
       });
     } catch (e) {
       console.error('Transaction committing extracted files failed; workspace untouched:', e);
-      try { connection.send(JSON.stringify({ type: 'error', error: 'Failed to save generated files; workspace unchanged.' })); } catch { }
+      try {
+        connection.send(JSON.stringify({
+          type: 'error',
+          error: oversizePath
+            ? `Could not save ${oversizePath}: it is larger than the ${(MAX_FILE_BYTES / 1024 / 1024).toFixed(0)} MB per-file limit, so none of the files were saved and the workspace is unchanged. Ask the agent to split it into smaller files.`
+            : 'Failed to save generated files; workspace unchanged.',
+        }));
+      } catch { }
       return summary;
     }
 

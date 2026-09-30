@@ -36,7 +36,7 @@ export default function GenerationProgress({
     ? currentFile.split('/').pop()!
     : saved > 0
     ? `${saved} of ${total || '?'} files written`
-    : 'Building…';
+    : 'Creating your app…';
 
   return (
     <div className="bh-gen-progress" role="status" aria-label={`Generation progress: ${label}`}>

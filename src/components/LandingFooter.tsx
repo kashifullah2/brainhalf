@@ -1,5 +1,4 @@
 import React from 'react';
-import { ArrowRight } from 'lucide-react';
 import BrainHalfLogo from './BrainHalfLogo';
 
 const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
@@ -25,6 +24,10 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
     title: 'Use cases',
     links: [
       { label: 'Inventory apps', href: '/use-cases/ai-inventory-app-builder' },
+      { label: 'Book inventory', href: '/use-cases/book-inventory-app-builder' },
+      { label: 'Warehouse stock control', href: '/use-cases/warehouse-inventory-app-builder' },
+      { label: 'Equipment & assets', href: '/use-cases/equipment-asset-inventory-app-builder' },
+      { label: 'Personal inventory', href: '/use-cases/personal-inventory-app-builder' },
       { label: 'Dashboards', href: '/use-cases/ai-dashboard-builder' },
       { label: 'Customer portals', href: '/use-cases/customer-dashboard-builder' },
       { label: 'Websites', href: '/use-cases/ai-website-builder' },
@@ -48,7 +51,6 @@ export const LandingFooter: React.FC = () => {
         <div className="landing-footer-brand-col">
           <a className="landing-footer-brand" href="/" aria-label="BrainHalf home"><BrainHalfLogo size={26} />BrainHalf</a>
           <p className="landing-footer-tagline">Describe your idea, watch it become a working app, and publish it — all from one workspace. Free to start, no coding required.</p>
-          <a className="landing-footer-cta" href="/#start-building">Start building <ArrowRight size={14} aria-hidden="true" /></a>
         </div>
         {COLUMNS.map(column => (
           <nav key={column.title} className="landing-footer-col" aria-label={column.title}>

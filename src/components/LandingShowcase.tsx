@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, Package, Plus, Globe2, LayoutGrid, Users, MoveUpRight } from 'lucide-react';
+import { Check, ChevronDown, Package, Plus, Globe2, LayoutGrid, Users } from 'lucide-react';
 import './LandingShowcase.css';
 import { BUSINESS_APPS } from '../lib/business-apps';
 
@@ -52,11 +52,13 @@ function CrmPreview() {
   return <div className="sample-crm"><div className="sample-nav"><span className="sample-brand"><Users size={18} /> good company</span><span className="sample-avatar">AL</span></div><div className="sample-stock-content"><span className="sample-overline">CUSTOMERS / FOLLOW-UPS</span><h3>Keep the conversation going.</h3><p className="sample-crm-intro">Three people. One clear next step for each.</p><table className="sample-stock-table"><caption>Your customer list</caption><thead><tr><th>Customer</th><th>Next step</th><th>Stage</th></tr></thead><tbody><tr><td><strong>Olive Studio</strong><small>Design supplies</small></td><td>Send quote</td><td><span className="stock-low">New</span></td></tr><tr><td><strong>Northside Café</strong><small>Weekly delivery</small></td><td>Call Friday</td><td><span>Contacted</span></td></tr><tr><td><strong>Paper House</strong><small>Monthly order</small></td><td>Prepare order</td><td><span>Won</span></td></tr></tbody></table><p className="sample-crm-intro">Customer details and notes, together in a private workspace.</p></div></div>;
 }
 
-export default function LandingShowcase({ onUsePrompt }: { onUsePrompt: (prompt: string) => void }) {
+export default function LandingShowcase() {
   const [selected, setSelected] = useState(0);
   const example = EXAMPLES[selected];
   return (
-    <section className="studio-showcase" id="examples" aria-label="Explore example apps">
+    // No id here: this showcase is nested inside the landing page's own
+    // <section id="examples">, and duplicate ids break anchor navigation.
+    <section className="studio-showcase" aria-label="Explore example apps">
       <div className="studio-showcase-toolbar">
         <div className="studio-example-tabs" role="tablist" aria-label="Example app designs">
           {EXAMPLES.map((item, index) => <button key={item.id} id={`example-tab-${item.id}`} type="button" role="tab" aria-selected={selected === index} aria-controls="example-panel" tabIndex={selected === index ? 0 : -1} onClick={() => setSelected(index)} onKeyDown={event => {
@@ -84,7 +86,6 @@ export default function LandingShowcase({ onUsePrompt }: { onUsePrompt: (prompt:
       </div>
       <div className="studio-example-brief">
         <div><span className="studio-example-brief-label">IT STARTS WITH AN IDEA LIKE THIS</span><p>“{example.prompt}”</p></div>
-        <button className="studio-example-note" onClick={() => onUsePrompt(example.prompt)} type="button">Use this idea <MoveUpRight size={14} /></button>
       </div>
       <p className="studio-example-caption">Interactive example with sample data. Your business records stay in your own app.</p>
     </section>

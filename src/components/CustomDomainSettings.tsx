@@ -11,24 +11,24 @@ interface DomainInfo {
   verificationErrors?: string[];
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  active: 'Active',
-  pending: 'Pending DNS verification',
+export const STATUS_LABEL: Record<string, string> = {
+  active: 'Connected',
+  pending: 'Waiting for domain check',
   active_redeploying: 'Updating',
   blocked: 'Blocked — contact support',
   pending_deletion: 'Removing…',
-  error: 'Error',
+  error: 'Something went wrong',
   unknown: 'Checking…',
 };
 
-const SSL_LABEL: Record<string, string> = {
-  active: 'TLS certificate active',
-  initializing: 'Provisioning certificate…',
-  pending_validation: 'Awaiting DNS for certificate',
-  pending_issuance: 'Issuing certificate…',
-  pending_deployment: 'Deploying certificate…',
-  expired: 'Certificate expired',
-  error: 'Certificate error',
+export const SSL_LABEL: Record<string, string> = {
+  active: 'Secure connection active',
+  initializing: 'Setting up secure connection…',
+  pending_validation: 'Waiting on your domain for the secure connection',
+  pending_issuance: 'Creating secure connection…',
+  pending_deployment: 'Turning on secure connection…',
+  expired: 'Secure connection expired',
+  error: 'Secure connection problem',
 };
 
 export default function CustomDomainSettings({ projectId, productionUrl }: { projectId: string; productionUrl?: string }) {
@@ -76,14 +76,15 @@ export default function CustomDomainSettings({ projectId, productionUrl }: { pro
   const appOrigin = productionUrl ? new URL(productionUrl).hostname : undefined;
 
   if (domain === undefined) {
-    return <div className="custom-domain-loading"><Loader2 size={16} className="publication-spinner" /><span>Loading domain settings…</span></div>;
+    return <div className="custom-domain-loading"><Loader2 size={16} className="publication-spinner" /><span>Loading your domain…</span></div>;
   }
 
   return (
     <div className="custom-domain-settings">
       <p className="custom-domain-intro">
-        Point your own domain to this app. Add the domain below, then add a CNAME record with your DNS provider.
-        TLS is provisioned automatically.
+        Use your own web address for this app (like www.yourbusiness.com). Add it below,
+        then add one record where you bought your domain. A secure connection
+        (the padlock in the browser) is set up automatically.
       </p>
 
       {!domain ? (
@@ -134,7 +135,7 @@ export default function CustomDomainSettings({ projectId, productionUrl }: { pro
 
           {domain.status !== 'active' && (
             <div className="custom-domain-dns">
-              <p><strong>Add this CNAME record</strong> with your DNS provider to connect your domain:</p>
+              <p><strong>Add this record</strong> where you manage your domain (usually where you bought it) to connect it:</p>
               <table className="dns-record-table">
                 <thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
                 <tbody>
@@ -158,7 +159,7 @@ export default function CustomDomainSettings({ projectId, productionUrl }: { pro
                   )}
                 </tbody>
               </table>
-              <p className="custom-domain-hint">DNS changes can take up to 24 hours to propagate. Refresh to check status.</p>
+              <p className="custom-domain-hint">Domain changes can take up to a day to take effect. Use the refresh button to check the status.</p>
               {domain.verificationErrors?.length ? (
                 <p className="settings-error">{domain.verificationErrors.join(' ')}</p>
               ) : null}

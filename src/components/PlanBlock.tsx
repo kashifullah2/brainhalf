@@ -20,7 +20,7 @@ const PlanBlock: React.FC<PlanBlockProps> = ({ content, isStreaming }) => {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
         <Network size={16} color="var(--color-info)" />
-        <span style={{ color: 'var(--color-info)', fontWeight: 600 }}>Planner Agent Strategy</span>
+        <span style={{ color: 'var(--color-info)', fontWeight: 600 }}>Builder’s plan</span>
         {isStreaming && (
           <div style={{ marginLeft: 'auto' }}>
             <Loader2 size={14} className="lucide-spin" style={{ color: 'var(--color-info)' }} />

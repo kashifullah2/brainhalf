@@ -173,9 +173,9 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
       <div className="agent-tracker" role="dialog" aria-modal="true" aria-labelledby="agent-tracker-title">
         <header className="agent-tracker-header">
           <div>
-            <span className="agent-tracker-eyebrow">OBSERVABILITY</span>
+            <span className="agent-tracker-eyebrow">UNDER THE HOOD</span>
             <h2 id="agent-tracker-title">Agent Tracker</h2>
-            <p>Live LLM behavior, generation phases, code changes, and issue detection.</p>
+            <p>What the builder is doing right now — its steps, file changes, and detected issues.</p>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close agent tracker"><X size={20} /></button>
         </header>
@@ -191,7 +191,7 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
               <span className={`tracker-stat-value tracker-badge-${latestGen.status}`}>{latestGen.status}</span>
             </div>
             <div className="tracker-stat">
-              <span className="tracker-stat-label">TTFB</span>
+              <span className="tracker-stat-label">First response</span>
               <span className="tracker-stat-value">{latestGen.first_response_at != null ? formatElapsed(latestGen.first_response_at - latestGen.started_at) : '—'}</span>
             </div>
             <div className="tracker-stat">
@@ -239,7 +239,7 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
           {tab === 'live' && (
             <div className="tracker-events">
               {events.length === 0 && (
-                <p className="tracker-empty">No events yet. Start a generation to see real-time agent activity here.</p>
+                <p className="tracker-empty">No events yet. Ask the builder to make something and its activity will show up here.</p>
               )}
               {events.map(event => (
                 <div key={event.id} className={`tracker-event tracker-event-${event.severity} tracker-event-${event.type}`}>
@@ -258,7 +258,7 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
             <div className="tracker-history">
               {genError && <p className="tracker-alert" role="alert">{genError}</p>}
               {!genError && generations.length === 0 && (
-                <p className="tracker-empty">No generation history for this project yet.</p>
+                <p className="tracker-empty">No builder runs yet for this project.</p>
               )}
               {generations.map((gen, i) => (
                 <div key={i} className="tracker-history-row">
@@ -268,7 +268,7 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
                   </div>
                   <div className="tracker-history-meta">
                     <span><Clock size={10} aria-hidden="true" />{formatTime(gen.started_at)}</span>
-                    <span>TTFB: {gen.first_response_at != null ? formatElapsed(gen.first_response_at - gen.started_at) : '—'}</span>
+                    <span>First response: {gen.first_response_at != null ? formatElapsed(gen.first_response_at - gen.started_at) : '—'}</span>
                     <span>Duration: {gen.finished_at ? formatElapsed(gen.finished_at - gen.started_at) : 'running…'}</span>
                     <span>Calls: {gen.provider_calls ?? '—'}</span>
                     <span>Tokens: {gen.input_tokens?.toLocaleString() ?? '—'} / {gen.output_tokens?.toLocaleString() ?? '—'}</span>
@@ -277,7 +277,7 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
                     <p className="tracker-row-hint">⚠ {gen.provider_calls} LLM calls — may indicate a tool loop or unclear prompt</p>
                   )}
                   {gen.first_response_at != null && (gen.first_response_at - gen.started_at) > 10_000 && (
-                    <p className="tracker-row-hint">⚠ High TTFB ({formatElapsed(gen.first_response_at - gen.started_at)}) — provider may be under load</p>
+                    <p className="tracker-row-hint">⚠ Slow first response ({formatElapsed(gen.first_response_at - gen.started_at)}) — the AI service may be under load</p>
                   )}
                 </div>
               ))}
@@ -305,7 +305,7 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
                 <ul>
                   <li><strong>DSML output</strong> — model used raw internal tool syntax; an auto-retry fires; switch to a more reliable model if it recurs</li>
                   <li><strong>More than 3 LLM calls</strong> — suggests tool loop or ambiguous prompt; add specificity to the request</li>
-                  <li><strong>TTFB {'>'} 10s</strong> — provider latency or cold start; retry or switch model</li>
+                  <li><strong>First response {'>'} 10s</strong> — provider latency or cold start; retry or switch model</li>
                   <li><strong>Empty response</strong> — model returned nothing; check token budget and provider availability</li>
                   <li><strong>Preview error</strong> — generated code has a runtime error; check the Console tab for details</li>
                   <li><strong>Partial file</strong> — generation was truncated by the token cap; increase max tokens or simplify the request</li>

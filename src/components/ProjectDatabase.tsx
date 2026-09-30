@@ -73,17 +73,17 @@ function ColumnDraftEditor({ draft, onChange, allowPrimaryKey, allowReferences, 
   return (
     <div className="database-column-draft">
       <input
-        aria-label="Column name"
+        aria-label="Field name"
         placeholder="name"
         maxLength={64}
         value={draft.name}
         onChange={event => onChange({ ...draft, name: event.target.value })}
       />
-      <select aria-label="Column type" value={draft.type} onChange={event => onChange({ ...draft, type: event.target.value as ColumnDraft['type'] })}>
+      <select aria-label="Field type" value={draft.type} onChange={event => onChange({ ...draft, type: event.target.value as ColumnDraft['type'] })}>
         <option value="TEXT">Text</option>
         <option value="INTEGER">Whole number</option>
         <option value="REAL">Decimal number</option>
-        <option value="BLOB">Binary</option>
+        <option value="BLOB">File data</option>
       </select>
       <label className="database-draft-check">
         <input type="checkbox" checked={draft.notNull} onChange={event => onChange({ ...draft, notNull: event.target.checked })} />
@@ -92,29 +92,29 @@ function ColumnDraftEditor({ draft, onChange, allowPrimaryKey, allowReferences, 
       {allowPrimaryKey && (
         <label className="database-draft-check">
           <input type="checkbox" checked={draft.primaryKey} onChange={event => onChange({ ...draft, primaryKey: event.target.checked })} />
-          Primary key
+          Unique ID
         </label>
       )}
       {allowReferences && tables && tables.length > 0 && (
         <select
-          aria-label="References another table"
+          aria-label="Links to another table"
           value={draft.references}
           onChange={event => onChange({ ...draft, references: event.target.value })}
         >
-          <option value="">no link</option>
+          <option value="">No link</option>
           {tables.map(table => table.columns.filter(column => column.primaryKey).map(column => (
             <option key={`${table.name}.${column.name}`} value={`${table.name}.${column.name}`}>links to {table.name}.{column.name}</option>
           )))}
         </select>
       )}
       <input
-        aria-label="Default value"
-        placeholder="default (optional)"
+        aria-label="Starting value"
+        placeholder="starting value (optional)"
         maxLength={200}
         value={draft.defaultValue}
         onChange={event => onChange({ ...draft, defaultValue: event.target.value })}
       />
-      {onRemove && <button type="button" aria-label="Remove column" onClick={onRemove}><X size={13} /></button>}
+      {onRemove && <button type="button" aria-label="Remove field" onClick={onRemove}><X size={13} /></button>}
     </div>
   );
 }
@@ -228,7 +228,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
     await perform(async () => {
       const name = newTable.name.trim();
       const columns = newTable.columns.filter(column => column.name.trim()).map(columnPayload);
-      if (!columns.length) throw new Error('Add at least one named column.');
+      if (!columns.length) throw new Error('Add at least one named field.');
       await request('/schema/create', {
         method: 'POST',
         body: JSON.stringify({ table: name, columns }),
@@ -237,7 +237,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
       await refresh();
       await browse(name);
       onChanged();
-      setMessage(`Table “${name}” created. A recovery point was saved first.`);
+      setMessage(`Table “${name}” created. A backup was saved first.`);
     });
   }
 
@@ -250,7 +250,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
       await refresh();
       await browse(table, page?.offset ?? 0);
       onChanged();
-      setMessage(`Column “${payload.name}” added to ${table}. A recovery point was saved first.`);
+      setMessage(`Field “${payload.name}” added to ${table}. A backup was saved first.`);
     });
   }
 
@@ -263,7 +263,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
       await refresh();
       await browse(table, page?.offset ?? 0);
       onChanged();
-      setMessage(`Column “${dropped}” removed from ${table}. A recovery point was saved first.`);
+      setMessage(`Field “${dropped}” removed from ${table}. A backup was saved first.`);
     });
   }
 
@@ -278,7 +278,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
       setPage(null);
       await refresh();
       onChanged();
-      setMessage(`Table “${dropped}” and its records were removed. A recovery point was saved first.`);
+      setMessage(`Table “${dropped}” and all its entries were deleted. A backup was saved first.`);
     });
   }
 
@@ -289,7 +289,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
       setAddIndex(null);
       await refresh();
       onChanged();
-      setMessage(`Index “${addIndex.name.trim()}” created on ${table}. A recovery point was saved first.`);
+      setMessage(`Fast lookup “${addIndex.name.trim()}” created on ${table}. A backup was saved first.`);
     });
   }
 
@@ -323,10 +323,10 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
 
       <div className="settings-actions">
         <span className="settings-muted" style={{ alignSelf: 'center' }}>
-          {tables.length ? `${tables.length} table${tables.length === 1 ? '' : 's'}` : 'No tables yet — the builder creates them on the first release.'}
+          {tables.length ? `${tables.length} table${tables.length === 1 ? '' : 's'}` : 'No tables yet — the builder creates them when your app first needs to save something.'}
         </span>
-        <button disabled={busy} onClick={() => setNewTable(current => current ? null : { name: '', columns: [{ ...emptyColumnDraft(), name: 'id', type: 'INTEGER', primaryKey: true }, emptyColumnDraft()] })}><Plus size={14} />New table</button>
-        <button disabled={busy} onClick={() => void perform(() => refresh())}><RefreshCw size={14} />Refresh</button>
+        <button type="button" className="button-primary" disabled={busy} onClick={() => setNewTable(current => current ? null : { name: '', columns: [{ ...emptyColumnDraft(), name: 'id', type: 'INTEGER', primaryKey: true }, emptyColumnDraft()] })}><Plus size={14} />New table</button>
+        <button type="button" className="button-secondary" disabled={busy} onClick={() => void perform(() => refresh())}><RefreshCw size={14} />Refresh</button>
       </div>
 
       {newTable && (
@@ -338,7 +338,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
           }}
         >
           <h4>Create a table</h4>
-          <p className="settings-muted">Name the table and its columns. One column can be the primary key — the unique ID of each record. A recovery point is saved first.</p>
+          <p className="settings-muted">Give the table a name and add its fields. One field can be the unique ID of each entry — the way to tell entries apart. A backup is saved first.</p>
           <input
             aria-label="Table name"
             placeholder="Table name, e.g. products"
@@ -358,9 +358,9 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
             />
           ))}
           <div className="settings-actions">
-            <button type="button" disabled={busy || newTable.columns.length >= 50} onClick={() => setNewTable({ ...newTable, columns: [...newTable.columns, emptyColumnDraft()] })}><Plus size={13} />Add column</button>
-            <button type="submit" disabled={busy || !newTable.name.trim() || !newTable.columns.some(column => column.name.trim())}>Create table</button>
-            <button type="button" disabled={busy} onClick={() => setNewTable(null)}>Cancel</button>
+            <button type="button" className="button-secondary" disabled={busy || newTable.columns.length >= 50} onClick={() => setNewTable({ ...newTable, columns: [...newTable.columns, emptyColumnDraft()] })}><Plus size={13} />Add field</button>
+            <button type="submit" className="button-primary" disabled={busy || !newTable.name.trim() || !newTable.columns.some(column => column.name.trim())}>Create table</button>
+            <button type="button" className="button-ghost" disabled={busy} onClick={() => setNewTable(null)}>Cancel</button>
           </div>
         </form>
       )}
@@ -376,28 +376,28 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
               onClick={() => void perform(() => browse(item.name))}
             >
               <span className="database-table-name"><Table2 size={13} />{item.name}</span>
-              <span className="settings-muted">{item.rowCount?.toLocaleString() ?? '—'} row{(item.rowCount ?? 0) === 1 ? '' : 's'} · {item.columns.length} column{item.columns.length === 1 ? '' : 's'}</span>
+              <span className="settings-muted">{item.rowCount?.toLocaleString() ?? '—'} {((item.rowCount ?? 0) === 1 ? 'entry' : 'entries')} · {item.columns.length} {item.columns.length === 1 ? 'field' : 'fields'}</span>
             </button>
           ))}
         </div>
       )}
 
       {activeSchema && (
-        <div className="database-schema" aria-label={`${table} schema`}>
-          <h4 className="settings-heading-icon"><Database size={15} />{activeSchema.name} schema</h4>
+        <div className="database-schema" aria-label={`${table} fields`}>
+          <h4 className="settings-heading-icon"><Database size={15} />{activeSchema.name} fields</h4>
           <ul className="database-column-list">
             {activeSchema.columns.map(column => (
               <li key={column.name}>
                 <code>{column.name}</code>
                 <span className="settings-muted">{column.type || 'ANY'}</span>
-                {column.primaryKey && <span className="database-badge database-badge-pk"><KeyRound size={10} />primary key</span>}
-                {column.notNull && <span className="database-badge">not null</span>}
-                {column.defaultValue !== null && <span className="database-badge">default {column.defaultValue}</span>}
+                {column.primaryKey && <span className="database-badge database-badge-pk"><KeyRound size={10} />unique ID</span>}
+                {column.notNull && <span className="database-badge">required</span>}
+                {column.defaultValue !== null && <span className="database-badge">starts as {column.defaultValue}</span>}
                 {!column.primaryKey && activeSchema.columns.length > 1 && (
                   <button
                     type="button"
                     className="database-column-drop"
-                    title={`Remove column ${column.name}`}
+                    title={`Remove field ${column.name}`}
                     disabled={busy}
                     onClick={() => setDropColumnName(column.name)}
                   >
@@ -409,10 +409,10 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
           </ul>
           {dropColumnName && (
             <div className="settings-notice database-confirm-strip" role="alert">
-              <span>Remove the column “{dropColumnName}” and its data from {table}? A recovery point is saved first, so you can undo.</span>
+              <span>Remove the field “{dropColumnName}” and all its data from {table}? A backup is saved first, so you can undo.</span>
               <span className="settings-actions">
-                <button disabled={busy} onClick={() => void submitDropColumn()}><Trash2 size={13} />Remove column</button>
-                <button type="button" disabled={busy} onClick={() => setDropColumnName(null)}>Cancel</button>
+                <button type="button" className="button-danger" disabled={busy} onClick={() => void submitDropColumn()}><Trash2 size={13} />Remove field</button>
+                <button type="button" className="button-ghost" disabled={busy} onClick={() => setDropColumnName(null)}>Cancel</button>
               </span>
             </div>
           )}
@@ -424,22 +424,22 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
                 void submitAddColumn();
               }}
             >
-              <h4>Add a column to {table}</h4>
-              <p className="settings-muted">Existing rows get the default value. A required column needs a default. A recovery point is saved first.</p>
+              <h4>Add a field to {table}</h4>
+              <p className="settings-muted">Existing entries get the starting value. A required field needs a starting value. A backup is saved first.</p>
               <ColumnDraftEditor draft={addColumn} onChange={setAddColumn} allowPrimaryKey={false} />
               <div className="settings-actions">
-                <button type="submit" disabled={busy || !addColumn.name.trim()}>Add column</button>
-                <button type="button" disabled={busy} onClick={() => setAddColumn(null)}>Cancel</button>
+                <button type="submit" className="button-primary" disabled={busy || !addColumn.name.trim()}>Add field</button>
+                <button type="button" className="button-ghost" disabled={busy} onClick={() => setAddColumn(null)}>Cancel</button>
               </div>
             </form>
           ) : (
             <div className="settings-actions">
-              <button disabled={busy} onClick={() => { setDropColumnName(null); setAddColumn(emptyColumnDraft()); }}><Plus size={13} />Add column</button>
+              <button type="button" className="button-secondary" disabled={busy} onClick={() => { setDropColumnName(null); setAddColumn(emptyColumnDraft()); }}><Plus size={13} />Add field</button>
             </div>
           )}
           {(activeSchema.indexes ?? []).length > 0 && (
             <p className="settings-muted" style={{ marginTop: 8 }}>
-              Indexes: {(activeSchema.indexes ?? []).map(index => `${index.name}${index.unique ? ' (unique)' : ''}`).join(', ')}
+              Fast lookups: {(activeSchema.indexes ?? []).map(index => `${index.name}${index.unique ? ' (unique)' : ''}`).join(', ')}
             </p>
           )}
           {addIndex ? (
@@ -450,17 +450,17 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
                 void submitAddIndex();
               }}
             >
-              <h4>Add an index to {table}</h4>
-              <p className="settings-muted">Indexes make lookups on the chosen columns fast. A unique index rejects duplicate values. A recovery point is saved first.</p>
+              <h4>Add a fast lookup to {table}</h4>
+              <p className="settings-muted">Fast lookups help the app find entries quicker. A unique one also blocks duplicate entries. A backup is saved first.</p>
               <input
-                aria-label="Index name"
-                placeholder="Index name, e.g. items_title"
+                aria-label="Fast lookup name"
+                placeholder="Name, e.g. items_title"
                 maxLength={64}
                 value={addIndex.name}
                 onChange={event => setAddIndex({ ...addIndex, name: event.target.value })}
               />
               <fieldset className="database-index-columns">
-                <legend>Columns to index</legend>
+                <legend>Fields to look up</legend>
                 {activeSchema.columns.map(column => (
                   <label key={column.name} className="database-draft-check">
                     <input
@@ -479,16 +479,16 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
               </fieldset>
               <label className="database-draft-check">
                 <input type="checkbox" checked={addIndex.unique} onChange={event => setAddIndex({ ...addIndex, unique: event.target.checked })} />
-                Unique — reject duplicate values
+                Unique — block duplicate entries
               </label>
               <div className="settings-actions">
-                <button type="submit" disabled={busy || !addIndex.name.trim() || !addIndex.columns.length}>Create index</button>
-                <button type="button" disabled={busy} onClick={() => setAddIndex(null)}>Cancel</button>
+                <button type="submit" className="button-primary" disabled={busy || !addIndex.name.trim() || !addIndex.columns.length}>Create fast lookup</button>
+                <button type="button" className="button-ghost" disabled={busy} onClick={() => setAddIndex(null)}>Cancel</button>
               </div>
             </form>
           ) : (
             <div className="settings-actions">
-              <button disabled={busy} onClick={() => setAddIndex({ name: `${table}_`, columns: [], unique: false })}><Plus size={13} />Add index</button>
+              <button type="button" className="button-secondary" disabled={busy} onClick={() => setAddIndex({ name: `${table}_`, columns: [], unique: false })}><Plus size={13} />Add fast lookup</button>
             </div>
           )}
           {dropTableConfirm ? (
@@ -499,20 +499,20 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
                 void submitDropTable();
               }}
             >
-              <h4>Remove the whole {dropTableConfirm} table</h4>
-              <p className="settings-muted">This removes the table and every record in it. A recovery point is saved first, so you can undo.</p>
+              <h4>Delete the whole {dropTableConfirm} table</h4>
+              <p className="settings-muted">This deletes the table and every entry in it. A backup is saved first, so you can undo.</p>
               <label>
                 Type DROP {dropTableConfirm}
                 <input value={dropTableInput} onChange={event => setDropTableInput(event.target.value)} autoComplete="off" />
               </label>
               <div className="settings-actions">
-                <button type="submit" disabled={busy || dropTableInput !== `DROP ${dropTableConfirm}`}><Trash2 size={13} />Remove table</button>
-                <button type="button" disabled={busy} onClick={() => { setDropTableConfirm(null); setDropTableInput(''); }}>Cancel</button>
+                <button type="submit" className="button-danger" disabled={busy || dropTableInput !== `DROP ${dropTableConfirm}`}><Trash2 size={13} />Delete table</button>
+                <button type="button" className="button-ghost" disabled={busy} onClick={() => { setDropTableConfirm(null); setDropTableInput(''); }}>Cancel</button>
               </div>
             </form>
           ) : (
             <div className="settings-actions">
-              <button className="database-danger" disabled={busy} onClick={() => { setDropTableConfirm(table); setDropTableInput(''); }}><Trash2 size={13} />Remove table…</button>
+              <button type="button" className="button-danger" disabled={busy} onClick={() => { setDropTableConfirm(table); setDropTableInput(''); }}><Trash2 size={13} />Delete table…</button>
             </div>
           )}
         </div>
@@ -520,7 +520,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
 
       {page && (
         <>
-          <div className="settings-table-scroll" role="region" aria-label={`${table} records`} tabIndex={0}>
+          <div className="settings-table-scroll" role="region" aria-label={`${table} entries`} tabIndex={0}>
             <table>
               <thead>
                 <tr>
@@ -573,7 +573,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
                             <>
                               <button
                                 type="button"
-                                title="Edit this record"
+                                title="Edit this entry"
                                 disabled={busy}
                                 onClick={() => {
                                   setDeleteRowId(null);
@@ -584,7 +584,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
                               </button>
                               <button
                                 type="button"
-                                title="Delete this record"
+                                title="Delete this entry"
                                 disabled={busy}
                                 onClick={() => { setEditRow(null); setDeleteRowId(rowId); }}
                               >
@@ -600,13 +600,15 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
               </tbody>
             </table>
           </div>
-          {!page.rows.length && <p>No records on this page.</p>}
+          {!page.rows.length && <p>No entries on this page.</p>}
 
           {deleteRowId !== null && (
             <div className="settings-notice database-confirm-strip" role="alert">
-              <span>Delete row {deleteRowId} from {table}? A recovery point is saved first, so you can undo.</span>
+              <span>Delete entry {deleteRowId} from {table}? A backup is saved first, so you can undo.</span>
               <span className="settings-actions">
                 <button
+                  type="button"
+                  className="button-danger"
                   disabled={busy}
                   onClick={() => void perform(async () => {
                     await request('/rows/delete', { method: 'POST', body: JSON.stringify({ table, rowId: deleteRowId }) });
@@ -614,12 +616,12 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
                     await browse(table, page.offset);
                     await refresh();
                     onChanged();
-                    setMessage('Record deleted. A recovery point was saved.');
+                    setMessage('Entry deleted. A backup was saved.');
                   })}
                 >
-                  <Trash2 size={13} />Delete row
+                  <Trash2 size={13} />Delete entry
                 </button>
-                <button type="button" disabled={busy} onClick={() => setDeleteRowId(null)}>Cancel</button>
+                <button type="button" className="button-ghost" disabled={busy} onClick={() => setDeleteRowId(null)}>Cancel</button>
               </span>
             </div>
           )}
@@ -634,52 +636,52 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
                   try {
                     values = JSON.parse(editRow.json);
                   } catch {
-                    throw new Error('Enter valid JSON before saving the record.');
+                    throw new Error('The entry text is not valid — check it and try again.');
                   }
                   await request('/rows/update', { method: 'POST', body: JSON.stringify({ table, rowId: editRow.rowId, values }) });
                   setEditRow(null);
                   await browse(table, page.offset);
                   await refresh();
                   onChanged();
-                  setMessage('Record updated. A recovery point was saved.');
+                  setMessage('Entry saved. A backup was saved.');
                 });
               }}
             >
-              <h4>Edit row {editRow.rowId} in {table}</h4>
-              <p className="settings-muted">Edit the JSON fields and save. Truncated or binary values are left unchanged. A recovery point is saved first.</p>
+              <h4>Edit entry {editRow.rowId} in {table}</h4>
+              <p className="settings-muted">Edit the fields below and save. Very long or file values are left unchanged. A backup is saved first.</p>
               <textarea
-                aria-label="Record fields as JSON"
+                aria-label="Entry fields"
                 rows={6}
                 maxLength={250_000}
                 value={editRow.json}
                 onChange={event => setEditRow({ ...editRow, json: event.target.value })}
               />
               <div className="settings-actions">
-                <button type="submit" disabled={busy || !editRow.json.trim()}>Save record</button>
-                <button type="button" disabled={busy} onClick={() => setEditRow(null)}>Cancel</button>
+                <button type="submit" className="button-primary" disabled={busy || !editRow.json.trim()}>Save entry</button>
+                <button type="button" className="button-ghost" disabled={busy} onClick={() => setEditRow(null)}>Cancel</button>
               </div>
             </form>
           )}
 
           <div className="settings-actions">
-            <button disabled={busy || page.offset === 0} onClick={() => void perform(() => browse(table, Math.max(0, page.offset - 50)))}>Previous</button>
-            <span>Rows {page.rows.length ? page.offset + 1 : 0}–{page.offset + page.rows.length}</span>
-            <button disabled={busy || !page.hasMore} onClick={() => void perform(() => browse(table, page.offset + 50))}>Next</button>
-            <button disabled={!page.rows.length} onClick={() => downloadJson(page.rows.map(row => {
+            <button type="button" className="button-secondary" disabled={busy || page.offset === 0} onClick={() => void perform(() => browse(table, Math.max(0, page.offset - 50)))}>Previous</button>
+            <span className="settings-muted">Entries {page.rows.length ? page.offset + 1 : 0}–{page.offset + page.rows.length}</span>
+            <button type="button" className="button-secondary" disabled={busy || !page.hasMore} onClick={() => void perform(() => browse(table, page.offset + 50))}>Next</button>
+            <button type="button" className="button-secondary" disabled={!page.rows.length} onClick={() => downloadJson(page.rows.map(row => {
               const clean = { ...row };
               delete clean[ROW_ID_FIELD];
               return clean;
-            }), `${table}-page-${page.offset / 50 + 1}.json`)}><Download size={14} />Download displayed rows</button>
+            }), `${table}-page-${page.offset / 50 + 1}.json`)}><Download size={14} />Download shown entries</button>
           </div>
-          <p className="settings-muted">Select a cell to edit it in place — Enter saves, Escape cancels. Large values and binary fields are replaced with labels and cannot be edited here. Recovery points preserve the whole database.</p>
+          <p className="settings-muted">Click a value to edit it — Enter saves, Escape cancels. Very long or file values show as labels and can't be edited here. Backups keep the whole database safe.</p>
         </>
       )}
 
       <details>
-        <summary>Import records into {table || 'a table'}</summary>
-        <p>Append a JSON array with existing column names. Up to 100 field values per import. Duplicate keys or invalid records reject the entire import. A recovery point is saved first.</p>
+        <summary>Add entries to {table || 'a table'}</summary>
+        <p>Paste a list of entries below using the existing field names. Up to 100 values per import. If any entry is invalid, nothing is added. A backup is saved first.</p>
         <textarea
-          aria-label="Records to import as JSON"
+          aria-label="Entries to add"
           rows={5}
           maxLength={250_000}
           placeholder='[{"title":"First item"}]'
@@ -687,13 +689,15 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
           onChange={event => setJson(event.target.value)}
         />
         <button
+          type="button"
+          className="button-secondary"
           disabled={busy || !table || !json.trim()}
           onClick={() => void perform(async () => {
             let rows: unknown;
             try {
               rows = JSON.parse(json);
             } catch {
-              throw new Error('Enter valid JSON before importing.');
+              throw new Error('The pasted text is not valid — check it and try again.');
             }
             const result = await request<{ imported: number }>('/import', {
               method: 'POST',
@@ -702,16 +706,16 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
             setJson('');
             await browse(table);
             await refresh();
-            setMessage(`${result.imported} records imported.`);
+            setMessage(`${result.imported} entries added.`);
             onChanged();
           })}
         >
-          Import records
+          Add entries
         </button>
       </details>
 
-      <h4 className="settings-heading-icon"><Database size={15} />Database recovery</h4>
-      <p>Save a recovery point before a data change. Points are available here for seven days.</p>
+      <h4 className="settings-heading-icon"><Database size={15} />Backups</h4>
+      <p>Save a backup before changing data. Backups are kept here for 7 days.</p>
 
       <form
         className="settings-actions"
@@ -725,13 +729,13 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
         }}
       >
         <input
-          aria-label="Recovery point name"
+          aria-label="Backup name"
           maxLength={100}
           placeholder="Before launch"
           value={label}
           onChange={event => setLabel(event.target.value)}
         />
-        <button disabled={busy}>Save recovery point</button>
+        <button type="submit" className="button-primary" disabled={busy}>Save backup</button>
       </form>
 
       {points.map(point => (
@@ -740,7 +744,7 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
             <strong>{point.label}</strong>
             <small>{new Date(point.createdAt).toLocaleString()}</small>
           </span>
-          <button disabled={busy} onClick={() => { setSelected(point); setConfirmation(''); }}>Review restore</button>
+          <button type="button" className="button-secondary" disabled={busy} onClick={() => { setSelected(point); setConfirmation(''); }}>Restore…</button>
         </div>
       ))}
 
@@ -758,19 +762,19 @@ export default function ProjectDatabase({ projectId, environment, onChanged }: {
               setPage(null);
               await refresh();
               onChanged();
-              setMessage('Database restored. A recovery point for undo was saved. Run verification again.');
+              setMessage('Database restored from the backup. A fresh backup was saved so you can undo. Run the app checks again.');
             });
           }}
         >
-          <h4>Restore “{selected.label}”</h4>
-          <p>This rewinds the entire {environment} database. In-flight queries may fail. Later records are replaced; a recovery point for undo is saved. Source, users managed by BrainHalf, and uploaded files are separate.</p>
+          <h4>Bring back “{selected.label}”</h4>
+          <p>This rolls the whole {environment === 'development' ? 'test' : 'live'} database back to this backup. Anything the app is doing right now may fail. Newer entries are replaced, and a fresh backup is saved so you can undo. Your app's files, users, and uploads are not touched.</p>
           <label>
             Type RESTORE {environment}
             <input value={confirmation} onChange={event => setConfirmation(event.target.value)} autoComplete="off" />
           </label>
           <div className="settings-actions">
-            <button disabled={busy || confirmation !== `RESTORE ${environment}`}>Restore database</button>
-            <button type="button" disabled={busy} onClick={() => setSelected(null)}>Cancel</button>
+            <button type="submit" className="button-danger" disabled={busy || confirmation !== `RESTORE ${environment}`}>Restore backup</button>
+            <button type="button" className="button-ghost" disabled={busy} onClick={() => setSelected(null)}>Cancel</button>
           </div>
         </form>
       )}

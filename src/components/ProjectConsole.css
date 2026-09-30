@@ -1,9 +1,17 @@
+/* ==========================================================================
+   Project Console — design system
+   Neutral dark-grey theme. One button hierarchy for every screen:
+   .button-primary (one main action per screen) · .button-secondary
+   .button-ghost (quiet actions) · .button-danger (destructive confirms).
+   Type scale: 15–16 headings · 14 body · 13 help · 12 small · 11 tiny.
+   ========================================================================== */
+
 .project-console-page {
   width: 100%;
   height: 100%;
   min-height: 0;
   padding: 16px;
-  background: var(--bg-base);
+  background: var(--bg-canvas, #161616);
   display: flex;
 }
 
@@ -13,44 +21,49 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel, var(--bg-surface));
+  background: var(--bg-panel, #212121);
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
   box-shadow: none;
   overflow: hidden;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
+/* ── Header ── */
 .project-console header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  padding: 22px 24px 12px;
+  padding: 20px 24px 4px;
 }
 
-.project-console h2,
-.project-console h3 {
-  margin: 0 0 8px;
+.project-console header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--text-primary);
 }
 
-.project-console p {
-  line-height: 1.6;
-  margin: 8px 0 14px;
-  overflow-wrap: anywhere;
-}
-
-.project-console header p,
-.project-console .settings-muted {
-  color: var(--text-muted);
+.project-console header p {
+  margin: 0;
   font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
+.project-console header > button {
+  flex-shrink: 0;
+}
+
+/* ── Section navigation ── */
 .project-console nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  padding: 10px 24px 16px;
+  gap: 18px;
+  padding: 12px 24px 14px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -74,28 +87,77 @@
   gap: 8px;
 }
 
+/* ── Main content ── */
 .project-console main {
   min-height: 0;
   overflow: auto;
-  padding: 24px;
+  padding: 20px 24px 28px;
 }
 
+.project-console main > section + section,
+.project-console main > div + section,
+.project-console main > section + div {
+  margin-top: 16px;
+}
+
+.project-console h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-console h4 {
+  margin: 18px 0 8px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.project-console p {
+  margin: 6px 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.project-console .settings-heading-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Button hierarchy ── */
 .project-console button,
 .project-console select,
 .project-console input,
 .project-console textarea {
   font: inherit;
   color: var(--text-primary);
-  background: var(--bg-card);
+  background: var(--bg-card, #212121);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 9px 12px;
 }
 
+/* Default (unclassed) buttons read as secondary actions. */
 .project-console button {
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   min-height: 40px;
+  padding: 9px 16px;
+  font-size: 13.5px;
   font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-surface, #292929);
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 
 .project-console button:hover:not(:disabled) {
@@ -104,17 +166,101 @@
 }
 
 .project-console button:disabled {
-  opacity: 1;
+  opacity: 0.45;
   cursor: not-allowed;
-  color: var(--text-muted);
-  border-color: var(--border-subtle);
-  background: var(--bg-surface);
 }
 
-.project-console button[aria-pressed='true'] {
-  border-color: var(--accent-secondary);
+.project-console .button-primary,
+.project-console .button-secondary,
+.project-console .button-ghost,
+.project-console .button-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+/* Primary: the one main action on a screen. */
+.project-console .button-primary {
+  min-height: 44px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-on-accent);
+  background: var(--accent-primary);
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+.project-console .button-primary:hover:not(:disabled) {
   background: var(--accent-secondary);
-  color: var(--bg-base, #071722);
+  border-color: transparent;
+}
+
+/* Secondary: supporting actions. */
+.project-console .button-secondary {
+  min-height: 40px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-surface, #292929);
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+}
+
+.project-console .button-secondary:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+}
+
+/* Ghost: quiet / tertiary actions. */
+.project-console .button-ghost {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.project-console .button-ghost:hover:not(:disabled) {
+  background: var(--bg-surface, #292929);
+  color: var(--text-primary);
+}
+
+/* Danger: destructive confirmations. */
+.project-console .button-danger {
+  min-height: 40px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-error);
+  background: transparent;
+  border: 1px solid var(--color-error-border);
+  border-radius: 10px;
+}
+
+.project-console .button-danger:hover:not(:disabled) {
+  background: var(--color-error-bg);
+  border-color: var(--color-error);
+}
+
+.project-console :is(.button-primary, .button-secondary, .button-ghost, .button-danger):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Tab-style toggle buttons (nav + services tabs). */
+.project-console button[aria-pressed='true'] {
+  border-color: var(--accent-primary);
+  background: var(--color-ai-bg);
+  color: var(--text-primary);
 }
 
 .project-console :is(button, input, select, textarea, a):focus-visible {
@@ -131,7 +277,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -139,179 +285,46 @@
   color: var(--text-muted);
 }
 
-.project-console .services-toggle {
-  flex-direction: row !important;
-  align-items: center;
-  text-transform: none;
+.project-console :is(input, select, textarea) {
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  font-size: 13.5px;
+  font-weight: 400;
   letter-spacing: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  text-transform: none;
 }
 
-.project-console .console-environment {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin: 4px 0 12px;
-}
-
-.project-console .console-environment button {
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border-radius: 999px;
-  padding: 5px 16px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.project-console .console-environment button[aria-pressed="true"] {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: #fff;
-}
-
-.project-console .console-environment-hint {
-  font-size: 12px;
+.project-console :is(input, textarea)::placeholder {
   color: var(--text-muted);
-  margin-left: 6px;
+  opacity: 1;
 }
 
-.project-console .ship-steps {
-  list-style: none;
-  margin: 14px 0;
+.project-console textarea {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.project-console fieldset {
+  border: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.project-console .ship-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  background: var(--bg-surface);
-}
-
-.project-console .ship-step-next {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 1px var(--accent-primary);
-}
-
-.project-console .ship-step-done .ship-step-marker { color: var(--color-success); }
-.project-console .ship-step-failed { border-color: var(--color-error, #dc4f62); }
-.project-console .ship-step-failed .ship-step-marker { color: var(--color-error, #dc4f62); }
-.project-console .ship-step-pending .ship-step-marker,
-.project-console .ship-step-next .ship-step-marker { color: var(--accent-primary); }
-
-.project-console .ship-step-marker {
-  flex-shrink: 0;
-  display: flex;
-  margin-top: 1px;
-}
-
-.project-console .ship-step-body {
-  flex: 1;
+  margin: 0;
   min-width: 0;
 }
 
-.project-console .ship-step-body strong {
-  font-size: 13.5px;
-  color: var(--text-primary);
-}
-
-.project-console .ship-step-body p {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.project-console .ship-step-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.project-console .ship-step-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.project-console .ship-step-status {
-  flex-shrink: 0;
-  font-size: 10.5px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--bg-surface-2);
-  color: var(--text-muted);
-}
-
-.project-console .ship-step-done .ship-step-status {
-  color: var(--color-success);
-  background: rgba(34, 197, 94, 0.12);
-}
-
-.project-console .ship-step-failed .ship-step-status {
-  color: var(--color-error, #dc4f62);
-  background: rgba(220, 79, 98, 0.12);
-}
-
-.project-console .ship-step-next .ship-step-status {
-  color: var(--accent-primary);
-  background: var(--color-ai-bg, var(--bg-surface-2));
-}
-
-.project-console .console-check-passed strong { color: var(--color-success); }
-.project-console .console-check-failed strong { color: var(--color-error, #dc4f62); }
-
-.project-console .console-advanced {
-  margin: 12px 0;
-  font-size: 12.5px;
-}
-
-.project-console .console-advanced summary {
-  cursor: pointer;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.project-console .console-advanced ul {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-@media (max-width: 560px) {
-  .project-console .ship-step {
-    flex-wrap: wrap;
-  }
-  .project-console .ship-step-status {
-    order: -1;
-    margin-left: auto;
-  }
-}
-
+/* ── Cards & layout helpers ── */
 .project-console .settings-card {
   border: 1px solid var(--border-subtle);
+  background: var(--bg-card, #212121);
   padding: 20px;
   border-radius: 12px;
+}
+
+.project-console .settings-card > p:first-of-type {
+  margin-top: 0;
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
 .project-console .settings-actions,
@@ -331,29 +344,305 @@
   flex-wrap: wrap;
   padding: 12px 0;
   border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
 }
 
 .project-console .settings-job small,
 .project-console .services-list small {
   display: block;
   color: var(--text-muted);
+  font-size: 12px;
 }
 
 .project-console .settings-notice {
-  background: var(--bg-surface);
+  background: var(--bg-surface, #292929);
+  border: 1px solid var(--border-subtle);
   border-left: 3px solid var(--accent-secondary);
-  padding: 12px;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 .project-console .settings-error {
-  color: var(--color-error, #dc4f62);
+  color: var(--color-error);
+  font-size: 13px;
 }
 
+.project-console .settings-muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── Environment toggle (Test / Live) ── */
+.project-console .console-environment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding: 4px;
+  background: var(--bg-surface, #292929);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.project-console .console-environment button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 7px 20px;
+  min-height: 36px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.project-console .console-environment button[aria-pressed="true"] {
+  background: var(--accent-primary);
+  border-color: transparent;
+  color: var(--text-on-accent);
+}
+
+.project-console .console-environment-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 10px 0 6px;
+}
+
+/* ── Ship steps (Publish tab) ── */
+.project-console .ship-steps {
+  list-style: none;
+  margin: 14px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.project-console .ship-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface, #292929);
+}
+
+.project-console .ship-step-next {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.project-console .ship-step-done .ship-step-marker { color: var(--color-success); }
+.project-console .ship-step-failed { border-color: var(--color-error-border); }
+.project-console .ship-step-failed .ship-step-marker { color: var(--color-error); }
+.project-console .ship-step-pending .ship-step-marker,
+.project-console .ship-step-next .ship-step-marker { color: var(--accent-primary); }
+
+.project-console .ship-step-marker {
+  flex-shrink: 0;
+  display: flex;
+  margin-top: 2px;
+}
+
+.project-console .ship-step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-console .ship-step-body strong {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.project-console .ship-step-body p {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.project-console .ship-step-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.project-console .ship-step-status {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-card, #212121);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.project-console .ship-step-done .ship-step-status {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+}
+
+.project-console .ship-step-failed .ship-step-status {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-color: var(--color-error-border);
+}
+
+.project-console .ship-step-next .ship-step-status {
+  color: var(--accent-primary);
+  background: var(--color-ai-bg);
+  border-color: var(--border-accent, var(--border-medium));
+}
+
+/* ── Check results & activity log ── */
+.project-console .console-checks {
+  margin: 16px 0;
+}
+
+.project-console .console-checks h4 {
+  margin-bottom: 8px;
+}
+
+.project-console .console-checks ul {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-console .console-checks li {
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface, #292929);
+  margin-bottom: 0;
+}
+
+.project-console .console-checks li strong {
+  display: block;
+  font-size: 13px;
+}
+
+.project-console .console-checks li p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.project-console .console-check-passed { border-left: 3px solid var(--color-success-border); }
+.project-console .console-check-passed strong { color: var(--color-success); }
+.project-console .console-check-failed { border-left: 3px solid var(--color-error-border); }
+.project-console .console-check-failed strong { color: var(--color-error); }
+
+.project-console .console-advanced {
+  margin: 14px 0;
+  font-size: 12.5px;
+}
+
+.project-console .console-advanced summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.project-console .console-advanced ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-console .console-advanced li {
+  margin-bottom: 0;
+}
+
+/* ── Tables ── */
+.project-console table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.project-console th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-medium);
+  overflow-wrap: anywhere;
+}
+
+.project-console td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+
+.project-console .database-table,
+.project-console .settings-table-wrap,
+.project-console .settings-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-card, #212121);
+  margin: 12px 0;
+}
+
+.project-console pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.project-console details {
+  margin: 12px 0;
+}
+
+.project-console details > summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 6px 0;
+}
+
+.project-console details > p,
+.project-console details > div {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ── Database ── */
 .project-console .database-table-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 10px;
-  margin: 6px 0 14px;
+  margin: 12px 0 16px;
 }
 
 .project-console .database-table-card {
@@ -361,13 +650,13 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  padding: 10px 12px;
-  background: var(--bg-surface);
+  padding: 12px 14px;
+  background: var(--bg-surface, #292929);
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   text-align: left;
-  font-size: 12px;
+  font-size: 12.5px;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -377,24 +666,29 @@
 
 .project-console .database-table-card.active {
   border-color: var(--accent-primary);
-  background: var(--color-ai-bg, var(--bg-surface-2));
+  background: var(--color-ai-bg);
 }
 
 .project-console .database-table-name {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-weight: 600;
+  font-weight: 650;
   font-family: var(--font-mono);
+  font-size: 13px;
   color: var(--text-primary);
 }
 
 .project-console .database-schema {
-  margin: 4px 0 14px;
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface, #292929);
 }
 
 .project-console .database-column-list {
-  margin: 0;
+  margin: 10px 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -407,35 +701,39 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 12px;
-  padding: 6px 10px;
-  background: var(--bg-surface);
+  font-size: 12.5px;
+  padding: 8px 12px;
+  background: var(--bg-card, #212121);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: 8px;
+  margin-bottom: 0;
 }
 
 .project-console .database-column-list code {
   font-family: var(--font-mono);
+  font-size: 12.5px;
   color: var(--text-primary);
 }
 
 .project-console .database-badge {
-  font-size: 10px;
+  font-size: 10.5px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
-  background: var(--bg-surface-2);
+  background: var(--bg-surface, #292929);
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 2px 7px;
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 
 .project-console .database-badge-pk {
-  color: var(--color-warning, #d9a03f);
-  border-color: var(--color-warning, #d9a03f);
+  color: var(--color-warning);
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
 }
 
 .project-console .database-row-actions {
@@ -446,9 +744,10 @@
 .project-console .database-row-actions button {
   background: transparent;
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
-  padding: 3px 7px;
+  border-radius: 6px;
+  padding: 4px 8px;
   margin-left: 4px;
+  min-height: 0;
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -456,6 +755,7 @@
 .project-console .database-row-actions button:hover {
   border-color: var(--accent-primary);
   color: var(--text-primary);
+  background: transparent;
 }
 
 .project-console .database-confirm-strip {
@@ -464,7 +764,7 @@
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  border-left-color: var(--color-error, #dc4f62);
+  border-left-color: var(--color-error-border);
 }
 
 .project-console .database-confirm-strip .settings-actions {
@@ -472,11 +772,15 @@
 }
 
 .project-console .database-edit-row {
-  margin: 10px 0;
-  padding: 12px;
-  background: var(--bg-surface);
+  margin: 12px 0;
+  padding: 16px;
+  background: var(--bg-surface, #292929);
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: 12px;
+}
+
+.project-console .database-edit-row h4 {
+  margin-top: 0;
 }
 
 .project-console .database-edit-row textarea {
@@ -490,46 +794,61 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 6px 0;
+  margin: 8px 0;
 }
 
-.project-console .database-column-draft input[aria-label="Column name"] {
-  width: 160px;
+.project-console .database-column-draft input[aria-label="Field name"] {
+  width: 170px;
 }
 
-.project-console .database-column-draft input[aria-label="Default value"] {
-  width: 140px;
+.project-console .database-column-draft input[aria-label="Starting value"] {
+  width: 150px;
 }
 
 .project-console .database-draft-check {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-secondary);
   white-space: nowrap;
+  margin-bottom: 0;
+}
+
+.project-console .database-draft-check input {
+  min-height: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent-primary);
 }
 
 .project-console .database-column-drop {
   background: transparent;
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
-  padding: 2px 7px;
+  border-radius: 6px;
+  padding: 3px 8px;
   margin-left: auto;
+  min-height: 0;
   color: var(--text-muted);
   cursor: pointer;
 }
 
 .project-console .database-column-drop:hover {
-  border-color: var(--color-error, #dc4f62);
-  color: var(--color-error, #dc4f62);
+  border-color: var(--color-error);
+  color: var(--color-error);
+  background: transparent;
 }
 
 .project-console .database-cell {
   background: transparent;
   border: none;
-  padding: 0;
+  padding: 2px 4px;
   margin: 0;
+  min-height: 0;
   font: inherit;
   color: inherit;
   text-align: left;
@@ -539,6 +858,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   display: inline-block;
+  border-radius: 4px;
 }
 
 .project-console .database-cell:disabled {
@@ -548,16 +868,18 @@
 .project-console .database-cell:not(:disabled):hover {
   outline: 1px dashed var(--accent-primary);
   outline-offset: 2px;
+  background: transparent;
+  border: none;
 }
 
 .project-console .database-cell-input {
   width: 100%;
   min-width: 120px;
   font: inherit;
-  padding: 2px 6px;
+  padding: 4px 8px;
   border: 1px solid var(--accent-primary);
-  border-radius: 4px;
-  background: var(--bg-card);
+  border-radius: 6px;
+  background: var(--bg-card, #212121);
   color: var(--text-primary);
 }
 
@@ -566,98 +888,243 @@
   gap: 12px;
   flex-wrap: wrap;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin: 8px 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 10px 0;
 }
 
 .project-console .database-index-columns legend {
   font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
-  padding: 0 4px;
+  padding: 0 6px;
 }
 
 .project-console .database-danger {
-  border-color: var(--color-error, #dc4f62);
-  color: var(--color-error, #dc4f62);
+  border-color: var(--color-error-border);
+  color: var(--color-error);
 }
 
-.project-console fieldset {
-  border: 0;
+.project-console .database-danger:hover:not(:disabled) {
+  background: var(--color-error-bg);
+  border-color: var(--color-error);
+}
+
+.project-console .database-restore-review {
+  margin: 12px 0;
+  padding: 16px;
+  background: var(--bg-surface, #292929);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--color-warning-border);
+  border-radius: 12px;
+}
+
+.project-console .database-restore-review h4 {
+  margin-top: 0;
+}
+
+/* ── Files ── */
+.project-console .settings-files > ul {
+  list-style: none;
+  margin: 12px 0;
   padding: 0;
-  margin: 0;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-console .settings-files > ul > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface, #292929);
+  margin-bottom: 0;
+}
+
+.project-console .settings-files > ul strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.project-console .settings-files > ul small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* ── Services (sign-in & email) ── */
+.project-console .settings-integration {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+}
+
+.project-console .settings-integration label {
+  margin-bottom: 10px;
+}
+
+.project-console .services-toggle {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.project-console .services-toggle input {
+  min-height: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-primary);
 }
 
 .project-console .services-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 0 16px;
 }
 
-.project-console :is(input, select, textarea) {
-  max-width: 100%;
-  box-sizing: border-box;
+.project-console .services-readiness {
+  padding: 12px 14px;
+  background: var(--bg-surface, #292929);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.project-console .services-readiness strong {
   color: var(--text-primary);
 }
 
-.project-console :is(input, textarea)::placeholder {
-  color: var(--text-secondary);
-  opacity: 1;
+.project-console .services-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
 }
 
-.project-console textarea {
-  width: 100%;
-  resize: vertical;
+.project-console .services-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface, #292929);
 }
 
-.project-console table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.project-console :is(th, td) {
-  text-align: left;
-  padding: 10px;
-  border-bottom: 1px solid var(--border-subtle);
+.project-console .services-list strong {
+  font-size: 13.5px;
+  color: var(--text-primary);
+  display: block;
   overflow-wrap: anywhere;
 }
 
-.project-console .database-table,
-.project-console .settings-table-wrap,
-.project-console .settings-table-scroll {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.project-console .settings-heading-icon {
+.project-console .services-role {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
+  margin-bottom: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
 }
 
-.project-console pre {
-  white-space: pre-wrap;
+.project-console .services-role select {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+.project-console .services-message {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-surface, #292929);
+}
+
+.project-console .services-message h4 {
+  margin: 0 0 4px;
   overflow-wrap: anywhere;
 }
 
-.project-console li {
-  margin-bottom: 10px;
-  overflow-wrap: anywhere;
+.project-console .services-message p {
+  font-size: 12.5px;
+  color: var(--text-muted);
 }
 
+.project-console .services-message pre {
+  background: var(--bg-card, #212121);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  max-height: 300px;
+  overflow: auto;
+}
+
+/* ── Monitoring ── */
+.monitor-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.monitor-summary > div {
+  padding: 14px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface, #292929);
+}
+
+.monitor-summary dt {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.monitor-summary dd {
+  margin: 6px 0 0;
+  font-size: 20px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+/* ── AI usage outcomes ── */
 .product-outcome-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin: 16px 0;
+  gap: 10px;
+  margin: 14px 0;
 }
 
 .product-outcome-grid > div {
-  padding: 14px;
-  border: 1px solid var(--border-primary);
+  padding: 14px 16px;
+  border: 1px solid var(--border-subtle);
   border-radius: 10px;
+  background: var(--bg-surface, #292929);
 }
 
 .product-outcome-grid dt {
@@ -667,11 +1134,173 @@
 }
 
 .product-outcome-grid dd {
-  margin: 7px 0 0;
+  margin: 6px 0 0;
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 650;
+  color: var(--text-primary);
 }
 
+/* ── Source history ── */
+.project-console .history-item {
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 2px;
+}
+
+.project-console .history-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+
+.project-console .history-item-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.project-console .history-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-console .history-item-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-console .history-item-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.project-console .history-item-meta svg {
+  vertical-align: -1px;
+}
+
+.project-console .history-item-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.project-console .history-item-actions button {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.project-console .history-diff {
+  margin-bottom: 10px;
+  background: var(--bg-surface, #292929);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+}
+
+.project-console .history-diff ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-console .history-diff li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.project-console .history-diff code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-console .history-diff-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  background: var(--bg-card, #212121);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: capitalize;
+}
+
+.project-console .history-diff-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.project-console .history-group-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 10px 0 4px;
+}
+
+/* ── Custom domain (also rendered inside the publish dialog) ── */
+.custom-domain-settings { display: flex; flex-direction: column; gap: 16px; font-size: 14px; }
+.custom-domain-intro { margin: 0; color: var(--text-muted); line-height: 1.6; font-size: 13px; }
+.custom-domain-loading { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; }
+.custom-domain-add { display: flex; flex-direction: column; gap: 8px; }
+.custom-domain-add label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.custom-domain-row { display: flex; align-items: center; gap: 8px; }
+.custom-domain-icon { flex-shrink: 0; color: var(--text-muted); }
+.custom-domain-row input { flex: 1; min-height: 44px; padding: 10px 14px; border: 1px solid var(--border-medium); border-radius: 10px; background: var(--bg-card, #212121); color: var(--text-primary); font-size: 14px; outline: none; }
+.custom-domain-row input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+.custom-domain-card { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-surface, #292929); overflow: hidden; }
+.custom-domain-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap; }
+.custom-domain-hostname { font-size: 15px; font-weight: 650; color: var(--text-primary); }
+.custom-domain-status { margin-left: 10px; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--bg-card, #212121); border: 1px solid var(--border-subtle); color: var(--text-secondary); white-space: nowrap; }
+.custom-domain-status.status-active { background: var(--color-success-bg); border-color: var(--color-success-border); color: var(--color-success); }
+.custom-domain-status.status-error, .custom-domain-status.status-blocked { background: var(--color-error-bg); border-color: var(--color-error-border); color: var(--color-error); }
+.custom-domain-ssl { margin-left: 8px; font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.custom-domain-actions { display: flex; align-items: center; gap: 6px; }
+.custom-domain-actions button, .custom-domain-actions a { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-card, #212121); color: var(--text-muted); cursor: pointer; text-decoration: none; }
+.custom-domain-actions button:hover, .custom-domain-actions a:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.custom-domain-dns { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.custom-domain-dns p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.dns-record-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dns-record-table th { padding: 8px 10px; background: var(--bg-canvas, #161616); border-bottom: 1px solid var(--border-subtle); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); text-align: left; }
+.dns-record-table td { padding: 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; color: var(--text-secondary); }
+.dns-record-table tr:last-child td { border-bottom: none; }
+.dns-value { display: flex; align-items: center; gap: 8px; }
+.dns-value code { font-family: var(--font-mono); font-size: 11.5px; word-break: break-all; color: var(--accent-primary); background: var(--bg-card, #212121); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 4px 8px; }
+.dns-copy-btn { flex-shrink: 0; padding: 4px 10px; min-height: 30px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-card, #212121); color: var(--text-muted); font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.dns-copy-btn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.custom-domain-hint { font-size: 12px; color: var(--text-muted); margin: 0; }
+.custom-domain-live { display: flex; align-items: center; gap: 8px; padding: 14px 16px; font-size: 13.5px; color: var(--color-success); }
+
+/* ── Responsive ── */
 @media (max-width: 640px) {
   .project-console-page {
     padding: 8px;
@@ -687,49 +1316,24 @@
   }
 
   .project-console nav {
-    padding: 8px 16px;
+    padding: 8px 16px 12px;
+    gap: 12px;
   }
 
   .project-console .settings-card {
-    padding: 12px;
+    padding: 16px;
   }
 
   .project-console .services-grid {
     grid-template-columns: 1fr;
   }
-}
 
-/* Custom Domain Settings */
-.custom-domain-settings { display: flex; flex-direction: column; gap: 20px; font-size: 14px; }
-.custom-domain-intro { margin: 0; color: var(--text-muted); line-height: 1.65; }
-.custom-domain-loading { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; }
-.custom-domain-add { display: flex; flex-direction: column; gap: 8px; }
-.custom-domain-add label { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.custom-domain-row { display: flex; align-items: center; gap: 8px; }
-.custom-domain-icon { flex-shrink: 0; color: var(--text-muted); }
-.custom-domain-row input { flex: 1; min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-medium); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); font-size: 14px; outline: none; }
-.custom-domain-row input:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px var(--focus-ring); }
-.custom-domain-row .button-primary { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.custom-domain-card { border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-surface); overflow: hidden; }
-.custom-domain-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); }
-.custom-domain-hostname { font-size: 15px; font-weight: 600; color: var(--text-primary); }
-.custom-domain-status { margin-left: 10px; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; background: var(--bg-card); border: 1px solid var(--border-subtle); }
-.custom-domain-status.status-active { background: var(--color-success-bg); border-color: var(--color-success-border); color: var(--color-success); }
-.custom-domain-status.status-error, .custom-domain-status.status-blocked { background: var(--color-error-bg); border-color: var(--color-error-border); color: var(--color-error); }
-.custom-domain-ssl { margin-left: 8px; font-size: 11px; color: var(--text-muted); }
-.custom-domain-actions { display: flex; align-items: center; gap: 4px; }
-.custom-domain-actions button, .custom-domain-actions a { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-card); color: var(--text-muted); cursor: pointer; text-decoration: none; }
-.custom-domain-actions button:hover, .custom-domain-actions a:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
-.custom-domain-dns { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.custom-domain-dns p { margin: 0; font-size: 13px; }
-.dns-record-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.dns-record-table th { padding: 6px 10px; background: var(--bg-canvas); border-bottom: 1px solid var(--border-subtle); font-weight: 600; color: var(--text-muted); text-align: left; }
-.dns-record-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
-.dns-record-table tr:last-child td { border-bottom: none; }
-.dns-value { display: flex; align-items: center; gap: 8px; }
-.dns-value code { font-family: var(--font-mono); font-size: 11px; word-break: break-all; color: var(--accent-primary); }
-.dns-copy-btn { flex-shrink: 0; padding: 2px 8px; border: 1px solid var(--border-subtle); border-radius: 4px; background: var(--bg-card); color: var(--text-muted); font-size: 11px; cursor: pointer; display: inline-flex; align-items: center; }
-.dns-copy-btn:hover { background: var(--bg-surface); color: var(--text-primary); }
-.custom-domain-hint { font-size: 11px; color: var(--text-muted); margin: 0; }
-.custom-domain-live { display: flex; align-items: center; gap: 8px; padding: 12px 16px; font-size: 13px; color: var(--color-success); }
-.custom-domain-live a { color: var(--accent-primary); text-decoration: underline; text-underline-offset: 2px; }
+  .project-console .ship-step {
+    flex-wrap: wrap;
+  }
+
+  .project-console .ship-step-status {
+    order: -1;
+    margin-left: auto;
+  }
+}

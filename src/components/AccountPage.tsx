@@ -23,7 +23,7 @@ export default function AccountPage({ path }: { path: string }) {
   return <main className="account-page"><div className="account-card">
     <header><a href="/" aria-label="BrainHalf home"><BrainHalfLogo size={38} /><strong>BrainHalf</strong></a><SiteHeaderActions /></header>
     <p className="studio-section-label">YOUR ACCOUNT</p><h1>{title}</h1>
-    <p>{reset ? 'Choose a new password to secure your account. Existing sessions will be signed out.' : verify ? 'Confirm your email address to finish setting up your account.' : 'Enter your account email and we’ll send you a link with the next steps.'}</p>
+    <p>{reset ? 'Choose a new password to secure your account. You’ll be signed out on your other devices.' : verify ? 'Confirm your email address to finish setting up your account.' : 'Enter your account email and we’ll send you a link with the next steps.'}</p>
     <noscript><p>Enable JavaScript to use this secure account form.</p></noscript>
     {notice ? <div role="status" className="account-notice">{notice}</div> : <form className="account-form" method="post" action={`/api/auth${path}`} onSubmit={async event => {
       event.preventDefault(); if (busy) return; setError('');

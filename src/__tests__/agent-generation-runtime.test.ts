@@ -805,3 +805,54 @@ describe('Most important correctness: 5 critical path tests', () => {
     await first;
   });
 });
+
+describe('Failed first prompts are preserved in server history', () => {
+  const failingModel = () => new MockLanguageModelV4({ doStream: async () => { throw new APICallError({ message: 'boom', url: 'https://provider.example', requestBodyValues: {}, statusCode: 500, isRetryable: false }); } });
+
+  it('preserves the user prompt when a non-429 provider failure kills the first generation', async () => {
+    const { run, events, database } = createAgent();
+    providerState.model = failingModel();
+    await run({}, 'Build a rocket tracker');
+    const failure = events.find(event => event.type === 'error');
+    expect(failure).toBeDefined();
+    // Regression: only the 429 branch used to save the prompt, so any other
+    // failure before the first completed stage left server history empty.
+    const rows = database.prepare('SELECT role, content FROM messages ORDER BY id').all();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ role: 'user', content: 'Build a rocket tracker' });
+    expect(rows[1]).toMatchObject({ role: 'assistant' });
+    expect(String(rows[1].content)).not.toHaveLength(0);
+  });
+
+  it('does not duplicate the prompt when a turn was already saved for the epoch', async () => {
+    const { agent, connection, database } = createAgent();
+    providerState.model = failingModel();
+    const epoch = agent.writeEpoch.begin();
+    agent.turnSavedForEpoch = epoch; // simulate a completed stage-1 save
+    await agent.runGeneration(connection, { model: 'claude-sonnet-6' }, 'system', 'Build a rocket tracker', epoch, false);
+    expect(database.prepare('SELECT COUNT(*) AS n FROM messages').get()?.n).toBe(0);
+  });
+
+  it('resets the truncation-retry streak when a new user prompt starts', async () => {
+    const { agent, run } = createAgent();
+    agent.truncationRetries = 2;
+    providerState.model = new MockLanguageModelV4({ doStream: async () => response('<file path="/src/App.tsx">export default () => <h1>Hi</h1>;</file>') });
+    await run();
+    expect(agent.truncationRetries).toBe(0);
+  });
+
+  it('keeps the truncation-retry streak across the server\u2019s own continuation prompt', async () => {
+    const { agent, connection } = createAgent();
+    agent.truncationRetries = 1;
+    providerState.model = failingModel();
+    await agent.runGeneration(
+      connection,
+      { model: 'claude-sonnet-6' },
+      'system',
+      'The previous response ended with an unfinished file. Regenerate the rest.',
+      agent.writeEpoch.begin(),
+      false,
+    );
+    expect(agent.truncationRetries).toBe(1);
+  });
+});

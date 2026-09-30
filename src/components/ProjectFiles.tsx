@@ -37,14 +37,15 @@ export default function ProjectFiles({ projectId, environment, onChanged }: { pr
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Download failed.'); }
     finally { setBusy(false); }
   };
+  const envName = environment === 'development' ? 'test' : 'live';
   return <div className="settings-files">
-    <p className="settings-muted">Files uploaded by users of this app. Development and production files stay separate. Each file is private to its uploader and the project owner.</p>
-    {error && <p role="alert">{error}</p>}
+    <p className="settings-muted">Files people uploaded through your app. Test and live files are kept separate. Each file is only visible to the person who uploaded it and to you.</p>
+    {error && <p role="alert" className="settings-error">{error}</p>}
     {loading ? <p role="status">Loading files…</p> : files.length ? <ul aria-label="Uploaded project files">{files.map(file => <li key={file.id}>
       <span><strong>{file.name}</strong><small>{(file.size / 1024).toFixed(1)} KB · {new Date(file.createdAt).toLocaleDateString()}</small></span>
-      <div className="settings-actions"><button disabled={busy} onClick={() => void download(file)} aria-label={`Download ${file.name}`}>Download</button><button disabled={busy} onClick={() => setDeleting(file)} aria-label={`Delete ${file.name}`}>Delete</button></div>
-    </li>)}</ul> : <p>No files have been uploaded in this environment.</p>}
-    {deleting && <div className="settings-notice" role="group" aria-label="Confirm file deletion"><p>Delete <strong>{deleting.name}</strong>? App links to this file will stop working.</p><div className="settings-actions"><button disabled={busy} onClick={() => void remove()}>{busy ? 'Deleting…' : 'Delete file permanently'}</button><button disabled={busy} onClick={() => setDeleting(null)}>Cancel</button></div></div>}
-    <button disabled={busy || loading} onClick={refresh}>Refresh files</button>
+      <div className="settings-actions"><button type="button" className="button-secondary" disabled={busy} onClick={() => void download(file)} aria-label={`Download ${file.name}`}>Download</button><button type="button" className="button-ghost" disabled={busy} onClick={() => setDeleting(file)} aria-label={`Delete ${file.name}`}>Delete</button></div>
+    </li>)}</ul> : <p>No files uploaded in the {envName} app yet.</p>}
+    {deleting && <div className="settings-notice database-confirm-strip" role="group" aria-label="Confirm file deletion"><p>Delete <strong>{deleting.name}</strong>? Any links to this file in your app will stop working.</p><div className="settings-actions"><button type="button" className="button-danger" disabled={busy} onClick={() => void remove()}>{busy ? 'Deleting…' : 'Delete file permanently'}</button><button type="button" className="button-ghost" disabled={busy} onClick={() => setDeleting(null)}>Cancel</button></div></div>}
+    <button type="button" className="button-secondary" disabled={busy || loading} onClick={refresh}>Refresh files</button>
   </div>;
 }

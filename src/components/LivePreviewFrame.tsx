@@ -43,7 +43,7 @@ export default function LivePreviewFrame({ projectId, liveUrl }: { projectId: st
         <div className="live-preview-preparing" role="status" aria-live="polite">
           <Loader2 className="lucide-spin" size={22} aria-hidden="true" />
           <strong>Preparing your preview…</strong>
-          <span>{slow ? 'Still working on it — you can keep chatting while it loads.' : 'Starting the app server and loading your latest version.'}</span>
+          <span>{slow ? 'Still working on it — you can keep chatting while it loads.' : 'Getting your app ready and loading the latest version.'}</span>
         </div>
       )}
       {failed && (

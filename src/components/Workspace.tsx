@@ -212,12 +212,12 @@ function useViewportWidth(): number {
 }
 
 const GENERATION_TIPS = [
-  'Your agent writes components, styles, and logic together.',
-  'Simple apps take 15–30 seconds. Complex full-stack apps may take a few minutes.',
-  "You can ask the agent to change anything once it's built.",
-  'Try describing a real workflow you do manually right now.',
-  'Your app is saved automatically as each file is built.',
-  'The agent reads your project files before writing — planning takes a moment.',
+  'The builder writes your app’s pages, design, and features together.',
+  'Simple apps take 15–30 seconds. More complex apps may take a few minutes.',
+  "You can ask the builder to change anything once it's finished.",
+  'Try describing a real task you do manually right now.',
+  'Your work is saved automatically as each part is finished.',
+  'The builder reviews your project before writing — planning takes a moment.',
 ];
 
 const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSelectMobileTab }) => {
@@ -727,13 +727,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       }
     }
 
-    addBuildLog('Source review started. These advisory checks do not run your type checker, tests, build or database.', 'info');
+    addBuildLog('Quick review started. These advisory checks don’t run the full test suite or look at your saved data.', 'info');
     if (issues.length === 0) {
-      addBuildLog('No source warnings found. Run the project typecheck, tests and build before deployment.', 'info');
+      addBuildLog('No issues found in this quick review. Full checks run before publishing.', 'info');
     } else {
       const errorCount = issues.filter((i) => i.level === 'error').length;
       const warnCount = issues.filter((i) => i.level === 'warn').length;
-      addBuildLog(`Readiness audit found ${errorCount} error(s) and ${warnCount} warning(s).`, errorCount > 0 ? 'error' : 'warn');
+      addBuildLog(`Quick review found ${errorCount} problem(s) and ${warnCount} caution(s).`, errorCount > 0 ? 'error' : 'warn');
       for (const issue of issues) addBuildLog(issue.text, issue.level);
     }
     selectTab('logs');
@@ -1310,19 +1310,19 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         <div className="studio-workspace-tabs" aria-label="Workspace view" data-mobile={mobileTab !== undefined || undefined}>
           {mobileTab === undefined && <button type="button" onClick={() => selectTab('preview')} aria-pressed={resolvedActiveTab === 'preview'} className={resolvedActiveTab === 'preview' ? 'active' : ''}><Monitor size={15} />Preview</button>}
           {mobileTab === undefined && <button type="button" onClick={() => selectTab('code')} aria-pressed={resolvedActiveTab === 'code'} className={resolvedActiveTab === 'code' ? 'active' : ''}><Code2 size={15} />Code</button>}
-          {mobileTab === undefined && <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'} className={resolvedActiveTab === 'console' ? 'active' : ''}><Terminal size={15} />Build</button>}
+          {mobileTab === undefined && <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'} className={resolvedActiveTab === 'console' ? 'active' : ''}><Terminal size={15} />Console</button>}
           {mobileTab === undefined && viewportWidth >= 900 && <button type="button" onClick={() => { setSplitView(v => !v); if (!splitView) setActiveTab('code'); }} aria-pressed={splitView} className={splitView ? 'active' : ''} title={splitView ? 'Exit split view' : 'Split view: code + preview'}><Columns2 size={15} /></button>}
-          {mobileTab !== undefined && <span className="studio-mobile-workspace-label">{isEditorTab ? 'Project files' : resolvedActiveTab === 'console' ? 'Build' : resolvedActiveTab === 'logs' ? 'Activity' : 'Your app'}</span>}
+          {mobileTab !== undefined && <span className="studio-mobile-workspace-label">{isEditorTab ? 'Project files' : resolvedActiveTab === 'console' ? 'Console' : resolvedActiveTab === 'logs' ? 'Activity' : 'Your app'}</span>}
           {(isEditorTab || splitView) && <button type="button" className="studio-files-toggle" onClick={() => setFileExplorerOverride(!showFileExplorer)} aria-pressed={showFileExplorer} title={showFileExplorer ? 'Hide project files' : 'Show project files'} aria-label={showFileExplorer ? 'Hide project files' : 'Show project files'}><PanelLeft size={14} /></button>}
         </div>
 
         <div className="studio-workspace-actions">
           <ActionMenu label="Project actions" className="studio-project-actions" items={[
             { label: 'Project console', icon: <Server />, onSelect: () => selectTab('console') },
-            { label: 'Download source ZIP', icon: <Download />, onSelect: () => { void handleExportZip(); }, disabled: !Object.keys(files).length, separator: true },
+            { label: 'Download ZIP', icon: <Download />, onSelect: () => { void handleExportZip(); }, disabled: !Object.keys(files).length, separator: true },
             { label: 'Export to GitHub', icon: <GitBranch />, onSelect: () => github.openModal(), disabled: !Object.keys(files).length },
-            { label: 'Run readiness audit', icon: <ListFilter />, onSelect: runReadinessAudit, separator: true },
-            { label: 'Build guide', icon: <HelpCircle />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
+            { label: 'Check app for issues', icon: <ListFilter />, onSelect: runReadinessAudit, separator: true },
+            { label: 'App-building guide', icon: <HelpCircle />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
             { label: 'Reset workspace', icon: <RotateCcw />, onSelect: () => setShowResetConfirm(true), danger: true, separator: true },
           ]}><MoreHorizontal size={18} /></ActionMenu>
 
@@ -1462,15 +1462,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                 {isWaitingForFirstApp && previewLoadState !== 'error' && (
                   <div className={`studio-preview-empty${status === 'Error' ? ' has-error' : ''}`} role="status" aria-live="polite">
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
-                    <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'GENERATION INCOMPLETE' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
-                    <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The frontend wasn't finished." : 'A place for your next idea.'}</h2>
-                    <p>{status === 'Error' ? "The last request couldn't finish. Open the conversation to retry or choose another model." : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "Your agent is working on the first version. The preview will appear here as it's built." : status === 'Connecting' ? "Your files are ready. We are loading the preview runtime now." : (status === 'Ready' && generationEverAttempted) ? 'The agent set up backend files but ran out of context before writing the app interface. Ask it to build the frontend.' : 'Describe what you want to make in the chat. Build it together, then try it right here.'}</p>
+                    <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'BUILD UNFINISHED' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
+                    <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The app's screens weren't finished." : 'A place for your next idea.'}</h2>
+                    <p>{status === 'Error' ? "The last request couldn't finish. Open the conversation to retry or choose another model." : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder set up the behind-the-scenes parts but ran out of space before writing the screens you see. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
                     {(status === 'Generating' || status === 'Connecting')
-                      ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Building your preview'}</div>
+                      ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Getting your preview ready'}</div>
                       : status === 'Error' || status === 'Stopped'
                       ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                       : (status === 'Ready' && generationEverAttempted)
-                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask agent to build the UI</button>
+                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask the builder to finish the screens</button>
                       : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app</button>
                     }
                     {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
@@ -1481,7 +1481,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                     <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
                     <h2>We couldn't open your latest preview.</h2>
-                    <p>{previewLoadError || previewIssue?.error || 'The build completed but the preview output could not be loaded.'}</p>
+                    <p>{previewLoadError || previewIssue?.error || 'Your app finished, but the preview couldn’t load.'}</p>
                     <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                   </div>
                 )}
@@ -1510,7 +1510,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     sandbox={PREVIEW_SANDBOX}
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
-                      const message = 'Preview iframe failed to load. Refresh, then run Build app again.';
+                      const message = 'The preview failed to load. Refresh, then ask the builder to recreate the app.';
                       setStatus('Error');
                       setPreviewStatus(activeProjectId, 'Error');
                       markPreviewState('error', message);
@@ -1519,7 +1519,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
                 </PreviewCanvas>
-                {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span>{previewIssue.error.slice(0, 180)}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask agent to fix</button></div>}
+                {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span>{previewIssue.error.slice(0, 180)}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
               </div>
             </div>
           </div>
@@ -1808,15 +1808,15 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               {isWaitingForFirstApp && previewLoadState !== 'error' && (
                 <div className={`studio-preview-empty${status === 'Error' ? ' has-error' : ''}`} role="status" aria-live="polite">
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
-                  <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'GENERATION INCOMPLETE' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
-                  <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The frontend wasn't finished." : 'A place for your next idea.'}</h2>
-                  <p>{status === 'Error' ? "The last request couldn't finish. Open the conversation to retry or choose another model." : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "Your agent is working on the first version. The preview will appear here as it's built." : status === 'Connecting' ? "Your files are ready. We are loading the preview runtime now." : (status === 'Ready' && generationEverAttempted) ? 'The agent set up backend files but ran out of context before writing the app interface. Ask it to build the frontend.' : 'Describe what you want to make in the chat. Build it together, then try it right here.'}</p>
+                  <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'BUILD UNFINISHED' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
+                  <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The app's screens weren't finished." : 'A place for your next idea.'}</h2>
+                  <p>{status === 'Error' ? "The last request couldn't finish. Open the conversation to retry or choose another model." : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder set up the behind-the-scenes parts but ran out of space before writing the screens you see. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
                   {(status === 'Generating' || status === 'Connecting')
-                    ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Building your preview'}</div>
+                    ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Getting your preview ready'}</div>
                     : status === 'Error' || status === 'Stopped'
                     ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                     : (status === 'Ready' && generationEverAttempted)
-                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask agent to build the UI</button>
+                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask the builder to finish the screens</button>
                     : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app</button>
                   }
                   {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
@@ -1827,7 +1827,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                   <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
                   <h2>We couldn't open your latest preview.</h2>
-                  <p>{previewLoadError || previewIssue?.error || 'The build completed but the preview output could not be loaded.'}</p>
+                  <p>{previewLoadError || previewIssue?.error || 'Your app finished, but the preview couldn’t load.'}</p>
                   <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                 </div>
               )}
@@ -1884,7 +1884,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     sandbox={PREVIEW_SANDBOX}
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
-                      const message = 'Preview iframe failed to load. Refresh, then run Build app again.';
+                      const message = 'The preview failed to load. Refresh, then ask the builder to recreate the app.';
                       setStatus('Error');
                       setPreviewStatus(activeProjectId, 'Error');
                       markPreviewState('error', message);
@@ -1893,7 +1893,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
               </PreviewCanvas>
-              {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span>{previewIssue.error.slice(0, 180)}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask agent to fix</button></div>}
+              {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span>{previewIssue.error.slice(0, 180)}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
 
             </div>
           </div>
@@ -1903,7 +1903,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       <footer className="studio-workspace-footer">
         <div className="studio-build-meta" aria-label="Build information">
           <span>{Object.keys(files).length} files</span>
-          <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Terminal size={13} />Build</button>
+          <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Terminal size={13} />Console</button>
           <button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
         </div>
       </footer>

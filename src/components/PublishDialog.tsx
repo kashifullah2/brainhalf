@@ -14,8 +14,8 @@ import CustomDomainSettings from './CustomDomainSettings';
 import type { RuntimeJob, SourceFiles } from '../runtime/types';
 import './PublishDialog.css';
 
-const stageLabels = ['Build app', 'Test frontend & backend', 'Connect production services', 'Deploy app', 'Check deployment', 'Live'];
-const stageKeys = ['build', 'verify', 'services', 'deploy', 'check', 'live'];
+export const stageLabels = ['Build app', 'Test the app', 'Connect services', 'Put app online', 'Final checks', 'Live'];
+export const stageKeys = ['build', 'verify', 'services', 'deploy', 'check', 'live'];
 
 export interface PublishProgressView {
   /** Heading shown above the stage list. */
@@ -212,13 +212,13 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
               <div className="pub-name-actions">
                 <button
                   type="button"
-                  className="pub-btn-primary"
+                  className="button-primary"
                   disabled={!slugValid || slugChecking || submitting || !ready || generating}
                   onClick={() => void confirmSlugAndPublish()}
                 >
                   {submitting ? <><Loader2 size={16} className="pub-spinner" /> Publishing…</> : 'Publish'}
                 </button>
-                <button type="button" className="pub-btn-ghost" disabled={submitting || !ready || generating} onClick={skipSlugAndPublish}>
+                <button type="button" className="button-ghost" disabled={submitting || !ready || generating} onClick={skipSlugAndPublish}>
                   Skip — use default URL
                 </button>
               </div>
@@ -248,12 +248,12 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
                 })}
               </div>
 
-              <p className="pub-footnote">You can close this panel. Publishing continues on the server.</p>
+              <p className="pub-footnote">You can close this — publishing keeps running in the background.</p>
 
               {error && <p className="pub-field-error" role="alert">{error}</p>}
 
               {publishing && job && (
-                <button type="button" className="pub-btn-ghost" disabled={submitting || actionBusy} onClick={() => void stopJob(job)}>Cancel publishing</button>
+                <button type="button" className="button-ghost" disabled={submitting || actionBusy} onClick={() => void stopJob(job)}>Cancel publishing</button>
               )}
             </div>
           )}
@@ -272,7 +272,7 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
               )}
 
               <div className="pub-success-actions">
-                <button type="button" className="pub-btn-copy" onClick={() => {
+                <button type="button" className="button-secondary" onClick={() => {
                   if (status?.productionUrl) navigator.clipboard.writeText(status.productionUrl).then(() => setCopied(true)).catch(() => setError('Copy the URL shown above.'));
                 }}>
                   {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> Copy link</>}
@@ -284,7 +284,7 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
               <div className="pub-publish-row">
                 <button
                   type="button"
-                  className="pub-btn-primary"
+                  className="button-primary"
                   disabled={!ready || !revision || busy || generating || currentIsLive}
                   onClick={() => void publish()}
                 >{currentIsLive ? 'Up to date' : 'Publish changes'}</button>
@@ -308,12 +308,12 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
 
               {/* Take offline */}
               {!confirmOffline
-                ? <button type="button" className="pub-btn-ghost pub-offline-btn" disabled={busy} onClick={() => setConfirmOffline(true)}>Take app offline</button>
+                ? <button type="button" className="button-ghost pub-offline-btn" disabled={busy} onClick={() => setConfirmOffline(true)}>Take app offline</button>
                 : <div className="pub-offline-confirm">
-                    <p>Your app and APIs will stop working. You can publish again later.</p>
+                    <p>Your app will stop working for visitors. Your saved information and versions stay safe — you can publish again any time.</p>
                     <div className="pub-offline-actions">
-                      <button type="button" className="pub-btn-ghost" disabled={busy} onClick={() => setConfirmOffline(false)}>Keep live</button>
-                      <button type="button" className="pub-btn-ghost" disabled={busy} onClick={() => void unpublish()}>Confirm take offline</button>
+                      <button type="button" className="button-ghost" disabled={busy} onClick={() => setConfirmOffline(false)}>Keep live</button>
+                      <button type="button" className="button-danger" disabled={busy} onClick={() => void unpublish()}>Confirm take offline</button>
                     </div>
                   </div>}
             </div>
@@ -336,8 +336,8 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
                 return accepted;
               }} />
               <div className="pub-error-actions">
-                <button type="button" className="pub-btn-primary" onClick={() => { setError(''); setAccepted(null); void publish(); }}>Try again</button>
-                <button type="button" className="pub-btn-ghost" onClick={onManage}>View full console</button>
+                <button type="button" className="button-primary" onClick={() => { setError(''); setAccepted(null); void publish(); }}>Try again</button>
+                <button type="button" className="button-ghost" onClick={onManage}>View full console</button>
               </div>
             </div>
           )}
@@ -347,7 +347,7 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
             <div className="pub-step pub-step-stopped">
               <p className="pub-heading">Publishing cancelled</p>
               <p className="pub-subtitle">{job?.message || 'Publishing was stopped before completion.'}</p>
-              <button type="button" className="pub-btn-primary" onClick={() => { setAccepted(null); void publish(); }}>Publish again</button>
+              <button type="button" className="button-primary" onClick={() => { setAccepted(null); void publish(); }}>Publish again</button>
             </div>
           )}
 
@@ -356,7 +356,7 @@ export default function PublishDialog({ projectId, files, publishOnOpen, onClose
             <div className="pub-step">
               {!ready && <p className="pub-notice">{runtime.error || status?.availability?.message || 'Checking hosting availability…'}</p>}
               {error && <p className="pub-field-error" role="alert">{error}</p>}
-              {ready && <button type="button" className="pub-btn-primary" disabled={!revision || busy || generating} onClick={() => void publish()}>
+              {ready && <button type="button" className="button-primary" disabled={!revision || busy || generating} onClick={() => void publish()}>
                 {submitting ? 'Publishing…' : 'Publish app'}
               </button>}
             </div>
@@ -392,7 +392,7 @@ function PublishFailureDetails({ projectId, job, onRepair }: { projectId: string
       <ul>{copy.plainChecks.map((line, index) => <li key={index}>{line}</li>)}</ul>
       <p className="pub-failure-reassurance">{copy.reassurance}</p>
     </div>}
-    {details && <button type="button" className="pub-btn-ghost" onClick={() => {
+    {details && <button type="button" className="button-secondary" onClick={() => {
       const ok = onRepair(logs || '');
       setRepairNotice(ok ? 'The builder is fixing the problem.' : 'Finish the current request first.');
     }}>Fix publishing problem</button>}

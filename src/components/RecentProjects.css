@@ -73,15 +73,15 @@
 .recent-projects-empty { display: flex; align-items: center; flex-direction: column; padding: 42px 20px; border: 1px dashed var(--project-border); border-radius: 8px; color: var(--studio-muted); text-align: center; }
 .recent-projects-empty h3 { color: var(--studio-ink); font-size: 18px; margin: 14px 0 6px; }
 .recent-projects-empty p { font-size: 14px; margin: 0 0 18px; }
-:root[data-theme='dark'] .recent-projects { --project-border: #61798a; --project-hover-shadow: 0 7px 18px #00000030; }
-:root[data-theme='dark'] .recent-project-thumbnail { --tile-start: #293e4f; --tile-end: #203240; --tile-ink: #b9d2e4; }
+:root[data-theme='dark'] .recent-projects { --project-border: #6b6b6b; --project-hover-shadow: 0 7px 18px #00000030; }
+:root[data-theme='dark'] .recent-project-thumbnail { --tile-start: #2e2e2e; --tile-end: #262626; --tile-ink: #cfcfcf; }
 :root[data-theme='dark'] .category-storefront { --tile-start: #413b31; --tile-end: #322e28; --tile-ink: #dcc69e; }
 :root[data-theme='dark'] .category-portal { --tile-start: #293f38; --tile-end: #21322f; --tile-ink: #afd0bf; }
 :root[data-theme='dark'] .category-portfolio { --tile-start: #41313e; --tile-end: #322a35; --tile-ink: #d8b7cc; }
 :root[data-theme='dark'] .category-workflow { --tile-start: #37344a; --tile-end: #2b2d3b; --tile-ink: #c9bfdf; }
 :root[data-theme='dark'] .category-chat { --tile-start: #294149; --tile-end: #22333c; --tile-ink: #afcfd5; }
 :root[data-theme='dark'] .category-forms { --tile-start: #42382f; --tile-end: #352e2c; --tile-ink: #ddc1ab; }
-:root[data-theme='dark'] .category-app { --tile-start: #33414c; --tile-end: #283440; --tile-ink: #bccbd6; }
+:root[data-theme='dark'] .category-app { --tile-start: #333333; --tile-end: #292929; --tile-ink: #c7c7c7; }
 @media (max-width: 1050px) {
   .recent-projects .landing-project-card { gap: 14px; padding: 15px; }
   .recent-project-thumbnail { width: 80px; }
