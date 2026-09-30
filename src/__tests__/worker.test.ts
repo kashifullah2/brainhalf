@@ -641,3 +641,25 @@ describe('Gallery remix orchestration', () => {
     expect(agents.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('project quota endpoint', () => {
+  it('proxies the registry quota for the signed-in account', async () => {
+    const registry = mockRegistry(); const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/projects/quota') {
+        expect(url.searchParams.get('userId')).toBe('user-1');
+        return Response.json({ live: 7, limit: 50 });
+      }
+      return original(input, init);
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/account/project-quota');
+    const response = await worker.fetch(request, envWith(registry), {} as any);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ live: 7, limit: 50 });
+  });
+  it('requires authentication', async () => {
+    const registry = mockRegistry();
+    expect((await worker.fetch(new Request('https://brainhalf.com/api/account/project-quota'), envWith(registry), {} as any)).status).toBe(401);
+  });
+});

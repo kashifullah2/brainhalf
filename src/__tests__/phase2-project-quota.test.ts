@@ -89,6 +89,16 @@ class FakeSql {
       return new FakeResult([{ live, total }]);
     }
 
+    // The /projects/quota query: live count for one user.
+    if (text.startsWith('SELECT COUNT(*) AS live FROM project_owners WHERE user_id = ? AND deleted_at IS NULL')) {
+      const userId = params[0];
+      let live = 0;
+      for (const row of this.owners.values()) {
+        if (row.user_id === userId && row.deleted_at == null) live += 1;
+      }
+      return new FakeResult([{ live }]);
+    }
+
     if (text.startsWith('SELECT user_id, deleted_at FROM project_owners WHERE project_id = ?')) {
       const row = this.owners.get(params[0]);
       return new FakeResult(row ? [{ user_id: row.user_id, deleted_at: row.deleted_at }] : []);
@@ -257,5 +267,25 @@ describe('AuthRegistry project quota (Task 2.5)', () => {
     const { registry } = registryWith(0);
     const result = await claim(registry, 'not a valid id');
     expect(result.status).toBe(400);
+  });
+
+  it('reports the live project count and limit via /projects/quota', async () => {
+    const { registry } = registryWith(3);
+    const res = await registry.fetch(new Request('https://do/projects/quota?userId=user-a'));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ live: 3, limit: 50 });
+  });
+
+  it('excludes tombstoned projects from the quota count', async () => {
+    const { registry } = registryWith(5, { tombstoned: true });
+    const res = await registry.fetch(new Request('https://do/projects/quota?userId=user-a'));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ live: 0, limit: 50 });
+  });
+
+  it('requires a userId for /projects/quota', async () => {
+    const { registry } = registryWith(0);
+    const res = await registry.fetch(new Request('https://do/projects/quota'));
+    expect(res.status).toBe(400);
   });
 });

@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import AdminPage from '../components/AdminPage';
 import { isAutoSave, displayLabel } from '../components/ProjectHistory';
 import { STATUS_LABEL, SSL_LABEL } from '../components/CustomDomainSettings';
-import { stageLabels as dialogStageLabels, stageKeys as dialogStageKeys } from '../components/PublishDialog';
-import { stages as controlsStages, stageKeys as controlsStageKeys } from '../components/PublicationControls';
+import { stages as controlsStages, stageKeys as controlsStageKeys, stageLabels } from '../components/PublicationControls';
 
 /**
  * Regression guards for the plain-language + consistency overhaul. Each area
@@ -103,14 +102,27 @@ describe('CustomDomainSettings plain-language labels', () => {
   });
 });
 
-describe('publish stage labels stay in sync', () => {
-  it('PublishDialog and PublicationControls show the same step names', () => {
-    expect(controlsStages).toEqual(dialogStageLabels);
+describe('single publish UI (duplicate PublishDialog removed)', () => {
+  it('stage labels and keys stay consistent in the one publish UI', () => {
+    expect(stageLabels).toEqual(controlsStages);
+    expect(controlsStageKeys).toHaveLength(controlsStages.length);
+    expect(stageLabels).toHaveLength(controlsStageKeys.length);
   });
 
-  it('stage keys match the labels one-for-one in both components', () => {
-    expect(controlsStageKeys).toEqual(dialogStageKeys);
-    expect(controlsStageKeys).toHaveLength(controlsStages.length);
-    expect(dialogStageKeys).toHaveLength(dialogStageLabels.length);
+  it('PublishDialog.tsx is gone and nothing references it', () => {
+    expect(existsSync(resolve(__dirname, '../components/PublishDialog.tsx'))).toBe(false);
+    expect(existsSync(resolve(__dirname, '../components/PublishDialog.css'))).toBe(false);
+    for (const file of ['Workspace.tsx', 'ProjectConsole.tsx']) {
+      const source = readFileSync(resolve(__dirname, `../components/${file}`), 'utf8');
+      expect(source, file).not.toContain('PublishDialog');
+    }
+    const events = readFileSync(resolve(__dirname, '../lib/events.ts'), 'utf8');
+    expect(events).not.toContain('open-deploy-modal');
+  });
+
+  it('the header Publish button and command palette open the console Publish section', () => {
+    const workspace = readFileSync(resolve(__dirname, '../components/Workspace.tsx'), 'utf8');
+    expect(workspace).toContain("section: 'Publish'");
+    expect(workspace).toContain("selectTab('console')");
   });
 });

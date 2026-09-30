@@ -419,6 +419,12 @@ export default {
       try { return withCors(await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/projects/deletions?userId=${encodeURIComponent(user.userId)}`), origin); }
       catch { return withCors(jsonError('Cleanup status unavailable', 503), origin); }
     }
+    if (url.pathname === '/api/account/project-quota' && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      try { return withCors(await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/projects/quota?userId=${encodeURIComponent(user.userId)}`), origin); }
+      catch { return withCors(jsonError('Project quota unavailable', 503), origin); }
+    }
     /* --------- project listing / management (authenticated) --------- */
     const stopMatch = url.pathname.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/stop$/);
     if (stopMatch && request.method === 'POST') {
@@ -711,7 +717,14 @@ export default {
         const user = await verifySession(req, env);
         if (!user) return unauthorized('Sign in to access this project');
         const claim = await authorizeOrClaim(env, route.name, user.userId, req.url);
-        if (!claim.ok) return forbidden('You do not own this project');
+        if (!claim.ok) {
+          // 409 is the project-limit quota (or a duplicate submission), NOT an
+          // ownership problem — never show "You do not own this project" for it.
+          if (claim.status === 409) {
+            return forbidden(claim.error || 'You have reached your project limit. Delete a project to open another.');
+          }
+          return forbidden('You do not own this project');
+        }
         return injectUserId(req, user.userId);
       },
     });
@@ -778,7 +791,7 @@ export default {
  * false when the project belongs to someone else (or the Registry is down —
  * fail closed).
  */
-async function authorizeOrClaim(env: PlatformEnv, projectId: string, userId: string, requestUrl: string): Promise<{ ok: boolean; status: number }> {
+async function authorizeOrClaim(env: PlatformEnv, projectId: string, userId: string, requestUrl: string): Promise<{ ok: boolean; status: number; error?: string }> {
   if (!projectId || !userId) return { ok: false, status: 400 };
   let name: string | undefined;
   let idempotencyKey: string | undefined;

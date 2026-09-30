@@ -68,9 +68,9 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     } catch { setNotice('If that account exists, a reset link has been sent.'); }
     finally { setBusy(null); }
   };
-  const _handleResendVerification = async () => {
+  const handleResendVerification = async () => {
     const trimmed = email.trim();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Enter your email address first.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Enter your email address first.'); return; }
     if (busy) return;
     setBusy('email'); setError(null);
     try {
@@ -112,7 +112,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
           <label htmlFor="login-password">Password<input id="login-password" type="password" aria-label="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder="At least 8 characters" required minLength={8} disabled={!!busy} /></label>
           {error && <div className="studio-auth-error" role="alert">{error}</div>}
           {notice && <div className="account-notice" role="status">{notice}</div>}
-          {mode === 'login' && <div className="account-links"><button type="button" disabled={!!busy} onClick={() => void handleForgotPassword()}>Forgot password?</button></div>}
+          {mode === 'login' && <div className="account-links"><button type="button" disabled={!!busy} onClick={() => void handleForgotPassword()}>Forgot password?</button><button type="button" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
           <button type="submit" className="studio-auth-submit" disabled={!!busy}>{busy === 'email' ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}<ArrowRight size={17} /></button>
         </form>
       </div>

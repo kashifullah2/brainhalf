@@ -229,7 +229,7 @@ export async function authorizeProject(
   userId: string,
   name?: string,
   idempotencyKey?: string
-): Promise<{ ok: boolean; status: number }> {
+): Promise<{ ok: boolean; status: number; error?: string }> {
   try {
     const registry = getRegistry(env);
     const res = await registry.fetch('https://registry/projects/claim', {
@@ -237,7 +237,13 @@ export async function authorizeProject(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projectId, userId, name, idempotencyKey }),
     });
-    return { ok: res.ok, status: res.status };
+    if (res.ok) return { ok: true, status: res.status };
+    let error: string | undefined;
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (typeof body?.error === 'string' && body.error) error = body.error;
+    } catch { /* non-JSON error body — fall through */ }
+    return { ok: false, status: res.status, error };
   } catch (err) {
     console.error('Project authorization failed:', err);
     return { ok: false, status: 500 };

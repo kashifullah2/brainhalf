@@ -7,6 +7,7 @@ import { usePlatformStatus } from '../lib/status-store';
 import { publishProject, checkSlugAvailability, setAppSlug, toAppSlug, APP_SLUG_RE } from '../lib/publish-project';
 import { appEvents } from '../lib/events';
 import { describeVerificationFailure } from '../lib/verification-copy';
+import { HOSTED_APP_LIMIT, isHostedLimitError } from '../lib/hosted-limit';
 import { sourceSnapshot } from '../runtime/source';
 import { publicationTarget } from '../runtime/publication';
 import type { RuntimeJob, SourceFiles } from '../runtime/types';
@@ -26,7 +27,35 @@ export function publishStageIndex(status: string | undefined, publishStage: stri
   return stageKeys.indexOf(publishStage || 'build');
 }
 
-export default function PublicationControls({ projectId, files, publishOnOpen, onManage }: { projectId: string; files: SourceFiles; publishOnOpen?: SourceFiles; onManage?: () => void }) {
+export const stageLabels = stages;
+
+export interface PublishProgressView {
+  /** Heading shown above the stage list. */
+  heading: string;
+  /** Index into stageLabels of the stage actually in progress, or null when nothing has started yet. */
+  currentStage: number | null;
+  /** True while the job is waiting for a build slot — no stage may show as active. */
+  waitingInQueue: boolean;
+}
+
+/**
+ * Derives the honest progress view for a publish job.
+ *
+ * A queued job has started nothing: currentStage is null and the heading says
+ * so plainly, instead of marking "Build app" as in-progress while queued.
+ */
+export function publishProgressView(job: Pick<RuntimeJob, 'status' | 'message' | 'publishStage'>): PublishProgressView {
+  if (job.status === 'queued') {
+    return { heading: 'Queued — waiting for a build slot…', currentStage: null, waitingInQueue: true };
+  }
+  return {
+    heading: job.message || (job.status === 'stopping' ? 'Stopping…' : 'Publishing your app…'),
+    currentStage: stageKeys.indexOf(job.publishStage || 'build'),
+    waitingInQueue: false,
+  };
+}
+
+export default function PublicationControls({ projectId, files, publishOnOpen, onManage, onOpenHostedSlots }: { projectId: string; files: SourceFiles; publishOnOpen?: SourceFiles; onManage?: () => void; onOpenHostedSlots?: () => void }) {
   const runtime = useProjectRuntime(projectId, 'production');
   const [revision, setRevision] = useState('');
   const [sourceError, setSourceError] = useState('');
@@ -59,11 +88,20 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
   const active = status?.jobs.find(item => ['queued', 'running', 'stopping'].includes(item.status));
   const canReplacePreview = active?.kind === 'preview' && active.environment === 'development';
   const publishing = !!job && ['queued', 'running', 'stopping'].includes(job.status);
+  const progress = job && publishing ? publishProgressView(job) : null;
   const busy = submitting || publishing || actionBusy;
   const release = status?.activeRelease;
   const currentIsLive = !!revision && release?.revision === revision;
   const stage = publishStageIndex(job?.status, job?.publishStage);
   const ready = status?.enabled && status.availability?.state === 'ready';
+  // Plain-language reason when the Publish button is disabled — a greyed-out
+  // button with no explanation was reported as confusing.
+  const publishBlocker = currentIsLive ? 'Your live app already matches this version — nothing new to publish.'
+    : generating ? 'Wait for the builder to finish, then publish.'
+    : active && !canReplacePreview ? `Another app job is running: ${active.message}. Stop it or wait for it to finish before publishing.`
+    : !ready ? 'The publishing service is still getting ready. Try again in a moment.'
+    : !revision ? 'Build your app first — there is nothing saved to publish yet.'
+    : '';
 
   const publish = async (source = filesRef.current) => {
     if (inFlight.current) return;
@@ -200,17 +238,20 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
 
   return <section className="publication-controls" aria-label="Project publication">
     <p>Put a finished, tested version of your app on the internet. BrainHalf builds your app, gets its saved information ready, and runs final checks before it goes live.</p>
+    {isHostedLimitError(job?.message) && <HostedFullNotice onOpenHostedSlots={onOpenHostedSlots} />}
     {sourceError && <p role="alert" className="publication-error">{sourceError.includes('Workers deployment entry') ? 'This app is not set up for publishing yet. The builder can get it ready for you.' : sourceError}</p>}
     {sourceError.includes('Workers deployment entry') && <button type="button" className="button-secondary" disabled={busy || generating || !!active} onClick={prepareBackend}>Get app ready for publishing</button>}
     {generating && <p role="status">Wait for the app to finish generating before publishing.</p>}
     {active && active.kind !== 'publish' && <div className="publication-notice"><p role="status">{canReplacePreview ? 'Publishing will close the test version and build your saved app for visitors.' : `Another app job is running: ${active.message}. Stop it or wait for it to finish before publishing.`}</p><button type="button" className="button-ghost" disabled={busy} onClick={() => void stopJob(active)}>Stop running job</button></div>}
     {job && (job.status !== 'passed' || (release && job.releaseId === release.id)) && <div className="publication-progress" aria-live="polite">
-      <p className="publication-status">{publishing && <Loader2 size={17} className="publication-spinner" />}{job.status === 'passed' && <Check size={17} />} {job.message}</p>
+      <p className="publication-status">{publishing && <Loader2 size={17} className="publication-spinner" />}{job.status === 'passed' && <Check size={17} />} {progress ? progress.heading : job.message}</p>
       <ol>{stages.map((label, index) => <li key={label} aria-current={index === stage ? 'step' : undefined} className={index < stage || job.status === 'passed' ? 'is-complete' : ''}><span aria-hidden="true">{index < stage || job.status === 'passed' ? '✓' : index + 1}</span>{label}</li>)}</ol>
       {publishing && <p>You can close this — publishing keeps running in the background.</p>}
     </div>}
-    {error && <p role="alert" className="publication-error">{error}</p>}
-    {job?.status === 'failed' && <>
+    {error && (isHostedLimitError(error)
+      ? <HostedFullNotice onOpenHostedSlots={onOpenHostedSlots} />
+      : <p role="alert" className="publication-error">{error}</p>)}
+    {job?.status === 'failed' && !isHostedLimitError(job.message) && <>
       <p role="alert" className="publication-error">Publishing stopped: {job.message} {release ? 'Your live app is unchanged.' : 'Nothing was published.'}</p>
       <PublicationFailure key={job.id} projectId={projectId} job={job} canRepair={!busy && !generating && !active} />
     </>}
@@ -230,8 +271,21 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
       {onManage && <button type="button" className="button-ghost" onClick={onManage}>Set up sign-in &amp; email</button>}
       {publishing && <button type="button" className="button-ghost" disabled={submitting || actionBusy} onClick={() => void stopJob(job)}>Cancel publishing</button>}
     </div>
+    {publishBlocker && <p className="publication-hint" role="status">{publishBlocker}</p>}
     <p className="publication-footnote">Publishing saves this version. Later edits stay private until you publish again. The live app keeps its own saved information — test entries are not copied over.</p>
   </section>;
+}
+
+/**
+ * A full account is not a publishing bug: the builder agent cannot fix it, so
+ * the repair flow is suppressed and the user is routed to the app-spaces
+ * manager instead. Written for non-technical users — no "slots", no "hosted".
+ */
+export function HostedFullNotice({ onOpenHostedSlots }: { onOpenHostedSlots?: () => void }) {
+  return <p role="alert" className="publication-error">
+    Your {HOSTED_APP_LIMIT} app spaces are full, so this app can’t be published. Remove an app you don’t use anymore, then publish again.
+    {onOpenHostedSlots && <> <button type="button" className="button-ghost" onClick={onOpenHostedSlots}>Choose an app to remove</button></>}
+  </p>;
 }
 
 function PublicationFailure({ projectId, job, canRepair }: { projectId: string; job: RuntimeJob; canRepair: boolean }) {

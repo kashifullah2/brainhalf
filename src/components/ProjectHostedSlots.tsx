@@ -1,17 +1,32 @@
 import { useCallback, useEffect, useState } from 'react';
 import { listHostedSlots, releaseHostedSlot, type HostedSlot } from '../lib/project-runtime-client';
+import { getProjects } from '../lib/project-store';
+import { HOSTED_APP_LIMIT } from '../lib/hosted-limit';
 
-/** Hosted-slot accounting for the signed-in account. Slots can outlive their
+/** App-space accounting for the signed-in account. Spaces can outlive their
  *  projects (old clients deleted projects locally without server cleanup), and
- *  orphaned slots block new builds and publishes — this panel releases them. */
+ *  leftover spaces block new builds and publishes — this panel frees them.
+ *  Copy is written for non-technical users: "spaces" and "remove", never
+ *  "slots" or "release". */
 export default function ProjectHostedSlots({ projectId }: { projectId: string }) {
   const [slots, setSlots] = useState<HostedSlot[] | null>(null);
   const [error, setError] = useState('');
   const [releasing, setReleasing] = useState<string | null>(null);
+  // Show app names instead of raw project ids where the project still exists.
+  const [names, setNames] = useState<Record<string, string>>({});
 
   const load = useCallback(async (signal?: AbortSignal) => {
-    try { setSlots(await listHostedSlots(projectId)); setError(''); }
-    catch (cause) { if (!signal?.aborted) setError(cause instanceof Error ? cause.message : 'Could not load hosted apps.'); }
+    try {
+      const next = await listHostedSlots(projectId);
+      if (signal?.aborted) return;
+      setSlots(next); setError('');
+      try {
+        const byId: Record<string, string> = {};
+        for (const project of getProjects()) byId[project.id] = project.name || project.id;
+        setNames(byId);
+      } catch { /* names are a nicety; ids still render */ }
+    }
+    catch (cause) { if (!signal?.aborted) setError(cause instanceof Error ? cause.message : 'Could not load your app spaces.'); }
   }, [projectId]);
 
   useEffect(() => {
@@ -20,45 +35,50 @@ export default function ProjectHostedSlots({ projectId }: { projectId: string })
     return () => controller.abort();
   }, [load]);
 
-  const release = async (alias: string, live: boolean) => {
+  const release = async (alias: string, live: boolean, label: string) => {
     if (releasing) return;
-    if (live && !window.confirm('This slot belongs to a live project. Releasing it will take the app offline until its next publish. Release it anyway?')) return;
+    if (live && !window.confirm(`Removing this space will take “${label}” offline for visitors until you publish it again. Remove it anyway?`)) return;
     setReleasing(alias); setError('');
     try {
       await releaseHostedSlot(projectId, alias, live);
       setSlots(current => (current || []).filter(slot => slot.alias !== alias));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Release failed. Try again.');
+      setError(cause instanceof Error ? cause.message : 'Could not remove that space. Try again.');
     } finally {
       setReleasing(null);
     }
   };
 
+  const used = slots?.length ?? 0;
   return <section className="settings-card">
-    <h3>Hosted app slots</h3>
+    <h3>Your app spaces</h3>
     <p className="settings-muted">
-      Every app that has been built or published holds one hosting slot on your account. Slots from deleted or
-      unused projects can stay behind and block new builds — release the unused ones here. Releasing a slot that
-      belongs to a live app takes that app offline until its next publish, so those ask for confirmation first.
+      {slots === null ? `Your account has ${HOSTED_APP_LIMIT} spaces for running apps.` : `You’re using ${used} of your ${HOSTED_APP_LIMIT} app spaces.`}{' '}
+      Every app you build or publish uses one space. Spaces left behind by apps you deleted can linger and block
+      new work — remove the ones you don’t need here. Removing the space for a live app takes it offline for
+      visitors until you publish it again, so those ask for confirmation first.
     </p>
     {error && <p role="alert" className="settings-error">{error}</p>}
-    {slots === null && !error && <p className="settings-muted">Loading hosted apps…</p>}
-    {slots !== null && slots.length === 0 && <p className="settings-muted">No hosted slots on your account.</p>}
+    {slots === null && !error && <p className="settings-muted">Loading your app spaces…</p>}
+    {slots !== null && slots.length === 0 && <p className="settings-muted">Your account isn’t using any app spaces yet.</p>}
     {slots !== null && slots.length > 0 && (
       <ul className="hosted-slot-list">
-        {slots.map(slot => (
-          <li key={slot.alias}>
-            <span className="hosted-slot-id" title={`Slot ${slot.alias}`}>Project {slot.projectId}</span>
-            {slot.live === false
-              ? <span className="hosted-slot-orphan">Unused</span>
-              : <span className="hosted-slot-live">Live</span>}
-            {slot.projectId === projectId
-              ? <span className="hosted-slot-current">This project</span>
-              : <button type="button" disabled={releasing !== null} onClick={() => void release(slot.alias, slot.live !== false)}>
-                  {releasing === slot.alias ? 'Releasing…' : 'Release slot'}
-                </button>}
-          </li>
-        ))}
+        {slots.map(slot => {
+          const label = names[slot.projectId] || slot.alias;
+          return (
+            <li key={slot.alias}>
+              <span className="hosted-slot-id" title={`Space ${slot.alias}`}>{label}</span>
+              {slot.live === false
+                ? <span className="hosted-slot-orphan">Not in use</span>
+                : <span className="hosted-slot-live">Live</span>}
+              {slot.projectId === projectId
+                ? <span className="hosted-slot-current">This project</span>
+                : <button type="button" disabled={releasing !== null} onClick={() => void release(slot.alias, slot.live !== false, label)}>
+                    {releasing === slot.alias ? 'Removing…' : 'Remove'}
+                  </button>}
+            </li>
+          );
+        })}
       </ul>
     )}
     <p className="settings-muted">

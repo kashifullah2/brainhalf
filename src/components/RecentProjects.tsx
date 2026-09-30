@@ -26,6 +26,12 @@ const CATEGORIES = {
   app: { label: 'App', icon: LayoutGrid },
 };
 const STATUS_LABELS = { draft: 'Draft', building: 'In progress', deployed: 'Live', error: 'Needs attention' };
+const STATUS_TITLES = {
+  draft: 'Draft — still being built, not published yet',
+  building: 'In progress — the builder is working on it right now',
+  deployed: 'Live — published and available at its web address',
+  error: 'Needs attention — the last build or publish ran into a problem',
+};
 
 interface RecentProjectsProps {
   projects: Project[];
@@ -139,11 +145,11 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
               const { project, title, description, category, status, untitled } = entry;
               const Icon = CATEGORIES[category].icon;
               return <article className={`landing-project-card${activeMenu === project.id ? ' has-open-menu' : ''}`} key={project.id}>
-                <div className={`recent-project-thumbnail category-${category}`}>
+                <div className={`recent-project-thumbnail category-${category}`} title={`App type: ${CATEGORIES[category].label} — detected from what the app does`}>
                   <Icon size={28} strokeWidth={1.5} aria-hidden="true" /><span>{CATEGORIES[category].label}</span>
                 </div>
                 <div className="recent-project-body">
-                  <div className="recent-project-meta"><span className={`recent-project-status status-${status}`}><i aria-hidden="true" />{STATUS_LABELS[status]}</span><time dateTime={new Date(project.updatedAt).toISOString()} title={new Date(project.updatedAt).toLocaleString()}>{formatRelativeTime(project.updatedAt)}</time></div>
+                  <div className="recent-project-meta"><span className={`recent-project-status status-${status}`} title={STATUS_TITLES[status]}><i aria-hidden="true" />{STATUS_LABELS[status]}</span><time dateTime={new Date(project.updatedAt).toISOString()} title={new Date(project.updatedAt).toLocaleString()}>{formatRelativeTime(project.updatedAt)}</time></div>
                   <h4 className="landing-card-title" title={title}>{title}</h4>
                   <p className="recent-project-description">{description || 'Your next idea starts here.'}</p>
                   <div className="recent-project-footer">

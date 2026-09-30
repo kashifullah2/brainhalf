@@ -22,14 +22,15 @@ import GalleryListing from './GalleryListing';
 import CustomDomainSettings from './CustomDomainSettings';
 import { pushUsageEvent, setOnboardingState } from '../lib/project-growth';
 import { plainLanguageCheck } from '../lib/verification-copy';
+import { HOSTED_APP_LIMIT, isHostedLimitError } from '../lib/hosted-limit';
 import './ProjectConsole.css';
 
 // Grouped by intent so non-technical users see three jobs — ship it, run it,
 // manage it — with plain-language names instead of engineering jargon.
 const sectionGroups = [
-  { label: 'Ship', sections: ['Publish', 'Domain'] },
-  { label: 'Run', sections: ['Database', 'Files', 'Users & email', 'Monitoring'] },
-  { label: 'Manage', sections: ['App versions', 'AI usage', 'Hosted apps', 'Project settings'] },
+  { label: 'Ship', hint: 'Put your app on the internet', sections: ['Publish', 'Domain'] },
+  { label: 'Run', hint: "Your app's data, files and activity", sections: ['Database', 'Files', 'Users & email', 'Monitoring'] },
+  { label: 'Manage', hint: 'Versions, usage and project settings', sections: ['App versions', 'AI usage', 'Hosted apps', 'Project settings'] },
 ] as const;
 const sections = sectionGroups.flatMap(group => group.sections);
 type Section = typeof sections[number];
@@ -44,7 +45,7 @@ const sectionHelp: Record<Section, string> = {
   'App versions': 'Saved versions of your app you can go back to.',
   'AI usage': 'How much builder work this project has used.',
   'Project settings': 'Your past requests and advanced builder settings.',
-  'Hosted apps': 'Hosting slots used by your apps. Release slots from projects you no longer use.',
+  'Hosted apps': `Your ${HOSTED_APP_LIMIT} app spaces. Remove apps you no longer use to make room.`,
 };
 
 const JOB_LABELS: Record<JobKind, string> = {
@@ -78,8 +79,17 @@ function Step({ number, title, help, state, children }: { number: number; title:
   );
 }
 
-export default function ProjectConsole({ projectId, files, onClose }: { projectId: string; files: SourceFiles; onClose: () => void }) {
+export default function ProjectConsole({ projectId, files, onClose, sectionRequest }: { projectId: string; files: SourceFiles; onClose: () => void; sectionRequest?: { section: string; nonce: number } | null }) {
   const [section, setSection] = useState<Section>('Publish');
+  // Lets the workspace header jump straight to a console section (e.g. the
+  // header "Publish" button opens the Publish section). The nonce makes
+  // repeat requests fire even when the section name is unchanged.
+  useEffect(() => {
+    if (sectionRequest && (sections as string[]).includes(sectionRequest.section)) {
+      setSection(sectionRequest.section as Section);
+      setError('');
+    }
+  }, [sectionRequest]);
   const [environment, setEnvironment] = useState<ProjectEnvironment>('development');
   const [revision, setRevision] = useState('');
   const [sourceError, setSourceError] = useState('');
@@ -168,7 +178,7 @@ export default function ProjectConsole({ projectId, files, onClose }: { projectI
     </header>
     <nav aria-label="Project console sections">{sectionGroups.map(group => (
       <div className="console-nav-group" key={group.label}>
-        <span className="console-nav-label" aria-hidden="true">{group.label}</span>
+        <span className="console-nav-label" title={group.hint}>{group.label}</span>
         <div className="console-nav-buttons" role="group" aria-label={group.label}>
           {group.sections.map(value => <button type="button" key={value} aria-pressed={section === value} disabled={busy} onClick={() => { setSection(value as Section); setError(''); }}>{value}</button>)}
         </div>
@@ -183,16 +193,15 @@ export default function ProjectConsole({ projectId, files, onClose }: { projectI
         </div>
       )}
       {error && <p role="alert" className="settings-error">
-        {error}
-        {error.includes('hosted project limit') && (
-          <> <button type="button" className="button-ghost" onClick={() => { setError(''); setSection('Hosted apps'); }}>Manage hosted apps</button></>
-        )}
+        {isHostedLimitError(error)
+          ? <>All {HOSTED_APP_LIMIT} of your app spaces are in use, so this can’t start. <button type="button" className="button-ghost" onClick={() => { setError(''); setSection('Hosted apps'); }}>Choose an app to remove</button></>
+          : error}
       </p>}
       {(section === 'Publish' || hostedSection) && <>
         {(runtime.error || !hostingReady) && <p role="status" className="settings-notice">{runtime.error || status?.availability?.message || 'Checking hosting availability…'}{runtime.error && <button type="button" className="button-ghost" onClick={runtime.refresh}>Retry connection</button>}</p>}
       </>}
       {section === 'Publish' && <>
-        <PublicationControls key={projectId} projectId={projectId} files={files} onManage={() => { setEnvironment('production'); setSection('Users & email'); }} />
+        <PublicationControls key={projectId} projectId={projectId} files={files} onManage={() => { setEnvironment('production'); setSection('Users & email'); }} onOpenHostedSlots={() => setSection('Hosted apps')} />
         <GalleryListing projectId={projectId} />
         {fullStack && <section className="settings-card">
           <h3>Get your app ready</h3>

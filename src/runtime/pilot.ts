@@ -80,7 +80,7 @@ export class PilotCoordinator extends DurableObject<RuntimeEnv> {
         if (previous.ownerId !== scope.ownerId || previous.projectId !== scope.projectId) throw new RuntimeError('Project scope mismatch.', 403);
         return;
       }
-      if ((await txn.list({ prefix: ownerPrefix })).size >= PILOT_LIMITS.projects) throw new RuntimeError('Your account has reached its hosted project limit. Remove an unused hosted project before publishing another.', 429);
+      if ((await txn.list({ prefix: ownerPrefix })).size >= PILOT_LIMITS.projects) throw new RuntimeError(`Your account has reached its hosted app limit (${PILOT_LIMITS.projects} apps). Remove an app you no longer use to make room.`, 429);
       await txn.put(`project:${alias}`, scope);
       await txn.put(ownerPrefix + alias, true);
     }));

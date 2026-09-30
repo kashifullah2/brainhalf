@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { publishProgressView } from '../components/PublishDialog';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { HostedFullNotice, publishProgressView } from '../components/PublicationControls';
 
 describe('publishProgressView', () => {
   it('marks no stage as current while the job is queued', () => {
@@ -28,5 +29,21 @@ describe('publishProgressView', () => {
     // Even if the server attached a stage to the queued job, the UI must not
     // present it as in-progress — that was the reported contradiction.
     expect(view.currentStage).toBeNull();
+  });
+});
+
+describe('HostedFullNotice', () => {
+  it('tells a non-technical user what to do when app spaces are full', () => {
+    const html = renderToStaticMarkup(<HostedFullNotice onOpenHostedSlots={() => {}} />);
+    expect(html).toContain('Your 10 app spaces are full');
+    expect(html).toContain('Remove an app you don\u2019t use anymore');
+    expect(html).toContain('Choose an app to remove');
+    expect(html).not.toContain('slot');
+    expect(html).not.toContain('hosted');
+  });
+  it('renders without the action button when no handler is provided', () => {
+    const html = renderToStaticMarkup(<HostedFullNotice />);
+    expect(html).toContain('Your 10 app spaces are full');
+    expect(html).not.toContain('Choose an app to remove');
   });
 });

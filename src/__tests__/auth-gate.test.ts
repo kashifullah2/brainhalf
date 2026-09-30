@@ -214,3 +214,37 @@ describe('P1 Auth — denial responses', () => {
     expect(await res.json()).toEqual({ error: 'You do not own this project' });
   });
 });
+
+describe('authorizeProject — claim error propagation', () => {
+  /** Registry stub whose /projects/claim answers with a canned status/body. */
+  function claimRegistry(status: number, body: unknown) {
+    const fetch = vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }));
+    return { REGISTRY: { idFromName: vi.fn(() => ({})), get: vi.fn(() => ({ fetch })) } };
+  }
+
+  it('returns the registry error message on a quota (409) refusal', async () => {
+    const { authorizeProject } = await import('../lib/auth');
+    const env = claimRegistry(409, { error: 'You have reached the 50-project limit. Delete a project to create another.' });
+    const result = await authorizeProject(env as any, 'proj-x', 'user-1');
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(409);
+    expect(result.error).toMatch(/50-project limit/);
+  });
+
+  it('omits the error field when the registry body has none', async () => {
+    const { authorizeProject } = await import('../lib/auth');
+    const env = claimRegistry(403, {});
+    const result = await authorizeProject(env as any, 'proj-x', 'user-1');
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(403);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('reports 500 when the registry is unreachable', async () => {
+    const { authorizeProject } = await import('../lib/auth');
+    const env = { REGISTRY: { idFromName: vi.fn(() => ({})), get: vi.fn(() => { throw new Error('down'); }) } };
+    const result = await authorizeProject(env as any, 'proj-x', 'user-1');
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(500);
+  });
+});

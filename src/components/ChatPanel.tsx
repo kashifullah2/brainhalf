@@ -1110,18 +1110,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         // Keep historyLoaded true on transient disconnects so the composer
         // stays visible while the socket reconnects. It only resets when the
         // component remounts (project switch).
-        if (isGeneratingRef.current) {
-          // A transport interruption is not a model failure. The server may
-          // still finish the request, which the next connection resumes.
-          appEvents.emit('generation-status', { status: 'Error', error: 'Connection lost' });
-        }
+        const wasGenerating = isGeneratingRef.current;
         setIsGenerating(false);
         isGeneratingRef.current = false;
         // 4401 = auth/ownership failure (do not reconnect)
         // 4409 = project quota exceeded (do not reconnect)
         // 4429 = too many open connections (retryable — user closes another tab)
         // 1006 = abnormal network close (reconnect with backoff)
+        //
+        // Known close codes carry the real reason — surface it FIRST so the
+        // user never sees a misleading generic "Connection lost" for them.
         if (event?.code === 4409) {
+          // Terminal: no history will ever arrive on this socket. Mark loaded
+          // so the "Restoring your conversation…" placeholder does not spin forever.
+          setHistoryLoaded(true);
+          if (wasGenerating) generationClockRef.current?.finish('failed');
           appEvents.emit('generation-status', {
             status: 'Error',
             error: 'You have reached your project quota. Please delete an existing project before creating a new one.',
@@ -1136,9 +1139,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             projectId: activeProjectId,
           });
           // Fall through to reconnect with backoff — the extra tab may close.
+        } else if (wasGenerating) {
+          // A transport interruption is not a model failure. The server may
+          // still finish the request, which the next connection resumes.
+          // Only emit this for genuinely abnormal closes — known codes above
+          // already reported their own specific reason.
+          appEvents.emit('generation-status', { status: 'Error', error: 'Connection lost' });
         }
 
         if (event?.code === 4401) {
+          // Terminal: history will never arrive — do not leave the
+          // "Restoring your conversation…" placeholder spinning.
+          setHistoryLoaded(true);
+          if (wasGenerating) generationClockRef.current?.finish('failed');
           if (!getToken()) {
             window.dispatchEvent(new CustomEvent('bh-session-expired'));
             return;
@@ -1164,6 +1177,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         if (connectAttempts > WS_MAX_RECONNECT_ATTEMPTS) {
           console.warn(`WS connection failed after ${connectAttempts - 1} attempts; stopping reconnect loop.`);
           setHistoryLoaded(true);
+          if (wasGenerating) generationClockRef.current?.finish('failed');
           appEvents.emit('generation-status', {
             status: 'Error',
             error: 'Connection lost. Please refresh the page.',
@@ -1440,6 +1454,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     saveProjectMessages(activeProjectId, newMsgs);
     appEvents.emit('project-messages-updated', { projectId: activeProjectId });
 
+    // Clear the composer as soon as the message is queued: the prompt now lives
+    // in the conversation, so keeping it in the box only invites double-sends.
+    // (Attachments stay until the socket actually sends, so a failed send can
+    // still be retried with them.)
+    if (!overrideMessage) {
+      setInput(current => current === input ? '' : current);
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    }
+
     // If the active project still has a generic name, auto-rename with first user prompt (truncated to ~30 chars)
     try {
       const allProjects = getProjects();
@@ -1525,9 +1548,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             pushUsageEvent(activeProjectId, { type: 'prompt', model: modelObj?.id || selectedModelId, tokensReserved: reliability.maxTokens });
             setOnboardingState(activeProjectId, { sentFirstPrompt: true });
             if (!overrideMessage) {
-              setInput(current => current === input ? '' : current);
               setAttachments(current => current.filter(file => !turnAttachments.some(sent => sent.id === file.id)));
-              if (textareaRef.current) textareaRef.current.style.height = 'auto';
             }
           });
         } catch {

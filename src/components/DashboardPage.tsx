@@ -70,6 +70,49 @@ function dedupe(projects: Project[]) {
   });
 }
 
+/** Shows "N of 50 projects used" so the project-limit quota never surprises anyone. */
+function DashboardQuotaMeter({ onAtLimit }: { onAtLimit: (atLimit: boolean) => void }) {
+  const [quota, setQuota] = useState<{ live: number; limit: number } | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadQuota = async () => {
+      try {
+        const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+        const token = getToken();
+        const response = await fetch(`${origin}/api/account/project-quota`, {
+          signal: controller.signal,
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const body = await response.json();
+        if (!response.ok || typeof body?.live !== 'number' || typeof body?.limit !== 'number') throw new Error('quota unavailable');
+        if (!controller.signal.aborted) {
+          setQuota({ live: body.live, limit: body.limit });
+          onAtLimit(body.live >= body.limit);
+        }
+      } catch {
+        // Informational only — a missing meter must never block the dashboard.
+      }
+    };
+    void loadQuota();
+    return () => controller.abort();
+  }, [onAtLimit]);
+
+  if (!quota) return null;
+  const pct = Math.min(100, Math.round((quota.live / quota.limit) * 100));
+  const near = quota.live >= quota.limit - 10;
+  const atLimit = quota.live >= quota.limit;
+  return (
+    <p className={`dashboard-quota${near ? ' dashboard-quota-near' : ''}`} role="status">
+      <span className="dashboard-quota-bar" aria-hidden="true"><span style={{ width: `${pct}%` }} /></span>
+      {atLimit
+        ? `You've used all ${quota.limit} project slots. Delete a project to create another.`
+        : `${quota.live} of ${quota.limit} projects used${near ? ' — delete old projects to make room' : ''}`}
+    </p>
+  );
+}
+
 /** One row from GET /api/account/deletions (the server strips user_id). */
 export interface CleanupStatus {
   project_id: string;
@@ -103,6 +146,9 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
   const [renamedName, setRenamedName] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  // When the server-side project quota is exhausted, creating is pointless —
+  // disable the buttons up front with an explanation instead of a late error.
+  const [atQuotaLimit, setAtQuotaLimit] = useState(false);
   // L13: the delete dialog promises cleanup can be tracked "here on the
   // dashboard", so this status is rendered below (it used to be polled and
   // discarded).
@@ -167,8 +213,8 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     <main className="dashboard-main" id="dashboard-main">
       <button className="dashboard-back" type="button" onClick={onGoHome}><ArrowLeft size={15} /> Back to home</button>
       <section className="dashboard-welcome" aria-labelledby="dashboard-title">
-        <div><p className="studio-section-label">YOUR WORKSPACE</p><h1 id="dashboard-title">Projects</h1><p>Start something new or continue where you left off.</p></div>
-        <button className="dashboard-new-project" type="button" onClick={onCreateProject} disabled={creatingProject}><Plus size={18} /> {creatingProject ? 'Creating…' : 'New project'}</button>
+        <div><p className="studio-section-label">YOUR WORKSPACE</p><h1 id="dashboard-title">Projects</h1><p>Start something new or continue where you left off.</p><DashboardQuotaMeter onAtLimit={setAtQuotaLimit} /></div>
+        <button className="dashboard-new-project" type="button" onClick={onCreateProject} disabled={creatingProject || atQuotaLimit} title={atQuotaLimit ? 'Project limit reached — delete a project to create another' : undefined}><Plus size={18} /> {creatingProject ? 'Creating…' : 'New project'}</button>
       </section>
       {cleanupError && <p className="dashboard-notice" role="status">{cleanupError}</p>}
       {!hydrated ? (
@@ -178,7 +224,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
       ) : projects.length > 0 ? (
         <RecentProjects projects={projects} onOpenProject={onOpenProject} onRenameProject={project => { setProjectToRename(project); setRenamedName(project.name); }} onDeleteProject={setProjectToDelete} />
       ) : (
-        <section className="dashboard-empty"><span><Plus size={22} /></span><h2>Create your first project</h2><p>Open a blank workspace and describe the app you want to make.</p><button type="button" onClick={onCreateProject} disabled={creatingProject}>{creatingProject ? 'Creating…' : 'Create new project'}</button></section>
+        <section className="dashboard-empty"><span><Plus size={22} /></span><h2>Create your first project</h2><p>Open a blank workspace and describe the app you want to make.</p><button type="button" onClick={onCreateProject} disabled={creatingProject || atQuotaLimit} title={atQuotaLimit ? 'Project limit reached — delete a project to create another' : undefined}>{creatingProject ? 'Creating…' : 'Create new project'}</button></section>
       )}
       {cleanupStatus.length > 0 && (
         <section className="dashboard-cleanup" aria-label="Deletion cleanup">

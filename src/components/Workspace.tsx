@@ -34,7 +34,6 @@ import ConfirmModal from './ConfirmModal';
 import BuildProgress, { type FileProgress } from './BuildProgress';
 import GenerationProgress from './GenerationProgress';
 import ProjectConsole from './ProjectConsole';
-import PublishDialog from './PublishDialog';
 import CommandPalette from './CommandPalette';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
@@ -224,9 +223,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const { isCurrent, getProjectFiles, getProjectFilesAsync, saveProjectFiles, saveProjectFilesDebounced, flushProjectFileWrites, forkProject, setActiveProjectId } = useMemo(bindProjectStore, []);
   const [files, setFiles] = useState<FileMap>(() => migrateStarter(getProjectFiles(activeProjectId) || baselineFiles()));
   const runtime = useProjectRuntime(activeProjectId, 'development', true);
-  const [publishDialog, setPublishDialog] = useState<{ projectId: string; files?: Record<string, string> } | null>(null);
-  useEffect(() => { setPublishDialog(null); }, [activeProjectId]);
-  useEffect(() => appEvents.on('open-deploy-modal', () => setPublishDialog({ projectId: activeProjectId })), [activeProjectId]);
+  // Header "Publish" opens the console's Publish section (the single publish
+  // UI) instead of a duplicate dialog. The nonce re-triggers the navigation
+  // even when the section value repeats.
+  const [consoleSectionRequest, setConsoleSectionRequest] = useState<{ section: string; nonce: number } | null>(null);
   const backend = useAutomaticBackend(activeProjectId, runtime);
   const startBackend = backend.start;
   
@@ -251,6 +251,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
     mobileModeRef.current = { mobile, tab: mobileTab };
   }, [mobileTab, activeTab, onSelectMobileTab]);
   useEffect(() => appEvents.on('open-project-console', () => selectTab('console')), [selectTab]);
+  // "Choose an app to remove" (hosted-limit states) lands on the console's
+  // app-spaces manager: request the section, then switch to the console tab.
+  const openHostedSlots = useCallback(() => {
+    setConsoleSectionRequest({ section: 'Hosted apps', nonce: Date.now() });
+    selectTab('console');
+  }, [selectTab]);
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [previewSessionReady, setPreviewSessionReady] = useState(false);
@@ -269,6 +275,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   // than once (StrictMode, a re-mount), so that wrote to storage during render.
   // It now only computes; the effect below owns persistence.
   const [status, setStatus] = useState<GenerationStatus>(() => (getProjectFiles(activeProjectId) ? 'Ready' : 'Idle'));
+  // The last build/connection error in the user's own words (e.g. the quota
+  // message) — shown in the preview empty-state instead of a generic line.
+  const [statusError, setStatusError] = useState('');
   useAutomaticBuildFix(activeProjectId, runtime, status === 'Generating');
   const fileProgressKey = `bh_fileprogress_${activeProjectId}`;
   const [fileProgress, setFileProgress] = useState<FileProgress>(() => {
@@ -792,6 +801,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       if (projectId && projectId !== activeProjectId) return;
       if (newStatus === 'Generating') {
         setUndoCheckpoint(null);
+        setStatusError('');
         if (!generationActiveRef.current) {
           generationTouchedRef.current = new Set();
           setFileProgress({});
@@ -816,6 +826,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       if (newStatus === 'Ready') {
         const completedGeneration = generationActiveRef.current;
         generationActiveRef.current = false;
+        setStatusError('');
         if (detail === 'Response received') {
           setStatus('Ready');
           return;
@@ -897,6 +908,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         generationActiveRef.current = false;
         setStatus('Error');
         const errMsg = error || 'Generation failed';
+        setStatusError(errMsg);
         const attributed = errMsg.startsWith('[') ? errMsg : `[Build Error] ${errMsg}`;
         // An inference failure is not evidence that the existing preview failed.
         // Keep the empty-app recovery screen and any working preview available.
@@ -1351,7 +1363,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               alignItems: 'center',
               gap: '6px'
             }}
-            title="Copy link to this project (opens when you're logged in)"
+            title="Copy a link that opens this project (requires sign-in)"
             aria-label="Copy project link"
           >
             <Share2 size={14} strokeWidth={1.8} />
@@ -1361,7 +1373,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
           <button
             onClick={() => {
               if (hasGeneratedApp) {
-                setPublishDialog({ projectId: activeProjectId, files: { ...files } });
+                setConsoleSectionRequest({ section: 'Publish', nonce: Date.now() });
+                selectTab('console');
               }
             }}
             className="studio-publish-button"
@@ -1381,8 +1394,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
               boxShadow: hasGeneratedApp ? '0 2px 8px var(--focus-ring)' : 'none',
               transition: 'all 0.15s ease'
             }}
-            title={hasGeneratedApp ? "Publish application" : "Generate an app in chat before publishing"}
-            aria-label={hasGeneratedApp ? "Publish application" : "Generate an app in chat before publishing"}
+            title={hasGeneratedApp ? "Open publishing in the project console" : "Generate an app in chat before publishing"}
+            aria-label={hasGeneratedApp ? "Open publishing in the project console" : "Generate an app in chat before publishing"}
           >
             <Cloud size={14} strokeWidth={2} />
             <span>Publish</span>
@@ -1392,7 +1405,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       </div>
 
       {/* Content */}
-      {publishDialog?.projectId === activeProjectId && <PublishDialog key={activeProjectId} projectId={activeProjectId} files={files} publishOnOpen={publishDialog.files} onClose={() => setPublishDialog(null)} onManage={() => { setPublishDialog(null); selectTab('console'); }} />}
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {splitView ? (
           <div style={{ display: 'flex', width: '100%', height: '100%', minWidth: 0 }}>
@@ -1465,7 +1477,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
                     <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'BUILD UNFINISHED' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
                     <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The app's screens weren't finished." : 'A place for your next idea.'}</h2>
-                    <p>{status === 'Error' ? "The last request couldn't finish. Open the conversation to retry or choose another model." : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder set up the behind-the-scenes parts but ran out of space before writing the screens you see. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
+                    <p>{status === 'Error' ? (statusError || "The last request couldn't finish. Open the conversation to retry or choose another model.") : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder set up the behind-the-scenes parts but ran out of space before writing the screens you see. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
                     {(status === 'Generating' || status === 'Connecting')
                       ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Getting your preview ready'}</div>
                       : status === 'Error' || status === 'Stopped'
@@ -1498,7 +1510,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   </div>
                 )}
                 {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && (
-                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} />
+                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} />
                 )}
                 {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
                 <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
@@ -1734,7 +1746,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
             </div>
           </div>
         ) : resolvedActiveTab === 'console' ? (
-          <ProjectConsole key={activeProjectId} projectId={activeProjectId} files={files} onClose={() => selectTab('preview')} />
+          <ProjectConsole key={activeProjectId} projectId={activeProjectId} files={files} onClose={() => selectTab('preview')} sectionRequest={consoleSectionRequest} />
         ) : resolvedActiveTab === 'logs' ? (
           <div style={{
             width: '100%', height: '100%', background: 'var(--bg-surface)', color: 'var(--text-primary)',
@@ -1812,7 +1824,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
                   <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'BUILD UNFINISHED' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
                   <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The app's screens weren't finished." : 'A place for your next idea.'}</h2>
-                  <p>{status === 'Error' ? "The last request couldn't finish. Open the conversation to retry or choose another model." : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder set up the behind-the-scenes parts but ran out of space before writing the screens you see. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
+                  <p>{status === 'Error' ? (statusError || "The last request couldn't finish. Open the conversation to retry or choose another model.") : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder set up the behind-the-scenes parts but ran out of space before writing the screens you see. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
                   {(status === 'Generating' || status === 'Connecting')
                     ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Getting your preview ready'}</div>
                     : status === 'Error' || status === 'Stopped'
@@ -1873,7 +1885,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                 </div>
               )}
               {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && (
-                <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} />
+                <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} />
               )}
               {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
               <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
@@ -1905,7 +1917,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
       <footer className="studio-workspace-footer">
         <div className="studio-build-meta" aria-label="Build information">
           <span>{Object.keys(files).length} files</span>
-          <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Terminal size={13} />Console</button>
+          {/* No Console button here — the workspace tab bar already has one. */}
           <button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
         </div>
       </footer>
@@ -1922,7 +1934,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         onSwitchTab={selectTab}
         onExportZip={() => void handleExportZip()}
         onOpenGithub={() => github.openModal()}
-        onPublish={() => setPublishDialog({ projectId: activeProjectId })}
+        onPublish={() => { if (hasGeneratedApp) { setConsoleSectionRequest({ section: 'Publish', nonce: Date.now() }); selectTab('console'); } }}
         onUndo={undoCheckpoint ? () => void quickUndo() : undefined}
       />
     </div>

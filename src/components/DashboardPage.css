@@ -36,6 +36,11 @@
   margin-top: 24px;
 }
 .dashboard-notice { margin: 8px 0 0; padding: 10px 14px; background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-radius: 8px; color: var(--color-warning); font-size: 13px; }
+.dashboard-quota { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; font-size: 13px; color: var(--studio-muted); }
+.dashboard-quota-near { color: var(--color-warning); }
+.dashboard-quota-bar { display: inline-block; width: 120px; height: 6px; border-radius: 3px; background: var(--border-subtle); overflow: hidden; }
+.dashboard-quota-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--studio-accent); }
+.dashboard-quota-near .dashboard-quota-bar > span { background: var(--color-warning); }
 .dashboard-skeleton-card {
   height: 130px;
   border-radius: 14px;

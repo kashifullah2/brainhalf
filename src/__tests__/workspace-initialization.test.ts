@@ -65,7 +65,7 @@ describe('Workspace initialization', () => {
     expect(html).toContain('Connecting your preview');
     expect(html).not.toContain('src="/preview/generated-project/index.html"');
     expect(html).not.toContain('studio-preview-empty');
-    expect(html).toContain('title="Publish application"');
+    expect(html).toContain('title="Open publishing in the project console"');
     expect(projectStore.saveProjectFiles).not.toHaveBeenCalled();
   });
 
@@ -75,7 +75,7 @@ describe('Workspace initialization', () => {
       '/src/App.tsx': 'export default function App() { return <h1>Generated TSX</h1>; }',
     });
     const html = renderToString(React.createElement(Workspace, { activeProjectId: 'tsx-project' }));
-    expect(html).toContain('title="Publish application"');
+    expect(html).toContain('title="Open publishing in the project console"');
     expect(html).not.toContain('studio-preview-empty');
   });
 });

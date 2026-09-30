@@ -15,7 +15,10 @@ export default function GalleryListing({ projectId }: { projectId: string }) {
     const controller = new AbortController();
     void authFetch(`${origin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, { signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error('Gallery listing state could not be loaded.');
+        if (!response.ok) {
+          const data = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(data?.error || 'Gallery listing state could not be loaded.');
+        }
         const data = await response.json() as ShowcaseState;
         setState(data);
         setDescription(data.description);

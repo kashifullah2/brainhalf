@@ -314,6 +314,14 @@ export class AuthRegistry {
         if (!userId) return this.json(400, { error: 'Missing owner' });
         return Response.json({ deletions: this.cleanup().list(userId).map(({ user_id: _owner, ...job }) => job) });
       }
+      if (path === '/projects/quota' && method === 'GET') {
+        const userId = url.searchParams.get('userId');
+        if (!userId) return this.json(400, { error: 'Missing owner' });
+        const rows = this.sql
+          .exec('SELECT COUNT(*) AS live FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', userId)
+          .toArray() as Array<{ live: number }>;
+        return Response.json({ live: Number(rows[0]?.live ?? 0), limit: MAX_PROJECTS_PER_USER });
+      }
       if (path === '/projects/deletion-owner' && method === 'GET') {
         const row = this.sql.exec('SELECT user_id,deleted_at FROM project_owners WHERE project_id=?', url.searchParams.get('projectId') || '').toArray()[0];
         return row?.deleted_at != null ? Response.json({ ownerId: row.user_id }) : this.json(404, { error: 'No deletion was requested' });

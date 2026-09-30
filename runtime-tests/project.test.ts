@@ -12,6 +12,7 @@ import { readJson, token } from '../src/runtime/integrations';
 import { CloudflareAPI } from '../src/runtime/cloudflare-api';
 import { STARTER_VERIFICATION } from '../src/runtime/verification';
 import { OWNER_RUNTIME_LIMITS } from '../src/runtime/types';
+import { isHostedLimitError } from '../src/lib/hosted-limit';
 import { ManagedStore } from '../src/runtime/managed-store';
 import { launch, connect, sessions } from '@cloudflare/playwright';
 
@@ -973,6 +974,16 @@ it('applies the hosted project limit per account, including old registrations an
     expect(await coordinator.register(`alice-${slot}`, { projectId: `a${slot}`, ownerId: 'alice' })).toEqual({ ok: true });
   }
   expect(await coordinator.register('alice-11', { projectId: 'a11', ownerId: 'alice' })).toMatchObject({ status: 429 });
+  // The rejection message must stay plain-language, context-neutral (previews
+  // fail here too, not just publishes), and detectable by the frontend's
+  // dedicated full-account UI.
+  const rejected = await coordinator.register('alice-11', { projectId: 'a11', ownerId: 'alice' });
+  expect(rejected.ok).toBe(false);
+  if (!rejected.ok) {
+    expect(rejected.error).toContain('hosted app limit');
+    expect(rejected.error).not.toMatch(/publish/i);
+    expect(isHostedLimitError(rejected.error)).toBe(true);
+  }
   expect(await coordinator.register('bob-1', { projectId: 'b1', ownerId: 'bob' })).toEqual({ ok: true });
   await expect(coordinator.unregister('legacy', { projectId: 'legacy', ownerId: 'bob' })).rejects.toThrow('scope mismatch');
   await coordinator.unregister('legacy', { projectId: 'legacy', ownerId: 'alice' });

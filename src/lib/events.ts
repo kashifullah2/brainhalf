@@ -19,7 +19,6 @@ type AppEventMap = {
   'repair-project-request': { projectId: string; message: string; onAccepted: () => void };
   'runtime-status': { projectId: string; running: boolean };
   'merge-conflict': { sourceName: string; conflicts: string[] };
-  'open-deploy-modal': undefined;
   'open-project-console': undefined;
   'open-file': { path: string };
   'open-github-modal': undefined;
