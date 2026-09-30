@@ -574,6 +574,45 @@ describe('product outcome access', () => {
     expect(await allowed.json()).toEqual({ users: [{ email: 'pilot@example.com', verified: true }] });
     expect(allowed.headers.get('Cache-Control')).toBe('no-store');
   });
+
+  it('lets operators inspect another user’s project files', async () => {
+    const agentFetch = vi.fn(async (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname === '/internal/admin-files') {
+        expect(request.headers.get('x-bh-project')).toBe('proj-1');
+        return Response.json({ files: { '/src/App.tsx': 'export default function App() {}' } });
+      }
+      return new Response('unexpected', { status: 500 });
+    });
+    const binding = { idFromName: (id: string) => id, get: () => ({ fetch: agentFetch }) };
+    // Not signed in → 401.
+    expect((await worker.fetch(new Request('https://brainhalf.com/api/admin/projects/proj-1/files'), envWith(mockRegistry(), { ChatAgent: binding }), {} as any)).status).toBe(401);
+    // Signed in but not an operator → 403, agent never called.
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/admin/projects/proj-1/files');
+    expect((await worker.fetch(request, envWith(mockRegistry(), { ChatAgent: binding }), {} as any)).status).toBe(403);
+    expect(agentFetch).not.toHaveBeenCalled();
+    // Operator → 200 with the project files.
+    const allowed = await worker.fetch(request, envWith(mockRegistry(), { ChatAgent: binding, PRODUCT_METRICS_OWNER_IDS: 'user-1' }), {} as any);
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual({ files: { '/src/App.tsx': 'export default function App() {}' } });
+    expect(allowed.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('proxies the operator preview to the project agent', async () => {
+    const agentFetch = vi.fn(async (request: Request) => {
+      const url = new URL(request.url);
+      expect(url.pathname).toBe('/preview/proj-1/index.html');
+      return new Response('<html>preview</html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+    });
+    const binding = { idFromName: (id: string) => id, get: () => ({ fetch: agentFetch }) };
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/admin/projects/proj-1/preview/index.html');
+    // Not an operator → 403.
+    expect((await worker.fetch(request, envWith(mockRegistry(), { ChatAgent: binding }), {} as any)).status).toBe(403);
+    // Operator → proxied preview HTML.
+    const allowed = await worker.fetch(request, envWith(mockRegistry(), { ChatAgent: binding, PRODUCT_METRICS_OWNER_IDS: 'user-1' }), {} as any);
+    expect(allowed.status).toBe(200);
+    expect(await allowed.text()).toBe('<html>preview</html>');
+  });
 });
 
 describe('Gallery remix orchestration', () => {

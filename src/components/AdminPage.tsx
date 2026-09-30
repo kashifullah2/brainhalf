@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Users, BadgeCheck, Activity, FolderKanban, RefreshCw, Search, ShieldCheck, Trash2, AlertTriangle, X } from 'lucide-react';
+import { Users, BadgeCheck, Activity, FolderKanban, RefreshCw, Search, ShieldCheck, Trash2, AlertTriangle, X, Code2, Eye, FileCode2 } from 'lucide-react';
 import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
 import MobileNav from './MobileNav';
@@ -46,12 +46,19 @@ interface OutcomeReport {
 
 type LoadState = 'loading' | 'signed-out' | 'forbidden' | 'error' | 'ready';
 type Tab = 'accounts' | 'projects';
+type ProjectStatusFilter = 'all' | 'live' | 'published' | 'gallery' | 'deleted';
 
 interface ConfirmState {
   title: string;
   message: string;
   confirmLabel: string;
   onConfirm: () => Promise<void>;
+}
+
+interface CodeViewState {
+  project: AdminProject;
+  files: Record<string, string>;
+  selectedFile: string;
 }
 
 function relativeTime(timestamp: number | null): string {
@@ -87,9 +94,13 @@ export default function AdminPage() {
   const [projects, setProjects] = useState<AdminProject[]>([]);
   const [outcomes, setOutcomes] = useState<OutcomeReport | null>(null);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>('all');
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [working, setWorking] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [codeView, setCodeView] = useState<CodeViewState | null>(null);
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [previewProject, setPreviewProject] = useState<AdminProject | null>(null);
 
   const load = async (signal?: AbortSignal) => {
     setState('loading');
@@ -129,12 +140,25 @@ export default function AdminPage() {
 
   const filteredProjects = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return projects;
-    return projects.filter(p =>
-      p.name.toLowerCase().includes(query) ||
-      p.ownerEmail.toLowerCase().includes(query) ||
-      p.id.toLowerCase().includes(query));
-  }, [projects, search]);
+    return projects.filter(p => {
+      if (statusFilter === 'live' && p.deleted) return false;
+      if (statusFilter === 'deleted' && !p.deleted) return false;
+      if (statusFilter === 'published' && (p.deleted || !p.published)) return false;
+      if (statusFilter === 'gallery' && (p.deleted || !p.showcase)) return false;
+      if (!query) return true;
+      return p.name.toLowerCase().includes(query) ||
+        p.ownerEmail.toLowerCase().includes(query) ||
+        p.id.toLowerCase().includes(query);
+    });
+  }, [projects, search, statusFilter]);
+
+  const statusCounts = useMemo(() => ({
+    all: projects.length,
+    live: projects.filter(p => !p.deleted).length,
+    published: projects.filter(p => !p.deleted && p.published).length,
+    gallery: projects.filter(p => !p.deleted && p.showcase).length,
+    deleted: projects.filter(p => p.deleted).length,
+  }), [projects]);
 
   const weekAgo = Date.now() - 7 * 86_400_000;
   const stats = useMemo(() => ({
@@ -169,6 +193,23 @@ export default function AdminPage() {
         setNotice({ kind: 'ok', text: `Project "${project.name}" deleted completely.` });
       }),
     });
+  };
+
+  const viewCode = async (project: AdminProject) => {
+    setCodeLoading(true);
+    setNotice(null);
+    try {
+      const res = await authFetch(`/api/admin/projects/${encodeURIComponent(project.id)}/files`);
+      if (!res.ok) throw new Error('files unavailable');
+      const body = await res.json() as { files?: Record<string, string> };
+      const files = body.files && typeof body.files === 'object' ? body.files : {};
+      const paths = Object.keys(files).sort();
+      setCodeView({ project, files, selectedFile: paths[0] || '' });
+    } catch {
+      setNotice({ kind: 'error', text: `Could not load the code for "${project.name}". The project's app storage may be unavailable.` });
+    } finally {
+      setCodeLoading(false);
+    }
   };
 
   const deleteUser = (user: AdminUser) => {
@@ -345,7 +386,22 @@ export default function AdminPage() {
             </table>
           </div>}
 
-          {tab === 'projects' && <div className="admin-table-wrap">
+          {tab === 'projects' && <>
+            <div className="admin-filter-row" role="group" aria-label="Filter projects by status">
+              {(['all', 'live', 'published', 'gallery', 'deleted'] as ProjectStatusFilter[]).map(f => (
+                <button
+                  key={f}
+                  type="button"
+                  className={`admin-filter-btn${statusFilter === f ? ' admin-filter-active' : ''}`}
+                  onClick={() => setStatusFilter(f)}
+                  aria-pressed={statusFilter === f}
+                >
+                  {f === 'all' ? 'All' : f === 'live' ? 'Live' : f === 'published' ? 'Published' : f === 'gallery' ? 'Gallery' : 'Deleted'}
+                  <span className="admin-count">{statusCounts[f]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="admin-table-wrap">
             <table className="admin-table">
               <thead><tr><th>Project</th><th>Owner</th><th>Updated</th><th>Status</th><th><span className="admin-sr">Actions</span></th></tr></thead>
               <tbody>
@@ -361,18 +417,79 @@ export default function AdminPage() {
                         {project.showcase && <span className="admin-badge">Gallery</span>}</>}
                   </td>
                   <td>
-                    <button type="button" className="admin-row-btn admin-row-btn-danger" onClick={() => deleteProject(project)} disabled={working} title={`Delete "${project.name}" completely`}>
-                      <Trash2 size={14} aria-hidden="true" /><span className="admin-sr">Delete</span>
-                    </button>
+                    <div className="admin-row-actions">
+                      {!project.deleted && <>
+                        <button type="button" className="admin-row-btn" onClick={() => void viewCode(project)} disabled={codeLoading} title={`View the code of "${project.name}"`}>
+                          <Code2 size={14} aria-hidden="true" /><span className="admin-sr">View code</span>
+                        </button>
+                        <button type="button" className="admin-row-btn" onClick={() => setPreviewProject(project)} title={`Preview "${project.name}"`}>
+                          <Eye size={14} aria-hidden="true" /><span className="admin-sr">Preview</span>
+                        </button>
+                      </>}
+                      <button type="button" className="admin-row-btn admin-row-btn-danger" onClick={() => deleteProject(project)} disabled={working} title={`Delete "${project.name}" completely`}>
+                        <Trash2 size={14} aria-hidden="true" /><span className="admin-sr">Delete</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>)}
                 {filteredProjects.length === 0 && <tr><td colSpan={5} className="admin-empty">No projects match.</td></tr>}
               </tbody>
             </table>
-          </div>}
+          </div>
+          </>}
           <p className="admin-hint">Deleting a project erases it completely — app files, backend, backups, and the registry entry. Deleting an account removes the account and all of its projects. Neither can be undone.</p>
         </section>
       </>}
+
+      {codeView && <div className="admin-modal-backdrop admin-modal-wide-backdrop" onClick={() => setCodeView(null)}>
+        <div className="admin-modal admin-modal-wide" role="dialog" aria-modal="true" aria-labelledby="admin-code-title" onClick={event => event.stopPropagation()}>
+          <div className="admin-modal-head">
+            <div>
+              <h2 id="admin-code-title"><FileCode2 size={16} aria-hidden="true" /> {codeView.project.name}</h2>
+              <p className="admin-sub">{codeView.project.ownerEmail} · {codeView.project.id}</p>
+            </div>
+            <button type="button" className="admin-row-btn" onClick={() => setCodeView(null)} aria-label="Close code viewer"><X size={16} /></button>
+          </div>
+          <div className="admin-code-layout">
+            <nav className="admin-file-tree" aria-label="Project files">
+              {Object.keys(codeView.files).sort().map(path => (
+                <button
+                  key={path}
+                  type="button"
+                  className={`admin-file-btn${codeView.selectedFile === path ? ' admin-file-active' : ''}`}
+                  onClick={() => setCodeView({ ...codeView, selectedFile: path })}
+                >
+                  {path}
+                </button>
+              ))}
+              {Object.keys(codeView.files).length === 0 && <p className="admin-empty">This project has no saved files.</p>}
+            </nav>
+            <div className="admin-code-pane">
+              {codeView.selectedFile
+                ? <pre className="admin-code"><code>{codeView.files[codeView.selectedFile]}</code></pre>
+                : <p className="admin-empty">Select a file to view its code.</p>}
+            </div>
+          </div>
+        </div>
+      </div>}
+
+      {previewProject && <div className="admin-modal-backdrop admin-modal-wide-backdrop" onClick={() => setPreviewProject(null)}>
+        <div className="admin-modal admin-modal-wide" role="dialog" aria-modal="true" aria-labelledby="admin-preview-title" onClick={event => event.stopPropagation()}>
+          <div className="admin-modal-head">
+            <div>
+              <h2 id="admin-preview-title"><Eye size={16} aria-hidden="true" /> {previewProject.name}</h2>
+              <p className="admin-sub">{previewProject.ownerEmail} · live preview of their app</p>
+            </div>
+            <button type="button" className="admin-row-btn" onClick={() => setPreviewProject(null)} aria-label="Close preview"><X size={16} /></button>
+          </div>
+          <iframe
+            title={`Preview of ${previewProject.name}`}
+            className="admin-preview-frame"
+            src={`/api/admin/projects/${encodeURIComponent(previewProject.id)}/preview/`}
+            sandbox="allow-scripts allow-same-origin"
+          />
+        </div>
+      </div>}
 
       {confirm && <div className="admin-modal-backdrop" onClick={() => !working && setConfirm(null)}>
         <div className="admin-modal" role="alertdialog" aria-modal="true" aria-labelledby="admin-confirm-title" onClick={event => event.stopPropagation()}>

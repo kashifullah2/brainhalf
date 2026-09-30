@@ -2847,6 +2847,22 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       for (const [path, content] of Object.entries(all)) if (contextFileAllowed(path) && !this.isHarnessEntry(path)) files[path] = content;
       return Response.json({ files });
     }
+    // Operator file inspection: the worker verifies the caller is an operator
+    // before proxying here; the agent re-verifies the injected user id against
+    // the operator allowlist as defense in depth. Returns the project's files
+    // (secret files are filtered by readAllProjectFiles, same as remix export).
+    if (url.pathname === '/internal/admin-files' && request.method === 'GET') {
+      const projectId = request.headers.get('x-bh-project');
+      if (!projectId || (this.name && this.name !== projectId)) return Response.json({ error: 'Invalid scope' }, { status: 403 });
+      const userId = getRequestUserId(request);
+      const allowlist = String((this.env as Record<string, unknown>).PRODUCT_METRICS_OWNER_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
+      if (!userId || !allowlist.includes(userId)) return Response.json({ error: 'Not an operator' }, { status: 403 });
+      this.ensureSchema();
+      const all = this.readAllProjectFiles();
+      const files: Record<string, string> = Object.create(null);
+      for (const [path, content] of Object.entries(all)) if (!this.isHarnessEntry(path)) files[path] = content;
+      return Response.json({ files });
+    }
     if (url.pathname === '/internal/remix-import' && request.method === 'POST') {
       const projectId = request.headers.get('x-bh-project');
       if (!projectId || (this.name && this.name !== projectId)) return Response.json({ error: 'Invalid remix scope' }, { status: 403 });

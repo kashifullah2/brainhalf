@@ -425,11 +425,55 @@ export default {
       if (!user) return withCors(unauthorized(), origin);
       if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
       const projectId = url.pathname.slice('/api/admin/projects/'.length);
+      // The /files and /preview/ sub-routes below are GET-only; a DELETE here
+      // with a sub-path is not a valid project id.
+      if (projectId.includes('/')) return withCors(jsonError('Invalid request', 400), origin);
       try {
         const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/admin/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
         const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
         return withCors(new Response(response.body, { status: response.status, headers }), origin);
       } catch { return withCors(jsonError('Project deletion failed', 503), origin); }
+    }
+
+    // Operator file inspection: return the project's source files so the
+    // operator can review another user's app code. Admin-only.
+    const adminFilesMatch = url.pathname.match(/^\/api\/admin\/projects\/([A-Za-z0-9_-]+)\/files$/);
+    if (adminFilesMatch && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      const projectId = adminFilesMatch[1];
+      try {
+        const agentResponse = await env.ChatAgent.get(env.ChatAgent.idFromName(projectId))
+          .fetch(injectUserId(new Request('https://agent/internal/admin-files', { headers: { 'x-bh-project': projectId } }), user.userId));
+        const headers = new Headers(agentResponse.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(agentResponse.body, { status: agentResponse.status, headers }), origin);
+      } catch { return withCors(jsonError('Project files unavailable', 503), origin); }
+    }
+
+    // Operator preview: proxy the agent's design preview so the operator can
+    // see another user's app running without owning the project. Admin-only.
+    // The iframe in the admin UI loads /api/admin/projects/:id/preview/ which
+    // lands here and is rewritten to the agent's /preview/:id/ route.
+    const adminPreviewMatch = url.pathname.match(/^\/api\/admin\/projects\/([A-Za-z0-9_-]+)\/preview(\/.*)?$/);
+    if (adminPreviewMatch && (request.method === 'GET' || request.method === 'HEAD')) {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      const projectId = adminPreviewMatch[1];
+      const previewPath = adminPreviewMatch[2] || '/';
+      try {
+        const target = new URL(request.url);
+        target.pathname = `/preview/${projectId}${previewPath}`;
+        const proxied = await env.ChatAgent.get(env.ChatAgent.idFromName(projectId)).fetch(
+          injectUserId(new Request(target.toString(), { method: request.method, headers: request.headers }), user.userId)
+        );
+        const headers = new Headers(proxied.headers);
+        headers.set('Cache-Control', 'no-store');
+        // Allow framing from the admin page on the same origin.
+        headers.delete('X-Frame-Options');
+        return new Response(proxied.body, { status: proxied.status, headers });
+      } catch { return withCors(jsonError('Preview unavailable', 503), origin); }
     }
 
     if (url.pathname.startsWith('/api/admin/users/') && request.method === 'DELETE') {
