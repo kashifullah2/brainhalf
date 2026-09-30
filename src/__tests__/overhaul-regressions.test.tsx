@@ -52,7 +52,7 @@ describe('AdminPage smoke render', () => {
     expect(html).toContain('Accounts &amp; product health');
     expect(html).toContain('href="#overview"');
     expect(html).toContain('href="#health"');
-    expect(html).toContain('href="#accounts"');
+    expect(html).toContain('href="#manage"');
     // Initial state is loading skeletons — never a half-rendered table.
     expect(html).toContain('admin-skeletons');
   });

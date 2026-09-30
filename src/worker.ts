@@ -407,6 +407,43 @@ export default {
       } catch { return withCors(jsonError('User list unavailable', 503), origin); }
     }
 
+    // Operator project list and hard-delete, proxied to the registry.
+    // Same operator allowlist as /api/admin/users.
+    if (url.pathname === '/api/admin/projects' && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      try {
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/admin/projects');
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch { return withCors(jsonError('Project list unavailable', 503), origin); }
+    }
+
+    if (url.pathname.startsWith('/api/admin/projects/') && request.method === 'DELETE') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      const projectId = url.pathname.slice('/api/admin/projects/'.length);
+      try {
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/admin/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch { return withCors(jsonError('Project deletion failed', 503), origin); }
+    }
+
+    if (url.pathname.startsWith('/api/admin/users/') && request.method === 'DELETE') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      const targetId = url.pathname.slice('/api/admin/users/'.length);
+      try {
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/admin/users/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch { return withCors(jsonError('User deletion failed', 503), origin); }
+    }
+
     if (url.pathname === '/api/account/ai-usage' && request.method === 'GET') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);

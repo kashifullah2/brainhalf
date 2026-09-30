@@ -70,23 +70,26 @@ export class AuthRegistry {
     this.state = state;
   }
 
-  private cleanup() {
+  private cleanupDependencies() {
     const checked = async (response: Response) => { if (!response.ok || response.status === 202) throw new Error('Resource cleanup is still pending.'); };
-    return new ProjectCleanup(this.state.storage, {
-      removeRuntime: async (projectId, ownerId) => {
+    return {
+      removeRuntime: async (projectId: string, ownerId: string) => {
         if (this.env.RUNTIME) await checked(await this.env.RUNTIME.fetch(new Request('https://runtime/delete', { method: 'POST', headers: { 'x-bh-project': projectId, 'x-bh-owner': ownerId } })));
       },
-      eraseAgent: async (projectId, ownerId) => {
+      eraseAgent: async (projectId: string, ownerId: string) => {
         if (!this.env.ChatAgent) throw new Error('Project storage unavailable.');
         await checked(await this.env.ChatAgent.get(this.env.ChatAgent.idFromName(projectId)).fetch(new Request('https://agent/internal/erase', { method: 'POST', headers: { 'x-auth-user-id': ownerId, 'x-bh-project': projectId } })));
       },
-      removeBackups: async projectId => {
+      removeBackups: async (projectId: string) => {
         if (!this.env.PROJECT_BACKUPS || !this.env.ChatAgent) throw new Error('Backup storage unavailable.');
         const id = this.env.ChatAgent.idFromName(projectId).toString();
         const results = await Promise.allSettled([`backup-${id}`, `backup-${id}.json`, `backup-${projectId}`, `backup-${projectId}.json`].map(key => this.env.PROJECT_BACKUPS.delete(key)));
         if (results.some(result => result.status === 'rejected')) throw new Error('Backup cleanup failed.');
       },
-    });
+    };
+  }
+  private cleanup() {
+    return new ProjectCleanup(this.state.storage, this.cleanupDependencies());
   }
   async alarm() {
     this.ensureSchema();
@@ -369,6 +372,88 @@ export class AuthRegistry {
             projects: row.projects, verified: Boolean(row.verified_at || row.google_subject),
           })),
         });
+      }
+      // Operator project list: every project with its owner, for moderation.
+      // Includes soft-deleted (tombstoned) projects so the operator can see
+      // what is awaiting cleanup versus fully gone.
+      if (path === '/admin/projects' && method === 'GET') {
+        const rows = this.sql.exec(`SELECT p.project_id, p.user_id, p.name, p.created_at, p.updated_at,
+          p.deleted_at, p.published, p.showcase, u.email AS owner_email
+          FROM project_owners p LEFT JOIN users u ON u.id = p.user_id
+          ORDER BY p.updated_at DESC LIMIT 500`).toArray();
+        return this.json(200, {
+          projects: rows.map(row => ({
+            id: row.project_id, ownerId: row.user_id, ownerEmail: row.owner_email ?? '(deleted user)',
+            name: row.name, createdAt: row.created_at, updatedAt: row.updated_at,
+            deleted: row.deleted_at != null, published: row.published === 1, showcase: row.showcase === 1,
+          })),
+        });
+      }
+      // Operator hard delete: fully erase a project from scratch. Unlike the
+      // user-facing DELETE (which tombstones and cleans up async), this runs
+      // the storage cleanup SYNCHRONOUSLY first — runtime slot, agent DO,
+      // R2 backups — and only then removes the registry row. The order
+      // matters: removing the row first would leave the id unowned and
+      // claimable, handing the orphaned Durable Object to the next claimant.
+      if (path.startsWith('/admin/projects/') && method === 'DELETE') {
+        const projectId = decodeURIComponent(path.slice('/admin/projects/'.length));
+        if (!isValidProjectId(projectId)) return this.json(400, { error: 'Invalid request' });
+        const rows = this.sql.exec('SELECT user_id FROM project_owners WHERE project_id = ?', projectId).toArray() as Array<{ user_id: string }>;
+        if (!rows.length) return this.json(404, { error: 'Project not found' });
+        const ownerId = rows[0].user_id;
+        const deps = this.cleanupDependencies();
+        try {
+          await deps.removeRuntime(projectId, ownerId);
+        } catch (err) { console.error('Admin hard delete: runtime removal failed:', (err as Error)?.message); }
+        try {
+          await deps.eraseAgent(projectId, ownerId);
+        } catch (err) { console.error('Admin hard delete: agent erase failed:', (err as Error)?.message); }
+        try {
+          await deps.removeBackups(projectId);
+        } catch (err) { console.error('Admin hard delete: backup removal failed:', (err as Error)?.message); }
+        this.state.storage.transactionSync(() => {
+          this.sql.exec('DELETE FROM project_owners WHERE project_id = ?', projectId);
+          // The cleanup queue table is created by ProjectCleanup's constructor;
+          // ensure it exists before deleting (it may never have been created).
+          this.sql.exec('CREATE TABLE IF NOT EXISTS project_cleanup (project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, step INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, completed_at INTEGER)');
+          this.sql.exec('DELETE FROM project_cleanup WHERE project_id = ?', projectId);
+          this.sql.exec('DELETE FROM project_claim_idempotency WHERE project_id = ?', projectId);
+        });
+        return this.json(200, { ok: true, deleted: projectId });
+      }
+      // Operator user delete: remove the account and everything it owns.
+      // Each project is hard-deleted (storage erased before the registry row
+      // is removed), then sessions, verification rows, OAuth links, and the
+      // user row itself are removed.
+      if (path.startsWith('/admin/users/') && method === 'DELETE') {
+        const userId = decodeURIComponent(path.slice('/admin/users/'.length));
+        if (!userId || userId.length > 128) return this.json(400, { error: 'Invalid request' });
+        const exists = this.sql.exec('SELECT id, email FROM users WHERE id = ?', userId).toArray() as Array<{ id: string; email: string }>;
+        if (!exists.length) return this.json(404, { error: 'User not found' });
+        const projectRows = this.sql.exec('SELECT project_id FROM project_owners WHERE user_id = ?', userId).toArray() as Array<{ project_id: string }>;
+        const deps = this.cleanupDependencies();
+        const deletedProjects: string[] = [];
+        for (const { project_id: projectId } of projectRows) {
+          try { await deps.removeRuntime(projectId, userId); } catch (err) { console.error('Admin user delete: runtime removal failed:', (err as Error)?.message); }
+          try { await deps.eraseAgent(projectId, userId); } catch (err) { console.error('Admin user delete: agent erase failed:', (err as Error)?.message); }
+          try { await deps.removeBackups(projectId); } catch (err) { console.error('Admin user delete: backup removal failed:', (err as Error)?.message); }
+          deletedProjects.push(projectId);
+        }
+        const email = exists[0].email;
+        this.state.storage.transactionSync(() => {
+          this.sql.exec('CREATE TABLE IF NOT EXISTS project_cleanup (project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, step INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, completed_at INTEGER)');
+          for (const projectId of deletedProjects) {
+            this.sql.exec('DELETE FROM project_owners WHERE project_id = ?', projectId);
+            this.sql.exec('DELETE FROM project_cleanup WHERE project_id = ?', projectId);
+            this.sql.exec('DELETE FROM project_claim_idempotency WHERE project_id = ?', projectId);
+          }
+          this.sql.exec('DELETE FROM sessions WHERE user_id = ?', userId);
+          this.sql.exec('DELETE FROM email_verification WHERE user_id = ?', userId);
+          this.sql.exec('DELETE FROM email_actions WHERE user_id = ?', userId);
+          this.sql.exec('DELETE FROM oauth_identities WHERE user_id = ?', userId);
+          this.sql.exec('DELETE FROM users WHERE id = ?', userId);
+        });
+        return this.json(200, { ok: true, deletedUser: email, deletedProjects: deletedProjects.length });
       }
       if (path.startsWith('/email/') && method === 'POST') return emailRegistry(path, await json(), this.state.storage);
       if (path === '/oauth/store' && method === 'POST') {
