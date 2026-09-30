@@ -16,6 +16,7 @@ export const LOCAL_BROWSER_SPECS = [
   '**/ui-dashboard-header.spec.ts',
   '**/ui-chat-autoscroll.spec.ts',
   '**/ui-login-modal.spec.ts',
+  '**/ui-scrollbars.spec.ts',
 ];
 
 export function requireLiveTestOptIn(environment: Record<string, string | undefined>) {

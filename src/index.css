@@ -32,6 +32,10 @@
   --border-accent: rgba(20, 184, 166, 0.35);
   --border-accent-strong: rgba(45, 212, 191, 0.6);
 
+  /* Scrollbar thumb colors (dark-theme defaults; light overrides below) */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+
   /* Typography Colors */
   --text-primary: #f4f4f6;
   --text-secondary: #cbd5e1;
@@ -316,7 +320,7 @@ body {
 
   /* Standard scrollbar for Firefox */
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 /* Custom Webkit Scrollbars for Chrome/Edge/Safari */
@@ -330,14 +334,14 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--scrollbar-thumb);
   border: 3px solid transparent;
   background-clip: padding-box;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--scrollbar-thumb-hover);
   border: 3px solid transparent;
   background-clip: padding-box;
 }
@@ -358,6 +362,19 @@ select optgroup {
   background-color: #141724;
   color: #f3f4f6;
   padding: 6px 10px;
+}
+
+/* The dark color-scheme above matches the default dark theme; in light
+   mode native select chrome (including the dropdown list) follows the
+   light theme instead of rendering dark. */
+:root[data-theme='light'] select {
+  color-scheme: light;
+}
+
+:root[data-theme='light'] select option,
+:root[data-theme='light'] select optgroup {
+  background-color: #ffffff;
+  color: #212121;
 }
 
 select optgroup {
@@ -2380,6 +2397,10 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   --border-subtle: #e2e8f0;
   --border-medium: #cbd5e1;
   --border-strong: #94a3b8;
+
+  /* Scrollbars stay visible on light surfaces */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.28);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.45);
 
   --text-primary: #0f172a;
   --text-secondary: #334155;

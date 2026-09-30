@@ -2108,7 +2108,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                                     {seg.isStreaming ? 'The builder is thinking…' : 'Thought process'}
                                     {seg.isStreaming && <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>{elapsedSeconds}s</span>}
                                   </summary>
-                                  <div style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: '12px', maxHeight: '200px', overflow: 'auto' }}>
+                                  <div style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
                                     {seg.content}
                                   </div>
                                 </details>
