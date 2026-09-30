@@ -140,6 +140,33 @@ describe('Hosting slot admission', () => {
     expect((await reading).status).toBe(200); expect((await starting).status).toBe(202);
     expect(order).toEqual(['released', 'registered']); expect(p.map.has('current')).toBe(true);
   });
+  it('lists hosted slots for the account owner and rejects unknown aliases on release', async () => {
+    const p = await project();
+    p.pilot.listOwnerProjects.mockResolvedValue([
+      { alias: 'a'.repeat(32), projectId: 'project' },
+      { alias: 'b'.repeat(32), projectId: 'other-project' },
+    ]);
+    const listed = await (await p.call('/hosted')).json() as { hosted: Array<{ alias: string; projectId: string }> };
+    expect(listed.hosted).toHaveLength(2);
+    expect(listed.hosted[0]).toEqual({ alias: 'a'.repeat(32), projectId: 'project' });
+    expect(p.pilot.listOwnerProjects).toHaveBeenCalledWith('owner');
+
+    // Rejects a malformed alias.
+    const badAlias = await p.call('/hosted/release', 'POST', { alias: 'not-valid' });
+    expect(badAlias.status).toBe(400);
+    expect(p.pilot.forceRelease).not.toHaveBeenCalled();
+
+    // Returns 404 when the pilot reports the slot is not owned by this account.
+    p.pilot.forceRelease.mockResolvedValue({ released: false });
+    const missing = await p.call('/hosted/release', 'POST', { alias: 'b'.repeat(32) });
+    expect(missing.status).toBe(404);
+
+    // Succeeds when the pilot confirms the release.
+    p.pilot.forceRelease.mockResolvedValue({ released: true });
+    const ok = await p.call('/hosted/release', 'POST', { alias: 'b'.repeat(32) });
+    expect(ok.status).toBe(200);
+    expect(p.pilot.forceRelease).toHaveBeenCalledWith('b'.repeat(32), 'owner');
+  });
 });
 describe('Project runtime with real SQLite state', () => {
   it('returns logs and verification failures only for the requested publishing job', async () => {
@@ -429,8 +456,6 @@ describe('Project runtime with real SQLite state', () => {
     expect(sandbox.exec.mock.calls.every(call => !JSON.stringify(call).includes('platform-only'))).toBe(true);
   });
   it('retries a failed dependency installation once with fresh resolution and strips model lockfiles', async () => {
-    // anchor-comment
-  });
     const p = await project(); const objects = new Map<string, string>();
     p.env.ARTIFACTS = { put: async (key: string, value: string) => objects.set(key, value), get: async (key: string) => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)!) } : null };
     const failing = { id: 'proc-fail', status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 1, timedOut: false, stdout: '', stderr: 'npm error code ETARGET\nnpm error ETARGET No matching version found for fake-dep@^9.9.9' }), kill: vi.fn(async () => {}) };

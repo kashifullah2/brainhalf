@@ -182,7 +182,12 @@ export default function ProjectConsole({ projectId, files, onClose }: { projectI
           <span className="console-environment-hint">{environment === 'development' ? 'A safe practice space — nothing here is public.' : 'Your real app — visitors use this.'}</span>
         </div>
       )}
-      {error && <p role="alert" className="settings-error">{error}</p>}
+      {error && <p role="alert" className="settings-error">
+        {error}
+        {error.includes('hosted project limit') && (
+          <> <button type="button" className="button-ghost" onClick={() => { setError(''); setSection('Hosted apps'); }}>Manage hosted apps</button></>
+        )}
+      </p>}
       {(section === 'Publish' || hostedSection) && <>
         {(runtime.error || !hostingReady) && <p role="status" className="settings-notice">{runtime.error || status?.availability?.message || 'Checking hosting availability…'}{runtime.error && <button type="button" className="button-ghost" onClick={runtime.refresh}>Retry connection</button>}</p>}
       </>}
