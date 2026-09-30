@@ -2,11 +2,19 @@ import React from 'react';
 import { ArrowRight, ArrowUpRight, ChevronRight } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
+import MobileNav from './MobileNav';
 import LandingFooter from './LandingFooter';
 import ContactForm from './ContactForm';
 import { findPublicPage, formatContentDate, type PublicPage as PageContent } from '../seo/content';
 import './LandingPage.css';
 import './PublicPage.css';
+
+const NAV_LINKS = [
+  { href: '/', label: 'AI app builder' },
+  { href: '/gallery', label: 'Gallery' },
+  { href: '/guides/build-an-app-with-ai', label: 'Build guide' },
+  { href: '/about', label: 'About' },
+];
 
 export default function PublicPage({ page }: { page?: PageContent }) {
   return <div className="landing-container public-page">
@@ -14,7 +22,7 @@ export default function PublicPage({ page }: { page?: PageContent }) {
     <header className="landing-header">
       <a className="landing-brand-group" href="/" aria-label="BrainHalf home"><span className="landing-brand-logo"><BrainHalfLogo size={27} color="currentColor" /></span><span className="landing-brand-text">BrainHalf</span></a>
       <nav className="studio-navigation" aria-label="Main navigation"><a href="/">AI app builder</a><a href="/gallery">Gallery</a><a href="/guides/build-an-app-with-ai">Build guide</a><a href="/about">About</a></nav>
-      <div className="landing-header-right"><SiteHeaderActions /></div>
+      <div className="landing-header-right"><MobileNav links={NAV_LINKS} /><SiteHeaderActions /></div>
     </header>
     <main className="landing-main-content" id="main-content">
       {page ? <>
