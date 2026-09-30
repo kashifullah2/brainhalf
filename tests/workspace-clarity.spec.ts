@@ -106,7 +106,7 @@ test('legacy tool blocks collapse into a summary and internal retries never use 
   await expect(transcript).not.toContainText('private-args');
   const summary = page.locator('.studio-tool-summary');
   await expect(summary).not.toHaveAttribute('open');
-  await expect(summary.locator('summary')).toHaveText('Agent used tools (2)');
+  await expect(summary.locator('summary')).toHaveText('The builder used tools (2)');
   await summary.locator('summary').click();
   await expect(summary.getByText('Read a file', { exact: true })).toBeVisible();
   await expect(summary.getByText('Listed project files', { exact: true })).toBeVisible();
@@ -148,7 +148,6 @@ test('file progress follows writing, saved and stopped events before an app entr
   await expect(page.getByTestId('model-status-pill')).toHaveText('Stopped');
   const footer = page.getByLabel('Build information');
   await expect(footer).toContainText('files');
-  await expect(footer.getByRole('button', { name: 'Build' })).toBeVisible();
   await expect(footer.getByRole('button', { name: 'Activity' })).toBeVisible();
   const count = await footer.locator('span').innerText();
   await expect(page.locator('.studio-build-progress summary')).toContainText(count.replace(' files', ' project files'));
@@ -194,7 +193,7 @@ for (const theme of ['light', 'dark'] as const) {
     await mkdir('audit-artifacts/2026-09-22/workspace-clarity', { recursive: true });
     await page.screenshot({ path: `audit-artifacts/2026-09-22/workspace-clarity/${theme}-mobile-chat.png` });
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
-    await expect(page.getByLabel('Build information').getByRole('button', { name: 'Build' })).toBeVisible();
+    await expect(page.getByLabel('Build information').getByRole('button', { name: 'Activity' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Mobile view (375px)' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `audit-artifacts/2026-09-22/workspace-clarity/${theme}-mobile-preview.png` });

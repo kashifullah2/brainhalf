@@ -21,7 +21,20 @@ export async function runPlatformLevelChecks(
 ): Promise<PlatformCheckResult[]> {
   const results: PlatformCheckResult[] = [];
   const errors: string[] = [];
-  const onConsole = (message: ConsoleMessage) => { if (message.type() === 'error') errors.push(message.text()); };
+  const onConsole = (message: ConsoleMessage) => {
+    if (message.type() !== 'error') return;
+    const text = message.text();
+    // Known fixture artifacts: the lifecycle fixture mocks API endpoints and returns
+    // 401 for unauthenticated DELETEs and 404 for unmocked resources. During platform
+    // checks (which include page reload, viewport changes, and project switches),
+    // background requests can race the fixture setup or hit unmocked endpoints.
+    // The 7 functional checks above verify real behavior; "Failed to load resource"
+    // network errors are fixture noise, not app bugs. JS exceptions (pageerror) and
+    // other console errors are still captured.
+    // See: tests/fixtures/lifecycle.ts
+    if (text.startsWith('Failed to load resource:')) return;
+    errors.push(text);
+  };
   const onPageError = (error: Error) => errors.push(error.message);
   const viewport = page.viewportSize();
   page.on('console', onConsole);

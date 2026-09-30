@@ -146,7 +146,7 @@ test('running app preview controls fit a mobile screen', async ({ page }) => {
   await reopenBackend(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
-  const explanation = page.locator('.preview-health-strip > span').filter({ hasText: 'Design preview' });
+  const explanation = page.locator('.preview-health-strip-body').filter({ hasText: 'Design preview' });
   expect((await explanation.boundingBox())!.width).toBeGreaterThan(250);
   await expect(explanation).toContainText('App preview is running.');
   for (const name of ['Open app preview', 'Update app preview']) {
@@ -164,7 +164,7 @@ test('running app preview controls fit a mobile screen', async ({ page }) => {
 async function generateBackend(page: Page, socket: { send: (data: string) => void }, messages: Array<{ prompt?: string }>) {
   await page.getByLabel('Message to the app builder').fill('Add a persistent backend to this app');
   await page.getByLabel('Message to the app builder').press('Enter');
-  const exportChoice = page.getByRole('button', { name: 'Build downloadable app', exact: true });
+  const exportChoice = page.getByRole('button', { name: 'Build downloadable version', exact: true });
   await expect.poll(async () => messages.some(message => message.prompt) || await exportChoice.isVisible()).toBe(true);
   if (await exportChoice.isVisible()) {
     expect(messages.some(message => message.prompt)).toBe(false);
@@ -243,7 +243,7 @@ for (const action of ['stop', 'switch'] as const) test(`background hosting check
   await page.getByTestId('send-prompt-btn').click();
   await expect.poll(() => state.messages.filter(message => message.prompt).length).toBe(2);
   expect(state.messages.filter(message => message.prompt).at(-1)).toMatchObject({ prompt: 'Update the heading', projectId: lifecycleProjects[action === 'stop' ? 0 : 1].id });
-  await expect(page.getByRole('button', { name: 'Build downloadable app', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Build downloadable version', exact: true })).toHaveCount(0);
 });
 
 test('generation timing distinguishes sending, model work and completed output', async ({ page }) => {
@@ -268,7 +268,7 @@ test('unavailable managed hosting offers an explicit download choice without aut
   await page.getByTestId('send-prompt-btn').click();
   await expect.poll(() => state.messages.filter(message => message.prompt).length).toBe(1);
   state.sockets[0].socket.send(JSON.stringify({ type: 'error', code: 'hosting_unavailable', error: 'Online app services are unavailable right now.' }));
-  const choice = page.getByRole('button', { name: 'Build downloadable app', exact: true });
+  const choice = page.getByRole('button', { name: 'Build downloadable version', exact: true });
   await expect(choice).toBeVisible();
   expect(state.messages.filter(message => message.prompt)).toHaveLength(1);
   await choice.click();

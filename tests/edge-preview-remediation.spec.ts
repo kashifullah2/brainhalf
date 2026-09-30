@@ -171,7 +171,7 @@ test('isolated previews load local lazy components and recover from asynchronous
     '/src/Card.jsx': `export default function Card() { return <button onClick={() => Promise.reject(new Error('Asynchronous preview failure'))}>Lazy card</button>; }`,
   });
   await preview.frame.getByRole('button', { name: 'Lazy card' }).click();
-  await expect(preview.frame.getByText('Asynchronous preview failure', { exact: true })).toBeVisible();
+  await expect(preview.frame.getByText('This preview ran into a problem', { exact: true })).toBeVisible();
   await expect.poll(async () => (await preview.messages()).some(message => message.type === 'preview-error' && message.error === 'Asynchronous preview failure')).toBe(true);
   await preview.sync({ '/src/App.jsx': 'export default function App() { return <h1>Corrected application</h1>; }' });
   await expect(preview.frame.getByRole('heading', { name: 'Corrected application' })).toBeVisible();
@@ -179,7 +179,7 @@ test('isolated previews load local lazy components and recover from asynchronous
 
 test('isolated HTML script failures report errors without announcing successful rendering', async ({ page }) => {
   const preview = await setupIsolatedPreview(page, { '/index.html': '<h1>Broken</h1><script>document.addEventListener("DOMContentLoaded", () => { throw new Error("HTML script failure"); });</script>' });
-  await expect(preview.frame.getByText('HTML script failure', { exact: true })).toBeVisible();
+  await expect(preview.frame.getByText('This preview ran into a problem', { exact: true })).toBeVisible();
   expect((await preview.messages()).filter(message => message.type === 'preview-success')).toEqual([]);
   await preview.sync({ '/index.html': '<h1>Corrected HTML</h1>' });
   await expect(preview.frame.getByRole('heading', { name: 'Corrected HTML' })).toBeVisible();

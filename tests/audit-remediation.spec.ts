@@ -137,10 +137,10 @@ test('manual backend and demo controls are removed', async ({ page }) => {
 test('reconnect preserves differing local files until the server version is explicitly chosen', async ({ page }) => {
   const remote = { '/src/App.tsx': 'export default function App() { return <h1>Newer server application</h1>; }' };
   const state = await setup(page, 0, true, false, { files: remote });
-  await expect(page.getByRole('button', { name: 'Use server files', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: "Use the server's version", exact: true })).toBeVisible();
   expect(state.messages.filter(message => message.type === 'sync_files')).toEqual([]);
   expect(await page.evaluate(projectId => JSON.parse(localStorage.getItem(`brainhalf_account:dev-user-1:brainhalf_files_${projectId}`)!)['/src/App.jsx'], projectId)).toBe(savedCode);
-  await page.getByRole('button', { name: 'Use server files', exact: true }).click();
+  await page.getByRole('button', { name: "Use the server's version", exact: true }).click();
   await expect.poll(() => page.evaluate(projectId => JSON.parse(localStorage.getItem(`brainhalf_account:dev-user-1:brainhalf_files_${projectId}`)!), projectId)).toEqual(remote);
   await page.getByLabel('Message to the app builder').fill('Update the server application');
   await page.getByTestId('send-prompt-btn').click();
@@ -151,17 +151,17 @@ test('reconnect preserves differing local files until the server version is expl
 
 test('local conflict resolution checks the latest server revision before releasing a queued prompt', async ({ page }) => {
   const state = await setup(page, 0, true, false, { files: { '/src/App.jsx': 'first server version' } });
-  await expect(page.getByRole('button', { name: 'Keep local files', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Keep my changes', exact: true })).toBeVisible();
   await page.getByLabel('Message to the app builder').fill('Continue my offline edits');
   await page.getByTestId('send-prompt-btn').click();
   expect(state.messages.filter(message => message.prompt)).toHaveLength(0);
   state.changeServer({ '/src/App.jsx': 'concurrent server edit' });
-  await page.getByRole('button', { name: 'Keep local files', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep my changes', exact: true }).click();
   await expect.poll(() => state.messages.filter(message => message.type === 'sync_files').length).toBe(1);
-  await expect(page.getByRole('button', { name: 'Keep local files', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Keep my changes', exact: true })).toBeVisible();
   expect(state.serverFiles()['/src/App.jsx']).toBe('concurrent server edit');
   expect(state.messages.filter(message => message.prompt)).toHaveLength(0);
-  await page.getByRole('button', { name: 'Keep local files', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep my changes', exact: true }).click();
   await expect.poll(() => state.messages.filter(message => message.prompt).length).toBe(1);
   expect(state.messages.filter(message => message.type === 'sync_files').map(message => message.expected_revision)).toEqual([1, 2]);
   expect(state.serverFiles()['/src/App.jsx']).toBe(savedCode);
@@ -171,7 +171,7 @@ test('an empty server restores a local application before accepting prompts', as
   const state = await setup(page, 0, true, false, { files: {}, empty: true });
   await expect.poll(() => state.serverFiles()['/src/App.jsx']).toBe(savedCode);
   expect(state.messages.filter(message => message.type === 'sync_files')).toHaveLength(1);
-  await expect(page.getByRole('button', { name: 'Keep local files', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Keep my changes', exact: true })).toHaveCount(0);
   await page.getByLabel('Message to the app builder').fill('Extend restored app');
   await page.getByTestId('send-prompt-btn').click();
   await expect.poll(() => state.messages.filter(message => message.prompt).length).toBe(1);
@@ -179,8 +179,8 @@ test('an empty server restores a local application before accepting prompts', as
 
 test('rapid workspace saves serialize against acknowledged server revisions', async ({ page }) => {
   const state = await setup(page, 0, true, false, { files: { '/src/App.jsx': 'server version' } });
-  await page.getByRole('button', { name: 'Use server files', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Use server files', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: "Use the server's version", exact: true }).click();
+  await expect(page.getByRole('button', { name: "Use the server's version", exact: true })).toHaveCount(0);
   await page.evaluate(async () => {
     const modulePath = '/src/lib/events.ts';
     const { appEvents } = await import(modulePath);
@@ -190,7 +190,7 @@ test('rapid workspace saves serialize against acknowledged server revisions', as
   });
   await expect.poll(() => state.serverFiles()['/src/App.jsx']).toBe('latest edit');
   expect(state.messages.filter(message => message.type === 'sync_files').map(message => message.expected_revision)).toEqual([1, 2]);
-  await expect(page.getByRole('button', { name: 'Keep local files', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Keep my changes', exact: true })).toHaveCount(0);
 });
 
 test('automatic continuation waits for completion and runs exactly once', async ({ page }) => {
@@ -316,7 +316,7 @@ test('closing an active project confirms and stops the server generation', async
   await page.getByRole('button', { name: 'Return to Home' }).click();
   await dialog.getByRole('button', { name: 'Stop and close' }).click();
   await expect.poll(() => state.messages.filter(message => message.type === 'stop').length).toBe(1);
-  await expect(page.getByRole('heading', { name: /Build the tools your business needs/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /From a sentence to working software/ })).toBeVisible();
 });
 
 test('project stays open when shutdown is not acknowledged and can retry', async ({ page }) => {
@@ -333,7 +333,7 @@ test('project stays open when shutdown is not acknowledged and can retry', async
   confirmed = true;
   await dialog.getByRole('button', { name: 'Stop and close' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('heading', { name: /Build the tools your business needs/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /From a sentence to working software/ })).toBeVisible();
 });
 
 test('runtime polling recovers from temporary failure and resumes heartbeats and close protection', async ({ page }) => {
@@ -469,7 +469,7 @@ test('landing controls expose labels, visible focus and keyboard project activat
 
 test('enabled Publish text meets normal-text contrast', async ({ page }) => {
   await setup(page);
-  const publish = page.getByRole('button', { name: 'Publish application', exact: true });
+  const publish = page.getByRole('button', { name: 'Open publishing in the project console', exact: true });
   await expect(publish).toBeEnabled();
   const ratio = await publish.evaluate(button => {
     const style = getComputedStyle(button);
@@ -506,10 +506,10 @@ test('fallback preview recovers after a render error and corrected file sync', a
     preview.contentWindow!.postMessage({ type: 'sync-files', projectId: 'fallback-regression', files: { '/src/App.jsx': code } }, '*');
   }, code);
   await sendFiles('export default function App() { throw new Error("Regression failure"); }');
-  await expect(frame.getByText('Preview Runtime Error', { exact: true })).toBeVisible();
+  await expect(frame.getByText('This preview ran into a problem', { exact: true })).toBeVisible();
   await sendFiles('export default function App() { return <h1>Recovered preview</h1>; }');
   await expect(frame.getByRole('heading', { name: 'Recovered preview' })).toBeVisible();
-  await expect(frame.getByText('Preview Runtime Error', { exact: true })).toHaveCount(0);
+  await expect(frame.getByText('This preview ran into a problem', { exact: true })).toHaveCount(0);
 });
 
 for (const cacheFiles of [true, false]) {
@@ -570,12 +570,6 @@ test('project rename and panel resize work entirely from the keyboard', async ({
 
 test('deploy and agent tools dialogs contain focus and restore their triggers', async ({ page }) => {
   await setup(page);
-  const publish = page.getByRole('button', { name: 'Publish application', exact: true });
-  await publish.click();
-  await expectFocusContained(page);
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(publish).toBeFocused();
   const plusBtn = page.getByRole('button', { name: 'Add and configure options', exact: true });
   await plusBtn.click();
   const skillsItem = page.getByRole('menuitem', { name: 'Upload skills', exact: true });
@@ -584,15 +578,17 @@ test('deploy and agent tools dialogs contain focus and restore their triggers', 
   await page.keyboard.press('Escape');
 });
 
-test('one Publish click starts publication and it can be cancelled before going live', async ({ page }) => {
+test('Publish app starts publication and it can be cancelled before going live', async ({ page }) => {
   const state = await setup(page);
   const publishing = await setupPublication(page);
   state.connections[0].send(JSON.stringify({ type: 'file_updated', path: '/package.json', content: '{"scripts":{"build":"vite build"}}' }));
   await expect.poll(async () => (await readProjectFiles(page, 'dev-user-1', projectId))?.['/package.json']).toBeTruthy();
   expect(publishing.submitted).toEqual([]);
-  await page.getByRole('button', { name: 'Publish application', exact: true }).click();
+  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
   const publication = page.getByRole('region', { name: 'Project publication' });
-  await publication.getByRole('button', { name: /Skip/ }).click();
+  await publication.getByRole('button', { name: 'Publish app', exact: true }).click();
+  const slugPicker = page.getByRole('region', { name: 'Choose app name' });
+  await slugPicker.getByRole('button', { name: /Skip/ }).click();
   await expect(publication.getByRole('button', { name: 'Cancel publishing' })).toBeVisible();
   expect(publishing.submitted).toHaveLength(1);
   await publication.getByRole('button', { name: 'Cancel publishing' }).click();
@@ -605,9 +601,11 @@ test('publication ownership failures preserve the session without exposing a pub
   const publishing = await setupPublication(page, true);
   state.connections[0].send(JSON.stringify({ type: 'file_updated', path: '/package.json', content: '{"scripts":{"build":"vite build"}}' }));
   await expect.poll(async () => (await readProjectFiles(page, 'dev-user-1', projectId))?.['/package.json']).toBeTruthy();
-  await page.getByRole('button', { name: 'Publish application', exact: true }).click();
+  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
   const publication = page.getByRole('region', { name: 'Project publication' });
-  await publication.getByRole('button', { name: /Skip/ }).click();
+  await publication.getByRole('button', { name: 'Publish app', exact: true }).click();
+  const slugPicker = page.getByRole('region', { name: 'Choose app name' });
+  await slugPicker.getByRole('button', { name: /Skip/ }).click();
   await expect(publication.getByRole('alert')).toHaveText('Not the project owner');
   expect(publishing.submitted).toHaveLength(1);
   expect(await page.evaluate(() => localStorage.getItem('bh_session_token'))).toBeTruthy();
@@ -782,7 +780,7 @@ test('actual preview render errors stay visible until recovery and do not leak a
     document.querySelector<HTMLIFrameElement>('iframe[title="Application Preview"]')!.contentWindow!.postMessage({ type: 'sync-files', projectId: 'audit-regression', files: { '/src/App.jsx': source } }, '*');
   }, source);
   await syncSource('export default function App() { throw new Error("Visible preview failure"); }');
-  await expect(preview.getByText('Preview Runtime Error', { exact: true })).toBeVisible();
+  await expect(preview.getByText('This preview ran into a problem', { exact: true })).toBeVisible();
   await expect(page.getByTestId('model-status-pill')).toHaveText('Error');
   await expect(page.getByTestId('model-status-pill')).toHaveText('Error');
   state.connections[0].send(JSON.stringify({ type: 'history', data: history }));
@@ -909,7 +907,7 @@ test('appearance: theme follows the system, persists a choice, and keeps account
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await expect(dialog.getByRole('button', { name: 'Create account', exact: true })).toBeInViewport();
       await expect(dialog).toHaveJSProperty('scrollWidth', width);
-      await expect(dialog.getByLabel('Email Address')).toHaveCSS('background-color', theme === 'dark' ? 'rgb(27, 36, 52)' : 'rgb(255, 255, 255)');
+      await expect(dialog.getByLabel('Email Address')).toHaveCSS('background-color', theme === 'dark' ? 'rgb(33, 33, 33)' : 'rgb(255, 255, 255)');
       await dialog.screenshot({ path: `/tmp/brainhalf-auth-${theme}-${width}.png` });
     }
   }
@@ -936,7 +934,7 @@ test('appearance: workspace, code editor and agent tools share the selected them
     if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: `Switch to ${theme} mode` }).click();
     await page.getByRole('button', { name: 'Code', exact: true }).click();
     await expect(page.locator('.monaco-editor').first()).toBeVisible();
-    await expect(page.locator('.monaco-editor').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(16, 22, 31)' : 'rgb(255, 255, 255)');
+    await expect(page.locator('.monaco-editor').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(19, 19, 19)' : 'rgb(255, 255, 255)');
     await page.screenshot({ path: `/tmp/brainhalf-workspace-${theme}.png`, fullPage: true });
     await openAdvanced(page);
     await page.screenshot({ path: `/tmp/brainhalf-agent-tools-${theme}.png`, fullPage: true });
@@ -989,7 +987,7 @@ for (const theme of ['light', 'dark']) test(`landing prompt works on desktop and
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  const hero = page.getByRole('region', { name: 'Build the tools your business needs.', exact: true });
+  const hero = page.getByRole('region', { name: 'From a sentence to working software.', exact: true });
   const form = hero.locator('form');
   const input = hero.getByRole('textbox', { name: 'Describe your app' });
   const submit = hero.getByRole('button', { name: 'Start building' });

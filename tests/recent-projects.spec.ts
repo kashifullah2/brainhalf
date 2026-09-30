@@ -111,13 +111,13 @@ test('keeps draft actions separate, supports menus and responds to live status c
     const status = await import(path);
     status.setPlatformStatus('Building', '', 'recent-1');
   });
-  await expect(draft.locator('.recent-project-status')).toHaveText('Building');
+  await expect(draft.locator('.recent-project-status')).toHaveText('In progress');
   await page.evaluate(async () => {
     const path = '/src/lib/status-store.ts';
     const status = await import(path);
     status.setPlatformStatus('Error', '', 'recent-1');
   });
-  await expect(draft.locator('.recent-project-status')).toHaveText('Error');
+  await expect(draft.locator('.recent-project-status')).toHaveText('Needs attention');
   const actions = draft.getByRole('button', { name: /Project actions/ });
   await actions.click();
   await page.keyboard.press('Escape');

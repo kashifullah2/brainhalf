@@ -34,8 +34,8 @@ test('technical generation controls are optional and cannot manually claim publi
   await page.getByRole('button', { name: 'Project actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Project console', exact: true }).click();
   await page.getByRole('button', { name: 'Project settings', exact: true }).click();
-  await expect(page.getByLabel('Output limit per model call')).toBeHidden();
+  await expect(page.getByLabel('How much the builder can write per try')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Mark first release complete' })).toHaveCount(0);
-  await page.getByText('Advanced generation settings', { exact: true }).click();
-  await expect(page.getByLabel('Output limit per model call')).toBeVisible();
+  await page.getByText('Advanced builder settings', { exact: true }).click();
+  await expect(page.getByLabel('How much the builder can write per try')).toBeVisible();
 });

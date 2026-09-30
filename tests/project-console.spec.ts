@@ -13,9 +13,11 @@ test('failed publishing shows its own build error and verification evidence on m
     logs: [{ job: 'publication-job', text: 'src/App.tsx: Cannot resolve ./missing-component\n' + 'long-path/'.repeat(90) }, { job: 'other-job', text: 'Other job output must stay hidden' }],
     verification: { jobId: 'publication-job', checks: [{ name: 'App renders', passed: false, detail: 'Expected the dashboard heading' }] },
   } }));
-  await page.getByRole('button', { name: 'Publish application', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Publish your app', exact: true });
-  await dialog.getByRole('button', { name: /Skip/ }).click();
+  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
+  const dialog = page.getByRole('region', { name: 'Project publication' });
+  await dialog.getByRole('button', { name: 'Publish app', exact: true }).click();
+  const slugPicker = page.getByRole('region', { name: 'Choose app name' });
+  await slugPicker.getByRole('button', { name: /Skip/ }).click();
   await expect.poll(() => publishing.submitted.length).toBe(1);
   publishing.fail();
   // The dialog learns about the failed job on the next runtime-status poll,
@@ -23,7 +25,7 @@ test('failed publishing shows its own build error and verification evidence on m
   // poll plus render can exceed 15s, so allow two full poll cycles.
   await expect(dialog.getByRole('alert')).toContainText('Building application failed (exit 1)', { timeout: 30000 });
   await expect(dialog.getByLabel('Failed publishing build log')).toContainText('Cannot resolve ./missing-component');
-  await expect(dialog.getByText('Expected the dashboard heading', { exact: false })).toBeVisible();
+  await expect(dialog.getByText('An automatic check on the app did not pass.', { exact: false })).toBeVisible();
   await expect(dialog).not.toContainText('Other job output must stay hidden');
   await expect(dialog.getByRole('link')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -40,19 +42,21 @@ test('Publish deploys one saved frontend/backend version and exposes its URL onl
   for (const [path, content] of Object.entries({ '/package.json': JSON.stringify({ scripts: { build: 'vite build', test: 'node --test' }, brainhalf: { runtime: 'workers' } }), '/worker/index.ts': 'export default { fetch() { return new Response("ok"); } };' })) state.sockets[0].socket.send(JSON.stringify({ type: 'file_updated', path, content }));
   await expect.poll(async () => (await readProjectFiles(page, accountId, lifecycleProjects[0].id))?.['/worker/index.ts']).toBeTruthy();
   expect(publishing.submitted).toEqual([]);
-  await page.getByRole('button', { name: 'Publish application', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Publish your app', exact: true });
+  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
+  const dialog = page.getByRole('region', { name: 'Project publication' });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: /Skip/ }).click();
+  await dialog.getByRole('button', { name: 'Publish app', exact: true }).click();
+  const slugPicker = page.getByRole('region', { name: 'Choose app name' });
+  await slugPicker.getByRole('button', { name: /Skip/ }).click();
   await expect.poll(() => publishing.submitted.length).toBe(1);
   expect(publishing.submitted[0]).toMatchObject({ kind: 'publish', environment: 'production' });
   expect(publishing.submitted[0].files['worker/index.ts']).toBeTruthy();
   const submittedRevision = (await sourceSnapshot(publishing.submitted[0].files)).revision;
   await expect(dialog.getByRole('link')).toHaveCount(0);
-  await expect(dialog.getByText('Publishing continues on the server.', { exact: false })).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close publishing' }).click();
+  await expect(dialog.getByText('You can close this — publishing keeps running in the background.', { exact: false })).toBeVisible();
+  await page.keyboard.press('Escape');
   publishing.complete();
-  await page.getByRole('button', { name: 'Publish application', exact: true }).click();
+  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
   await expect(dialog.getByRole('link')).toHaveAttribute('href', 'https://published.apps.example.test');
   await expect(dialog.getByRole('button', { name: 'Up to date' })).toBeDisabled();
   expect(publishing.submitted).toHaveLength(1);
@@ -68,28 +72,31 @@ test('Publish deploys one saved frontend/backend version and exposes its URL onl
   await expect(dialog.getByRole('link')).toHaveCount(0);
   await expect(dialog.getByText('Your app is live', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Publish app', exact: true })).toBeEnabled();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
 });
 
-test('older public preview links can still be made private independently of publishing', async ({ page }) => {
+test('a live app can be taken offline independently of publishing', async ({ page }) => {
   const state = await setupLifecycle(page);
-  await setupPublication(page);
-  const updates: unknown[] = [];
-  await page.route('**/api/projects/*/publication', route => {
-    if (route.request().method() === 'PUT') {
-      updates.push(route.request().postDataJSON());
-      return route.fulfill({ json: { published: false } });
-    }
-    return route.fulfill({ json: { published: true } });
-  });
+  const publishing = await setupPublication(page);
   state.sockets[0].socket.send(JSON.stringify({ type: 'file_updated', path: '/package.json', content: JSON.stringify({ scripts: { build: 'vite build' } }) }));
-  await page.getByRole('button', { name: 'Project actions', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Project console', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Project console', exact: true });
-  await dialog.getByRole('button', { name: 'Make old preview private', exact: true }).click();
-  expect(updates).toEqual([{ published: false }]);
-  await expect(dialog.getByRole('button', { name: 'Make old preview private', exact: true })).toHaveCount(0);
+  await expect.poll(async () => (await readProjectFiles(page, accountId, lifecycleProjects[0].id))?.['/package.json']).toBeTruthy();
+  // Publish to create a live release
+  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
+  const publication = page.getByRole('region', { name: 'Project publication' });
+  await publication.getByRole('button', { name: 'Publish app', exact: true }).click();
+  const slugPicker = page.getByRole('region', { name: 'Choose app name' });
+  await slugPicker.getByRole('button', { name: /Skip/ }).click();
+  await expect.poll(() => publishing.submitted.length).toBe(1);
+  publishing.complete();
+  // Close and reopen to refresh the status and see the live release
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
+  const livePublication = page.getByRole('region', { name: 'Project publication' });
+  await expect(livePublication.getByText('Your app is live', { exact: true })).toBeVisible();
+  // Take the app offline without going through the publish flow
+  await livePublication.getByRole('button', { name: 'Take app offline', exact: true }).click();
+  await livePublication.getByRole('button', { name: 'Confirm take offline', exact: true }).click();
+  await expect(livePublication.getByText('Your app is live', { exact: true })).toHaveCount(0);
+  await expect(livePublication.getByRole('button', { name: 'Take app offline', exact: true })).toHaveCount(0);
 });
 
 test('source recovery and AI allowance remain accessible outside the hosting pilot', async ({ page }) => {
@@ -104,10 +111,10 @@ test('source recovery and AI allowance remain accessible outside the hosting pil
   } }));
   await page.getByRole('button', { name: 'Project actions', exact: true }).click(); await page.getByRole('menuitem', { name: 'Project console', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Project console', exact: true });
-  await dialog.getByRole('button', { name: 'Source history', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: 'Save checkpoint' })).toBeEnabled();
+  await dialog.getByRole('button', { name: 'App versions', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Save version' })).toBeEnabled();
   await dialog.getByRole('button', { name: 'AI usage', exact: true }).click();
-  await expect(dialog.getByText('Account allowance · 2026-09-23 UTC')).toBeVisible();
+  await expect(dialog.getByText('Daily AI allowance · 2026-09-23')).toBeVisible();
   await expect(dialog.getByText('Awaiting full 14-day window', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Database', exact: true }).click();
   await expect(dialog.getByText('Managed hosting is limited to approved pilot accounts.')).toBeVisible();
