@@ -14,7 +14,7 @@ import { Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, A
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, parseMessageSegmentsMemoized, type ParseResult } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
-import { bindProjectStore, getProjectSubmissionKey } from '../lib/project-store';
+import { bindProjectStore, getProjectSubmissionKey, shortTitleFromPrompt } from '../lib/project-store';
 import { getToken, getUser, verifyStoredSession, withWsAuthQuery } from '../lib/auth-client';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
@@ -1545,13 +1545,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
     }
 
-    // If the active project still has a generic name, auto-rename with first user prompt (truncated to ~30 chars)
+    // If the active project still has a generic name, auto-rename with a short title from the first user prompt
     try {
       const allProjects = getProjects();
       const currentProj = allProjects.find(p => p.id === activeProjectId);
       if (!isSystemContinuation(userMessage) && currentProj && (/^Project \d+$/i.test(currentProj.name) || currentProj.name === 'Untitled Project' || /^chat-easy-\d+$/i.test(currentProj.name))) {
         const cleanedPrompt = userMessage.trim().replace(/\s+/g, ' ');
-        const newTitle = cleanedPrompt.length > 30 ? `${cleanedPrompt.slice(0, 30)}…` : cleanedPrompt;
+        const newTitle = shortTitleFromPrompt(cleanedPrompt);
         updateProjectName(activeProjectId, newTitle);
         appEvents.emit('project-renamed', { id: activeProjectId, name: newTitle });
       }

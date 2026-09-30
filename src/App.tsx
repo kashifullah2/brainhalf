@@ -13,9 +13,9 @@ const DashboardPage = lazy(() => import('./components/DashboardPage'));
 import { BrainHalfLogo } from './components/BrainHalfLogo';
 import ConfirmModal from './components/ConfirmModal';
 import { appEvents } from './lib/events';
-import { getActiveProjectId, setActiveProjectId, createProject, setProjectSubmissionKey } from './lib/project-store';
+import { getActiveProjectId, setActiveProjectId, createProject, setProjectSubmissionKey, shortTitleFromPrompt } from './lib/project-store';
 import { setOnboardingState } from './lib/project-growth';
-import { authFetch, clearGoogleCompletion, completeGoogleSignIn, detachSession, getToken, logout, prefetchWsTicket, saveGooglePrompt, takeGooglePrompt, verifyStoredSession, type SessionUser } from './lib/auth-client';
+import { authFetch, clearGoogleCompletion, completeGoogleSignIn, detachSession, getToken, logout, prefetchWsTicket, purgeEmptyDrafts, saveGooglePrompt, takeGooglePrompt, verifyStoredSession, type SessionUser } from './lib/auth-client';
 import { runtimeBase } from './lib/project-runtime-client';
 import './index.css';
 import { isPrivateSearch, pageMetadata } from './seo/metadata';
@@ -306,7 +306,7 @@ function App() {
       pendingPromptRef.current = null;
       if (createProjectLockedRef.current) return;
       // Use newUser directly — React state hasn't re-rendered yet
-      const title = prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt;
+      const title = shortTitleFromPrompt(prompt);
       const submissionKey = crypto.randomUUID();
       const newProj = createProject(title);
       markProjectCreationPending(newProj.id, submissionKey);
@@ -340,7 +340,7 @@ function App() {
       return;
     }
     if (createProjectLockedRef.current) return;
-    const title = prompt.length > 28 ? prompt.slice(0, 28) + '...' : prompt;
+    const title = shortTitleFromPrompt(prompt);
     const submissionKey = crypto.randomUUID();
     const newProj = createProject(title);
     markProjectCreationPending(newProj.id, submissionKey);
@@ -431,11 +431,14 @@ function App() {
     );
   }
 
-  const handleCreateNewProject = () => {
+  const handleCreateNewProject = async () => {
     if (createProjectLockedRef.current) return;
     setPendingInitialPrompt(null);
     pendingPromptRef.current = null;
     setMobileTab('chat');
+    // Drop abandoned blank drafts first so they never pile up against the
+    // 50-project limit. Best-effort: creation proceeds even if cleanup fails.
+    await purgeEmptyDrafts().catch(() => {});
     const submissionKey = crypto.randomUUID();
     const newProj = createProject('Untitled Project');
     markProjectCreationPending(newProj.id, submissionKey);

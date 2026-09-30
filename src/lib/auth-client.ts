@@ -9,7 +9,7 @@
  * script at that URL, including model-generated preview code.
  */
 
-import { deleteProjectDurably, getProjectStorageScope, reconcileOwnedProjects, setProjectAccount, updateProjectPublication, type Project } from './project-store';
+import { deleteProjectDurably, getProjects, getProjectStorageScope, isEmptyDraftProject, reconcileOwnedProjects, setProjectAccount, updateProjectPublication, type Project } from './project-store';
 
 const TOKEN_KEY = 'bh_session_token';
 const USER_KEY = 'bh_session_user';
@@ -266,6 +266,24 @@ export async function removeProject(projectId: string): Promise<Project[]> {
   if (!response.ok || body?.ok !== true) throw new Error(body?.error || 'Deletion could not be confirmed. Your local files are retained; try again.');
   if (scope !== getProjectStorageScope() || token !== getToken()) throw new Error('Account changed during deletion. Sign back in to finish cleanup.');
   return deleteProjectDurably(projectId);
+}
+
+/**
+ * Best-effort cleanup of abandoned blank projects. Local drafts that never
+ * received a first message are deleted on the server too, so they stop
+ * counting against the 50-project limit. Called before a new project is
+ * created; failures are swallowed so creation is never blocked by cleanup.
+ */
+export async function purgeEmptyDrafts(): Promise<void> {
+  if (!getProjectStorageScope().accountId || !getToken()) return;
+  const drafts = getProjects().filter(isEmptyDraftProject);
+  for (const draft of drafts) {
+    try {
+      await removeProject(draft.id);
+    } catch {
+      // Keep the local draft; the next creation attempt retries the purge.
+    }
+  }
 }
 
 export async function projectPublication(projectId: string, signal: AbortSignal, published?: boolean): Promise<boolean> {

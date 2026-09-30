@@ -18,7 +18,9 @@ import {
   saveProjectMessages,
   deleteProjectMessages,
   deleteProjectFiles,
-  getProjectDisplayTitle
+  getProjectDisplayTitle,
+  shortTitleFromPrompt,
+  isEmptyDraftProject
 } from '../lib/project-store';
 
 describe('Project Store & LocalStorage State Management', () => {
@@ -247,10 +249,40 @@ describe('Project Store & LocalStorage State Management', () => {
       saveProjectMessages(proj.id, [{ role: 'user', content: 'Build an app: Real-time Chat App with shared rooms' }]);
       expect(getProjectDisplayTitle(proj)).toBe('Build an app: Real-time Chat App with shared rooms');
     });
+  });
 
-    it('falls back to generic Project N if no user prompt exists yet', () => {
-      const proj = createProject('Project 4');
-      expect(getProjectDisplayTitle(proj)).toBe('Project 4');
+  describe('shortTitleFromPrompt', () => {
+    it('uses the first six words instead of a raw character slice', () => {
+      expect(shortTitleFromPrompt('Build me a todo app with categories and due dates please')).toBe('Build me a todo app with');
+    });
+    it('keeps short prompts whole', () => {
+      expect(shortTitleFromPrompt('Todo app')).toBe('Todo app');
+    });
+    it('cuts at a word boundary under the char cap', () => {
+      const title = shortTitleFromPrompt('Create a comprehensive inventory management system for the warehouse team');
+      expect(title).toBe('Create a comprehensive inventory management…');
+      expect(title.length).toBeLessThanOrEqual(48);
+    });
+    it('falls back to Untitled Project for blank input', () => {
+      expect(shortTitleFromPrompt('   ')).toBe('Untitled Project');
+    });
+  });
+
+  describe('isEmptyDraftProject', () => {
+    it('flags a draft that never received a message', () => {
+      const proj = createProject('Untitled Project');
+      expect(proj.status).toBe('draft');
+      expect(isEmptyDraftProject(proj)).toBe(true);
+    });
+    it('ignores a draft once it has messages', () => {
+      const proj = createProject('Untitled Project');
+      saveProjectMessages(proj.id, [{ role: 'user', content: 'Build a shop' }]);
+      expect(isEmptyDraftProject(proj)).toBe(false);
+    });
+    it('ignores non-draft projects even without messages', () => {
+      const proj = createProject('Some App');
+      proj.status = 'ready';
+      expect(isEmptyDraftProject(proj)).toBe(false);
     });
   });
 });

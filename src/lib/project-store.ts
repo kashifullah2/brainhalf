@@ -196,6 +196,31 @@ export function createProject(name: string = 'Untitled Project'): Project {
   return newProj;
 }
 
+/**
+ * Builds a short, readable project title from the user's prompt: the first
+ * few words, cut at a word boundary, instead of a raw character slice of the
+ * full prompt text.
+ */
+export function shortTitleFromPrompt(prompt: string, maxWords = 6, maxChars = 48): string {
+  const words = prompt.trim().split(/\s+/).filter(Boolean).slice(0, maxWords).join(' ');
+  if (!words) return 'Untitled Project';
+  if (words.length <= maxChars) return words;
+  const cut = words.slice(0, maxChars);
+  const boundary = cut.lastIndexOf(' ');
+  return (boundary > 0 ? cut.slice(0, boundary) : cut).trimEnd() + '…';
+}
+
+/**
+ * True for a project that was created but never received a first message —
+ * an abandoned blank draft. purgeEmptyDrafts() removes these so they never
+ * pile up against the 50-project limit.
+ */
+export function isEmptyDraftProject(project: Project): boolean {
+  if (project.status !== 'draft') return false;
+  const messages = getProjectMessages(project.id);
+  return !messages || messages.length === 0;
+}
+
 export function setProjectSubmissionKey(projectId: string, submissionKey: string) {
   if (!projectId || !submissionKey) return;
   projectSubmissionKeys.set(projectId, submissionKey);
