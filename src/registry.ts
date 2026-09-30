@@ -857,6 +857,22 @@ export class AuthRegistry {
           cleanup.enqueue(projectId, userId);
         });
         await cleanup.schedule();
+        // Free the hosted-project slot right away, not when the async cleanup
+        // queue gets to it. Without this, the pilot keeps counting the deleted
+        // project until the queue runs — and a slow or stuck queue leaves the
+        // user blocked by the hosted-project limit with an empty dashboard.
+        // Best-effort: the queued cleanup unregisters again (a no-op) if this fails.
+        try {
+          if (this.env.RUNTIME) {
+            const slot = await this.env.RUNTIME.fetch(new Request('https://runtime/unregister', {
+              method: 'POST',
+              headers: { 'x-bh-project': projectId, 'x-bh-owner': userId },
+            }));
+            if (!slot.ok) console.error('Pilot slot release failed:', slot.status);
+          }
+        } catch (err) {
+          console.error('Pilot slot release failed:', err);
+        }
         return this.json(202, { ok: true, cleanup: 'pending', message: 'Access revoked. Storage cleanup is queued and retried automatically.' });
       }
 

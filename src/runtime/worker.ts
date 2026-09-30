@@ -27,6 +27,16 @@ export class RuntimeControl extends WorkerEntrypoint<RuntimeEnv> {
         // Shutdown remains available when provisioning is disabled by the kill switch.
         return await this.env.PROJECTS.getByName(scope.projectId).control(request);
       }
+      if (new URL(request.url).pathname === '/unregister' && request.method === 'POST') {
+        // Lightweight hosted-slot release for project deletion. Unlike /delete,
+        // this performs no teardown — it only drops the pilot registration so a
+        // deleted project stops counting against the hosted-project limit the
+        // moment the delete is accepted, instead of waiting for the async
+        // cleanup queue (which also unregisters, as a harmless no-op).
+        const alias = (await digest(scope.projectId)).slice(0, 32);
+        await this.env.PILOT.getByName('pilot').unregister(alias, scope);
+        return Response.json({ ok: true });
+      }
       if (new URL(request.url).pathname === '/delete') {
         const project = this.env.PROJECTS.getByName(scope.projectId);
         await project.initialize(scope, (await digest(scope.projectId)).slice(0, 32));
