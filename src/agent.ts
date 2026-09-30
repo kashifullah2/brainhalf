@@ -2005,7 +2005,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         if (this.turnSavedForEpoch !== epoch) {
           try { this.saveGenerationTurn(actualPrompt, cleanError, epoch); } catch { }
         }
-        sendError(cleanError, 'rate_limited');
+        // Distinguish daily-budget exhaustion from concurrent-generation capacity
+        // so the frontend can give the right guidance (midnight UTC reset vs.
+        // wait-for-running-apps). Never conflate the two.
+        const code = err.kind === 'daily' ? 'daily_budget_exhausted' : err.kind === 'concurrency' ? 'concurrency_limited' : 'rate_limited';
+        sendError(cleanError, code);
       } else {
         // A failed first prompt used to vanish from the server-side
         // conversation: only the 429 branch above preserved it. Without this,

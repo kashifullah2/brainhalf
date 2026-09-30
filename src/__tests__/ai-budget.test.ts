@@ -51,4 +51,35 @@ describe('durable account AI allowance', () => {
     expect(() => ledger.reserve('one', 'expired', 100, now + AI_ALLOWANCE.leaseMs + 1)).toThrow('expired');
     expect(ledger.usage(now + AI_ALLOWANCE.leaseMs + 1).activeGenerations).toBe(0);
   });
+  it('distinguishes concurrency-limit from daily-budget exhaustion via error kind', async () => {
+    const { AiBudgetError } = await import('../lib/ai-budget');
+    type BudgetError = InstanceType<typeof AiBudgetError>;
+    // Concurrency: fill all slots, next start throws with kind 'concurrency'.
+    const env = { REGISTRY: budgetRegistry() };
+    const slots = Array.from({ length: AI_ALLOWANCE.concurrentGenerations }, () => new AiBudget(env, 'owner-kind'));
+    await Promise.all(slots.map(b => b.start()));
+    try {
+      await new AiBudget(env, 'owner-kind').start();
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AiBudgetError);
+      expect((err as BudgetError).kind).toBe('concurrency');
+      expect((err as BudgetError).status).toBe(429);
+    }
+    await Promise.all(slots.map(b => b.end()));
+    // Daily: exhaust calls, next reserve throws with kind 'daily'.
+    const storage = sqliteStorage(); const ledger = new AiLedger(storage);
+    ledger.start('daily-kind');
+    const maxCalls = Math.ceil(AI_ALLOWANCE.dailyOutputTokens / 65536);
+    for (let i = 0; i < maxCalls - 1; i++) ledger.reserve('daily-kind', `dk-${i}`, 65536);
+    try {
+      ledger.reserve('daily-kind', 'dk-over', 65536);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AiBudgetError);
+      expect((err as BudgetError).kind).toBe('daily');
+      expect((err as BudgetError).status).toBe(429);
+    }
+    ledger.end('daily-kind');
+  });
 });

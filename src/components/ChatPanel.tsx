@@ -932,18 +932,28 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               const prompt = [...messagesRef.current].reverse().find(message => message.role === 'user')?.content;
               if (prompt) setExportPrompt({ notice: errMsg, resume: () => { if (isCurrent()) handleSendMessageRef.current?.(prompt); } });
             }
-            const isRateLimited = data.code === 'rate_limited';
+            const isConcurrencyLimited = data.code === 'concurrency_limited';
+            const isDailyExhausted = data.code === 'daily_budget_exhausted';
+            const isRateLimited = data.code === 'rate_limited' || isConcurrencyLimited;
             const isProviderBusy = data.code === 'provider_busy';
-            if (wasGenerating && data.code !== 'hosting_unavailable' && !isRateLimited && generationModelIdRef.current) {
+            if (wasGenerating && data.code !== 'hosting_unavailable' && !isRateLimited && !isDailyExhausted && generationModelIdRef.current) {
               recordModelOutcome(generationModelIdRef.current, 'failure', errMsg, getReliabilityScope());
               setModels(rankModelsByReliability(MODEL_CATALOG, getReliabilityScope()));
             }
-            appEvents.emit('generation-status', { status: isRateLimited ? 'Ready' : 'Error', error: isRateLimited ? undefined : errMsg, projectId: activeProjectId });
-            const displayErrMsg = isRateLimited
-              ? `⏳ ${errMsg}\n\nWait for one of your running apps to finish, then send your message again.`
-              : isProviderBusy
-                ? `⏳ ${errMsg}\n\nThis is usually temporary — wait a few seconds and send your message again.`
-                : `⚠️ ${errMsg}`;
+            // Daily-budget exhaustion is an error (not 'Ready'): the user cannot
+            // retry until midnight UTC. Concurrency limits are 'Ready' because
+            // the user can retry once a running app finishes.
+            const statusForCode = isDailyExhausted ? 'Error' : isRateLimited ? 'Ready' : 'Error';
+            appEvents.emit('generation-status', { status: statusForCode, error: isRateLimited ? undefined : errMsg, projectId: activeProjectId });
+            const displayErrMsg = isDailyExhausted
+              ? `⚠️ ${errMsg}\n\nYou've used today's AI allowance. It resets at midnight UTC — come back tomorrow to keep building.`
+              : isConcurrencyLimited
+                ? `⏳ ${errMsg}\n\nWait for one of your running apps to finish, then send your message again.`
+                : isRateLimited
+                  ? `⏳ ${errMsg}\n\nWait a moment, then send your message again.`
+                  : isProviderBusy
+                    ? `⏳ ${errMsg}\n\nThis is usually temporary — wait a few seconds and send your message again.`
+                    : `⚠️ ${errMsg}`;
             const current = [...messagesRef.current];
             if (wasGenerating && current[current.length - 1]?.role === 'ai') {
               const partialContent = aiMessageRef.current.trim();

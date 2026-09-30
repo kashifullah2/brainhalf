@@ -1606,7 +1606,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0
                   }}>
                     {isServerPath(activeFile)
-                      ? <><Server size={12} strokeWidth={2} />{/^\/?(?:worker|migrations)\//.test(activeFile) ? 'Workers / D1' : 'Node.js / Express'}</>
+                      ? <><Server size={12} strokeWidth={2} />Backend</>
                       : <><Code2 size={12} strokeWidth={2} />React / Vite</>}
                   </span>
                   <span style={{

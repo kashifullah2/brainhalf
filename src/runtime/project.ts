@@ -218,7 +218,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
   }
   async control(request: Request): Promise<Response> {
     try { return await this.handleControl(request); }
-    catch (error) { return Response.json({ error: error instanceof RuntimeError ? error.message : 'Runtime request failed.' }, { status: error instanceof RuntimeError ? error.status : 503 }); }
+    catch (error) { return Response.json({ error: error instanceof RuntimeError ? error.message : 'Something went wrong on our end. Please try again.' }, { status: error instanceof RuntimeError ? error.status : 503 }); }
   }
   private async withControlLock<T>(action: () => Promise<T>): Promise<T> {
     // Serialize admission and recovery without holding the object's global
@@ -544,7 +544,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       });
       return Response.json({ job }, { status: 202 });
     }
-    throw new RuntimeError('Runtime route not found.', 404);
+    throw new RuntimeError('That page or action was not found. Try refreshing, or go back to your project.', 404);
   }
   private jobOutcome(job: StoredJob): OutcomeEvent | null {
     if (job.kind !== 'publish') return null;
@@ -965,7 +965,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     try {
       if (this.databaseOperation) throw new RuntimeError('Database maintenance in progress. Please retry shortly.', 503);
       response = await this.handleAppRequest(request, environment);
-    } catch (error) { response = Response.json({ error: error instanceof RuntimeError ? error.message : 'Application request failed.' }, { status: error instanceof RuntimeError ? error.status : 503 }); }
+    } catch (error) { response = Response.json({ error: error instanceof RuntimeError ? error.message : 'Your app ran into a problem. Try refreshing the page. If it keeps happening, ask the builder to fix it.' }, { status: error instanceof RuntimeError ? error.status : 503 }); }
     try { if (!await this.ctx.storage.get('deleted')) recordAppRequest(this.ctx.storage.sql, environment, request, response.status, startedAt); }
     catch { console.warn('Request metrics unavailable'); }
     return response;

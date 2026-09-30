@@ -886,7 +886,7 @@ export class AuthRegistry {
 
       return this.json(404, { error: 'Not found' });
     } catch (err: any) {
-      if (err instanceof AiBudgetError) return this.json(err.status, { error: err.message });
+      if (err instanceof AiBudgetError) return this.json(err.status, { error: err.message, kind: err.kind });
       // Never leak stack traces to clients.
       console.error('AuthRegistry error:', err?.message);
       return this.json(500, { error: 'Internal error' });

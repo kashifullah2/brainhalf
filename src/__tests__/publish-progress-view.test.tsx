@@ -8,7 +8,7 @@ describe('publishProgressView', () => {
     expect(view.currentStage).toBeNull();
     expect(view.waitingInQueue).toBe(true);
     expect(view.heading).toContain('Queued');
-    expect(view.heading).toContain('waiting for a build slot');
+    expect(view.heading).toContain('waiting for your turn to build');
   });
 
   it('marks the real stage as current once the job is running', () => {

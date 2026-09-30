@@ -3,7 +3,10 @@ export const AI_ALLOWANCE = { dailyCalls: 200, dailyOutputTokens: 10_000_000, co
 export interface AiUsage { day: string; calls: number; reservedOutputTokens: number; activeGenerations: number; limits: typeof AI_ALLOWANCE }
 interface Sql { exec(query: string, ...values: (string | number | null)[]): { toArray(): Record<string, unknown>[] } }
 interface LedgerStorage { sql: Sql; transactionSync<T>(work: () => T): T }
-export class AiBudgetError extends Error { constructor(message: string, readonly status = 503) { super(message); } }
+export type AiBudgetErrorKind = 'concurrency' | 'daily' | 'other';
+export class AiBudgetError extends Error {
+  constructor(message: string, readonly status = 503, readonly kind: AiBudgetErrorKind = 'other') { super(message); }
+}
 
 /** Runs on an owner-specific registry instance. All check-and-charge writes are atomic. */
 export class AiLedger {
@@ -24,8 +27,8 @@ export class AiLedger {
       this.storage.sql.exec('DELETE FROM ai_calls WHERE day<?', new Date(now - 2 * 86400_000).toISOString().slice(0, 10));
       if (this.storage.sql.exec('SELECT id FROM ai_leases WHERE id=?', id).toArray().length) return;
       const usage = this.usage(now);
-      if (usage.activeGenerations >= AI_ALLOWANCE.concurrentGenerations) throw new AiBudgetError(`${AI_ALLOWANCE.concurrentGenerations} AI generations are already running across your projects. Wait or stop one before retrying.`, 429);
-      if (usage.calls >= AI_ALLOWANCE.dailyCalls || usage.reservedOutputTokens >= AI_ALLOWANCE.dailyOutputTokens) throw new AiBudgetError('Your daily AI allowance is exhausted. It resets at midnight UTC.', 429);
+      if (usage.activeGenerations >= AI_ALLOWANCE.concurrentGenerations) throw new AiBudgetError(`${AI_ALLOWANCE.concurrentGenerations} AI generations are already running across your projects. Wait or stop one before retrying.`, 429, 'concurrency');
+      if (usage.calls >= AI_ALLOWANCE.dailyCalls || usage.reservedOutputTokens >= AI_ALLOWANCE.dailyOutputTokens) throw new AiBudgetError('Your daily AI allowance is exhausted. It resets at midnight UTC.', 429, 'daily');
       this.storage.sql.exec('INSERT INTO ai_leases(id,expires_at) VALUES (?,?)', id, now + AI_ALLOWANCE.leaseMs);
     });
   }
@@ -35,7 +38,7 @@ export class AiLedger {
       if (!this.storage.sql.exec('SELECT id FROM ai_leases WHERE id=? AND expires_at>?', lease, now).toArray().length) throw new AiBudgetError('The AI reservation expired. Retry your request.', 409);
       if (this.storage.sql.exec('SELECT id FROM ai_calls WHERE id=?', id).toArray().length) return;
       const usage = this.usage(now);
-      if (usage.calls >= AI_ALLOWANCE.dailyCalls || usage.reservedOutputTokens + maxTokens > AI_ALLOWANCE.dailyOutputTokens) throw new AiBudgetError('Your daily AI allowance cannot cover this call. Select a smaller output limit or retry after midnight UTC.', 429);
+      if (usage.calls >= AI_ALLOWANCE.dailyCalls || usage.reservedOutputTokens + maxTokens > AI_ALLOWANCE.dailyOutputTokens) throw new AiBudgetError('Your daily AI allowance cannot cover this call. Select a smaller output limit or retry after midnight UTC.', 429, 'daily');
       this.storage.sql.exec('INSERT INTO ai_calls(id,day,output_tokens) VALUES (?,?,?)', id, usage.day, maxTokens);
     });
   }
@@ -53,8 +56,8 @@ export class AiBudget {
   private async request(path: string, body: Record<string, unknown>) {
     const response = await aiBudgetEndpoint(this.env, this.owner).fetch(new Request(`https://registry/ai/${path}`, { method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) }));
     if (!response.ok) {
-      const data = await response.json().catch(() => null) as { error?: string } | null;
-      throw new AiBudgetError(data?.error || 'AI allowance service unavailable. No new inference was started.', response.status);
+      const data = await response.json().catch(() => null) as { error?: string; kind?: AiBudgetErrorKind } | null;
+      throw new AiBudgetError(data?.error || 'AI allowance service unavailable. No new inference was started.', response.status, data?.kind ?? 'other');
     }
     const data = await response.json() as { ok?: boolean };
     if (data.ok !== true) throw new AiBudgetError('AI allowance service returned an invalid reservation.');

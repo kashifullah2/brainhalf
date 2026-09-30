@@ -72,7 +72,7 @@ export default function ProjectHostedSlots({ projectId }: { projectId: string })
                 ? <span className="hosted-slot-orphan">Not in use</span>
                 : <span className="hosted-slot-live">Live</span>}
               {slot.projectId === projectId
-                ? <span className="hosted-slot-current">This project</span>
+                ? <span className="hosted-slot-current" title="You can't remove the app you're currently working on. Open a different project to remove this one.">This project — can't remove while open</span>
                 : <button type="button" disabled={releasing !== null} onClick={() => void release(slot.alias, slot.live !== false, label)}>
                     {releasing === slot.alias ? 'Removing…' : 'Remove'}
                   </button>}

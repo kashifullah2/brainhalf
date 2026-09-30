@@ -30,7 +30,7 @@ import './ProjectConsole.css';
 const sectionGroups = [
   { label: 'Ship', hint: 'Put your app on the internet', sections: ['Publish', 'Domain'] },
   { label: 'Run', hint: "Your app's data, files and activity", sections: ['Database', 'Files', 'Users & email', 'Monitoring'] },
-  { label: 'Manage', hint: 'Versions, usage and project settings', sections: ['App versions', 'AI usage', 'Hosted apps', 'Project settings'] },
+  { label: 'Manage', hint: 'Versions, usage and project settings', sections: ['App versions', 'AI usage', 'App spaces', 'Project settings'] },
 ] as const;
 const sections = sectionGroups.flatMap(group => group.sections);
 type Section = typeof sections[number];
@@ -45,7 +45,7 @@ const sectionHelp: Record<Section, string> = {
   'App versions': 'Saved versions of your app you can go back to.',
   'AI usage': 'How much builder work this project has used.',
   'Project settings': 'Your past requests and advanced builder settings.',
-  'Hosted apps': `Your ${HOSTED_APP_LIMIT} app spaces. Remove apps you no longer use to make room.`,
+  'App spaces': `Your ${HOSTED_APP_LIMIT} app spaces. Remove apps you no longer use to make room.`,
 };
 
 const JOB_LABELS: Record<JobKind, string> = {
@@ -166,6 +166,12 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
   const tryStepState: StepState = testAppReady ? 'done' : firstPending === 'try' ? 'next' : 'pending';
 
   const canRunJobs = !busy && !generating && development.status?.availability?.state === 'ready' && development.status?.enabled && !activeJob && Boolean(revision);
+  // Plain-language reason why job buttons are disabled, for the title tooltip.
+  const jobDisabledReason = generating ? 'Wait for the builder to finish first.'
+    : activeJob ? 'Wait for the current job to finish first.'
+    : !revision ? 'Save a version of your app first (Ship → Build your app).'
+    : busy ? 'Please wait a moment and try again.'
+    : 'The build service is getting ready. Try again in a moment.';
   const hostedSection = ['Database', 'Files', 'Users & email', 'Monitoring'].includes(section);
 
   return <div className="project-console-page"><div ref={dialogRef} className="project-console" role="dialog" aria-modal="true" aria-labelledby="project-console-title" tabIndex={-1}>
@@ -194,14 +200,14 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
       )}
       {error && <p role="alert" className="settings-error">
         {isHostedLimitError(error)
-          ? <>All {HOSTED_APP_LIMIT} of your app spaces are in use, so this can’t start. <button type="button" className="button-ghost" onClick={() => { setError(''); setSection('Hosted apps'); }}>Choose an app to remove</button></>
+          ? <>All {HOSTED_APP_LIMIT} of your app spaces are in use, so this can’t start. <button type="button" className="button-ghost" onClick={() => { setError(''); setSection('App spaces'); }}>Choose an app to remove</button></>
           : error}
       </p>}
       {(section === 'Publish' || hostedSection) && <>
         {(runtime.error || !hostingReady) && <p role="status" className="settings-notice">{runtime.error || status?.availability?.message || 'Checking hosting availability…'}{runtime.error && <button type="button" className="button-ghost" onClick={runtime.refresh}>Retry connection</button>}</p>}
       </>}
       {section === 'Publish' && <>
-        <PublicationControls key={projectId} projectId={projectId} files={files} onManage={() => { setEnvironment('production'); setSection('Users & email'); }} onOpenHostedSlots={() => setSection('Hosted apps')} />
+        <PublicationControls key={projectId} projectId={projectId} files={files} onManage={() => { setEnvironment('production'); setSection('Users & email'); }} onOpenHostedSlots={() => setSection('App spaces')} />
         <GalleryListing projectId={projectId} />
         {fullStack && <section className="settings-card">
           <h3>Get your app ready</h3>
@@ -211,16 +217,16 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
           {generating && <p role="status" className="settings-notice"><Loader2 size={13} className="lucide-spin" /> The builder is still working — wait for it to finish before building or checking.</p>}
           <ol className="ship-steps">
             <Step number={1} title="Build your app" help="Puts your app together so it can run online." state={buildStepState}>
-              <button type="button" className={buildStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs} onClick={() => void perform(() => startJob('build', 'development'))}><Hammer size={14} />Build app</button>
+              <button type="button" className={buildStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs} title={!canRunJobs ? jobDisabledReason : undefined} onClick={() => void perform(() => startJob('build', 'development'))}><Hammer size={14} />Build app</button>
             </Step>
             <Step number={2} title="Run checks" help="Opens your app in a real browser and tests the important parts using throwaway data." state={checkStepState}>
-              <button type="button" className={checkStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs || !workers} onClick={() => void perform(() => startJob('verify', 'development'))}><ShieldCheck size={14} />Run checks</button>
+              <button type="button" className={checkStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs || !workers} title={!canRunJobs ? jobDisabledReason : !workers ? 'Build your app first, then run checks.' : undefined} onClick={() => void perform(() => startJob('verify', 'development'))}><ShieldCheck size={14} />Run checks</button>
               {report && report.revision !== revision && <span className="settings-muted">Your latest edits aren't covered by the last check.</span>}
             </Step>
             <Step number={3} title="Try it" help="Opens a temporary address that runs your app for real." state={tryStepState}>
               {testAppReady
                 ? <button type="button" className={tryStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={busy} onClick={() => void perform(openPreview)}><Play size={14} />Open test app</button>
-                : <button type="button" className={tryStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs} onClick={() => void perform(() => startJob('preview', 'development'))}><Play size={14} />Start test app</button>}
+                : <button type="button" className={tryStepState === 'next' ? 'button-primary' : 'button-secondary'} disabled={!canRunJobs} title={!canRunJobs ? jobDisabledReason : undefined} onClick={() => void perform(() => startJob('preview', 'development'))}><Play size={14} />Start test app</button>}
             </Step>
           </ol>
           {activeJob && (
@@ -265,7 +271,7 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
       {hostingReady && section === 'Monitoring' && <ProjectMonitor key={environment} projectId={projectId} environment={environment} />}
       {section === 'App versions' && <ProjectHistory projectId={projectId} />}
       {section === 'AI usage' && <ProjectAgentUsage projectId={projectId} />}
-      {section === 'Hosted apps' && <ProjectHostedSlots projectId={projectId} />}
+      {section === 'App spaces' && <ProjectHostedSlots projectId={projectId} />}
       {section === 'Domain' && <CustomDomainSettings projectId={projectId} productionUrl={production.status?.productionUrl} />}
       {section === 'Project settings' && <ProjectGrowthHub projectId={projectId} />}
     </main>

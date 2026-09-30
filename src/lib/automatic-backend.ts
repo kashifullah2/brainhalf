@@ -4,6 +4,24 @@ import { runtimeRequest, type useProjectRuntime } from './project-runtime-client
 import { sourceSnapshot } from '../runtime/source';
 import type { RuntimeStatus } from '../runtime/types';
 
+/**
+ * Convert a backend start failure into plain language for non-technical users.
+ * Technical error messages (network errors, stack traces, errno codes) are
+ * replaced with a generic message. Only messages that are already plain
+ * language are passed through.
+ */
+export function toPlainBackendError(cause: unknown): string {
+  const raw = cause instanceof Error ? cause.message : '';
+  if (!raw) return 'The backend could not start.';
+  // Technical patterns that a farmer won't understand — replace with plain language.
+  if (/ECONNREFUSED|EAI_AGAIN|ENOTFOUND|ETIMEDOUT|fetch failed|NetworkError|stack|at\s+\w+\s*\(|Error:/i.test(raw)) {
+    return 'The backend could not start. Check your connection and try again.';
+  }
+  // If it's already a plain-language message from our own code, pass it through.
+  if (raw.length < 200 && !/[{}[\];]/.test(raw)) return raw;
+  return 'The backend could not start.';
+}
+
 const TICKET_TTL_MS = 45_000; // Refresh well before the 60 s server TTL; background tabs throttle timers
 const TICKET_RETRY_MS = 10_000; // Retry a failed ticket refresh quickly instead of blanking the preview
 
@@ -74,7 +92,7 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
       await runtimeRequest(projectId, '/jobs', 'development', { method: 'POST', body: JSON.stringify({ kind: 'preview', files }) });
       if (current === epoch.current) { attempted.current = snapshot.revision; refresh(); }
     } catch (cause) {
-      if (current === epoch.current) { setFault(true); setNotice(cause instanceof Error ? cause.message : 'The backend could not start.'); }
+      if (current === epoch.current) { setFault(true); setNotice(toPlainBackendError(cause)); }
     } finally { if (current === epoch.current) { running.current = false; setBusy(false); } }
   }, [projectId, refresh]);
   useEffect(() => { if (pending.current) void flush(); }, [runtime.status, flush]);
