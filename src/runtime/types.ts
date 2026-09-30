@@ -1,3 +1,5 @@
+import { MAX_HOSTED_APP_SPACES } from '../lib/limits';
+
 export type ProjectEnvironment = 'development' | 'production';
 export type IntegrationProvider = 'resend' | 'google' | 'github';
 export type JobKind = 'build' | 'preview' | 'verify' | 'deploy' | 'migrate' | 'publish';
@@ -62,7 +64,7 @@ export interface RuntimeStatus {
   previewUrl: string; productionUrl: string;
 }
 export const PILOT_LIMITS = {
-  projects: 10, sandboxes: 2, browsers: 1, commandTimeoutMs: 600_000,
+  projects: MAX_HOSTED_APP_SPACES, sandboxes: 2, browsers: 1, commandTimeoutMs: 600_000,
   idleTimeoutMs: 300_000, leaseMs: 45_000, sourceBytes: 4_000_000,
   sourceFiles: 500, logBytes: 64_000, artifactBytes: 12_000_000,
   dailyJobs: 30, dailyEmails: 20,

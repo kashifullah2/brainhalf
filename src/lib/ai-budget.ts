@@ -1,5 +1,6 @@
-/** Product allowances, not provider prices. Reservations remain charged on failure. */
-export const AI_ALLOWANCE = { dailyCalls: 200, dailyOutputTokens: 10_000_000, concurrentGenerations: 4, leaseMs: 15 * 60_000 } as const;
+/** Product allowances, not provider prices. Values are the product contract in ./limits. Reservations remain charged on failure. */
+import { AI_CONCURRENT_GENERATIONS, AI_DAILY_MODEL_CALLS, AI_DAILY_OUTPUT_TOKENS, AI_GENERATION_LEASE_MS } from './limits';
+export const AI_ALLOWANCE = { dailyCalls: AI_DAILY_MODEL_CALLS, dailyOutputTokens: AI_DAILY_OUTPUT_TOKENS, concurrentGenerations: AI_CONCURRENT_GENERATIONS, leaseMs: AI_GENERATION_LEASE_MS } as const;
 export interface AiUsage { day: string; calls: number; reservedOutputTokens: number; activeGenerations: number; limits: typeof AI_ALLOWANCE }
 interface Sql { exec(query: string, ...values: (string | number | null)[]): { toArray(): Record<string, unknown>[] } }
 interface LedgerStorage { sql: Sql; transactionSync<T>(work: () => T): T }

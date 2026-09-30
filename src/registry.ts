@@ -1,6 +1,7 @@
 import { ProductOutcomes, type OutcomeEvent } from './lib/product-outcomes';
 import { AiLedger, AiBudgetError } from './lib/ai-budget';
 import { ProjectCleanup } from './lib/project-cleanup';
+import { MAX_PROJECT_ROWS_PER_USER, MAX_PROJECTS_PER_USER } from './lib/limits';
 /**
  * AuthRegistry — the single server-side source of truth for identity and
  * project ownership in BrainHalf.
@@ -43,14 +44,7 @@ const SCHEMA_VERSION = 1;
 // observed in a log or a trace is already, or is soon, worthless.
 const WS_TICKET_TTL_MS = 60 * 1000;
 
-// Per-user ceiling on live projects. Claim-on-first-access means a project row
-// appears the moment a user opens an id, so the registry needs a bound or a
-// single client can fill its SQLite database with ids it never intends to use.
-const MAX_PROJECTS_PER_USER = 50;
-// Including tombstones: a deleted project's row is kept forever as the marker
-// that stops its id being reclaimed, so the total row count needs its own
-// ceiling or a create-delete cycle could write to this table without limit.
-const MAX_PROJECT_ROWS_PER_USER = 200;
+// Product limits (live/lifetime project caps) are centralized in src/lib/limits.ts.
 const MAX_RATE_WINDOW_MS = 60 * 60 * 1000;
 const PROJECT_CLAIM_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 

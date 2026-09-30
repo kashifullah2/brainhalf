@@ -1,11 +1,11 @@
-import { PILOT_LIMITS } from '../runtime/types';
+import { MAX_HOSTED_APP_SPACES } from './limits';
 
 /**
  * The account-wide cap on running/published apps ("hosted app spaces").
- * Single-sourced from the backend's PILOT_LIMITS so the UI can never quote a
- * stale number.
+ * Single-sourced from the shared product limits so the UI can never quote a
+ * stale number; the backend enforces the same constant via PILOT_LIMITS.
  */
-export const HOSTED_APP_LIMIT = PILOT_LIMITS.projects;
+export const HOSTED_APP_LIMIT = MAX_HOSTED_APP_SPACES;
 
 /**
  * True when an error message means the account's hosted app spaces are full.
