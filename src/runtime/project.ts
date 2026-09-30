@@ -253,18 +253,18 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     }
     if (path === '/hosted/release' && request.method === 'POST') {
       const body = await readJson(request, 2_000) as { alias?: unknown; force?: unknown };
-      if (typeof body?.alias !== 'string' || !/^([a-f0-9]{32}|[a-z][a-z0-9-]{2,38}[a-z0-9])$/.test(body.alias)) throw new RuntimeError('A valid hosted slot id is required.', 400);
+      if (typeof body?.alias !== 'string' || !/^([a-f0-9]{32}|[a-z][a-z0-9-]{2,38}[a-z0-9])$/.test(body.alias)) throw new RuntimeError('A valid app space id is required.', 400);
       const registered = await this.pilot().lookup(body.alias).catch(() => null);
-      if (!registered || registered.ownerId !== this.scope.ownerId) throw new RuntimeError('Hosted slot not found on your account.', 404);
+      if (!registered || registered.ownerId !== this.scope.ownerId) throw new RuntimeError('App space not found on your account.', 404);
       // Releasing a live project's slot takes its app offline (public routing
       // 404s) until the project's next build re-registers it. Refuse without
       // explicit confirmation; orphaned (deleted-project) slots release freely.
       let live = true;
       try { live = !(await this.env.PROJECTS.getByName(registered.projectId).isDeleted()); }
       catch { live = true; }
-      if (live && body?.force !== true) throw new RuntimeError('This slot belongs to a live project — releasing it would take the app offline until its next publish. Confirm to release it anyway.', 409);
+      if (live && body?.force !== true) throw new RuntimeError('This app space belongs to a live app — removing it would take the app offline until its next publish. Confirm to remove it anyway.', 409);
       const result = await this.pilot().forceRelease(body.alias, this.scope.ownerId);
-      if (!result.released) throw new RuntimeError('Hosted slot not found on your account.', 404);
+      if (!result.released) throw new RuntimeError('App space not found on your account.', 404);
       return Response.json(result);
     }
     if (path === '/delete' && request.method === 'POST') {

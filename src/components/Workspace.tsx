@@ -22,7 +22,7 @@ import { previewFiles, PREVIEW_SANDBOX } from '../lib/preview-isolation';
 import { setPreviewStatus, setPlatformStatus } from '../lib/status-store';
 import { bindProjectStore } from '../lib/project-store';
 import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
-import { diagnosePreviewError } from '../lib/preview-diagnostics';
+import { diagnosePreviewError, plainPreviewError } from '../lib/preview-diagnostics';
 import { createTypeScriptStarter } from '../lib/project-starters';
 import { useProjectRuntime } from '../lib/project-runtime-client';
 import PreviewCanvas from './PreviewCanvas';
@@ -429,7 +429,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const logsEndRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const syncedPreviewFilesRef = useRef<FileMap>({});
-  const [previewIssue, setPreviewIssue] = useState<{ error: string; file: string; layer: 'backend' | 'frontend' } | null>(null);
+  const [previewIssue, setPreviewIssue] = useState<{ error: string; plainExplanation: string; file: string; layer: 'backend' | 'frontend' } | null>(null);
   const [previewLoadState, setPreviewLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [previewLoadError, setPreviewLoadError] = useState('');
   const previewLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1070,7 +1070,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         const cleanMsg = errorMsg.startsWith('[') ? errorMsg : `${prefix} ${errorMsg}`;
         const lineInfo = event.data.lineno ? ` (line ${event.data.lineno})` : '';
         const fullErr = `${cleanMsg}${lineInfo}`;
-        setPreviewIssue({ error: fullErr, file, layer });
+        setPreviewIssue({ error: fullErr, plainExplanation: plainPreviewError(diagnostic, layer), file, layer });
         if (generationActiveRef.current) {
           // Mid-generation module errors are expected: files land one at a
           // time, so an import can briefly point at a file that has not been
@@ -1532,7 +1532,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
                 </PreviewCanvas>
-                {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span>{previewIssue.error.slice(0, 180)}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+                {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
               </div>
             </div>
           </div>
@@ -1907,7 +1907,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
               </PreviewCanvas>
-              {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span>{previewIssue.error.slice(0, 180)}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+              {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
 
             </div>
           </div>

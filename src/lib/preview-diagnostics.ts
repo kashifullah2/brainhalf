@@ -54,3 +54,23 @@ export function diagnosePreviewError(error: string): PreviewDiagnostic {
   };
 }
 
+/**
+ * Plain-language explanation of a preview error for non-technical users.
+ * Used in the preview strip instead of the raw error message.
+ */
+export function plainPreviewError(diagnostic: PreviewDiagnostic, layer: 'backend' | 'frontend'): string {
+  const where = layer === 'backend' ? "your app's backend" : 'your app';
+  switch (diagnostic.category) {
+    case 'react-render':
+      return `Something went wrong showing ${where}. The builder can fix this — click "Ask the builder to fix".`;
+    case 'reference':
+      return `${where} tried to use something that wasn't set up yet. The builder can fix this — click "Ask the builder to fix".`;
+    case 'syntax':
+      return `There's a typo in ${where}'s code. The builder can fix this — click "Ask the builder to fix".`;
+    case 'network':
+      return `${where} couldn't reach something it needed. Check your connection, or ask the builder to fix it.`;
+    default:
+      return `${where} ran into a problem. The builder can try to fix it — click "Ask the builder to fix".`;
+  }
+}
+
