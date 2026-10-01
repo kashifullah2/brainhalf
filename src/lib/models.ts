@@ -11,7 +11,7 @@
  * model to the UI means adding it here too — the two are a contract.
  */
 
-export type ModelProvider = 'cloudflare' | 'anthropic' | 'aws' | 'atria';
+export type ModelProvider = 'cloudflare' | 'anthropic' | 'aws' | 'atria' | 'custom';
 
 export interface AllowedModel {
   /** Client-visible model name, matched exactly (case-sensitive). */

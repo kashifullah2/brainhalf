@@ -1579,27 +1579,58 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
           const requestedModel = data.model || DEFAULT_MODEL_ID;
 
+          // Custom models added via the admin page (ids start with cm_).
+          // They are OpenAI-compatible: base URL + API key + model id.
+          let customModel: { baseUrl: string; modelId: string; apiKey: string; name: string } | null = null;
+          if (requestedModel.startsWith('cm_')) {
+            try {
+              const cmRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch(`https://registry/internal/custom-model/${encodeURIComponent(requestedModel)}`);
+              if (cmRes.ok) {
+                customModel = await cmRes.json() as { baseUrl: string; modelId: string; apiKey: string; name: string };
+              }
+            } catch { /* fall through to the allowlist error below */ }
+            if (!customModel) {
+              sendError('That custom model is no longer available.');
+              return;
+            }
+          }
+
           // Exact allowlist match only. No substring dispatch ("includes sonnet")
           // and no default substitution for an unknown id.
-          const resolved = resolveModel(requestedModel, data.provider);
-          if (!resolved) {
-            sendError(`Model "${requestedModel}" is not in the model allowlist`);
-            return;
+          // Custom models get a synthetic allowlist entry so the rest of the
+          // pipeline (token caps, logging) works unchanged.
+          let resolved: AllowedModel;
+          if (customModel) {
+            resolved = { id: customModel.modelId, name: customModel.name, provider: 'custom', maxTokens: 8192, clientSelectable: false };
+          } else {
+            const allowlisted = resolveModel(requestedModel, data.provider);
+            if (!allowlisted) {
+              sendError(`Model "${requestedModel}" is not in the model allowlist`);
+              return;
+            }
+            resolved = allowlisted;
           }
 
           // Admin kill-switch for the built-in models. Custom models added
           // via the admin page are unaffected.
-          try {
-            const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
-            if (statusRes.ok) {
-              const statusBody = await statusRes.json() as { integratedModelsEnabled?: boolean };
-              if (statusBody.integratedModelsEnabled === false) {
-                sendError('The built-in models are currently turned off by the administrator.');
-                return;
+          if (!customModel) {
+            try {
+              const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
+              if (statusRes.ok) {
+                const statusBody = await statusRes.json() as { integratedModelsEnabled?: boolean; disabledModels?: string[] };
+                if (statusBody.integratedModelsEnabled === false) {
+                  sendError('The built-in models are currently turned off by the administrator.');
+                  return;
+                }
+                const modelKey = `${resolved!.provider}:${resolved!.name}`;
+                if (Array.isArray(statusBody.disabledModels) && statusBody.disabledModels.includes(modelKey)) {
+                  sendError(`Model "${resolved!.name}" is currently turned off by the administrator.`);
+                  return;
+                }
               }
+            } catch {
+              // Fail open: a registry blip must not kill generation.
             }
-          } catch {
-            // Fail open: a registry blip must not kill generation.
           }
 
           const assetPaths = new Set<string>();
@@ -1892,26 +1923,42 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           }
 
           let maxTokensForModel: number | undefined = undefined;
+          // For custom models this stays the synthetic entry (provider 'custom'),
+          // so the Bedrock-alias logic below is skipped.
           let model: AllowedModel = resolved;
 
-          // Anthropic-family models may be served by the native API or by Bedrock;
-          // selectModelTransport picks whichever credential this deployment has.
-          model = selectModelTransport(model, creds);
+          // Custom admin-added models use an OpenAI-compatible client pointed
+          // at their own base URL and API key.
+          if (customModel) {
+            try {
+              const { createOpenAI } = await import('@ai-sdk/openai');
+              const custom = createOpenAI({ apiKey: customModel.apiKey, baseURL: customModel.baseUrl, compatibility: 'compatible' } as any);
+              aiModel = custom.chat(customModel.modelId);
+              maxTokensForModel = 8192;
+            } catch (err) {
+              sendError(err instanceof Error ? err.message : 'Custom model is not configured');
+              return;
+            }
+          } else {
+            // Anthropic-family models may be served by the native API or by Bedrock;
+            // selectModelTransport picks whichever credential this deployment has.
+            model = selectModelTransport(resolved, creds);
 
-          try {
-            const built = providerModel(model, env, creds);
-            aiModel = built.aiModel;
-            maxTokensForModel = built.maxTokens;
-          } catch (err) {
-            sendError(err instanceof Error ? err.message : 'Model provider is not configured');
-            return;
-          }
+            try {
+              const built = providerModel(model, env, creds);
+              aiModel = built.aiModel;
+              maxTokensForModel = built.maxTokens;
+            } catch (err) {
+              sendError(err instanceof Error ? err.message : 'Model provider is not configured');
+              return;
+            }
 
-          // No cross-provider fallback. If the required credential is missing,
-          // the request fails with a clear message instead of rerouting.
-          if (!aiModel) {
-            sendError(`Model "${model.name}" needs ${model.provider} credentials, which are not configured`);
-            return;
+            // No cross-provider fallback. If the required credential is missing,
+            // the request fails with a clear message instead of rerouting.
+            if (!aiModel) {
+              sendError(`Model "${model.name}" needs ${model.provider} credentials, which are not configured`);
+              return;
+            }
           }
 
           const isStaged = !plannerMode && !isConversationalPrompt(actualPrompt) && !fileOutputRetry && !actualPrompt.includes('<edit ') && !(typeof process !== 'undefined' && process.env?.VITEST);

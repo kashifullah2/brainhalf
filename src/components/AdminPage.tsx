@@ -125,6 +125,7 @@ export default function AdminPage() {
   const [builtinTestPrompt, setBuiltinTestPrompt] = useState('');
   const [builtinTestOutput, setBuiltinTestOutput] = useState('');
   const [builtinTestRunning, setBuiltinTestRunning] = useState(false);
+  const [disabledModels, setDisabledModels] = useState<string[]>([]);
 
   const load = async (signal?: AbortSignal) => {
     setState('loading');
@@ -173,8 +174,9 @@ export default function AdminPage() {
     try {
       const response = await authFetch('/api/admin/settings');
       if (response.ok) {
-        const body = await response.json() as { integratedModelsEnabled?: boolean };
+        const body = await response.json() as { integratedModelsEnabled?: boolean; disabledModels?: string[] };
         setIntegratedEnabled(body.integratedModelsEnabled !== false);
+        setDisabledModels(Array.isArray(body.disabledModels) ? body.disabledModels : []);
       }
     } catch { /* non-fatal */ }
   };
@@ -190,17 +192,38 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ integratedModelsEnabled: !integratedEnabled }),
       });
-      const body = await response.json() as { integratedModelsEnabled?: boolean; error?: string };
+      const body = await response.json() as { error?: string };
       if (!response.ok) {
         setNotice({ kind: 'error', text: body.error || 'Could not change the setting.' });
       } else {
-        setIntegratedEnabled(body.integratedModelsEnabled !== false);
-        setNotice({ kind: 'ok', text: body.integratedModelsEnabled ? 'Built-in models turned on.' : 'Built-in models turned off.' });
+        setIntegratedEnabled(!integratedEnabled);
+        setNotice({ kind: 'ok', text: !integratedEnabled ? 'Built-in models turned on.' : 'Built-in models turned off.' });
       }
     } catch {
       setNotice({ kind: 'error', text: 'Could not change the setting.' });
     } finally {
       setIntegratedToggling(false);
+    }
+  };
+
+  const toggleSingleModel = async (modelKey: string) => {
+    const next = disabledModels.includes(modelKey)
+      ? disabledModels.filter(k => k !== modelKey)
+      : [...disabledModels, modelKey];
+    setDisabledModels(next);
+    try {
+      const response = await authFetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disabledModels: next }),
+      });
+      if (!response.ok) {
+        setNotice({ kind: 'error', text: 'Could not save the model setting.' });
+        setDisabledModels(disabledModels); // revert on failure
+      }
+    } catch {
+      setNotice({ kind: 'error', text: 'Could not save the model setting.' });
+      setDisabledModels(disabledModels); // revert on failure
     }
   };
 
@@ -650,6 +673,31 @@ export default function AdminPage() {
                   <span className="admin-toggle-knob" />
                 </button>
                 <span className="admin-toggle-label">{integratedEnabled ? 'On' : 'Off'}</span>
+              </div>
+            </div>
+            <div className="admin-card" aria-label="Turn individual models on or off">
+              <h3>Individual models</h3>
+              <p className="admin-hint">Turn specific built-in models on or off. Models you turn off disappear from the model picker and cannot be used for new generations.</p>
+              <div className="admin-model-list">
+                {CLIENT_SELECTABLE_MODELS.map(m => {
+                  const key = `${m.provider}:${m.name}`;
+                  const isOff = disabledModels.includes(key);
+                  return (
+                    <div key={key} className="admin-model-row">
+                      <span className="admin-model-name">{m.name} <span className="admin-model-provider">({m.provider})</span></span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={!isOff}
+                        aria-label={`Turn ${m.name} ${isOff ? 'on' : 'off'}`}
+                        className={`admin-toggle admin-toggle-sm${!isOff ? ' admin-toggle-on' : ''}`}
+                        onClick={() => toggleSingleModel(key)}
+                      >
+                        <span className="admin-toggle-knob" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="admin-card" aria-label="Test a built-in model">

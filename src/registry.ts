@@ -562,23 +562,69 @@ export class AuthRegistry {
       if (path.startsWith('/email/') && method === 'POST') return emailRegistry(path, await json(), this.state.storage);
       // Admin model settings: on/off toggle for the built-in BrainHalf models.
       if (path === '/admin/settings' && method === 'GET') {
-        const rows = this.sql.exec("SELECT value FROM model_settings WHERE key = 'integrated_models_enabled'").toArray() as Array<{ value: string }>;
-        return this.json(200, { integratedModelsEnabled: rows.length === 0 ? true : rows[0].value === '1' });
+        const enabledRows = this.sql.exec("SELECT value FROM model_settings WHERE key = 'integrated_models_enabled'").toArray() as Array<{ value: string }>;
+        const disabledRows = this.sql.exec("SELECT value FROM model_settings WHERE key = 'disabled_models'").toArray() as Array<{ value: string }>;
+        let disabledModels: string[] = [];
+        try { disabledModels = disabledRows.length ? JSON.parse(disabledRows[0].value) : []; } catch { disabledModels = []; }
+        return this.json(200, {
+          integratedModelsEnabled: enabledRows.length === 0 ? true : enabledRows[0].value === '1',
+          disabledModels: Array.isArray(disabledModels) ? disabledModels : [],
+        });
       }
       if (path === '/admin/settings' && method === 'POST') {
-        const body = await json<{ integratedModelsEnabled?: boolean }>();
-        if (typeof body?.integratedModelsEnabled !== 'boolean') return this.json(400, { error: 'integratedModelsEnabled must be a boolean.' });
-        this.sql.exec(
-          "INSERT INTO model_settings (key, value, updated_at) VALUES ('integrated_models_enabled', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-          body.integratedModelsEnabled ? '1' : '0', Date.now()
-        );
-        return this.json(200, { integratedModelsEnabled: body.integratedModelsEnabled });
+        const body = await json<{ integratedModelsEnabled?: boolean; disabledModels?: string[] }>();
+        if (body?.integratedModelsEnabled !== undefined && typeof body.integratedModelsEnabled !== 'boolean') {
+          return this.json(400, { error: 'integratedModelsEnabled must be a boolean.' });
+        }
+        if (body?.disabledModels !== undefined && !Array.isArray(body.disabledModels)) {
+          return this.json(400, { error: 'disabledModels must be an array.' });
+        }
+        const now = Date.now();
+        if (body?.integratedModelsEnabled !== undefined) {
+          this.sql.exec(
+            "INSERT INTO model_settings (key, value, updated_at) VALUES ('integrated_models_enabled', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            body.integratedModelsEnabled ? '1' : '0', now
+          );
+        }
+        if (body?.disabledModels !== undefined) {
+          const clean = body.disabledModels.filter(id => typeof id === 'string' && id.length <= 200);
+          this.sql.exec(
+            "INSERT INTO model_settings (key, value, updated_at) VALUES ('disabled_models', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            JSON.stringify(clean), now
+          );
+        }
+        return this.json(200, { ok: true });
       }
       // Public (authenticated) status check so the UI can hide the model
       // picker when the built-in models are disabled.
       if (path === '/public/model-status' && method === 'GET') {
-        const rows = this.sql.exec("SELECT value FROM model_settings WHERE key = 'integrated_models_enabled'").toArray() as Array<{ value: string }>;
-        return this.json(200, { integratedModelsEnabled: rows.length === 0 ? true : rows[0].value === '1' });
+        const enabledRows = this.sql.exec("SELECT value FROM model_settings WHERE key = 'integrated_models_enabled'").toArray() as Array<{ value: string }>;
+        const disabledRows = this.sql.exec("SELECT value FROM model_settings WHERE key = 'disabled_models'").toArray() as Array<{ value: string }>;
+        const customRows = this.sql.exec('SELECT id, name, base_url, model_id FROM custom_models ORDER BY created_at DESC').toArray() as Array<{ id: string; name: string; base_url: string; model_id: string }>;
+        let disabledModels: string[] = [];
+        try { disabledModels = disabledRows.length ? JSON.parse(disabledRows[0].value) : []; } catch { disabledModels = []; }
+        return this.json(200, {
+          integratedModelsEnabled: enabledRows.length === 0 ? true : enabledRows[0].value === '1',
+          disabledModels: Array.isArray(disabledModels) ? disabledModels : [],
+          customModels: customRows.map(r => ({ id: r.id, name: r.name, baseUrl: r.base_url, modelId: r.model_id })),
+        });
+      }
+      // Internal: full custom model config (including decrypted API key) for
+      // the agent's generation path. Only callable within the worker network.
+      if (path.startsWith('/internal/custom-model/') && method === 'GET') {
+        const id = decodeURIComponent(path.slice('/internal/custom-model/'.length));
+        if (!id.startsWith('cm_')) return this.json(400, { error: 'Invalid request' });
+        const rows = this.sql.exec(
+          'SELECT base_url, model_id, api_key_encrypted FROM custom_models WHERE id = ?', id
+        ).toArray() as Array<{ base_url: string; model_id: string; api_key_encrypted: string }>;
+        if (!rows.length) return this.json(404, { error: 'Model not found' });
+        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined
+          || (this.env as Record<string, unknown>).SESSION_SECRET as string | undefined;
+        if (!secret) return this.json(500, { error: 'Model encryption is not configured.' });
+        const { decryptValue } = await import('./lib/crypto');
+        const apiKey = await decryptValue(secret, rows[0].api_key_encrypted);
+        if (!apiKey) return this.json(500, { error: 'Could not decrypt the API key.' });
+        return this.json(200, { id, baseUrl: rows[0].base_url, modelId: rows[0].model_id, apiKey });
       }
       if (path === '/oauth/store' && method === 'POST') {
         const body = await json<{ key?: string; kind?: string; data?: unknown; ttl?: number }>();

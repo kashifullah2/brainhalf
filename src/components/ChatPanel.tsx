@@ -235,8 +235,26 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     let cancelled = false;
     authFetch('/api/models/status').then(async (res) => {
       if (res.ok && !cancelled) {
-        const body = await res.json() as { integratedModelsEnabled?: boolean };
-        setIntegratedModelsOn(body.integratedModelsEnabled !== false);
+        const body = await res.json() as {
+          integratedModelsEnabled?: boolean;
+          disabledModels?: string[];
+          customModels?: Array<{ id: string; name: string; baseUrl: string; modelId: string }>;
+        };
+        const enabled = body.integratedModelsEnabled !== false;
+        setIntegratedModelsOn(enabled);
+        const disabled = new Set(Array.isArray(body.disabledModels) ? body.disabledModels : []);
+        // Custom admin-added models appear in the picker with a "Custom" badge.
+        const custom: ModelDef[] = Array.isArray(body.customModels) ? body.customModels.map(cm => ({
+          id: cm.id,
+          name: cm.name,
+          provider: 'custom' as const,
+          category: 'fast' as const,
+          badge: 'Custom',
+        })) : [];
+        const builtin = enabled
+          ? MODEL_CATALOG.filter(m => !disabled.has(`${m.provider}:${m.id}`))
+          : [];
+        if (!cancelled) setModels(rankModelsByReliability([...custom, ...builtin], getReliabilityScope()));
       }
     }).catch(() => {});
     return () => { cancelled = true; };
