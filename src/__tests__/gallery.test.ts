@@ -130,4 +130,19 @@ describe('gallery remix', () => {
     expect(((await (await upgraded.fetch(new Request('https://registry/projects/showcase-status?projectId=app-old'))).json()) as { showcase: boolean }).showcase).toBe(false);
     legacy.close();
   });
+
+  it('caches the gallery listing and invalidates on showcase changes', async () => {
+    await claim('app-one', 'owner-1', 'Cached App');
+    await publish('app-one', 'owner-1');
+    await showcase('app-one', 'owner-1', { showcase: true, description: 'First.' });
+    const first = await galleryApps();
+    expect(first).toHaveLength(1);
+    // Remove from showcase behind the cache's back via direct SQL — the cached
+    // response must still show it (proves the cache was hit).
+    database.prepare('UPDATE project_owners SET showcase = 0 WHERE project_id = ?').run('app-one');
+    expect(await galleryApps()).toHaveLength(1);
+    // Toggling showcase through the API invalidates the cache.
+    await showcase('app-one', 'owner-1', { showcase: false });
+    expect(await galleryApps()).toHaveLength(0);
+  });
 });

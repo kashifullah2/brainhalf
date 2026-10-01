@@ -59,6 +59,10 @@ export class AuthRegistry {
   private cleanupRun: Promise<void> | null = null;
   // Cached once per DO instance lifetime for ai-budget:* instances.
   private adminUnlimited: boolean | null = null;
+  // Short-TTL cache for the public gallery listing (hottest read path through
+  // the singleton DO). Invalidated on any showcase/publish change. 30s TTL.
+  private galleryCache: { data: unknown; timestamp: number } | null = null;
+  private static readonly GALLERY_CACHE_TTL_MS = 30_000;
 
   constructor(state: DurableObjectState, private env: any) {
     this.state = state;
@@ -794,17 +798,24 @@ export class AuthRegistry {
           // stay listed. Taking an app offline removes it from the gallery; the
           // owner can list it again after republishing.
           this.sql.exec('UPDATE project_owners SET published = ?, showcase = CASE WHEN ? = 1 THEN showcase ELSE 0 END, updated_at = ? WHERE project_id = ?', body!.published ? 1 : 0, body!.published ? 1 : 0, Date.now(), projectId as string);
+          this.galleryCache = null;
         }
         return this.json(200, { published: method === 'PUT' ? body!.published : rows[0].published === 1 });
       }
 
       // Public showcase gallery. No session: listings contain only what an owner
       // explicitly published to the gallery — never private project data.
+      // Cached for 30s: the listing changes rarely, but this is the hottest
+      // read path through the singleton registry DO.
       if (path === '/gallery' && method === 'GET') {
+        const now = Date.now();
+        if (this.galleryCache && now - this.galleryCache.timestamp < AuthRegistry.GALLERY_CACHE_TTL_MS) {
+          return this.json(200, this.galleryCache.data);
+        }
         const rows = this.sql.exec(
           'SELECT project_id, name, showcase_description, remix_count, showcased_at FROM project_owners WHERE showcase = 1 AND deleted_at IS NULL ORDER BY showcased_at DESC LIMIT 60'
         ).toArray() as Array<{ project_id: string; name: string; showcase_description: string; remix_count: number; showcased_at: number | null }>;
-        return this.json(200, {
+        const data = {
           apps: rows.map((row) => ({
             id: row.project_id,
             name: row.name,
@@ -812,7 +823,9 @@ export class AuthRegistry {
             remixCount: row.remix_count,
             showcasedAt: row.showcased_at,
           })),
-        });
+        };
+        this.galleryCache = { data, timestamp: now };
+        return this.json(200, data);
       }
 
       if (path === '/projects/showcase' && (method === 'GET' || method === 'PUT')) {
@@ -833,6 +846,7 @@ export class AuthRegistry {
             'UPDATE project_owners SET showcase = ?, showcase_description = ?, showcased_at = CASE WHEN ? = 1 AND showcased_at IS NULL THEN ? ELSE showcased_at END, updated_at = ? WHERE project_id = ?',
             body.showcase ? 1 : 0, description, body.showcase ? 1 : 0, Date.now(), Date.now(), projectId as string
           );
+          this.galleryCache = null;
         }
         const current = this.sql.exec('SELECT showcase, showcase_description, remix_count FROM project_owners WHERE project_id = ?', projectId as string).toArray() as Array<{ showcase: number; showcase_description: string; remix_count: number }>;
         return this.json(200, { showcase: current[0].showcase === 1, description: current[0].showcase_description, remixCount: current[0].remix_count });
@@ -953,6 +967,7 @@ export class AuthRegistry {
           this.sql.exec("UPDATE project_owners SET deleted_at = ?, published = 0, name = 'Deleted project' WHERE project_id = ?", Date.now(), projectId as string);
           cleanup.enqueue(projectId, userId);
         });
+        this.galleryCache = null;
         await cleanup.schedule();
         // Free the hosted-project slot right away, not when the async cleanup
         // queue gets to it. Without this, the pilot keeps counting the deleted
