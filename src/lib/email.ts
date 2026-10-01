@@ -28,7 +28,12 @@ async function send(env: EmailEnv, to: string, subject: string, text: string, ht
       attachments: [{ filename: 'brainhalf.png', content: BRAND_IMAGE_BASE64, content_id: 'brainhalf-logo' }],
       ...(replyTo ? { reply_to: replyTo } : {}), }),
   });
-  if (!response.ok) { await response.body?.cancel(); throw new Error('Email delivery unavailable'); }
+  if (!response.ok) {
+    let detail = '';
+    try { detail = (await response.text()).slice(0, 500); } catch { /* ignore */ }
+    console.error(`Resend API error: status=${response.status} body=${detail}`);
+    throw new Error(`Email delivery unavailable (resend_status=${response.status})`);
+  }
   await response.body?.cancel();
 }
 

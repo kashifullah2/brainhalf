@@ -474,6 +474,23 @@ export default {
 
     // Operator model settings: on/off toggle for the built-in models.
     // Same operator allowlist as /api/admin/users.
+    // Admin email health check: is Resend configured? (never exposes the key)
+    if (url.pathname === '/api/admin/email-status' && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      const hasKey = Boolean((env as Record<string, unknown>).RESEND_API_KEY as string | undefined)?.toString().trim();
+      const fromEmail = String((env as Record<string, unknown>).RESEND_FROM_EMAIL || '').trim();
+      return withCors(Response.json({
+        configured: Boolean(hasKey && fromEmail),
+        fromEmail: fromEmail || null,
+        fromDomain: fromEmail.includes('@') ? fromEmail.split('@')[1] : null,
+        hint: !hasKey ? 'RESEND_API_KEY is missing in the worker environment.'
+          : !fromEmail ? 'RESEND_FROM_EMAIL is missing in the worker environment.'
+          : 'Keys are set. If delivery still fails, check the Resend dashboard: API key validity, domain verification, and account status. Worker logs show the exact Resend error.',
+      }, { headers: { 'Cache-Control': 'no-store' } }), origin);
+    }
+
     if (url.pathname === '/api/admin/settings' && (request.method === 'GET' || request.method === 'POST')) {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
