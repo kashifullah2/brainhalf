@@ -1587,6 +1587,21 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             return;
           }
 
+          // Admin kill-switch for the built-in models. Custom models added
+          // via the admin page are unaffected.
+          try {
+            const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
+            if (statusRes.ok) {
+              const statusBody = await statusRes.json() as { integratedModelsEnabled?: boolean };
+              if (statusBody.integratedModelsEnabled === false) {
+                sendError('The built-in models are currently turned off by the administrator.');
+                return;
+              }
+            }
+          } catch {
+            // Fail open: a registry blip must not kill generation.
+          }
+
           const assetPaths = new Set<string>();
           const extensions = prepareCapabilities(this.builderService(this.senderUserId(connection) || ''), data.attachmentIds, abortController.signal, async files => {
             if (!this.writeEpoch.accepts(epoch)) throw new Error('Generation was superseded.');

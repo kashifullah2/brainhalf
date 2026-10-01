@@ -4,6 +4,8 @@ import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
 import MobileNav from './MobileNav';
 import { authFetch } from '../lib/auth-client';
+import { PREVIEW_SANDBOX } from '../lib/preview-isolation';
+import { CLIENT_SELECTABLE_MODELS } from '../lib/models';
 import './AdminPage.css';
 
 interface AdminUser {
@@ -117,6 +119,12 @@ export default function AdminPage() {
   const [testPrompt, setTestPrompt] = useState('');
   const [testOutput, setTestOutput] = useState('');
   const [testRunning, setTestRunning] = useState(false);
+  const [integratedEnabled, setIntegratedEnabled] = useState(true);
+  const [integratedToggling, setIntegratedToggling] = useState(false);
+  const [builtinTestModel, setBuiltinTestModel] = useState('');
+  const [builtinTestPrompt, setBuiltinTestPrompt] = useState('');
+  const [builtinTestOutput, setBuiltinTestOutput] = useState('');
+  const [builtinTestRunning, setBuiltinTestRunning] = useState(false);
 
   const load = async (signal?: AbortSignal) => {
     setState('loading');
@@ -160,6 +168,71 @@ export default function AdminPage() {
   };
 
   useEffect(() => { if (state === 'ready') void loadModels(); }, [state]);
+
+  const loadIntegratedSetting = async () => {
+    try {
+      const response = await authFetch('/api/admin/settings');
+      if (response.ok) {
+        const body = await response.json() as { integratedModelsEnabled?: boolean };
+        setIntegratedEnabled(body.integratedModelsEnabled !== false);
+      }
+    } catch { /* non-fatal */ }
+  };
+
+  useEffect(() => { if (state === 'ready') void loadIntegratedSetting(); }, [state]);
+
+  const toggleIntegrated = async () => {
+    setIntegratedToggling(true);
+    setNotice(null);
+    try {
+      const response = await authFetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ integratedModelsEnabled: !integratedEnabled }),
+      });
+      const body = await response.json() as { integratedModelsEnabled?: boolean; error?: string };
+      if (!response.ok) {
+        setNotice({ kind: 'error', text: body.error || 'Could not change the setting.' });
+      } else {
+        setIntegratedEnabled(body.integratedModelsEnabled !== false);
+        setNotice({ kind: 'ok', text: body.integratedModelsEnabled ? 'Built-in models turned on.' : 'Built-in models turned off.' });
+      }
+    } catch {
+      setNotice({ kind: 'error', text: 'Could not change the setting.' });
+    } finally {
+      setIntegratedToggling(false);
+    }
+  };
+
+  const testBuiltinModel = async () => {
+    if (!builtinTestModel) {
+      setNotice({ kind: 'error', text: 'Choose a built-in model to test.' });
+      return;
+    }
+    if (!builtinTestPrompt.trim()) {
+      setNotice({ kind: 'error', text: 'Type a prompt to test the model.' });
+      return;
+    }
+    setBuiltinTestRunning(true);
+    setBuiltinTestOutput('');
+    try {
+      const response = await authFetch('/api/test/simple', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: builtinTestModel, prompt: builtinTestPrompt.trim() }),
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string; codeSnippet?: string; durationMs?: number; tokensPerSec?: number };
+      if (!response.ok) {
+        setBuiltinTestOutput(`Error: ${body.error || `Request failed (${response.status})`}`);
+      } else {
+        setBuiltinTestOutput(`${body.codeSnippet || '(no output)'}\n\n— ${body.durationMs}ms, ${body.tokensPerSec?.toFixed(1)} tokens/sec`);
+      }
+    } catch {
+      setBuiltinTestOutput('Error: Could not reach the model.');
+    } finally {
+      setBuiltinTestRunning(false);
+    }
+  };
 
   const saveModel = async () => {
     if (!modelForm.name.trim() || !modelForm.baseUrl.trim() || !modelForm.modelId.trim() || !modelForm.apiKey.trim()) {
@@ -562,6 +635,45 @@ export default function AdminPage() {
           </div>
           </>}
           {tab === 'models' && <>
+            <div className="admin-card" aria-label="Built-in BrainHalf models">
+              <h3>BrainHalf integrated models</h3>
+              <p className="admin-hint">Turn the built-in models on or off for everyone. When off, new generations and model tests are refused. Custom models you add below are unaffected.</p>
+              <div className="admin-toggle-row">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={integratedEnabled}
+                  className={`admin-toggle${integratedEnabled ? ' admin-toggle-on' : ''}`}
+                  onClick={toggleIntegrated}
+                  disabled={integratedToggling}
+                >
+                  <span className="admin-toggle-knob" />
+                </button>
+                <span className="admin-toggle-label">{integratedEnabled ? 'On' : 'Off'}</span>
+              </div>
+            </div>
+            <div className="admin-card" aria-label="Test a built-in model">
+              <h3>Test a built-in model</h3>
+              <p className="admin-hint">Runs the standard speed test against the selected integrated model.</p>
+              <div className="admin-form-grid">
+                <label>Model
+                  <select value={builtinTestModel} onChange={e => setBuiltinTestModel(e.target.value)}>
+                    <option value="">Choose a model…</option>
+                    {CLIENT_SELECTABLE_MODELS.map(m => (
+                      <option key={`${m.provider}:${m.name}`} value={m.name}>{m.name} ({m.provider})</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="admin-test-label">Prompt
+                <textarea value={builtinTestPrompt} onChange={e => setBuiltinTestPrompt(e.target.value)} placeholder="Describe what to build…" rows={3} />
+              </label>
+              <button type="button" className="admin-btn admin-btn-primary" onClick={testBuiltinModel} disabled={builtinTestRunning || !integratedEnabled}>
+                {builtinTestRunning ? <Loader2 size={14} className="admin-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />} {builtinTestRunning ? 'Testing…' : 'Run test'}
+              </button>
+              {!integratedEnabled && <p className="admin-hint">Turn the integrated models on to run tests.</p>}
+              {builtinTestOutput && <pre className="admin-test-output" aria-live="polite">{builtinTestOutput}</pre>}
+            </div>
             <div className="admin-card" aria-label="Add a custom model">
               <h3>Add a model</h3>
               <p className="admin-hint">Connect any OpenAI-compatible API. The API key is encrypted before it is stored. Test generations are unlimited — no token cap is applied.</p>
@@ -674,7 +786,7 @@ export default function AdminPage() {
             title={`Preview of ${previewProject.name}`}
             className="admin-preview-frame"
             src={`/api/admin/projects/${encodeURIComponent(previewProject.id)}/preview/`}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox={PREVIEW_SANDBOX}
           />
         </div>
       </div>}

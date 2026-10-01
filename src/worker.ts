@@ -173,6 +173,18 @@ function jsonError(message: string, status: number): Response {
   });
 }
 
+/** Reads the admin's on/off toggle for the built-in BrainHalf models. */
+async function integratedModelsEnabled(env: PlatformEnv): Promise<boolean> {
+  try {
+    const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
+    if (!response.ok) return true; // fail open: a registry blip must not kill generation
+    const body = await response.json() as { integratedModelsEnabled?: boolean };
+    return body.integratedModelsEnabled !== false;
+  } catch {
+    return true;
+  }
+}
+
 function withPreviewPrivacy(response: Response): Response {
   const next = new Response(response.body, response);
   for (const name of ['Set-Cookie', 'Clear-Site-Data', 'Refresh', 'Access-Control-Allow-Credentials', 'X-Frame-Options']) next.headers.delete(name);
@@ -460,6 +472,32 @@ export default {
       } catch { return withCors(jsonError('Model request failed', 503), origin); }
     }
 
+    // Operator model settings: on/off toggle for the built-in models.
+    // Same operator allowlist as /api/admin/users.
+    if (url.pathname === '/api/admin/settings' && (request.method === 'GET' || request.method === 'POST')) {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      try {
+        const init: RequestInit = { method: request.method, headers: { 'Content-Type': 'application/json' } };
+        if (request.method === 'POST') init.body = await request.text();
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/admin/settings', init);
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch { return withCors(jsonError('Settings unavailable', 503), origin); }
+    }
+
+    // Authenticated status check for the built-in model toggle.
+    if (url.pathname === '/api/models/status' && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      try {
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch { return withCors(jsonError('Status unavailable', 503), origin); }
+    }
+
     // Operator file inspection: return the project's source files so the
     // operator can review another user's app code. Admin-only.
     const adminFilesMatch = url.pathname.match(/^\/api\/admin\/projects\/([A-Za-z0-9_-]+)\/files$/);
@@ -729,6 +767,8 @@ export default {
       const level = url.pathname === '/api/test/simple' ? 'simple' : url.pathname === '/api/test/medium' ? 'medium' : 'hard';
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized('Sign in to run model tests'), origin);
+
+      if (!(await integratedModelsEnabled(env))) return withCors(jsonError('The built-in models are currently turned off by the administrator.', 503), origin);
 
       const rate = await checkRateLimit(env, 'modelTest', user.userId);
       if (!rate.ok) return withCors(rate.unavailable ? jsonError('Rate-limit service unavailable. No model test was started.', 503) : tooManyRequests(rate.retryAfter), origin);

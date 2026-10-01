@@ -15,7 +15,7 @@ import { appEvents } from '../lib/events';
 import { parseMessageSegments, parseMessageSegmentsMemoized, type ParseResult } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
 import { bindProjectStore, getProjectSubmissionKey, shortTitleFromPrompt } from '../lib/project-store';
-import { getToken, getUser, verifyStoredSession, withWsAuthQuery } from '../lib/auth-client';
+import { getToken, getUser, verifyStoredSession, withWsAuthQuery, authFetch } from '../lib/auth-client';
 import CodeFileBlock from './CodeFileBlock';
 import DiffEditBlock from './DiffEditBlock';
 import GenerationChanges, { type ChangeContent } from './GenerationChanges';
@@ -230,6 +230,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const [input, setInput] = useState('');
   const initialReliabilityScope = getUser()?.id || 'guest';
   const [models, setModels] = useState<ModelDef[]>(() => rankModelsByReliability(MODEL_CATALOG, initialReliabilityScope));
+  const [integratedModelsOn, setIntegratedModelsOn] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    authFetch('/api/models/status').then(async (res) => {
+      if (res.ok && !cancelled) {
+        const body = await res.json() as { integratedModelsEnabled?: boolean };
+        setIntegratedModelsOn(body.integratedModelsEnabled !== false);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const projectScope = React.useMemo(() => ({ active: true }), [activeProjectId]);
   const projectScopeRef = useRef(projectScope); projectScopeRef.current = projectScope;
   const exportOnly = useRef(false);
@@ -2456,9 +2467,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 aria-expanded={showModelPicker}
                 aria-controls={modelPickerListId}
                 className="studio-composer-model"
-                title="Change AI model"
-                aria-label="Change AI model"
+                title={integratedModelsOn ? 'Change AI model' : 'Built-in models are turned off by the administrator'}
+                aria-label={integratedModelsOn ? 'Change AI model' : 'Built-in models are turned off'}
                 data-testid="model-picker-btn"
+                disabled={!integratedModelsOn}
               >
                 <span className="studio-model-caption">Model</span>
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>

@@ -153,6 +153,15 @@ export class AuthRegistry {
         updated_at INTEGER NOT NULL
       )`
     );
+    // Admin-controlled feature flags, e.g. whether the built-in BrainHalf
+    // models are enabled for generation.
+    sql.exec(
+      `CREATE TABLE IF NOT EXISTS model_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`
+    );
     // A deleted project keeps its row as a tombstone. Removing the row entirely
     // left the id unowned, and /projects/claim — which runs on first access to a
     // project — would hand the orphaned Durable Object (and its R2 backup,
@@ -551,6 +560,26 @@ export class AuthRegistry {
         });
       }
       if (path.startsWith('/email/') && method === 'POST') return emailRegistry(path, await json(), this.state.storage);
+      // Admin model settings: on/off toggle for the built-in BrainHalf models.
+      if (path === '/admin/settings' && method === 'GET') {
+        const rows = this.sql.exec("SELECT value FROM model_settings WHERE key = 'integrated_models_enabled'").toArray() as Array<{ value: string }>;
+        return this.json(200, { integratedModelsEnabled: rows.length === 0 ? true : rows[0].value === '1' });
+      }
+      if (path === '/admin/settings' && method === 'POST') {
+        const body = await json<{ integratedModelsEnabled?: boolean }>();
+        if (typeof body?.integratedModelsEnabled !== 'boolean') return this.json(400, { error: 'integratedModelsEnabled must be a boolean.' });
+        this.sql.exec(
+          "INSERT INTO model_settings (key, value, updated_at) VALUES ('integrated_models_enabled', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+          body.integratedModelsEnabled ? '1' : '0', Date.now()
+        );
+        return this.json(200, { integratedModelsEnabled: body.integratedModelsEnabled });
+      }
+      // Public (authenticated) status check so the UI can hide the model
+      // picker when the built-in models are disabled.
+      if (path === '/public/model-status' && method === 'GET') {
+        const rows = this.sql.exec("SELECT value FROM model_settings WHERE key = 'integrated_models_enabled'").toArray() as Array<{ value: string }>;
+        return this.json(200, { integratedModelsEnabled: rows.length === 0 ? true : rows[0].value === '1' });
+      }
       if (path === '/oauth/store' && method === 'POST') {
         const body = await json<{ key?: string; kind?: string; data?: unknown; ttl?: number }>();
         if (!body || !/^[A-Za-z0-9_-]{43}$/.test(body.key || '') || !['state', 'handoff'].includes(body.kind || '')) return this.json(400, { error: 'Invalid flow' });

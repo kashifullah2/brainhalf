@@ -145,3 +145,15 @@
 .admin-spin { animation:admin-spin 1s linear infinite; }
 @keyframes admin-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .admin-spin { animation:none; } }
+
+/* Toggle switch */
+.admin-toggle-row { display:flex; align-items:center; gap:12px; margin-top:12px; }
+.admin-toggle { position:relative; width:48px; height:28px; border-radius:14px; border:1px solid var(--border-subtle); background:var(--bg-secondary); cursor:pointer; transition:background 0.2s; padding:0; }
+.admin-toggle-on { background:var(--studio-blue); border-color:var(--studio-blue); }
+.admin-toggle-knob { position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:left 0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+.admin-toggle-on .admin-toggle-knob { left:23px; }
+.admin-toggle:disabled { opacity:0.6; cursor:wait; }
+.admin-toggle:focus-visible { outline:2px solid var(--studio-blue); outline-offset:2px; }
+.admin-toggle-label { font-size:14px; font-weight:600; color:var(--text-primary); }
+.admin-form-grid select { padding:10px 12px; border:1px solid var(--border-subtle); border-radius:10px; background:var(--bg-primary); color:var(--text-primary); font-size:14px; }
+.admin-form-grid select:focus { outline:2px solid var(--studio-blue); outline-offset:1px; border-color:var(--studio-blue); }
