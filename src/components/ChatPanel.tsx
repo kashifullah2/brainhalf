@@ -32,6 +32,7 @@ import { PendingChatRequest } from '../lib/pending-chat-request';
 import { FileSnapshotAssembler, type FileSnapshotRequest } from '../lib/file-snapshot';
 import { formatModelReliability, rankModelsByReliability, recordModelOutcome } from '../lib/model-reliability';
 import { completeAssistantResponse, EMPTY_RESPONSE_MESSAGE, isEmptyAssistantResponse } from '../lib/assistant-response';
+import { decideRecoveryCard } from '../lib/recovery-card';
 import { reconcileWorkspaceSnapshot } from '../lib/workspace-reconciliation';
 import { getReliabilityControls, pushUsageEvent, savePromptVersion, setOnboardingState } from '../lib/project-growth';
 
@@ -49,6 +50,43 @@ interface ModelDef {
   category: 'recommended' | 'coding' | 'fast' | 'reasoning';
   speed?: string;
   badge?: string;
+}
+
+export interface ModelStatusBody {
+  integratedModelsEnabled?: boolean;
+  disabledModels?: string[];
+  customModels?: Array<{ id: string; name: string; baseUrl: string; modelId: string }>;
+}
+
+/**
+ * B6: compute the models the picker may show from the /api/models/status body.
+ * Disabled models are filtered out, custom admin models get a "Custom" badge,
+ * and a stale saved selection falls back to the first available model.
+ * Exported for testing.
+ */
+export function resolveAvailableModels(
+  catalog: ModelDef[],
+  body: ModelStatusBody,
+  savedModelId: string | null,
+  rank: (models: ModelDef[]) => ModelDef[],
+): { models: ModelDef[]; selectedModelId: string } {
+  const enabled = body.integratedModelsEnabled !== false;
+  const disabled = new Set(Array.isArray(body.disabledModels) ? body.disabledModels : []);
+  const custom: ModelDef[] = Array.isArray(body.customModels) ? body.customModels.map(cm => ({
+    id: cm.id,
+    name: cm.name,
+    provider: 'custom' as const,
+    category: 'fast' as const,
+    badge: 'Custom',
+  })) : [];
+  const builtin = enabled
+    ? catalog.filter(m => !disabled.has(`${m.provider}:${m.id}`))
+    : [];
+  const models = rank([...custom, ...builtin]);
+  const selectedModelId = savedModelId && models.some(m => m.id === savedModelId)
+    ? savedModelId
+    : (models[0]?.id || '');
+  return { models, selectedModelId };
 }
 
 /**
@@ -71,8 +109,23 @@ const MODEL_DISPLAY: Record<string, Omit<ModelDef, 'id' | 'provider'>> = {
 const MODEL_CATALOG: ModelDef[] = CLIENT_SELECTABLE_MODELS.map((m) => ({
   id: m.name,
   provider: m.provider,
-  ...(MODEL_DISPLAY[m.name] ?? { name: m.name, category: 'fast' as const }),
+  ...(MODEL_DISPLAY[m.name] ?? { name: friendlyModelName(m.name), category: 'fast' as const }),
 }));
+
+/**
+ * Turns a raw model id into a readable display name when no explicit
+ * MODEL_DISPLAY entry exists ("@cf/foo/bar-baz" -> "Bar Baz").
+ * Exported for testing.
+ */
+export function friendlyModelName(rawId: string): string {
+  const withoutScope = rawId.replace(/^@cf\//, '');
+  const parts = withoutScope.split('/');
+  const last = parts[parts.length - 1] || rawId;
+  return last
+    .split(/[-_]/)
+    .map(word => word ? word.charAt(0).toUpperCase() + word.slice(1) : word)
+    .join(' ');
+}
 
 interface Message {
   role: 'user' | 'ai';
@@ -206,12 +259,19 @@ function memoizedParse(content: string, includeStreaming: boolean): ParseResult 
   return parseMessageSegmentsMemoized(content, includeStreaming);
 }
 
-/** Matches the "Sep 18, 09:38 AM" shape the panel previously hard-coded. */
-function formatMessageTime(timestamp?: number): string | null {
+/** Matches the "Sep 18, 09:38 AM" shape the panel previously hard-coded. The
+ *  viewer's own timezone is resolved explicitly (rather than relying on the
+ *  implicit default) and shown abbreviated, so a VM/browser in a different
+ *  zone than the user never silently shows shifted times. */
+// B11: exported for testing. Includes the viewer's timezone abbreviation so a
+// timestamp can never silently disagree with the reader's clock again.
+export function formatMessageTime(timestamp?: number): string | null {
   if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) return null;
   try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return new Date(timestamp).toLocaleString('en-US', {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+      timeZone, timeZoneName: 'short',
     });
   } catch {
     return null;
@@ -228,37 +288,58 @@ interface ChatPanelProps {
 const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', width, initialPrompt, onInitialPromptConsumed }) => {
   const { isCurrent, getProjectFiles, getProjectMessages, getProjectMessagesAsync, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName } = React.useMemo(bindProjectStore, []);
   const [input, setInput] = useState('');
+  // Empty-send guidance: the Send button stays clickable so an empty tap can
+  // explain what to do, instead of sitting dead with no feedback.
+  const [emptySendHint, setEmptySendHint] = useState(false);
+  const emptySendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nudgeEmptySend = () => {
+    setEmptySendHint(true);
+    if (emptySendTimer.current) clearTimeout(emptySendTimer.current);
+    emptySendTimer.current = setTimeout(() => setEmptySendHint(false), 4000);
+  };
   const initialReliabilityScope = getUser()?.id || 'guest';
   const [models, setModels] = useState<ModelDef[]>(() => rankModelsByReliability(MODEL_CATALOG, initialReliabilityScope));
   const [integratedModelsOn, setIntegratedModelsOn] = useState(true);
-  useEffect(() => {
-    let cancelled = false;
-    authFetch('/api/models/status').then(async (res) => {
-      if (res.ok && !cancelled) {
+  const [modelStatusStale, setModelStatusStale] = useState(false);
+  // Loads the admin's model availability (global kill-switch, per-model
+  // toggles, custom models) and rebuilds the picker list. Retries a few
+  // times: if the fetch fails the picker would otherwise silently show
+  // disabled models as selectable (they get rejected only after sending).
+  const refreshModelStatus = React.useCallback(async () => {
+    const delays = [0, 800, 2500];
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, delays[attempt]));
+      try {
+        const res = await authFetch('/api/models/status');
+        if (!res.ok) continue;
         const body = await res.json() as {
           integratedModelsEnabled?: boolean;
           disabledModels?: string[];
           customModels?: Array<{ id: string; name: string; baseUrl: string; modelId: string }>;
         };
-        const enabled = body.integratedModelsEnabled !== false;
-        setIntegratedModelsOn(enabled);
-        const disabled = new Set(Array.isArray(body.disabledModels) ? body.disabledModels : []);
-        // Custom admin-added models appear in the picker with a "Custom" badge.
-        const custom: ModelDef[] = Array.isArray(body.customModels) ? body.customModels.map(cm => ({
-          id: cm.id,
-          name: cm.name,
-          provider: 'custom' as const,
-          category: 'fast' as const,
-          badge: 'Custom',
-        })) : [];
-        const builtin = enabled
-          ? MODEL_CATALOG.filter(m => !disabled.has(`${m.provider}:${m.id}`))
-          : [];
-        if (!cancelled) setModels(rankModelsByReliability([...custom, ...builtin], getReliabilityScope()));
-      }
-    }).catch(() => {});
-    return () => { cancelled = true; };
+        const { models: finalModels, selectedModelId } = resolveAvailableModels(
+          MODEL_CATALOG, body, null,
+          (ms) => rankModelsByReliability(ms, getReliabilityScope()),
+        );
+        setIntegratedModelsOn(body.integratedModelsEnabled !== false);
+        setModels(finalModels);
+        // If the saved selection is no longer available (disabled by admin
+        // or custom model removed), fall back to the first available model.
+        setSelectedModelId(prev => {
+          if (prev && finalModels.some(m => m.id === prev)) return prev;
+          const fallback = selectedModelId || DEFAULT_MODEL_ID;
+          try { localStorage.setItem('bh_selected_model', fallback); } catch {}
+          return fallback;
+        });
+        setModelStatusStale(false);
+        return;
+      } catch { /* retry */ }
+    }
+    setModelStatusStale(true);
   }, []);
+  useEffect(() => {
+    void refreshModelStatus();
+  }, [refreshModelStatus]);
   const projectScope = React.useMemo(() => ({ active: true }), [activeProjectId]);
   const projectScopeRef = useRef(projectScope); projectScopeRef.current = projectScope;
   const exportOnly = useRef(false);
@@ -300,8 +381,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     confirmLabel?: string;
     onConfirm: () => void;
   } | null>(null);
-  const [_isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  /**
+   * B1: Why the last connection attempt failed (if it did). Surfaced in the
+   * "No response received" card so a dead connection never looks like a
+   * model failure, and "Try again" never loops silently on a doomed send.
+   * Cleared on every successful onopen.
+   */
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const connectionErrorRef = useRef<string | null>(null);
+  const setConnectionErrorBoth = (msg: string | null) => {
+    connectionErrorRef.current = msg;
+    setConnectionError(msg);
+  };
   const platformStatus = usePlatformStatus(activeProjectId);
   const [mergeConflict, setMergeConflict] = useState<{ sourceName: string; conflicts: string[] } | null>(null);
   const [workspaceConflict, setWorkspaceConflict] = useState<string[] | null>(null);
@@ -373,6 +466,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const connectRef = useRef<(() => Promise<void>) | null>(null);
+  /**
+   * B1: Force a fresh connection attempt, resetting the backoff counter.
+   * Used by the recovery card so "try again" on a dead connection actually
+   * reconnects instead of looping on the same failure.
+   */
+  const forceReconnectRef = useRef<(() => void) | null>(null);
+  /**
+   * B1: prompt waiting for a fresh connection after "Reconnect & try again".
+   * Fired once from ws.onopen, then cleared.
+   */
+  const pendingResendRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
@@ -614,6 +718,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
     const connect = async () => {
       connectRef.current = connect;
+      // B1: allow the recovery card to force a fresh attempt after the
+      // backoff loop gives up. Closing a stuck socket lets connect() proceed.
+      forceReconnectRef.current = () => {
+        connectAttempts = 0;
+        setConnectionErrorBoth(null);
+        try {
+          if (ws && ws.readyState !== WebSocket.CLOSED) ws.close();
+        } catch { /* ignore */ }
+        ws = null;
+        wsRef.current = null;
+        void connectRef.current?.();
+      };
       if (!isMounted || !isCurrent() || ticketPending || ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
       // Same-origin is correct in production (the Worker terminates the WS) and
       // in local dev, where the assets are served from the same host:port as
@@ -654,6 +770,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           pendingSendRef.current = null;
           setIsGenerating(false);
           isGeneratingRef.current = false;
+          // B1: surface the auth failure on the recovery card.
+          setConnectionErrorBoth(cause instanceof Error ? cause.message : 'Unable to connect to the workspace. Please retry.');
           appEvents.emit('generation-status', { status: 'Error', error: cause instanceof Error ? cause.message : 'Unable to connect to the workspace. Please retry.', projectId: activeProjectId });
         }
         return;
@@ -685,7 +803,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       ws.onopen = () => {
         if (!isMounted || !isCurrent()) return;
         setIsConnected(true);
+        setConnectionErrorBoth(null);
         console.log(`Connected to session: ${activeProjectId}`);
+        // B1: fire a resend queued by "Reconnect & try again".
+        if (pendingResendRef.current) {
+          const prompt = pendingResendRef.current;
+          pendingResendRef.current = null;
+          // Defer one tick so onopen bookkeeping (ping, context) settles first.
+          setTimeout(() => {
+            if (isMounted && isCurrent() && !isGeneratingRef.current) {
+              handleSendMessageRef.current?.(prompt);
+            }
+          }, 0);
+        }
 
         // Reset the attempt counter only after the connection has survived
         // long enough to receive a message. An open-then-immediate-close
@@ -1243,6 +1373,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           // so the "Restoring your conversation…" placeholder does not spin forever.
           setHistoryLoaded(true);
           if (wasGenerating) generationClockRef.current?.finish('failed');
+          // B1: record the reason so the "No response received" card explains
+          // the real cause instead of inviting a futile retry.
+          setConnectionErrorBoth('You have reached your project quota. Delete an existing project before creating a new one.');
           appEvents.emit('generation-status', {
             status: 'Error',
             error: 'You have reached your project quota. Please delete an existing project before creating a new one.',
@@ -1270,6 +1403,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           // "Restoring your conversation…" placeholder spinning.
           setHistoryLoaded(true);
           if (wasGenerating) generationClockRef.current?.finish('failed');
+          // B1: record the reason so the recovery card names it.
+          setConnectionErrorBoth('This project could not be opened. It may have been deleted or moved; pick it again from the dashboard.');
           if (!getToken()) {
             window.dispatchEvent(new CustomEvent('bh-session-expired'));
             return;
@@ -1296,6 +1431,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           console.warn(`WS connection failed after ${connectAttempts - 1} attempts; stopping reconnect loop.`);
           setHistoryLoaded(true);
           if (wasGenerating) generationClockRef.current?.finish('failed');
+          // B1: record the reason so the recovery card offers reconnect, not a blind retry.
+          setConnectionErrorBoth('Could not reach the workspace after several tries. Check your connection, then reconnect.');
           appEvents.emit('generation-status', {
             status: 'Error',
             error: 'Connection lost. Please refresh the page.',
@@ -1523,6 +1660,32 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     });
   };
 
+  // B1: break the history-poisoning loop. When retries keep failing, the
+  // conversation itself is corrupted — the only recovery is a clean slate on
+  // all four layers: local memory, localStorage, IndexedDB, and the server DB.
+  const handleFreshStart = () => {
+    if (isGeneratingRef.current) return;
+    setConfirmModalConfig({
+      isOpen: true,
+      title: 'Start fresh conversation',
+      message: 'This clears the whole conversation for this project so you can start over. Your app files are kept. Continue?',
+      confirmLabel: 'Start fresh',
+      onConfirm: () => {
+        try { deleteProjectMessages(activeProjectId); } catch {}
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          try { wsRef.current.send(JSON.stringify({ type: 'clear' })); } catch {}
+        }
+        const fresh: Message[] = [
+          { role: 'ai', content: 'Fresh start — the conversation history is cleared. What would you like to build?' }
+        ];
+        messagesRef.current = fresh;
+        setMessages(fresh);
+        saveProjectMessages(activeProjectId, fresh);
+        setConfirmModalConfig(null);
+      }
+    });
+  };
+
   const handleDeleteMessage = (index: number) => {
     if (isGeneratingRef.current) return;
     setConfirmModalConfig({
@@ -1551,7 +1714,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     if (!belongsToProject()) return;
     const textToSend = overrideMessage && typeof overrideMessage === 'string' ? overrideMessage : input;
     const turnAttachments = overrideMessage ? [] : attachments;
-    if ((!textToSend.trim() && !turnAttachments.length) || isGeneratingRef.current || uploadBusy.current) return;
+    if (!textToSend.trim() && !turnAttachments.length) {
+      // Empty tap: explain instead of silently doing nothing.
+      if (!overrideMessage) nudgeEmptySend();
+      return;
+    }
+    if (isGeneratingRef.current || uploadBusy.current) return;
     if (!belongsToProject() || isGeneratingRef.current) return;
     // A fresh prompt supersedes any interrupted build (the server does the
     // same when the new generation's job row is created).
@@ -1640,6 +1808,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           pendingRequest.cancel();
           setIsGenerating(false);
           isGeneratingRef.current = false;
+          // B1: record why so the recovery card names the cause instead of
+          // showing a generic "No response received".
+          setConnectionErrorBoth('The workspace connection dropped before your message was sent.');
           appEvents.emit('generation-status', { status: 'Error', error: 'Connection lost before your message was sent. Try again once you’re connected.', projectId: activeProjectId });
           return;
         }
@@ -2042,19 +2213,41 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           </div>
                         ) : (
                           msg.role === 'ai' ? (
+                            (() => {
+                              // B1: never offer a blind "Try again" on a dead connection.
+                              const recovery = decideRecoveryCard({ connectionError, isConnected });
+                              return (
                             <div className="studio-response-error" role="status">
-                              <div><AlertCircle size={17} /><strong>No response received</strong></div>
-                              <p>No reply is available for this message. Your prompt is saved. Try again, or select another model below.</p>
+                              <div><AlertCircle size={17} /><strong>{recovery.title}</strong></div>
+                              <p>{recovery.body}</p>
                               {isLastMessage && (
                                 <div className="studio-recovery-actions">
-                                  <button type="button" disabled={isGenerating} onClick={() => {
-                                    const prompt = messagesRef.current.slice(0, idx).reverse().find(message => message.role === 'user' && !message.internal && !isSystemContinuation(message.content))?.content;
-                                    if (prompt) handleSendMessage(prompt);
-                                  }}><RotateCcw size={14} />Try again</button>
+                                  {recovery.needsReconnect ? (
+                                    <button type="button" disabled={isGenerating} onClick={() => {
+                                      const prompt = messagesRef.current.slice(0, idx).reverse().find(message => message.role === 'user' && !message.internal && !isSystemContinuation(message.content))?.content;
+                                      if (!prompt) return;
+                                      // Queue the resend for the fresh connection; if the
+                                      // socket is already open, send immediately.
+                                      pendingResendRef.current = prompt;
+                                      forceReconnectRef.current?.();
+                                      if (wsRef.current?.readyState === WebSocket.OPEN) {
+                                        pendingResendRef.current = null;
+                                        handleSendMessage(prompt);
+                                      }
+                                    }}><RotateCcw size={14} />{recovery.actionLabel}</button>
+                                  ) : (
+                                    <button type="button" disabled={isGenerating} onClick={() => {
+                                      const prompt = messagesRef.current.slice(0, idx).reverse().find(message => message.role === 'user' && !message.internal && !isSystemContinuation(message.content))?.content;
+                                      if (prompt) handleSendMessage(prompt);
+                                    }}><RotateCcw size={14} />{recovery.actionLabel}</button>
+                                  )}
                                   <button type="button" onClick={() => setShowModelPicker(true)}>Change model</button>
+                                  <button type="button" onClick={handleFreshStart} title="Clear the corrupted conversation and start over">Start fresh</button>
                                 </div>
                               )}
                             </div>
+                              );
+                            })()
                           ) : null
                         );
                       }
@@ -2445,7 +2638,23 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     }}
                   >
                     <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span>{m.name}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{m.name}</span>
+                        {m.badge && (
+                          <span style={{
+                            fontSize: '9px',
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: m.provider === 'custom' ? 'var(--accent-primary)' : 'rgba(148, 163, 184, 0.2)',
+                            color: m.provider === 'custom' ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                          }}>
+                            {m.badge}
+                          </span>
+                        )}
+                      </span>
                       <span style={{ fontSize: '10px', color: 'rgba(148, 163, 184, 0.9)' }}>
                         {formatModelReliability(m.id, getReliabilityScope())}
                       </span>
@@ -2455,6 +2664,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 ))}
               </div>
               <p className="studio-model-picker-note">Applies to your next message.</p>
+              {modelStatusStale && (
+                <p className="studio-model-picker-note" role="status" style={{ color: 'var(--warning, #b45309)' }}>
+                  Couldn't load the latest model availability — this list may be out of date.
+                </p>
+              )}
             </div>
           )}
 
@@ -2480,7 +2694,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               <button
                 ref={modelPickerButtonRef}
                 type="button"
-                onClick={() => setShowModelPicker(prev => !prev)}
+                onClick={() => {
+                  setShowModelPicker(prev => {
+                    if (!prev) void refreshModelStatus();
+                    return !prev;
+                  });
+                }}
                 aria-haspopup="dialog"
                 aria-expanded={showModelPicker}
                 aria-controls={modelPickerListId}
@@ -2528,18 +2747,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   type="button"
                   className="studio-generation-button"
                   onClick={() => handleSendMessage()}
-                  disabled={(uploading || (!input.trim() && !attachments.length))}
+                  disabled={uploading}
                   data-testid="send-prompt-btn"
                   style={{
-                    background: (uploading || (!input.trim() && !attachments.length)) ? 'rgba(36, 60, 75, 0.08)' : 'var(--accent-primary)',
-                    color: (uploading || (!input.trim() && !attachments.length)) ? 'var(--text-muted)' : 'var(--text-primary)',
-                    border: '1px solid ' + ((uploading || (!input.trim() && !attachments.length)) ? 'rgba(36, 60, 75, 0.1)' : 'var(--accent-primary)'),
+                    background: uploading ? 'rgba(36, 60, 75, 0.08)' : 'var(--accent-primary)',
+                    color: uploading ? 'var(--text-muted)' : 'var(--text-primary)',
+                    border: '1px solid ' + (uploading ? 'rgba(36, 60, 75, 0.1)' : 'var(--accent-primary)'),
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    cursor: (uploading || (!input.trim() && !attachments.length)) ? 'not-allowed' : 'pointer',
-                    boxShadow: (uploading || (!input.trim() && !attachments.length)) ? 'none' : '0 2px 8px rgba(36,60,75,0.08)',
+                    cursor: uploading ? 'not-allowed' : 'pointer',
+                    boxShadow: uploading ? 'none' : '0 2px 8px rgba(36,60,75,0.08)',
                     transition: 'all 0.15s ease'
                   }}
                   title="Send message"
@@ -2552,7 +2771,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           </div>
 
         </div>
-        <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{isGenerating ? 'Draft now. Send when the builder finishes.' : 'Your changes start here.'}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
+        <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{emptySendHint ? 'Type your idea first — describe the app you want to build.' : isGenerating ? 'Draft now. Send when the builder finishes.' : 'Your changes start here.'}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
       </div>
 
       {/* Accessible Non-Blocking Chat Dialog */}

@@ -97,6 +97,23 @@ describe('DesignPreviewStrip', () => {
     expect(html).toContain('Your 10 app spaces are full.');
     expect(html).toContain('Choose an app to remove');
   });
+  it('B3: shows the full-account UI when the 429 arrives before any job exists', () => {
+    // QA: at the 10-app cap, POST /jobs 429s at the register() gate BEFORE a
+    // job record exists, so failed=false. The old (failed && ...) logic hid the
+    // "choose an app to remove" UI and left a dead-end retry loop.
+    const html = renderToStaticMarkup(
+      <DesignPreviewStrip
+        backend={mockBackend({ failed: false, fault: true, canStart: true, message: fullMessage })}
+        runtime={idleRuntime}
+        status="Ready"
+        filesRef={filesRef}
+        onOpenHostedSlots={() => {}}
+      />
+    );
+    expect(html).toContain('Your 10 app spaces are full.');
+    expect(html).toContain('Choose an app to remove');
+    expect(html).not.toContain('The app preview ran into a problem.');
+  });
   it('still matches the older backend wording during rollout', () => {
     const html = renderToStaticMarkup(
       <DesignPreviewStrip

@@ -62,4 +62,39 @@ describe('7.3 extracted system prompt', () => {
     expect(prompt).toContain('everyday words first');
     expect(prompt).toContain('what it means for their app in one plain sentence');
   });
+
+  it('B4: forbids file changes in the same response as a deletion confirmation request', () => {
+    // QA: "delete all files" asked for confirmation AND rewrote 11 files.
+    // The confirmation turn must emit zero file operations.
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    expect(prompt).toContain('B4 RULE');
+    expect(prompt).toContain('ENTIRE response must be a plain-text confirmation request');
+    expect(prompt).toContain('Emit ZERO <file>, <edit>, and <delete> blocks');
+  });
+
+  it('B5: requires plain-text answers to non-change questions without touching files', () => {
+    // QA: haiku/recursion prompts regenerated the whole project.
+    // Pure Q&A turns must leave files byte-for-byte identical.
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    expect(prompt).toContain('PLAIN-TEXT QUESTIONS');
+    expect(prompt).toContain('answer in plain chat text ONLY');
+    expect(prompt).toContain('byte-for-byte identical');
+  });
+
+  it('B5: adds an explicit QUESTION MODE block when questionMode is set', () => {
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false, questionMode: true });
+    expect(prompt).toContain('QUESTION MODE ACTIVE');
+    expect(prompt).toContain('Do NOT emit <file>, <edit>, or <delete> blocks');
+    const normal = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    expect(normal).not.toContain('QUESTION MODE ACTIVE');
+  });
+
+  it('B4: adds an explicit DESTRUCTIVE REQUEST block when destructiveMode is set', () => {
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false, destructiveMode: true });
+    expect(prompt).toContain('DESTRUCTIVE REQUEST MODE ACTIVE');
+    expect(prompt).toContain('ENTIRE response must be');
+    expect(prompt).toContain('a plain-text confirmation request');
+    const normal = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    expect(normal).not.toContain('DESTRUCTIVE REQUEST MODE ACTIVE');
+  });
 });

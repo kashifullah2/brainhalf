@@ -70,7 +70,9 @@ describe('New Project and Template Selection Isolation', () => {
     const updatedProjects = getProjects();
     const activeInList = updatedProjects.find(p => p.id === newProj.id);
     expect(activeInList?.name).toBe('Build an app: Crypto Tracker -…');
-    expect(getProjectMessages(newProj.id)).toEqual(newMsgs);
+    // B1: the trailing empty AI placeholder is stripped on save — persistence
+    // never stores poisoned turns.
+    expect(getProjectMessages(newProj.id)).toEqual([newMsgs[0]]);
 
     // 6. Verify the old project was completely untouched
     expect(getProjectMessages(oldProj.id)).toEqual([{ role: 'user', content: 'Build an old app' }]);

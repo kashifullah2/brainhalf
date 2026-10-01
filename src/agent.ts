@@ -1,4 +1,5 @@
 import { AUTH_CACHE_TTL, BACKEND_READY_POSITIVE_TTL, BACKEND_READY_NEGATIVE_TTL, DISCONNECT_STOP_DELAY } from './lib/timeouts';
+import { isEmptyAssistantResponse } from './lib/assistant-response';
 import { recordProductOutcome, type OutcomeEvent } from './lib/product-outcomes';
 import { prepareCapabilities, sdkCapabilities, imageMessages, cfImageMessages, acceptsImageInput, runCapabilityLoop, capabilitiesFromTools, type AgentCapabilities } from './lib/agent-capabilities';
 import type { BuilderAttachment } from './lib/builder-attachments';
@@ -29,7 +30,7 @@ import { isStarterApp, relativeProjectImport, selectAppEntry } from './lib/previ
 import { getAppSessionToken } from './lib/app-session';
 import { isPublicPreviewFile, isPublicPreviewRead, PREVIEW_ACCESS_HEADER } from './lib/project-access';
 import { isolatedPreviewHtml, previewFiles } from './lib/preview-isolation';
-import { isConversationalPrompt, shouldAutoPlannerMode } from './lib/prompt-mode';
+import { isConversationalPrompt, isDestructivePrompt, isQuestionPrompt, isAmbiguousPrompt, shouldAutoPlannerMode } from './lib/prompt-mode';
 import { isBlockedSecretFile } from './lib/secret-files';
 import { boundedConversation, contextFileAllowed, fileContextRank } from './lib/agent-context';
 import { generationControls, generationContextLimits } from './lib/generation-controls';
@@ -1114,10 +1115,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // leaves an empty history — the conversation is gone but not replaced.
           // Adjacent duplicates are dropped so a re-sent edit does not inflate
           // the context window with identical turns.
+          // B1: drop poisoned turns (empty/placeholder assistant replies from
+          // failed attempts) so they can never re-enter the model context.
           const messages = dedupeAdjacent(
             data.messages
               .filter((m): m is { role: 'user' | 'assistant' | 'ai'; content: string } =>
                 m !== null && (m.role === 'user' || m.role === 'assistant' || m.role === 'ai') && typeof m.content === 'string')
+              .filter(m => m.role === 'user' || !isEmptyAssistantResponse(m.content))
               .map(m => ({ role: m.role === 'ai' ? 'assistant' : m.role, content: String(m.content).slice(0, 200_000) }))
           );
           this.transact(() => {
@@ -1281,6 +1285,15 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       } else if (shouldAutoPlannerMode(actualPrompt)) {
         plannerMode = true;
       }
+      // B4: wipe-the-project requests run tool-less — the model can only ask
+      // for confirmation in text; zero file operations are possible this turn.
+      // B5: plain-text questions are answered in chat with zero file writes.
+      // Ambiguous build requests ("make something cool") also run tool-less so
+      // the model asks what to build instead of launching a blind generation.
+      const destructiveMode = !plannerMode && isDestructivePrompt(actualPrompt);
+      const questionMode = !plannerMode && !destructiveMode && isQuestionPrompt(actualPrompt);
+      const ambiguousMode = !plannerMode && !destructiveMode && !questionMode && isAmbiguousPrompt(actualPrompt);
+      const toolLessMode = plannerMode || destructiveMode || questionMode || ambiguousMode;
 
       if (actualPrompt.length > MAX_PROMPT_CHARS) {
         // Bounded before any inference is purchased: the client surfaces the
@@ -1385,9 +1398,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               header: 'CURRENT PROJECT BASELINE FILES (Inspect these files carefully and build upon them):',
             }),
             plannerMode, executionTarget,
+            questionMode, destructiveMode, ambiguousMode,
           });
           generationStarted = true;
-          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain);
+          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode });
         }, GENERATION_LOCK_TIMEOUT_MS);
       } catch (genErr) {
         // runGeneration's finally releases when !completed. If we never reached
@@ -1421,7 +1435,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * They are now one function, and the differences that are real — how much
    * file context to include — are handled by the caller's `filesContext`.
    */
-  private buildSystemPrompt(opts: { filesContext: string; plannerMode: boolean; executionTarget?: 'managed' | 'export' }): string {
+  private buildSystemPrompt(opts: { filesContext: string; plannerMode: boolean; executionTarget?: 'managed' | 'export'; questionMode?: boolean; destructiveMode?: boolean; ambiguousMode?: boolean }): string {
     return buildSystemPromptModule(opts);
   }
 
@@ -1466,7 +1480,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     actualPrompt: string,
     epoch: number,
     plannerMode: boolean,
-    resumeChain?: { parentJobId: string; resumeCount: number; initialFiles: string[] } | null
+    resumeChain?: { parentJobId: string; resumeCount: number; initialFiles: string[] } | null,
+    modes?: { destructiveMode?: boolean; questionMode?: boolean; ambiguousMode?: boolean }
   ): Promise<void> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
@@ -2028,7 +2043,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   model: meteredModel(activeAiModel, () => { accounting.providerCalls++; }),
                   system: stageSystemPrompt,
                   messages: currentNativeMessages,
-                  tools: plannerMode || fileOutputRetry ? undefined : agentTools,
+                  // B4/B5: destructive and question modes are tool-less — the model
+                  // answers in text only; zero file operations are possible.
+                  tools: plannerMode || fileOutputRetry || modes?.destructiveMode || modes?.questionMode || modes?.ambiguousMode ? undefined : agentTools,
                   toolChoice: fileOutputRetry ? 'none' : 'auto',
                   stopWhen: isStepCount(maxSteps + 1),
                   prepareStep: ({ stepNumber, messages }) => stepNumber >= maxSteps ? {
@@ -2670,7 +2687,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) {
       return;
     }
-    if (!expectFiles || isConversationalPrompt(actualPrompt)) return;
+    // B4/B5: a correct text-only answer (question reply, deletion
+    // confirmation request, or clarifying questions) is complete — never
+    // "recover" it into files.
+    if (!expectFiles || isConversationalPrompt(actualPrompt) || isQuestionPrompt(actualPrompt) || isDestructivePrompt(actualPrompt) || isAmbiguousPrompt(actualPrompt)) return;
     if (extraction.writtenCount > 0 || extraction.deletedCount > 0 || extraction.wasTruncated) {
       return;
     }

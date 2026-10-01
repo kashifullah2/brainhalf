@@ -52,7 +52,9 @@ export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenH
   const failed = backend.failed;
   // A full account is a user-actionable state, not a build bug: name it and
   // route the user to the app-spaces manager instead of generic failure copy.
-  const hostedFull = (failed && isHostedLimitError(backend.message)) || isHostedLimitError(runtime.error);
+  // B3: the 429 can arrive BEFORE any job exists (register() gate), so the
+  // hosted-limit message on backend.message must count even when failed=false.
+  const hostedFull = isHostedLimitError(backend.message) || isHostedLimitError(runtime.error);
   // No auth/data features and nothing wrong: the "test sign-in and saved
   // data" prompts are irrelevant noise, so the strip stays out of the way.
   // Fault, failure, and hosted-full states always stay visible.

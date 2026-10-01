@@ -7,6 +7,8 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
     links: [
       { label: 'AI app builder', href: '/' },
       { label: 'Gallery', href: '/gallery' },
+      { label: 'Pricing', href: '/pricing' },
+      { label: 'FAQ', href: '/faq' },
       { label: 'Free AI app builder', href: '/free-ai-app-builder' },
       { label: 'About', href: '/about' },
     ],

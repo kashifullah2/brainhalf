@@ -39,7 +39,12 @@ async function send(env: EmailEnv, to: string, subject: string, text: string, ht
 
 async function actionEmail(env: EmailEnv, email: string, kind: 'verify' | 'reset') {
   const response = await registry(env, '/email/issue', { email, kind });
-  if (!response.ok) throw new Error('Email service unavailable');
+  if (!response.ok) {
+    let detail = '';
+    try { detail = (await response.text()).slice(0, 500); } catch { /* ignore */ }
+    console.error(`email/issue failed: status=${response.status} body=${detail}`);
+    throw new Error('Email service unavailable');
+  }
   const action = await response.json() as { token: string; email: string } | null;
   if (!action) return;
   // Fragments never go to servers, access logs, or referrer headers.

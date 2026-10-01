@@ -78,6 +78,20 @@
 .admin-row-btn:disabled { opacity:.5; cursor:wait; }
 .admin-hint { margin:14px 2px 0; font-size:12.5px; color:var(--text-secondary); line-height:1.6; }
 
+/* Destructive-action warning: always fully visible, never clipped. */
+.admin-warning-box {
+  margin:16px 2px 0;
+  padding:12px 14px;
+  border:1px solid var(--warning-border, #f0c36d);
+  border-left:4px solid var(--warning, #b45309);
+  border-radius:8px;
+  background:var(--warning-bg, rgba(180, 83, 9, 0.07));
+  color:var(--text-primary);
+  overflow:visible;
+  white-space:normal;
+  overflow-wrap:break-word;
+}
+
 /* Inline notice */
 .admin-notice { position:relative; }
 .admin-notice-ok { border-color:rgba(34,197,94,0.4); }

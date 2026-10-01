@@ -1,4 +1,5 @@
 import { isBlockedSecretFile } from './secret-files';
+import { isEmptyAssistantResponse } from './assistant-response';
 
 /** Lower scores come first. Explicit file references outrank conventional entry points. */
 export function fileContextRank(path: string, prompt: string): number {
@@ -28,6 +29,10 @@ export function boundedConversation(history: Array<{ role: string; content: stri
     if (!['user', 'assistant', 'ai'].includes(row.role)) continue;
     const role = row.role === 'user' ? 'user' : 'assistant';
     let content = String(row.content || '');
+    // B1: never feed poisoned turns (empty/placeholder assistant replies from
+    // failed attempts) back to the model — each retry would start more
+    // corrupted than the last.
+    if (role === 'assistant' && isEmptyAssistantResponse(content)) continue;
     if (role === 'assistant') content = content
       .replace(/<(?:file|edit)\s+path=["']([^"']+)["']>[\s\S]*?<\/(?:file|edit)>/gi, '[Changed $1; read current source for contents]')
       .replace(/```[\w-]*\r?\n[\s\S]*?```/g, '[Earlier code; inspect current project files]');

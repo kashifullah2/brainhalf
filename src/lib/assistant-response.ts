@@ -20,3 +20,18 @@ export function completeAssistantResponse(content: string, filesChanged: boolean
     failed: empty && !filesChanged,
   };
 }
+
+/**
+ * B1: drop trailing poisoned AI turns (empty/placeholder replies from failed
+ * attempts) before persisting. The live conversation keeps them for display;
+ * storage only ever sees real turns. Returns the original array when clean.
+ */
+export function stripPoisonedTail(messages: Array<{ role: string; content?: string }>): Array<{ role: string; content?: string }> {
+  let end = messages.length;
+  while (end > 0) {
+    const last = messages[end - 1];
+    if (last && (last.role === 'ai' || last.role === 'assistant') && isEmptyAssistantResponse(String(last.content ?? ''))) end--;
+    else break;
+  }
+  return end === messages.length ? messages : messages.slice(0, end);
+}

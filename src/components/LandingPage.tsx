@@ -27,6 +27,7 @@ const NAV_LINKS = [
   { href: '#how-it-works', label: 'How it works' },
   { href: '#questions', label: 'FAQs' },
   { href: '/gallery', label: 'Gallery' },
+  { href: '/pricing', label: 'Pricing' },
 ];
 
 export const LandingPage: React.FC<LandingPageProps> = ({

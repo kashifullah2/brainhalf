@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as authClient from '../lib/auth-client';
 import {
   setProjectAccount,
   projectStorageKey,
@@ -89,6 +90,30 @@ describe('Project Store & LocalStorage State Management', () => {
 
       const updated = getProjects().find(p => p.id === proj.id);
       expect(updated?.name).toBe('New Polished Name');
+    });
+
+    it('B10: syncs the rename to the server via PATCH', () => {
+      const fetchSpy = vi.spyOn(authClient, 'authFetch').mockResolvedValue(new Response('{}'));
+      const proj = createProject('Old Name');
+      updateProjectName(proj.id, 'Server Synced Name');
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        `/api/projects/${proj.id}`,
+        expect.objectContaining({ method: 'PATCH' })
+      );
+      const body = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body ?? '{}'));
+      expect(body).toEqual({ name: 'Server Synced Name' });
+      fetchSpy.mockRestore();
+    });
+
+    it('B10: local rename succeeds even when the server sync fails', () => {
+      const fetchSpy = vi.spyOn(authClient, 'authFetch').mockRejectedValue(new Error('offline'));
+      const proj = createProject('Old Name');
+      expect(() => updateProjectName(proj.id, 'Still Renamed')).not.toThrow();
+
+      const updated = getProjects().find(p => p.id === proj.id);
+      expect(updated?.name).toBe('Still Renamed');
+      fetchSpy.mockRestore();
     });
   });
 

@@ -1,5 +1,7 @@
 import { appEvents } from './events';
 import { isSystemContinuation } from './chat-transcript';
+import { stripPoisonedTail } from './assistant-response';
+import { authFetch } from './auth-client';
 
 export interface Project {
   id: string;
@@ -323,6 +325,17 @@ export function updateProjectName(id: string, name: string) {
     return p;
   });
   saveProjects(projects);
+  // Sync the rename to the server so the admin project list (and any other
+  // server-side view) shows the new name. Fire-and-forget: the local rename
+  // must succeed even if the network call fails.
+  try {
+    void authFetch(`/api/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+      signal: AbortSignal.timeout(15_000),
+    }).catch(() => {});
+  } catch { /* never break local rename */ }
 }
 
 export function updateProjectMeta(id: string, meta: Partial<Project>) {
@@ -762,16 +775,20 @@ export function getProjectDisplayTitle(proj: Project): string {
 
 export function saveProjectMessages(projectId: string, messages: any[]) {
   if (!accountScope.accountId || !projectId || !messages || projectDeleted(projectId)) return;
-  memoryCache[`messages_${projectId}`] = messages;
+  // B1: never persist poisoned turns (empty/placeholder AI replies from failed
+  // attempts). The live conversation keeps them for display; storage only ever
+  // sees real turns, so a reload can never resurrect the failure loop.
+  const clean = stripPoisonedTail(messages);
+  memoryCache[`messages_${projectId}`] = clean;
   markStorageWrite(`messages_${projectId}`);
 
   // 1. Asynchronously persist to high-capacity IndexedDB
-  void idbSet('messages', projectId, messages);
+  void idbSet('messages', projectId, clean);
 
   // 2. Synchronously cache to localStorage if within quota
   try {
     if (!localStorageWriteFailed && typeof localStorage !== 'undefined') {
-      localStorage.setItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`), JSON.stringify(messages));
+      localStorage.setItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`), JSON.stringify(clean));
     }
   } catch (e) {
     localStorageWriteFailed = true;

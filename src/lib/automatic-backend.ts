@@ -3,6 +3,7 @@ import { isFullStackProject } from './backend-runner';
 import { runtimeRequest, type useProjectRuntime } from './project-runtime-client';
 import { sourceSnapshot } from '../runtime/source';
 import type { RuntimeStatus } from '../runtime/types';
+import { resolveBackendFailure } from './backend-failure';
 
 /**
  * Convert a backend start failure into plain language for non-technical users.
@@ -40,6 +41,12 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   const liveUrlTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const fetchTicketRef = useRef<(() => void) | null>(null);
   const ticketFault = useRef(false);
+  /**
+   * B2/B3: Remember the last failed job message. The jobs list can prune
+   * finished jobs, which would otherwise make a backend failure silently
+   * vanish. Declared up here so start() can clear it on retry.
+   */
+  const lastFailureRef = useRef<{ jobId: string; message: string } | null>(null);
   const refresh = runtime.refresh;
   useEffect(() => {
     epoch.current++;
@@ -98,12 +105,19 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   useEffect(() => { if (pending.current) void flush(); }, [runtime.status, flush]);
   const start = useCallback((files: Record<string, string>, retry = false) => {
     setOpenError('');
-    if (retry) attempted.current = '';
+    if (retry) { attempted.current = ''; lastFailureRef.current = null; }
     // A non-full-stack snapshot supersedes any pending full-stack one. Without
     // this, start() returns early but the older snapshot stays pending, and the
     // next status change builds it — the preview would show stale files after
     // a frontend-only update.
-    if (!isFullStackProject(files)) { pending.current = null; return; }
+    if (!isFullStackProject(files)) {
+      pending.current = null;
+      // B2/B3: never fail silently — tell the user plainly why there's no
+      // backend to start instead of leaving a dead button.
+      setFault(false);
+      setNotice('This app has no backend to start — it runs entirely in your browser. Its data is saved on this device only.');
+      return;
+    }
     pending.current = { ...files }; void flush();
   }, [flush]);
   const open = useCallback(async () => {
@@ -123,6 +137,16 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   const ready = Boolean(runtime.status?.activeRelease || (latestJob?.previewReady && latestJob.status === 'running'));
   const readyRef = useRef(ready);
   readyRef.current = ready;
+  // B2/B3: persist backend failures across job-list pruning so a failed
+  // "Start app preview" never silently reverts to "not running".
+  const failureResolution = resolveBackendFailure({
+    latestJob: latestJob ? { id: latestJob.id, status: latestJob.status, message: latestJob.message } : undefined,
+    ready,
+    activeJob: Boolean(activeJob),
+    lastFailure: lastFailureRef.current,
+  });
+  lastFailureRef.current = failureResolution.nextLastFailure;
+  const rememberedFailure = failureResolution.failureMessage;
 
   // Maintain an embedded-preview ticket URL that refreshes before expiry.
   // When ready → false (backend stopped), clear immediately so the iframe reverts.
@@ -165,8 +189,10 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   }, []);
 
   const showJobMessage = latestJob && (['queued', 'running', 'failed'].includes(latestJob.status) || (!ready && latestJob.status === 'stopped'));
-  const failed = Boolean(latestJob && latestJob.status === 'failed');
-  const message = openError || (fault ? notice : showJobMessage ? latestJob.message : ready ? 'App preview is running. Update it to use your latest changes.' : notice);
+  const failed = Boolean((latestJob && latestJob.status === 'failed') || rememberedFailure);
+  // B2/B3: a remembered failure survives job-list pruning so the error stays visible.
+  const failureMessage = (latestJob?.status === 'failed' && latestJob.message) ? latestJob.message : rememberedFailure;
+  const message = openError || (fault ? notice : showJobMessage ? latestJob.message : ready ? 'App preview is running. Update it to use your latest changes.' : (failureMessage || notice));
   const available = runtime.status?.enabled && runtime.status.availability?.state === 'ready';
   return { start, open, message, ready, fault, failed, liveUrl,
     canStart: Boolean(available && !busy && !activeJob && !ready),
