@@ -67,6 +67,21 @@ const AUTH_ROUTES = new Set([
   '/api/contact',
 ]);
 
+/**
+ * Operator gate for the admin/owner APIs. Two independent allowlists:
+ * PRODUCT_METRICS_OWNER_IDS (stable user IDs) and ADMIN_EMAILS (the registry's
+ * existing admin source of truth). The email fallback matters because a userId
+ * is not recoverable: when the owner deletes and re-creates their account, the
+ * new account has a new userId but the same email — without this fallback the
+ * platform owner is permanently locked out of their own admin console.
+ */
+function isOperator(env: PlatformEnv, user: { userId: string; email?: string }): boolean {
+  const ownerIds = String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
+  if (ownerIds.includes(user.userId)) return true;
+  const adminEmails = String(env.ADMIN_EMAILS || '').split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
+  return !!user.email && adminEmails.includes(user.email.toLowerCase());
+}
+
 /** Paths whose preflight must be answered by this Worker. */
 const CORS_PREFIXES = ['/api/', '/agents/', '/preview/', '/p/'];
 
@@ -398,7 +413,7 @@ export default {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
       const admin = url.pathname === '/api/admin/outcomes';
-      if (admin && !String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (admin && !isOperator(env, user)) return withCors(forbidden(), origin);
       try {
         const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/outcomes' + (admin ? '' : '?userId=' + encodeURIComponent(user.userId)));
         const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
@@ -411,7 +426,7 @@ export default {
     if (url.pathname === '/api/admin/users' && request.method === 'GET') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       try {
         const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/admin/users');
         const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
@@ -424,7 +439,7 @@ export default {
     if (url.pathname === '/api/admin/projects' && request.method === 'GET') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       try {
         const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/admin/projects');
         const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
@@ -435,7 +450,7 @@ export default {
     if (url.pathname.startsWith('/api/admin/projects/') && request.method === 'DELETE') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       const projectId = url.pathname.slice('/api/admin/projects/'.length);
       // The /files and /preview/ sub-routes below are GET-only; a DELETE here
       // with a sub-path is not a valid project id.
@@ -453,7 +468,7 @@ export default {
     if (adminModelsMatch && ['GET', 'POST', 'DELETE'].includes(request.method)) {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       const modelId = adminModelsMatch[1];
       const isTest = adminModelsMatch[2] === '/test';
       if (request.method === 'GET' && (modelId || isTest)) return withCors(jsonError('Invalid request', 400), origin);
@@ -478,7 +493,7 @@ export default {
     if (url.pathname === '/api/admin/email-status' && request.method === 'GET') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       const hasKey = Boolean((env as Record<string, unknown>).RESEND_API_KEY as string | undefined)?.toString().trim();
       const fromEmail = String((env as Record<string, unknown>).RESEND_FROM_EMAIL || '').trim();
       return withCors(Response.json({
@@ -494,7 +509,7 @@ export default {
     if (url.pathname === '/api/admin/settings' && (request.method === 'GET' || request.method === 'POST')) {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       try {
         const init: RequestInit = { method: request.method, headers: { 'Content-Type': 'application/json' } };
         if (request.method === 'POST') init.body = await request.text();
@@ -521,7 +536,7 @@ export default {
     if (adminFilesMatch && request.method === 'GET') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       const projectId = adminFilesMatch[1];
       try {
         const agentResponse = await env.ChatAgent.get(env.ChatAgent.idFromName(projectId))
@@ -539,7 +554,7 @@ export default {
     if (adminPreviewMatch && (request.method === 'GET' || request.method === 'HEAD')) {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       const projectId = adminPreviewMatch[1];
       const previewPath = adminPreviewMatch[2] || '/';
       try {
@@ -559,7 +574,7 @@ export default {
     if (url.pathname.startsWith('/api/admin/users/') && request.method === 'DELETE') {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      if (!isOperator(env, user)) return withCors(forbidden(), origin);
       const targetId = url.pathname.slice('/api/admin/users/'.length);
       try {
         const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/admin/users/${encodeURIComponent(targetId)}`, { method: 'DELETE' });

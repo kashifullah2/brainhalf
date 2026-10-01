@@ -42,4 +42,24 @@ describe('B1: boundedConversation drops poisoned history', () => {
     // The fresh prompt is always appended last.
     expect(result[result.length - 1]).toEqual({ role: 'user', content: 'Add a dark mode' });
   });
+
+  it('drops server-injected continuation turns from model context', () => {
+    // Stage-continuation turns ('[AUTO-CONTINUE] Continue to the next stage.'),
+    // resume prompts and truncation retries are orchestration noise written by
+    // the server, not user intent. Feeding them back pollutes every later turn.
+    const history = [
+      { role: 'user', content: 'Build a bakery site' },
+      { role: 'assistant', content: 'Here is your bakery site.' },
+      { role: 'user', content: '[AUTO-CONTINUE] Continue to the next stage.' },
+      { role: 'assistant', content: 'Stage two complete.' },
+      { role: 'user', content: 'The previous response ended with an unfinished file. Regenerate each unfinished file from its beginning.' },
+      { role: 'assistant', content: 'Regenerated the cut-off file.' },
+    ];
+    const result = boundedConversation(history, 'Add a dark mode');
+    const userTurns = result.filter(m => m.role === 'user').map(m => m.content);
+    expect(userTurns).toEqual(['Build a bakery site', 'Add a dark mode']);
+    // The assistant replies to those orchestration turns stay — they describe
+    // real work the model did.
+    expect(result.filter(m => m.role === 'assistant')).toHaveLength(3);
+  });
 });

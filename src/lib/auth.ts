@@ -39,6 +39,8 @@ export const SESSION_HASH_QUERY_PARAM = '_sid';
 
 export interface AuthenticatedUser {
   userId: string;
+  /** Present when the registry session lookup includes it; used by operator gates. */
+  email?: string;
 }
 
 export interface RegistryEnv {
@@ -123,9 +125,9 @@ export async function verifySession(
     const registry = getRegistry(env);
     const res = await registry.fetch(`https://registry/sessions/${encodeURIComponent(verified.tokenId)}`);
     if (!res.ok) return null;
-    const body = (await res.json()) as { userId?: string };
+    const body = (await res.json()) as { userId?: string; email?: string };
     if (!body.userId || body.userId !== verified.userId) return null;
-    return { userId: verified.userId };
+    return { userId: verified.userId, email: body.email };
   } catch (err) {
     // Fail closed: if we cannot confirm the session, we do not trust it.
     console.error('Session revocation check failed:', err);

@@ -1,5 +1,6 @@
 import { isBlockedSecretFile } from './secret-files';
 import { isEmptyAssistantResponse } from './assistant-response';
+import { isSystemContinuation } from './chat-transcript';
 
 /** Lower scores come first. Explicit file references outrank conventional entry points. */
 export function fileContextRank(path: string, prompt: string): number {
@@ -29,6 +30,10 @@ export function boundedConversation(history: Array<{ role: string; content: stri
     if (!['user', 'assistant', 'ai'].includes(row.role)) continue;
     const role = row.role === 'user' ? 'user' : 'assistant';
     let content = String(row.content || '');
+    // Server-injected continuation turns (stage continues, resume prompts,
+    // truncation retries) are orchestration noise, not user intent. Feeding
+    // them back teaches the model to expect instructions the user never wrote.
+    if (role === 'user' && isSystemContinuation(content)) continue;
     // B1: never feed poisoned turns (empty/placeholder assistant replies from
     // failed attempts) back to the model — each retry would start more
     // corrupted than the last.

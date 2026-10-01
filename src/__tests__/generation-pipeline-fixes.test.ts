@@ -123,6 +123,53 @@ describe('backend write-path classification', () => {
   });
 });
 
+describe('extractAndSaveFiles extended save-time validation', () => {
+  it('drops an invalid JSON config instead of saving a project that cannot build', () => {
+    const files = new Map<string, string>();
+    const { agent, connection, events } = makeAgent(files);
+    agent.syntaxRepairAttempts = 0;
+    const payload = '<file path="/package.json">{ "dependencies": </file>';
+    const summary = agent.extractAndSaveFiles(payload, connection);
+    expect(summary.hadSyntaxDrops).toBe(true);
+    expect(summary.writtenCount).toBe(0);
+    expect(files.has('/package.json')).toBe(false);
+    // Dropped files are auto-repaired via a bounded [AUTO-FIX] continuation…
+    expect(events.find(event => event.type === 'trigger-auto-reply')?.message).toContain('[AUTO-FIX]');
+    expect(events.find(event => event.type === 'trigger-auto-reply')?.message).toContain('/package.json');
+    expect(events.filter(event => event.type === 'error')).toEqual([]);
+    // …and after the repair budget is exhausted the user gets a plain error.
+    agent.extractAndSaveFiles(payload, connection);
+    const summary3 = agent.extractAndSaveFiles(payload, connection);
+    expect(summary3.hadSyntaxDrops).toBe(true);
+    expect(events.filter(event => event.type === 'trigger-auto-reply')).toHaveLength(2);
+    expect(events.find(event => event.type === 'error')?.error).toMatch(/Discarded 1 file.*automatic repair attempts/);
+  });
+
+  it('catches syntax errors in backend TypeScript without JSX bracket-guessing', () => {
+    const files = new Map<string, string>();
+    const { agent, connection } = makeAgent(files);
+    // A truncated backend file must be dropped, not "repaired" into plausible
+    // garbage — the JSX suffix guessing only makes sense for UI components.
+    const summary = agent.extractAndSaveFiles('<file path="/worker/index.ts">export default { async fetch(request: </file>', connection);
+    expect(summary.hadSyntaxDrops).toBe(true);
+    expect(files.has('/worker/index.ts')).toBe(false);
+  });
+
+  it('validates and saves backend TypeScript and shared contracts at save time', () => {
+    const files = new Map<string, string>();
+    const { agent, connection, events } = makeAgent(files);
+    const summary = agent.extractAndSaveFiles(
+      '<file path="/shared/types.ts">export interface Item { id: string; title: string }</file>' +
+      '<file path="/worker/index.ts">export default { async fetch(): Promise<Response> { return new Response("ok"); } };</file>',
+      connection,
+    );
+    expect(summary.writtenCount).toBe(2);
+    expect(files.get('/shared/types.ts')).toContain('interface Item');
+    expect(files.get('/worker/index.ts')).toContain('fetch');
+    expect(events.filter(event => event.type === 'error')).toEqual([]);
+  });
+});
+
 describe('extractAndSaveFiles truncation handling', () => {
   it('caps consecutive truncation auto-retries, then reports a plain-language error', () => {
     const { agent, connection, events } = makeAgent(new Map());

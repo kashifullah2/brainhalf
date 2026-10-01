@@ -601,6 +601,20 @@ describe('Project tool parity and recovery from prose-only builds', () => {
     expect(events.filter(event => event.type === 'error')).toEqual([]);
   });
 
+  it('offers zero file tools to the default Workers AI model on plain-text questions', async () => {
+    // B5 parity: the SDK path disables tools in question mode; the Workers AI
+    // path used to still offer write_file/edit_file, letting the default model
+    // rewrite files while answering a question.
+    const { agent, database, events, connection } = createAgent();
+    const binding = vi.fn().mockResolvedValue(stream('Recursion is when a function calls itself with a smaller input until it reaches a base case.'));
+    agent.env = { REGISTRY: budgetRegistry(), REQUIRED_MODEL_PROVIDERS: 'cloudflare', AI: { run: binding } };
+    await agent.runGeneration(connection, { model: undefined }, 'system', 'What is recursion?', agent.writeEpoch.begin(), false, null, { questionMode: true });
+    expect(binding.mock.calls.length).toBeGreaterThan(0);
+    expect(binding.mock.calls[0][1].tools).toBeUndefined();
+    expect(database.prepare('SELECT path FROM project_files').all()).toEqual([]);
+    expect(events.filter(event => event.type === 'error' || event.type === 'trigger-auto-reply')).toEqual([]);
+  });
+
   it('validates Workers AI project-tool arguments before touching files', async () => {
     const { agent, database, run } = createAgent();
     const binding = vi.fn().mockResolvedValueOnce(call('write_file', { path: '/src/broken.ts', content: { bad: true } })).mockResolvedValueOnce({ response: 'Invalid arguments.' });

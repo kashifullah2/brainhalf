@@ -48,7 +48,10 @@ export const AI_TIMEOUT_MS = 10 * 60 * 1000;
 export const MODEL_TEST_TIMEOUT_MS = 5 * 60 * 1000;
 export const DEFAULT_MODEL_ID = '@cf/deepseek-ai/deepseek-v4-pro-0813';
 
-const BEDROCK_DEFAULT_MAX = 8192;
+// Sonnet 4.6 and Kimi K3 both support 64k output tokens. The old 8,192 cap
+// truncated every multi-file app mid-file, driving the truncation-retry loop
+// and the bracket-guessing repair path.
+const BEDROCK_DEFAULT_MAX = 64000;
 const ATRIA_DEFAULT_MAX = 64000;
 const CF_DEFAULT_MAX = 65536;
 

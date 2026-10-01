@@ -748,7 +748,12 @@ export class AuthRegistry {
           .toArray() as Array<{ user_id: string; expires_at: number }>;
         if (rows.length === 0) return this.json(404, { error: 'Session not found' });
         if (rows[0].expires_at <= Date.now()) return this.json(401, { error: 'Session expired' });
-        return this.json(200, { userId: rows[0].user_id });
+        // Email rides along so operator gates can fall back to the ADMIN_EMAILS
+        // allowlist: the userId-based PRODUCT_METRICS_OWNER_IDS strand access
+        // forever when the owner deletes and re-creates their account (the new
+        // account gets a new userId).
+        const userRows = this.sql.exec('SELECT email FROM users WHERE id = ?', rows[0].user_id).toArray() as Array<{ email: string }>;
+        return this.json(200, { userId: rows[0].user_id, email: userRows[0]?.email });
       }
 
       /* -------- WebSocket tickets: short-lived, single-use -------- */

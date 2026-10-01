@@ -52,6 +52,7 @@ describe('Worker runtime configuration gate', () => {
 function mockRegistry(opts: {
   userId?: string;
   ownerId?: string;
+  email?: string;
   published?: boolean;
   onRateLimitCheck?: (bucket: string, key: string) => { ok: boolean; retryAfter: number };
 } = {}) {
@@ -69,7 +70,7 @@ function mockRegistry(opts: {
     }
     if (url.pathname.startsWith('/sessions/')) {
       // Revocation lookup keyed by the token hash.
-      return new Response(JSON.stringify({ userId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify(opts.email ? { userId, email: opts.email } : { userId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.pathname === '/projects/owner-check') {
       return new Response(JSON.stringify({ ownerId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -556,6 +557,28 @@ describe('product outcome access', () => {
       return original(input, init);
     });
     expect((await worker.fetch(request, envWith(registry, { PRODUCT_METRICS_OWNER_IDS: 'user-1' }), {} as any)).status).toBe(200);
+  });
+
+  it('admits an operator by ADMIN_EMAILS when their account was recreated with a new userId', async () => {
+    // Incident: the owner deleted their admin account; the new account has a
+    // new userId, so PRODUCT_METRICS_OWNER_IDS no longer matches. The email
+    // fallback keeps the platform owner from being locked out permanently.
+    const registry = mockRegistry({ email: 'Owner@Example.com' });
+    const original = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      if (url.pathname === '/admin/users') return Response.json({ users: [] });
+      return original(input, init);
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/admin/users');
+    // Stale ID allowlist without the email allowlist still forbids.
+    expect((await worker.fetch(request, envWith(registry, { PRODUCT_METRICS_OWNER_IDS: 'deleted-user-id' }), {} as any)).status).toBe(403);
+    // Case-insensitive email match against ADMIN_EMAILS admits.
+    const allowed = await worker.fetch(request, envWith(registry, { PRODUCT_METRICS_OWNER_IDS: 'deleted-user-id', ADMIN_EMAILS: 'owner@example.com' }), {} as any);
+    expect(allowed.status).toBe(200);
+    // A different email is not admitted.
+    const other = mockRegistry({ email: 'someone@example.com' });
+    expect((await worker.fetch(request, envWith(other, { PRODUCT_METRICS_OWNER_IDS: 'deleted-user-id', ADMIN_EMAILS: 'owner@example.com' }), {} as any)).status).toBe(403);
   });
 
   it('restricts the account list to authenticated operator allowlist members', async () => {

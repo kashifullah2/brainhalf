@@ -161,6 +161,7 @@ async function runWebSocketScaleTest() {
   console.log(`\n--- [PHASE 2] Connecting ${WS_USERS} Concurrent WebSocket Tenants ---`);
   let connectedCount = 0;
   let errorCount = 0;
+  let authRejectedCount = 0;
   const connectLatencies = [];
 
   const wsPromises = Array.from({ length: WS_USERS }).map((_, idx) => {
@@ -203,7 +204,11 @@ async function runWebSocketScaleTest() {
           if (!resolved) {
             resolved = true;
             clearTimeout(timeout);
-            errorCount++;
+            // Unauthenticated tenants MUST be rejected by the auth gate
+            // (401/403 handshake) — that is the pass condition for this leg,
+            // not a failure. Only other errors count as handshake failures.
+            if (/Unexpected server response: (401|403)/.test(String(err?.message))) authRejectedCount++;
+            else errorCount++;
             resolve({ id: sessionId, ok: false, error: err.message });
           }
         });
@@ -219,12 +224,13 @@ async function runWebSocketScaleTest() {
 
   console.log(`\n✅ Phase 2 Completed:`);
   console.log(`   - Connected Tenants:${connectedCount} / ${WS_USERS} (${((connectedCount / WS_USERS) * 100).toFixed(1)}%)`);
+  console.log(`   - Auth-Rejected:    ${authRejectedCount} (expected: credential-less tenants must be refused)`);
   console.log(`   - Handshake Fail:   ${errorCount}`);
   console.log(`   - Handshake Avg:    ${stats.avg} ms`);
   console.log(`   - Handshake p50:    ${stats.p50} ms`);
   console.log(`   - Handshake p95:    ${stats.p95} ms`);
 
-  return { connectedCount, errorCount, stats };
+  return { connectedCount, errorCount, authRejectedCount, stats };
 }
 
 // ============================================================================
@@ -247,7 +253,10 @@ async function main() {
       concurrencyLimit: CONCURRENCY_LIMIT,
       http: httpReport,
       websocket: wsReport,
-      verdict: httpReport.failed === 0 ? 'PASS' : 'FAIL',
+      // A PASS used to ignore the WebSocket leg entirely: every tenant could
+      // fail to connect and the run still reported green. Auth rejections of
+      // these credential-less tenants are expected; anything else is not.
+      verdict: httpReport.failed === 0 && wsReport.errorCount === 0 ? 'PASS' : 'FAIL',
     };
 
     fs.writeFileSync(path.join(outputDir, 'load-summary.json'), JSON.stringify(report, null, 2));

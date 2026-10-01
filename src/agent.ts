@@ -13,7 +13,7 @@ import { formatToolTranscript, isSystemContinuation, ToolTranscriptStream, toolS
 import { applyExactEdits } from './lib/exact-edits';
 import { BACKEND_NOT_RUNNING, usesSimulatedApi } from './lib/preview-mode';
 import { createTypeScriptStarter } from './lib/project-starters';
-import { autoHealAppCode } from './lib/model-tester';
+import { prepareModuleSource, buildTranspileErrorModule } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
 import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, type AllowedModel } from './lib/models';
@@ -169,6 +169,7 @@ export const TRUNCATION_RETRY_MESSAGE = 'The previous response ended with an unf
 // attempt; without a cap the trigger-auto-reply loop spins forever, burning
 // the user's token budget while the UI never resolves.
 const MAX_TRUNCATION_RETRIES = 2;
+const MAX_SYNTAX_REPAIRS = 2;
 
 /**
  * Backend-owned write paths for the mandatory write-order rule. Covers the
@@ -370,6 +371,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * server's own TRUNCATION_RETRY_MESSAGE continuation prompts.
    */
   private truncationRetries = 0;
+  /**
+   * Consecutive auto-repairs of syntax-dropped files. Same chain discipline as
+   * truncationRetries: reset by a brand-new user prompt, capped so a file the
+   * model cannot express validly does not burn an unbounded repair loop.
+   */
+  private syntaxRepairAttempts = 0;
   /**
    * Epoch of the generation whose turn was last persisted via
    * saveGenerationTurn. Lets the failure handler preserve the user's prompt
@@ -1293,7 +1300,6 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const destructiveMode = !plannerMode && isDestructivePrompt(actualPrompt);
       const questionMode = !plannerMode && !destructiveMode && isQuestionPrompt(actualPrompt);
       const ambiguousMode = !plannerMode && !destructiveMode && !questionMode && isAmbiguousPrompt(actualPrompt);
-      const toolLessMode = plannerMode || destructiveMode || questionMode || ambiguousMode;
 
       if (actualPrompt.length > MAX_PROMPT_CHARS) {
         // Bounded before any inference is purchased: the client surfaces the
@@ -1486,7 +1492,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
     // server recognizes via its own continuation prompts.
-    if (!isSystemContinuation(actualPrompt)) this.truncationRetries = 0;
+    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; }
     const controls = generationControls(data);
     const generationTimeoutMs = controls.timeoutMs;
     const maxSteps = controls.maxSteps;
@@ -1918,6 +1924,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
           // 1. Cloudflare Workers AI edge binding
           if (resolved.provider === 'cloudflare') {
+            // B4/B5 tool-less parity with the SDK path: question, destructive
+            // and ambiguous turns must offer zero file tools regardless of
+            // provider. Previously only planner/file-retry disabled them here,
+            // so the default Workers AI model could still write files in
+            // question mode.
+            const toolLess = plannerMode || fileOutputRetry || !!modes?.destructiveMode || !!modes?.questionMode || !!modes?.ambiguousMode;
+            // expectFiles stays true for the file-output retry itself: that
+            // turn demands files, so a prose-only reply must be treated as an
+            // incomplete generation and surface an error.
+            const expectFiles = !plannerMode && !modes?.questionMode && !modes?.destructiveMode && !modes?.ambiguousMode;
             const success = await this.runCloudflareWorkersAI(
               resolved.id,
               systemPrompt,
@@ -1926,8 +1942,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               actualPrompt,
               requestedMaxTokens,
               epoch,
-              !plannerMode,
-              plannerMode || fileOutputRetry ? {} : { ...extensions.capabilities, ...await capabilitiesFromTools(Object.fromEntries(Object.entries(agentTools).filter(([name]) => ['read_file', 'list_files', 'check_syntax', 'write_file', 'edit_file'].includes(name))), abortController.signal) }, extensions.attachments, assetPaths, deferTerminal, maxSteps, controls.fastMode
+              expectFiles,
+              toolLess ? {} : { ...extensions.capabilities, ...await capabilitiesFromTools(Object.fromEntries(Object.entries(agentTools).filter(([name]) => ['read_file', 'list_files', 'check_syntax', 'write_file', 'edit_file'].includes(name))), abortController.signal) }, extensions.attachments, assetPaths, deferTerminal, maxSteps, controls.fastMode
             );
             completed = success;
             if (abortController.signal.aborted) throw abortController.signal.reason;
@@ -1976,7 +1992,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             }
           }
 
-          const isStaged = !plannerMode && !isConversationalPrompt(actualPrompt) && !fileOutputRetry && !actualPrompt.includes('<edit ') && !(typeof process !== 'undefined' && process.env?.VITEST);
+          // Staging is for fresh full-app builds only. Running the three-stage
+          // pipeline for questions, destructive confirmations, clarifying
+          // prompts, resumes, or edits to an existing app triples the model
+          // calls, shows misleading "Step 1 of 3" notices, and the stage
+          // instructions contradict the tool-less mode blocks.
+          const existingAppForStaging = this.runSql`SELECT content FROM project_files WHERE path = '/src/App.tsx'`[0]?.content ?? '';
+          const isFreshBuild = !existingAppForStaging || isStarterApp(existingAppForStaging);
+          const isStaged = !plannerMode && !modes?.questionMode && !modes?.destructiveMode && !modes?.ambiguousMode && !resumeChain && isFreshBuild && !isConversationalPrompt(actualPrompt) && !fileOutputRetry && !actualPrompt.includes('<edit ') && !(typeof process !== 'undefined' && process.env?.VITEST);
           const pipelineStages = isStaged ? [
             { stageId: 'architecture', notice: 'Step 1 of 3: Architecture & Schema', extraPrompt: '\n\nSTAGE 1 INSTRUCTION: Write ONLY schema/migration files, shared contract types, and config files (e.g. migrations/*.sql, shared/*.ts, package.json). Do NOT write App.tsx, any /src/components/*.tsx files, or worker/index.ts yet.' },
             { stageId: 'layout', notice: 'Step 2 of 3: Frontend components', extraPrompt: '\n\nSTAGE 2 INSTRUCTION: Write ALL frontend files. Start with /src/App.tsx FIRST (mandatory write order), then write EVERY component file it imports — all /src/components/*.tsx. Write every sub-import too. Do NOT write worker/index.ts or backend routes yet.' },
@@ -2114,7 +2137,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...stageNewPaths])];
                   extraction.writtenCount = extraction.writtenPaths.length;
 
-                  this.saveGenerationTurn(stageIdx === 0 ? actualPrompt : 'Continue to the next stage.', displayContent || (stageNewPaths.size ? `Updated ${[...stageNewPaths].join(', ')}.` : ''), epoch);
+                  // Continuation stages must not appear as user turns: the
+                  // [AUTO-CONTINUE] prefix marks them internal (hidden on
+                  // history load) and boundedConversation filters them out of
+                  // future model context.
+                  this.saveGenerationTurn(stageIdx === 0 ? actualPrompt : '[AUTO-CONTINUE] Continue to the next stage.', displayContent || (stageNewPaths.size ? `Updated ${[...stageNewPaths].join(', ')}.` : ''), epoch);
 
                   if (stageNewPaths.size > 0) {
                     flushFrame();
@@ -2947,10 +2974,30 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // successful generation.
     const brokenFiles: Array<{ path: string; error: string }> = [];
     for (const [path, content] of pendingWrites.entries()) {
-      if (!path.startsWith('/src/') || !(path.endsWith('.jsx') || path.endsWith('.tsx'))) continue;
+      // Coverage beyond /src: worker/, shared/ and server/ code fails the real
+      // build at publish time, so a syntax error there must be caught at save.
+      if (!/^\/(?:src|worker|shared|server)\//.test(path) && !path.endsWith('.json')) continue;
+      if (path.endsWith('.json')) {
+        try { JSON.parse(content); } catch (jsonErr) {
+          console.warn(`Invalid JSON in ${path}: ${errorMessage(jsonErr)}`);
+          brokenFiles.push({ path, error: errorMessage(jsonErr) });
+        }
+        continue;
+      }
+      const isJsxLike = path.endsWith('.jsx') || path.endsWith('.tsx');
+      const isTs = path.endsWith('.ts') || path.endsWith('.tsx');
+      const transforms = isJsxLike ? (['jsx', 'typescript'] as const) : isTs ? (['typescript'] as const) : (['jsx'] as const);
+      if (!/\.(?:[cm]?[jt]sx?)$/.test(path)) continue;
       try {
-        transform(content, { transforms: ['jsx', 'typescript'] });
+        transform(content, { transforms: [...transforms] });
       } catch (syntaxErr) {
+        // Bracket-guessing repair is only meaningful for truncated JSX; a
+        // cut-off backend .ts file gets regenerated, not patched.
+        if (!isJsxLike) {
+          console.warn(`Unrecoverable syntax error in ${path}: ${errorMessage(syntaxErr)}`);
+          brokenFiles.push({ path, error: errorMessage(syntaxErr) });
+          continue;
+        }
         const repaired = this.repairUnclosedBrackets(content);
         try {
           transform(repaired, { transforms: ['jsx', 'typescript'] });
@@ -2964,15 +3011,29 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
     for (const { path } of brokenFiles) pendingWrites.delete(path);
 
-    // FIX: a dropped file used to vanish silently — the user saw a "successful"
-    // generation with a missing component and no explanation. Tell the client.
+    // A dropped file used to mean a "successful" generation with a missing
+    // component. Now the agent repairs it automatically: a bounded [AUTO-FIX]
+    // continuation regenerates exactly the dropped files. Only when the repair
+    // budget is exhausted does the user get the plain-language error.
     if (brokenFiles.length > 0) {
       summary.hadSyntaxDrops = true;
-      const warn = JSON.stringify({
-        type: 'error',
-        error: `Discarded ${brokenFiles.length} file(s) with unrecoverable syntax errors: ${brokenFiles.map(f => f.path).join(', ')}. Ask the agent to regenerate them.`
-      });
-      try { connection.send(warn); } catch { }
+      const repairsSoFar = typeof this.syntaxRepairAttempts === 'number' ? this.syntaxRepairAttempts : 0;
+      if (repairsSoFar < MAX_SYNTAX_REPAIRS) {
+        this.syntaxRepairAttempts = repairsSoFar + 1;
+        const list = brokenFiles.slice(0, 8).map(f => `- ${f.path}: ${f.error.slice(0, 300)}`).join('\n');
+        const repairPrompt =
+          `[AUTO-FIX] These files were discarded because of syntax errors and were not saved:\n${list}\n\n` +
+          `Regenerate ONLY these files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
+          `Do not modify any other file. Check that every bracket, brace, parenthesis and JSX tag is closed before finishing.`;
+        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `A file didn't pass the syntax check. Repairing it now…` })); } catch { }
+        try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch { }
+      } else {
+        const warn = JSON.stringify({
+          type: 'error',
+          error: `Discarded ${brokenFiles.length} file(s) with unrecoverable syntax errors after ${MAX_SYNTAX_REPAIRS} automatic repair attempts: ${brokenFiles.map(f => f.path).join(', ')}. Ask the agent to regenerate them one at a time.`
+        });
+        try { connection.send(warn); } catch { }
+      }
     }
 
     if (pendingWrites.size === 0 && pendingDeletes.size === 0) {
@@ -3124,7 +3185,20 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (!projectId || (this.name && this.name !== projectId)) return Response.json({ error: 'Invalid scope' }, { status: 403 });
       const userId = getRequestUserId(request);
       const allowlist = String((this.env as Record<string, unknown>).PRODUCT_METRICS_OWNER_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
-      if (!userId || !allowlist.includes(userId)) return Response.json({ error: 'Not an operator' }, { status: 403 });
+      let operator = !!userId && allowlist.includes(userId);
+      // Email fallback matching the worker gate: a recreated owner account has
+      // a new userId, so the ID allowlist alone strands operator access.
+      if (!operator && userId) {
+        const adminEmails = String((this.env as Record<string, unknown>).ADMIN_EMAILS || '').split(',').map(email => email.trim().toLowerCase()).filter(Boolean);
+        if (adminEmails.length) {
+          try {
+            const owner = await getRegistry(this.env).fetch(`https://registry/admin/managed-owner?ownerId=${encodeURIComponent(userId)}`);
+            const data = owner.ok ? await owner.json() as { email?: string } : null;
+            operator = !!data?.email && adminEmails.includes(data.email.toLowerCase());
+          } catch { /* fail closed */ }
+        }
+      }
+      if (!operator) return Response.json({ error: 'Not an operator' }, { status: 403 });
       this.ensureSchema();
       const all = this.readAllProjectFiles();
       const files: Record<string, string> = Object.create(null);
@@ -3538,262 +3612,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * in the steps below.
    */
   private prepareModuleSource(raw: string, cleanPath: string, path: string): string {
-    // 1. Strip stray markdown fences the model may have left in the file.
-    let c = raw.trim();
-    const fenceStart = c.match(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/);
-    if (fenceStart) {
-      const afterFence = c.substring(fenceStart[0].length);
-      const fenceEnd = afterFence.search(/\r?\n```/);
-      c = fenceEnd !== -1 ? afterFence.substring(0, fenceEnd) : afterFence.replace(/\r?\n```[\s\S]*$/, '');
-    } else {
-      const trailingFence = c.search(/\r?\n```(?:\s*\r?\n|$)/);
-      if (trailingFence !== -1) c = c.substring(0, trailingFence);
-      c = c.replace(/^\s*```(?:[a-zA-Z0-9_-]+)?\r?\n/, '').replace(/\r?\n```[\s\S]*$/, '');
-    }
-    let content = autoHealAppCode(c.trim());
-
-    // 2. Map common icon-name mistakes onto real lucide-react exports.
-    const lucideAliases: Record<string, string> = {
-      Chat: 'MessageSquare', Dashboard: 'LayoutDashboard', Spinner: 'Loader2',
-      Gear: 'Settings', Robot: 'Bot', Bin: 'Trash2', Cross: 'X', Close: 'X',
-      Logout: 'LogOut', Exit: 'LogOut', Profile: 'User', Graph: 'BarChart2',
-      Stats: 'BarChart', Tick: 'Check', Add: 'Plus', Warning: 'AlertTriangle',
-      Information: 'Info', Magnifier: 'Search', Delete: 'Trash2',
-      FaFacebook: 'Facebook', FaTwitter: 'Twitter', FaInstagram: 'Instagram',
-      FaLinkedin: 'Linkedin', FaGithub: 'Github', FaYoutube: 'Youtube'
-    };
-    content = content.replace(/import\s*\{([^}]+)\}\s*from\s*['"](?:https:\/\/esm\.sh\/)?lucide-react['"]/g, (_m, importsStr) => {
-      const parts = String(importsStr).split(',').map((p: string) => {
-        const trimmed = p.trim();
-        if (!trimmed) return '';
-        let importedName = trimmed;
-        let localName = trimmed;
-        if (trimmed.includes(' as ')) {
-          const partsAs = trimmed.split(/\s+as\s+/);
-          importedName = partsAs[0].trim();
-          localName = partsAs[1].trim();
-        }
-        if (lucideAliases[importedName]) {
-          importedName = lucideAliases[importedName];
-        } else {
-          // Strip react-icons 2-3 letter prefixes ONLY when followed by an
-          // uppercase letter, so native Lucide names like Facebook, Filter,
-          // Film, FileText, History and Binary survive untouched.
-          const prefixMatch = importedName.match(/^(?:Fi|Fa|Ai|Bs|Md|Hi|Lu|Bi|Tb|Ri|Io|Ti|Go|Vsc|Cg|Rx)(?=[A-Z])/);
-          if (prefixMatch) {
-            const stripped = importedName.slice(prefixMatch[0].length);
-            importedName = lucideAliases[stripped] || stripped;
-          }
-        }
-        return importedName === localName ? importedName : `${importedName} as ${localName}`;
-      }).filter(Boolean);
-      return `import { ${parts.join(', ')} } from 'lucide-react'`;
-    });
-
-    // 3. Add React hook imports the model used but forgot to import.
-    const commonHooks = ['useState', 'useEffect', 'useRef', 'useCallback', 'useMemo', 'useContext', 'useReducer'];
-    const importedFromReact = new Set<string>();
-    const reactImportRegex = /(?:^|\n)\s*import\s+((?:(?!import)[^;])+?)\s+from\s*['"]react['"]/g;
-    let rMatch: RegExpExecArray | null;
-    while ((rMatch = reactImportRegex.exec(content)) !== null) {
-      const namedMatch = rMatch[1].match(/\{([^}]+)\}/);
-      if (namedMatch) {
-        namedMatch[1].split(',').forEach(item => {
-          const name = item.trim().split(/\s+as\s+/)[0].trim();
-          if (name) importedFromReact.add(name);
-        });
-      }
-    }
-    const missingHooks = commonHooks.filter(hook => {
-      if (importedFromReact.has(hook)) return false;
-      if (!new RegExp(`(?<![.\\w])${hook}\\s*\\(`).test(content)) return false;
-      return !new RegExp(`(?:const|let|var|function|type|interface)\\s+${hook}\\b`).test(content);
-    });
-    if (missingHooks.length > 0) {
-      const reactImportWithBraces = /((?:^|\n)\s*import\s+[^;]*?\{)([^}]+)(\}[^;]*?\s+from\s*['"]react['"])/;
-      const matchBraces = content.match(reactImportWithBraces);
-      if (matchBraces) {
-        content = content.replace(reactImportWithBraces, (_m, prefix, inside, suffix) => {
-          const trimmedInside = String(inside).trim();
-          const sep = trimmedInside.length > 0 ? ', ' : '';
-          return `${prefix}${trimmedInside}${sep}${missingHooks.join(', ')}${suffix}`;
-        });
-      } else if (/(?:^|\n)\s*import\s+React\b([^;]*from\s*['"]react['"])/.test(content)) {
-        content = content.replace(/(?:^|\n)\s*import\s+React\b([^;]*from\s*['"]react['"])/, (_m, rest) => `\nimport React, { ${missingHooks.join(', ')} } ${rest}`);
-      } else {
-        content = `import React, { ${missingHooks.join(', ')} } from 'react';\n${content}`;
-      }
-    }
-
-    // 4. Wrap a bare top-level return in a component function.
-    const hasExportDefault = /export\s+default\b/.test(content);
-    const hasTopLevelReturn = /\breturn\s*[(<]/.test(content);
-    const hasComponentFn = /(?:function|const|let|var)\s+[A-Z][a-zA-Z0-9_$]*\s*(?:=|\()/.test(content);
-    if (hasTopLevelReturn && !hasExportDefault && !hasComponentFn) {
-      const compName = path.split('/').pop()?.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '') || 'Component';
-      const lines = content.split('\n');
-      const importLines: string[] = [];
-      const bodyLines: string[] = [];
-      let pastImports = false;
-      for (const line of lines) {
-        if (!pastImports && (line.trim().startsWith('import ') || line.trim().startsWith('//') || !line.trim())) {
-          importLines.push(line);
-        } else {
-          pastImports = true;
-          bodyLines.push(line);
-        }
-      }
-      content = importLines.join('\n') + `\n\nexport default function ${compName}(props) {\n` + bodyLines.join('\n') + '\n}\n';
-    }
-
-    // 5. Canonicalize relative imports BEFORE transpiling, so the rewrite sees
-    //    the original specifier rather than whatever sucrase emitted.
-    if (/^\/src\/(components|context|pages)\//.test(cleanPath)) {
-      content = content.replace(/from\s+['"](\.\/)([^'"]+)['"]/g, (m, _dot, rest) => {
-        const filename = String(rest).split('/').pop() || rest;
-        const baseName = filename.replace(/\.[^.]+$/, '');
-        const extensions = ['.jsx', '.tsx', '.js', '.ts', '.json', '.css'];
-        const dir = cleanPath.slice(0, cleanPath.lastIndexOf('/'));
-        const siblingPaths = extensions.map(ext => `${dir}/${baseName}${ext}`);
-        const siblingRows = this.runSql`SELECT 1 FROM project_files WHERE path IN (SELECT value FROM json_each(${JSON.stringify(siblingPaths)})) LIMIT 1`;
-        if (siblingRows.length > 0) return m;
-        const parentPaths = [
-          ...extensions.map(ext => `/src/${baseName}${ext}`),
-          ...extensions.map(ext => `src/${baseName}${ext}`),
-        ];
-        const parentRows = this.runSql`SELECT 1 FROM project_files WHERE path IN (SELECT value FROM json_each(${JSON.stringify(parentPaths)})) LIMIT 1`;
-        return parentRows.length > 0 ? `from '../${rest}'` : m;
-      });
-    }
-
-    // Ensure React is in scope for Sucrase's JSX transform (which converts JSX to React.createElement)
-    if (/\.([jt]sx)$/.test(cleanPath) || /<[A-Za-z0-9_$]+/.test(content)) {
-      if (!/\bimport\s+React\b/.test(content)) {
-        const reactNamedImportRegex = /((?:^|\n)\s*import\s+)\{([^}]+)\}(\s+from\s*['"]react['"])/;
-        if (reactNamedImportRegex.test(content)) {
-          content = content.replace(reactNamedImportRegex, "$1React, { $2 }$3");
-        } else if (!/from\s*['"]react['"]/.test(content)) {
-          content = `import React from 'react';\n${content}`;
-        }
-      }
-    }
-
-    // Replace Vite import.meta.env and Node process.env with runtime-safe access
-    content = content.replace(/import\.meta\.env/g, '(window.__BH_ENV__ || {})');
-    content = content.replace(/process\.env/g, '(window.process?.env || {})');
-
-    // 6. Transpile.
-    content = transform(content, { transforms: ['typescript', 'jsx'] }).code;
-
-    // 7. Turn side-effect CSS imports into runtime <link> injection.
-    content = content.replace(/import\s+['"]([^'"]+\.css)['"];?/g, (_m, p1) => {
-      const filename = String(p1).split('/').pop() || 'styles.css';
-      return `
-        (function() {
-          const id = 'bh-css-' + ${JSON.stringify(filename)}.replace(/[^a-zA-Z0-9]/g, '-');
-          if (!document.getElementById(id)) {
-            const link = document.createElement('link');
-            link.id = id;
-            link.rel = 'stylesheet';
-            link.href = ${JSON.stringify(filename)};
-            document.head.appendChild(link);
-          }
-        })();
-      `;
-    });
-
-    // 8. Guarantee a default export so the loader always finds a component.
-    if (!/export\s+default\b/.test(content)) {
-      const namedMatch = content.match(/export\s+(?:function|const|class)\s+([A-Za-z0-9_$]+)/) ||
-        content.match(/(?:function|const|class)\s+([A-Z][A-Za-z0-9_$]+)/);
-      if (namedMatch && namedMatch[1]) {
-        content += `\nexport default ${namedMatch[1]};\n`;
-      } else {
-        const compName = path.split('/').pop()?.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '');
-        if (compName && content.includes(compName)) content += `\nexport default ${compName};\n`;
-      }
-    }
-
-    // 8b. Guarantee that any default-exported component is also available as a named export.
-    const defExportMatch = content.match(/export\s+default\s+(?:(?:async\s+)?function\s*\*?\s+|class\s+)([A-Za-z_$][\w$]*)\b/) ||
-      content.match(/export\s+default\s+([A-Za-z_$][\w$]*)\s*(?:;|$)/);
-    if (defExportMatch && defExportMatch[1]) {
-      const defName = defExportMatch[1];
-      if (!['function', 'class', 'async', 'null', 'true', 'false', 'undefined'].includes(defName) &&
-          !new RegExp(`export\\s+(?:const|let|var|function|class)\\s+${defName}\\b`).test(content) &&
-          !new RegExp(`export\\s*\\{[^}]*\\b${defName}\\b[^}]*\\}`).test(content)) {
-        content += `\nexport { ${defName} };\n`;
-      }
-    }
-
-    // 8c. Guarantee that top-level declared functions and variables are exported
-    // so named imports from other modules find them.
-    const topLevelDecls = content.matchAll(/^(?:const|let|var|function)\s+([a-zA-Z0-9$][a-zA-Z0-9_$]*)\b/gm);
-    const namesToExport = new Set<string>();
-    for (const m of topLevelDecls) {
-      const name = m[1];
-      if (name && !name.startsWith('_') && !name.startsWith('bh') && name !== 'default' &&
-          !new RegExp(`export\\s+(?:const|let|var|function|class)\\s+${name}\\b`).test(content) &&
-          !new RegExp(`export\\s*\\{[^}]*\\b${name}\\b[^}]*\\}`).test(content)) {
-        namesToExport.add(name);
-      }
-    }
-    if (namesToExport.size > 0) {
-      content += `\nexport { ${[...namesToExport].join(', ')} };\n`;
-    }
-
-    // 9. Add extensions to extensionless relative imports so the browser's
-    //    module resolver can find them.
-    content = content.replace(/from\s+['"](\.[^'"]+)['"]/g, (m, p1) => {
-      if (/\.(css|jsx|tsx|ts|js|json)$/.test(p1)) return m;
-      return `from '${p1}.jsx'`;
-    });
-
-    return content;
+    return prepareModuleSource(raw, cleanPath, path, (paths) =>
+      this.runSql`SELECT 1 FROM project_files WHERE path IN (SELECT value FROM json_each(${JSON.stringify(paths)})) LIMIT 1`.length > 0
+    );
   }
 
-  /** A module that renders the transpile error instead of a blank preview. */
   private buildTranspileErrorModule(path: string, errMsg: string): string {
-    return `
-      import React from 'react';
-      console.error("Transpile Error in " + ${JSON.stringify(path)} + ":\\n" + ${JSON.stringify(errMsg)});
-      try {
-        if (typeof window !== 'undefined' && window.parent !== window) {
-          window.parent.postMessage({
-            type: 'preview-error',
-            file: ${JSON.stringify(path)},
-            error: "Transpile Error in " + ${JSON.stringify(path)} + ": " + ${JSON.stringify(errMsg)}
-          }, window.location.origin);
-        }
-      } catch (_) {}
-
-      export default function TranspileErrorView() {
-        return React.createElement('div', {
-          style: {
-            padding: '32px 20px', fontFamily: 'system-ui, -apple-system, sans-serif',
-            background: '#0a0a12', color: '#f87171', minHeight: '100vh',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box'
-          }
-        }, React.createElement('div', {
-          style: {
-            background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)',
-            borderRadius: '16px', padding: '24px 28px', maxWidth: '560px', width: '100%',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
-          }
-        }, [
-          React.createElement('h3', { key: 'title', style: { margin: '0 0 12px', fontSize: '16px', fontWeight: 600, color: '#fca5a5' } }, 'Syntax or Runtime Error'),
-          React.createElement('div', { key: 'file', style: { fontSize: '12px', color: '#94a3b8', marginBottom: '10px' } }, 'File: ' + ${JSON.stringify(path)}),
-          React.createElement('pre', {
-            key: 'msg',
-            style: {
-              margin: '0', padding: '14px', background: 'rgba(0,0,0,0.5)', borderRadius: '8px',
-              fontSize: '13px', color: '#f87171', fontFamily: 'monospace',
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word', border: '1px solid rgba(239, 68, 68, 0.15)'
-            }
-          }, ${JSON.stringify(errMsg)})
-        ]));
-      }
-      export const App = TranspileErrorView;
-    `;
+    return buildTranspileErrorModule(path, errMsg);
   }
 }
