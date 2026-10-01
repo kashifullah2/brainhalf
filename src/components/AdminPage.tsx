@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Users, BadgeCheck, Activity, FolderKanban, RefreshCw, Search, ShieldCheck, Trash2, AlertTriangle, X, Code2, Eye, FileCode2 } from 'lucide-react';
+import { Users, BadgeCheck, Activity, FolderKanban, RefreshCw, Search, ShieldCheck, Trash2, AlertTriangle, X, Code2, Eye, FileCode2, Brain, Plus, Play, Loader2 } from 'lucide-react';
 import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
 import MobileNav from './MobileNav';
@@ -45,8 +45,17 @@ interface OutcomeReport {
 }
 
 type LoadState = 'loading' | 'signed-out' | 'forbidden' | 'error' | 'ready';
-type Tab = 'accounts' | 'projects';
+type Tab = 'accounts' | 'projects' | 'models';
 type ProjectStatusFilter = 'all' | 'live' | 'published' | 'gallery' | 'deleted';
+
+interface CustomModel {
+  id: string;
+  name: string;
+  baseUrl: string;
+  modelId: string;
+  createdAt: number;
+  updatedAt: number;
+}
 
 interface ConfirmState {
   title: string;
@@ -101,6 +110,13 @@ export default function AdminPage() {
   const [codeView, setCodeView] = useState<CodeViewState | null>(null);
   const [codeLoading, setCodeLoading] = useState(false);
   const [previewProject, setPreviewProject] = useState<AdminProject | null>(null);
+  const [models, setModels] = useState<CustomModel[]>([]);
+  const [modelForm, setModelForm] = useState({ name: '', baseUrl: '', modelId: '', apiKey: '' });
+  const [modelSaving, setModelSaving] = useState(false);
+  const [testModelId, setTestModelId] = useState<string | null>(null);
+  const [testPrompt, setTestPrompt] = useState('');
+  const [testOutput, setTestOutput] = useState('');
+  const [testRunning, setTestRunning] = useState(false);
 
   const load = async (signal?: AbortSignal) => {
     setState('loading');
@@ -132,6 +148,111 @@ export default function AdminPage() {
     void load(controller.signal);
     return () => controller.abort();
   }, []);
+
+  const loadModels = async () => {
+    try {
+      const response = await authFetch('/api/admin/models');
+      if (response.ok) {
+        const body = await response.json() as { models?: CustomModel[] };
+        setModels(Array.isArray(body.models) ? body.models : []);
+      }
+    } catch { /* non-fatal */ }
+  };
+
+  useEffect(() => { if (state === 'ready') void loadModels(); }, [state]);
+
+  const saveModel = async () => {
+    if (!modelForm.name.trim() || !modelForm.baseUrl.trim() || !modelForm.modelId.trim() || !modelForm.apiKey.trim()) {
+      setNotice({ kind: 'error', text: 'Fill in all fields: name, base URL, model ID, and API key.' });
+      return;
+    }
+    setModelSaving(true);
+    setNotice(null);
+    try {
+      const response = await authFetch('/api/admin/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(modelForm),
+      });
+      const body = await response.json() as { error?: string };
+      if (!response.ok) {
+        setNotice({ kind: 'error', text: body.error || 'Could not add the model.' });
+      } else {
+        setNotice({ kind: 'ok', text: 'Model added.' });
+        setModelForm({ name: '', baseUrl: '', modelId: '', apiKey: '' });
+        await loadModels();
+      }
+    } catch {
+      setNotice({ kind: 'error', text: 'Could not add the model.' });
+    } finally {
+      setModelSaving(false);
+    }
+  };
+
+  const deleteModel = async (id: string) => {
+    setWorking(true);
+    try {
+      const response = await authFetch(`/api/admin/models/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (response.ok) {
+        setNotice({ kind: 'ok', text: 'Model removed.' });
+        await loadModels();
+      } else {
+        setNotice({ kind: 'error', text: 'Could not remove the model.' });
+      }
+    } catch {
+      setNotice({ kind: 'error', text: 'Could not remove the model.' });
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const testModel = async (id: string) => {
+    if (!testPrompt.trim()) {
+      setNotice({ kind: 'error', text: 'Type a prompt to test the model.' });
+      return;
+    }
+    setTestRunning(true);
+    setTestOutput('');
+    setTestModelId(id);
+    try {
+      const response = await authFetch(`/api/admin/models/${encodeURIComponent(id)}/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: testPrompt.trim() }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        setTestOutput(`Error: ${body.error || `Request failed (${response.status})`}`);
+        return;
+      }
+      const reader = response.body?.getReader();
+      if (!reader) { setTestOutput('Error: No response stream.'); return; }
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const data = trimmed.slice(5).trim();
+          if (data === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) setTestOutput(prev => prev + content);
+          } catch { /* ignore malformed chunks */ }
+        }
+      }
+    } catch {
+      setTestOutput('Error: Could not reach the model.');
+    } finally {
+      setTestRunning(false);
+    }
+  };
 
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -340,6 +461,9 @@ export default function AdminPage() {
             <button type="button" role="tab" aria-selected={tab === 'projects'} className={tab === 'projects' ? 'admin-tab-active' : ''} onClick={() => setTab('projects')}>
               <FolderKanban size={14} aria-hidden="true" /> Projects <span className="admin-count">{filteredProjects.length}</span>
             </button>
+            <button type="button" role="tab" aria-selected={tab === 'models'} className={tab === 'models' ? 'admin-tab-active' : ''} onClick={() => setTab('models')}>
+              <Brain size={14} aria-hidden="true" /> Models <span className="admin-count">{models.length}</span>
+            </button>
           </div>
 
           <div className="admin-table-bar">
@@ -436,6 +560,70 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+          </>}
+          {tab === 'models' && <>
+            <div className="admin-card" aria-label="Add a custom model">
+              <h3>Add a model</h3>
+              <p className="admin-hint">Connect any OpenAI-compatible API. The API key is encrypted before it is stored. Test generations are unlimited — no token cap is applied.</p>
+              <div className="admin-form-grid">
+                <label>Display name
+                  <input type="text" value={modelForm.name} onChange={e => setModelForm(f => ({ ...f, name: e.target.value }))} placeholder="My custom model" />
+                </label>
+                <label>Base URL
+                  <input type="url" value={modelForm.baseUrl} onChange={e => setModelForm(f => ({ ...f, baseUrl: e.target.value }))} placeholder="https://api.example.com/v1" />
+                </label>
+                <label>Model ID
+                  <input type="text" value={modelForm.modelId} onChange={e => setModelForm(f => ({ ...f, modelId: e.target.value }))} placeholder="model-name" />
+                </label>
+                <label>API key
+                  <input type="password" value={modelForm.apiKey} onChange={e => setModelForm(f => ({ ...f, apiKey: e.target.value }))} placeholder="sk-…" autoComplete="off" />
+                </label>
+              </div>
+              <button type="button" className="admin-btn admin-btn-primary" onClick={saveModel} disabled={modelSaving}>
+                {modelSaving ? <Loader2 size={14} className="admin-spin" aria-hidden="true" /> : <Plus size={14} aria-hidden="true" />} Add model
+              </button>
+            </div>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead><tr><th>Model</th><th>Base URL</th><th>Model ID</th><th><span className="admin-sr">Actions</span></th></tr></thead>
+                <tbody>
+                  {models.map(m => (
+                    <tr key={m.id}>
+                      <td>{m.name}</td>
+                      <td className="admin-mono">{m.baseUrl}</td>
+                      <td className="admin-mono">{m.modelId}</td>
+                      <td>
+                        <div className="admin-actions">
+                          <button type="button" className="admin-icon-btn" title="Test this model" aria-label={`Test ${m.name}`} onClick={() => { setTestModelId(m.id); setTestOutput(''); }}>
+                            <Play size={14} aria-hidden="true" />
+                          </button>
+                          <button type="button" className="admin-icon-btn admin-icon-btn-danger" title="Remove model" aria-label={`Remove ${m.name}`} onClick={() => deleteModel(m.id)} disabled={working}>
+                            <Trash2 size={14} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {models.length === 0 && <tr><td colSpan={4} className="admin-empty">No custom models yet. Add one above.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            {testModelId && (() => {
+              const model = models.find(m => m.id === testModelId);
+              return model ? (
+                <div className="admin-card" aria-label={`Test ${model.name}`}>
+                  <h3>Test {model.name}</h3>
+                  <p className="admin-hint">Unlimited generation — the model writes until it stops on its own.</p>
+                  <label className="admin-test-label">Prompt
+                    <textarea value={testPrompt} onChange={e => setTestPrompt(e.target.value)} placeholder="Write a story about…" rows={3} />
+                  </label>
+                  <button type="button" className="admin-btn admin-btn-primary" onClick={() => testModel(model.id)} disabled={testRunning}>
+                    {testRunning ? <Loader2 size={14} className="admin-spin" aria-hidden="true" /> : <Play size={14} aria-hidden="true" />} {testRunning ? 'Generating…' : 'Generate'}
+                  </button>
+                  {testOutput && <pre className="admin-test-output" aria-live="polite">{testOutput}</pre>}
+                </div>
+              ) : null;
+            })()}
           </>}
           <p className="admin-hint">Deleting a project erases it completely — app files, backend, backups, and the registry entry. Deleting an account removes the account and all of its projects. Neither can be undone.</p>
         </section>

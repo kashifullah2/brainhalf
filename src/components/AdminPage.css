@@ -131,3 +131,17 @@
   .admin-code-layout { grid-template-columns:1fr; }
   .admin-file-tree { border-right:0; border-bottom:1px solid var(--border-subtle); max-height:180px; }
 }
+
+/* Custom models */
+.admin-form-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin:12px 0 16px; }
+.admin-form-grid label { display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--text-secondary); }
+.admin-form-grid input { padding:10px 12px; border:1px solid var(--border-subtle); border-radius:10px; background:var(--bg-primary); color:var(--text-primary); font-size:14px; }
+.admin-form-grid input:focus { outline:2px solid var(--studio-blue); outline-offset:1px; border-color:var(--studio-blue); }
+.admin-mono { font-family:var(--font-mono); font-size:12px; }
+.admin-test-label { display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--text-secondary); margin:12px 0; }
+.admin-test-label textarea { padding:10px 12px; border:1px solid var(--border-subtle); border-radius:10px; background:var(--bg-primary); color:var(--text-primary); font-size:14px; resize:vertical; }
+.admin-test-label textarea:focus { outline:2px solid var(--studio-blue); outline-offset:1px; border-color:var(--studio-blue); }
+.admin-test-output { margin:16px 0 0; padding:16px; border:1px solid var(--border-subtle); border-radius:10px; background:var(--bg-secondary); color:var(--text-primary); font-size:14px; line-height:1.6; white-space:pre-wrap; word-break:break-word; max-height:50dvh; overflow-y:auto; }
+.admin-spin { animation:admin-spin 1s linear infinite; }
+@keyframes admin-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .admin-spin { animation:none; } }

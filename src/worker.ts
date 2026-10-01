@@ -435,6 +435,31 @@ export default {
       } catch { return withCors(jsonError('Project deletion failed', 503), origin); }
     }
 
+    // Operator custom models: list, add, delete, test. Proxied to the registry.
+    // Same operator allowlist as /api/admin/users.
+    const adminModelsMatch = url.pathname.match(/^\/api\/admin\/models(?:\/([^/]+))?(\/test)?$/);
+    if (adminModelsMatch && ['GET', 'POST', 'DELETE'].includes(request.method)) {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      if (!String(env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((id: string) => id.trim()).includes(user.userId)) return withCors(forbidden(), origin);
+      const modelId = adminModelsMatch[1];
+      const isTest = adminModelsMatch[2] === '/test';
+      if (request.method === 'GET' && (modelId || isTest)) return withCors(jsonError('Invalid request', 400), origin);
+      if (request.method === 'POST' && modelId && !isTest) return withCors(jsonError('Invalid request', 400), origin);
+      if (request.method === 'DELETE' && (!modelId || isTest)) return withCors(jsonError('Invalid request', 400), origin);
+      if (request.method === 'POST' && isTest && !modelId) return withCors(jsonError('Invalid request', 400), origin);
+      const registryPath = modelId
+        ? `/admin/models/${encodeURIComponent(modelId)}${isTest ? '/test' : ''}`
+        : '/admin/models';
+      try {
+        const init: RequestInit = { method: request.method, headers: { 'Content-Type': 'application/json' } };
+        if (request.method === 'POST') init.body = await request.text();
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry${registryPath}`, init);
+        const headers = new Headers(response.headers); headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch { return withCors(jsonError('Model request failed', 503), origin); }
+    }
+
     // Operator file inspection: return the project's source files so the
     // operator can review another user's app code. Admin-only.
     const adminFilesMatch = url.pathname.match(/^\/api\/admin\/projects\/([A-Za-z0-9_-]+)\/files$/);

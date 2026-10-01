@@ -263,3 +263,41 @@ const PROJECT_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
 export function isValidProjectId(id: unknown): id is string {
   return typeof id === 'string' && PROJECT_ID_RE.test(id);
 }
+
+/* ------------------------------------------------------------------ */
+/* AES-GCM encryption for sensitive values (e.g. custom model API keys) */
+/* ------------------------------------------------------------------ */
+
+async function importAesKey(secret: string): Promise<CryptoKey> {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+/** Encrypts plaintext with AES-GCM; returns base64(iv + ciphertext). */
+export async function encryptValue(secret: string, plaintext: string): Promise<string> {
+  const key = await importAesKey(secret);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    new TextEncoder().encode(plaintext)
+  );
+  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(ciphertext), iv.length);
+  return btoa(String.fromCharCode(...combined));
+}
+
+/** Decrypts a value produced by encryptValue; returns null on failure. */
+export async function decryptValue(secret: string, encrypted: string): Promise<string | null> {
+  try {
+    const combined = Uint8Array.from(atob(encrypted), c => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+    const key = await importAesKey(secret);
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    return new TextDecoder().decode(plaintext);
+  } catch {
+    return null;
+  }
+}

@@ -140,6 +140,19 @@ export class AuthRegistry {
       )`
     );
     sql.exec(`CREATE INDEX IF NOT EXISTS idx_project_owners_user ON project_owners(user_id, updated_at DESC)`);
+    // Custom LLM models added via the admin UI. The api_key is AES-GCM
+    // encrypted; the key is derived from the MODEL_KEY_SECRET env secret.
+    sql.exec(
+      `CREATE TABLE IF NOT EXISTS custom_models (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        api_key_encrypted TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`
+    );
     // A deleted project keeps its row as a tombstone. Removing the row entirely
     // left the id unowned, and /projects/claim — which runs on first access to a
     // project — would hand the orphaned Durable Object (and its R2 backup,
@@ -462,6 +475,80 @@ export class AuthRegistry {
           this.sql.exec('DELETE FROM users WHERE id = ?', userId);
         });
         return this.json(200, { ok: true, deletedUser: email, deletedProjects: deletedProjects.length });
+      }
+      // Admin custom models: list, add, delete, and test.
+      // Models are OpenAI-compatible (base_url + api_key + model_id).
+      if (path === '/admin/models' && method === 'GET') {
+        const rows = this.sql.exec(
+          'SELECT id, name, base_url, model_id, created_at, updated_at FROM custom_models ORDER BY created_at DESC'
+        ).toArray() as Array<{ id: string; name: string; base_url: string; model_id: string; created_at: number; updated_at: number }>;
+        return this.json(200, { models: rows.map(r => ({
+          id: r.id, name: r.name, baseUrl: r.base_url, modelId: r.model_id,
+          createdAt: r.created_at, updatedAt: r.updated_at,
+        })) });
+      }
+      if (path === '/admin/models' && method === 'POST') {
+        const body = await json<{ name?: string; baseUrl?: string; modelId?: string; apiKey?: string }>();
+        if (!body || !body.name?.trim() || !body.baseUrl?.trim() || !body.modelId?.trim() || !body.apiKey?.trim()) {
+          return this.json(400, { error: 'Name, base URL, model ID, and API key are required.' });
+        }
+        let baseUrl: string;
+        try {
+          baseUrl = new URL(body.baseUrl.trim()).toString().replace(/\/$/, '');
+        } catch {
+          return this.json(400, { error: 'Base URL must be a valid URL.' });
+        }
+        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined
+          || (this.env as Record<string, unknown>).SESSION_SECRET as string | undefined;
+        if (!secret) return this.json(500, { error: 'Model encryption is not configured.' });
+        const { encryptValue } = await import('./lib/crypto');
+        const id = `cm_${randomId('', 12)}`;
+        const now = Date.now();
+        const encrypted = await encryptValue(secret, body.apiKey.trim());
+        this.sql.exec(
+          'INSERT INTO custom_models (id, name, base_url, model_id, api_key_encrypted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          id, body.name.trim(), baseUrl, body.modelId.trim(), encrypted, now, now
+        );
+        return this.json(201, { id, name: body.name.trim(), baseUrl, modelId: body.modelId.trim() });
+      }
+      if (path.startsWith('/admin/models/') && method === 'DELETE') {
+        const id = decodeURIComponent(path.slice('/admin/models/'.length).split('/')[0]);
+        if (!id.startsWith('cm_')) return this.json(400, { error: 'Invalid request' });
+        this.sql.exec('DELETE FROM custom_models WHERE id = ?', id);
+        return this.json(200, { ok: true, deleted: id });
+      }
+      if (path.startsWith('/admin/models/') && path.endsWith('/test') && method === 'POST') {
+        const id = decodeURIComponent(path.slice('/admin/models/'.length, -'/test'.length));
+        const body = await json<{ prompt?: string }>();
+        if (!body?.prompt?.trim()) return this.json(400, { error: 'A prompt is required.' });
+        const rows = this.sql.exec(
+          'SELECT base_url, model_id, api_key_encrypted FROM custom_models WHERE id = ?', id
+        ).toArray() as Array<{ base_url: string; model_id: string; api_key_encrypted: string }>;
+        if (!rows.length) return this.json(404, { error: 'Model not found' });
+        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined
+          || (this.env as Record<string, unknown>).SESSION_SECRET as string | undefined;
+        if (!secret) return this.json(500, { error: 'Model encryption is not configured.' });
+        const { decryptValue } = await import('./lib/crypto');
+        const apiKey = await decryptValue(secret, rows[0].api_key_encrypted);
+        if (!apiKey) return this.json(500, { error: 'Could not decrypt the API key.' });
+        // Unlimited: no max_tokens cap — the model generates until it stops.
+        const upstream = await fetch(`${rows[0].base_url}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: rows[0].model_id,
+            messages: [{ role: 'user', content: body.prompt.trim() }],
+            stream: true,
+          }),
+        });
+        if (!upstream.ok || !upstream.body) {
+          const text = await upstream.text().catch(() => '');
+          return this.json(502, { error: `Model API error (${upstream.status}): ${text.slice(0, 200)}` });
+        }
+        // Stream the upstream SSE through to the client.
+        return new Response(upstream.body, {
+          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        });
       }
       if (path.startsWith('/email/') && method === 'POST') return emailRegistry(path, await json(), this.state.storage);
       if (path === '/oauth/store' && method === 'POST') {
