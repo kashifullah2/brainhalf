@@ -139,6 +139,33 @@ export const PUBLIC_PAGES: PublicPage[] = [
     related: ['/guides/build-an-app-with-ai', '/use-cases/ai-dashboard-builder', '/use-cases/ai-website-builder'],
   },
   {
+    dateModified: '2026-10-01',
+    path: '/pricing', title: 'BrainHalf Pricing — Free to Start',
+    description: 'BrainHalf is free to start: describe your app in plain words and build it with AI. Usage limits apply; no paid tiers yet.',
+    heading: 'Free to start.', category: 'Pricing',
+    summary: 'Building and refining apps with BrainHalf is free. Fair usage limits keep the service running for everyone.',
+    sections: [
+      { id: 'free', title: 'Start free', paragraphs: ['BrainHalf is free to start — describe your app in plain words, build it with AI, preview it, and refine it, all without paying anything.', 'There are no paid tiers at this time. If that changes, this page will list every plan and price before you are asked to pay.'] },
+      { id: 'limits', title: 'Fair usage limits', paragraphs: ['To keep the service fast for everyone, accounts have limits: up to 50 live projects per account and up to 10 hosted app spaces for published apps. Daily AI usage allowances also apply.', 'If you reach a limit, BrainHalf tells you plainly what is full and what you can remove or wait for — nothing is charged silently.'] },
+      { id: 'own-costs', title: 'Services you connect yourself', paragraphs: ['Some optional extras have their own costs paid directly to their providers: a custom website name (domain registrar), or an email sending service you connect. BrainHalf never adds a markup to these.'] },
+    ], related: ['/faq', '/about', '/guides/build-an-app-with-ai'],
+  },
+  {
+    dateModified: '2026-10-01',
+    path: '/faq', title: 'BrainHalf FAQ — Common Questions',
+    description: 'Answers to common BrainHalf questions: what it is, whether it is free, coding experience needed, what you can build, and how to share your app.',
+    heading: 'Questions, answered.', category: 'FAQ',
+    summary: 'Straight answers about BrainHalf: cost, coding, what you can build, and how sharing works.',
+    sections: [
+      { id: 'what-is', title: 'What is BrainHalf?', paragraphs: ['BrainHalf turns a plain-words description into a working app for your business — like a stock tracker or booking app. You describe it, try it, and share it with your customers. No coding needed.'] },
+      { id: 'cost', title: 'Is BrainHalf free to use?', paragraphs: ['Yes. Building and refining apps is free. Project and usage limits still apply — see the pricing page for details. Services you connect yourself, like a custom website name or email provider, may have their own costs.'] },
+      { id: 'coding', title: 'Do I need to know how to code?', paragraphs: ['No. Describe what you want in plain words, the same way you would explain it to a person, and ask for changes the same way.'] },
+      { id: 'build-what', title: 'What can I build with BrainHalf?', paragraphs: ['Start with an inventory tool, booking app, simple CRM, task manager or customer portal. Describe what information the app keeps and what people can do with it, then try those steps before sharing it.'] },
+      { id: 'take-with', title: 'Can I take my work with me?', paragraphs: ['Yes. You can download your project’s files and continue working in your own tools. Your saved information stays separate and needs its own setup on another host.'] },
+      { id: 'share', title: 'How do I try my app and share it?', paragraphs: ['While you build, you can try your app right away. When you are happy with it, one click puts it on the web with its own address.'] },
+    ], related: ['/pricing', '/about', '/guides/build-an-app-with-ai'],
+  },
+  {
     dateModified: '2026-09-24',
     path: '/about', title: 'About BrainHalf — An AI Workspace for Building Web Apps',
     description: 'Learn what BrainHalf does: build web apps by conversation, review the frontend, inspect generated files, and export your project’s source code.',

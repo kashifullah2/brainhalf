@@ -104,7 +104,14 @@ export default function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [projects, setProjects] = useState<AdminProject[]>([]);
   const [outcomes, setOutcomes] = useState<OutcomeReport | null>(null);
+  const [outcomesFailed, setOutcomesFailed] = useState(false);
   const [search, setSearch] = useState('');
+  // Search is per-tab: switching tabs clears it so a query typed for accounts
+  // never silently filters the projects list (or vice versa).
+  const switchTab = (next: Tab) => {
+    setTab(next);
+    setSearch('');
+  };
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>('all');
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [working, setWorking] = useState(false);
@@ -145,7 +152,12 @@ export default function AdminPage() {
         const projectsBody = await projectsResponse.json() as { projects?: AdminProject[] };
         setProjects(Array.isArray(projectsBody.projects) ? projectsBody.projects : []);
       }
-      if (outcomesResponse.ok) setOutcomes(await outcomesResponse.json() as OutcomeReport);
+      if (outcomesResponse.ok) {
+        setOutcomes(await outcomesResponse.json() as OutcomeReport);
+        setOutcomesFailed(false);
+      } else {
+        setOutcomesFailed(true);
+      }
       setState('ready');
     } catch {
       if (!signal?.aborted) setState('error');
@@ -532,7 +544,7 @@ export default function AdminPage() {
           <div className="admin-stat"><span className="admin-stat-icon"><FolderKanban size={17} aria-hidden="true" /></span><strong>{stats.liveProjects}</strong><span>Live projects ({stats.totalProjects} total)</span></div>
         </section>
 
-        {outcomes && <section className="admin-card" id="health" aria-label="Product health">
+        {outcomes ? <section className="admin-card" id="health" aria-label="Product health">
           <div className="admin-card-head">
             <span className="admin-stat-icon"><ShieldCheck size={17} aria-hidden="true" /></span>
             <div>
@@ -547,17 +559,25 @@ export default function AdminPage() {
             <div className="admin-stat"><strong>{duration(outcomes.medianTimeToFirstLiveMs)}</strong><span>Median time to first live app</span></div>
             <div className="admin-stat"><strong>{percent(outcomes.weekOneRetention)}</strong><span>Week-one retention ({outcomes.returnedWeekOneAccounts}/{outcomes.matureWeekOneAccounts})</span></div>
           </div>
-        </section>}
+        </section> : outcomesFailed ? <section className="admin-card" id="health" aria-label="Product health">
+          <div className="admin-card-head">
+            <span className="admin-stat-icon"><ShieldCheck size={17} aria-hidden="true" /></span>
+            <div>
+              <h2>Product health</h2>
+              <p>These metrics are currently unavailable — the data could not be loaded. Everything else on this page still works.</p>
+            </div>
+          </div>
+        </section> : null}
 
         <section id="manage" aria-label="Manage">
           <div className="admin-tabs" role="tablist" aria-label="Management views">
-            <button type="button" role="tab" aria-selected={tab === 'accounts'} className={tab === 'accounts' ? 'admin-tab-active' : ''} onClick={() => setTab('accounts')}>
+            <button type="button" role="tab" aria-selected={tab === 'accounts'} className={tab === 'accounts' ? 'admin-tab-active' : ''} onClick={() => switchTab('accounts')}>
               <Users size={14} aria-hidden="true" /> Accounts <span className="admin-count">{filteredUsers.length}</span>
             </button>
-            <button type="button" role="tab" aria-selected={tab === 'projects'} className={tab === 'projects' ? 'admin-tab-active' : ''} onClick={() => setTab('projects')}>
+            <button type="button" role="tab" aria-selected={tab === 'projects'} className={tab === 'projects' ? 'admin-tab-active' : ''} onClick={() => switchTab('projects')}>
               <FolderKanban size={14} aria-hidden="true" /> Projects <span className="admin-count">{filteredProjects.length}</span>
             </button>
-            <button type="button" role="tab" aria-selected={tab === 'models'} className={tab === 'models' ? 'admin-tab-active' : ''} onClick={() => setTab('models')}>
+            <button type="button" role="tab" aria-selected={tab === 'models'} className={tab === 'models' ? 'admin-tab-active' : ''} onClick={() => switchTab('models')}>
               <Brain size={14} aria-hidden="true" /> Models <span className="admin-count">{models.length}</span>
             </button>
           </div>
@@ -785,7 +805,7 @@ export default function AdminPage() {
               ) : null;
             })()}
           </>}
-          <p className="admin-hint">Deleting a project erases it completely — app files, backend, backups, and the registry entry. Deleting an account removes the account and all of its projects. Neither can be undone.</p>
+          <p className="admin-hint admin-warning-box" role="note">Deleting a project erases it completely — app files, backend, backups, and the registry entry. Deleting an account removes the account and all of its projects. Neither can be undone.</p>
         </section>
       </>}
 
