@@ -24,11 +24,11 @@ export function isHarnessEntry(cleanPath: string): boolean {
 
 export function buildDynamicImportMap(files: Array<{ path: string, content: string }>): string {
   const KNOWN_PACKAGES: Record<string, string> = {
-    'react': 'https://esm.sh/react@18.2.0',
-    'react-dom': 'https://esm.sh/react-dom@18.2.0?external=react',
-    'react-dom/client': 'https://esm.sh/react-dom@18.2.0/client?external=react',
+    'react': 'https://esm.sh/react@19.2.8',
+    'react-dom': 'https://esm.sh/react-dom@19.2.8?external=react',
+    'react-dom/client': 'https://esm.sh/react-dom@19.2.8/client?external=react',
     'lucide-react': 'https://esm.sh/lucide-react@0.344.0?external=react',
-    'framer-motion': 'https://esm.sh/framer-motion@10.16.4?external=react,react-dom',
+    'framer-motion': 'https://esm.sh/framer-motion@11.18.2?external=react,react-dom',
     'clsx': 'https://esm.sh/clsx@2.1.0',
     'tailwind-merge': 'https://esm.sh/tailwind-merge@2.2.1',
     'zustand': 'https://esm.sh/zustand@4.5.2?external=react',
@@ -53,14 +53,14 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
     'uuid': 'https://esm.sh/uuid@9.0.1',
     'nanoid': 'https://esm.sh/nanoid@5.0.5',
     'classnames': 'https://esm.sh/classnames@2.5.1',
-    'motion': 'https://esm.sh/motion@10.16.4?external=react'
+    'motion': 'https://esm.sh/motion@11.18.2?external=react'
   };
 
   const importMap: Record<string, string> = {
     'react': KNOWN_PACKAGES['react'],
     'react/': KNOWN_PACKAGES['react'] + '/',
     'react-dom': KNOWN_PACKAGES['react-dom'],
-    'react-dom/': 'https://esm.sh/react-dom@18.2.0/',
+    'react-dom/': 'https://esm.sh/react-dom@19.2.8/',
     'react-dom/client': KNOWN_PACKAGES['react-dom/client'],
     'react-router-dom': KNOWN_PACKAGES['react-router-dom'],
     'react-router': KNOWN_PACKAGES['react-router'],

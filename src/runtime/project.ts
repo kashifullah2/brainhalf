@@ -685,15 +685,19 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     const snapshot = await source.json<SourceSnapshot>();
     await this.assertRunning(job);
     if (job.step === 0) {
-      await box.mkdir('/workspace/project', { recursive: true });
-      for (const [path, content] of Object.entries(snapshot.files)) {
-        await this.assertRunning(job);
-        const directory = path.slice(0, path.lastIndexOf('/'));
-        if (path.includes('/')) await box.mkdir(`/workspace/project/${directory}`, { recursive: true });
-        await box.writeFile(`/workspace/project/${path}`, content);
+      const entries = Object.entries(snapshot.files);
+      const directories = new Set<string>();
+      for (const [path] of entries) {
+        const lastSlash = path.lastIndexOf('/');
+        if (lastSlash > 0) directories.add(path.slice(0, lastSlash));
       }
+      await box.mkdir('/workspace/project', { recursive: true });
+      await Promise.all([...directories].map(dir => box.mkdir(`/workspace/project/${dir}`, { recursive: true })));
+      await this.assertRunning(job);
+      await Promise.all(entries.map(([path, content]) => box.writeFile(`/workspace/project/${path}`, content)));
       job.status = 'running'; job.startedAt = Date.now();
-      await this.startProcess(job, ['npm', snapshot.files['package-lock.json'] ? 'ci' : 'install', '--no-audit', '--no-fund']);
+      // Lockfiles are stripped by sourceSnapshot(), so npm ci is never reachable.
+      await this.startProcess(job, ['npm', 'install', '--no-audit', '--no-fund']);
       job.step = 1; job.message = 'Installing dependencies'; await this.saveJob(job); return;
     }
     if (job.step <= 4) {

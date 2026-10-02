@@ -259,8 +259,8 @@ export function buildPreviewIndexHtml(dynamicImportMapJson: string, appEntry = '
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://esm.sh" crossorigin />
-    <link rel="modulepreload" href="https://esm.sh/react@18.2.0" />
-    <link rel="modulepreload" href="https://esm.sh/react-dom@18.2.0/client" />
+    <link rel="modulepreload" href="https://esm.sh/react@19.2.8" />
+    <link rel="modulepreload" href="https://esm.sh/react-dom@19.2.8/client" />
     <link rel="modulepreload" href="https://esm.sh/lucide-react@0.344.0?external=react" />
     <link rel="stylesheet" href="./src/styles.css" />
     <script>

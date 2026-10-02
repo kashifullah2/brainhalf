@@ -11,8 +11,8 @@ import { buildDynamicImportMap, isHarnessEntry } from '../lib/preview-import-map
 describe('7.3 buildDynamicImportMap', () => {
   it('pins the pre-installed packages to their esm.sh URLs', () => {
     const map = JSON.parse(buildDynamicImportMap([]));
-    expect(map.imports['react']).toBe('https://esm.sh/react@18.2.0');
-    expect(map.imports['react-dom/client']).toBe('https://esm.sh/react-dom@18.2.0/client?external=react');
+    expect(map.imports['react']).toBe('https://esm.sh/react@19.2.8');
+    expect(map.imports['react-dom/client']).toBe('https://esm.sh/react-dom@19.2.8/client?external=react');
     expect(map.imports['lucide-react']).toBe('https://esm.sh/lucide-react@0.344.0?external=react');
   });
 
@@ -20,7 +20,7 @@ describe('7.3 buildDynamicImportMap', () => {
     const map = JSON.parse(buildDynamicImportMap([
       { path: '/src/App.jsx', content: "import { motion } from 'framer-motion';" },
     ]));
-    expect(map.imports['framer-motion']).toBe('https://esm.sh/framer-motion@10.16.4?external=react,react-dom');
+    expect(map.imports['framer-motion']).toBe('https://esm.sh/framer-motion@11.18.2?external=react,react-dom');
   });
 
   it('honours the version the generated package.json pins', () => {
