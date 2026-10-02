@@ -101,17 +101,12 @@ export function isPublicIp(ip: string): boolean {
   // IPv6 literal (already stripped of brackets by the caller).
   const addr = ip.toLowerCase();
   if (!/^[0-9a-f:.]+$/.test(addr)) return false;
-  // Expand compressed IPv6 notation (::) before validating groups.
-  let expanded = addr;
   if (addr.includes('::')) {
-    const [left, right] = addr.split('::');
-    const leftGroups = left ? left.split(':') : [];
-    const rightGroups = right ? right.split(':') : [];
-    const missing = 8 - leftGroups.length - rightGroups.length;
-    if (missing < 0) return false;
-    expanded = [...leftGroups, ...Array(missing).fill('0'), ...rightGroups].join(':');
+    // Reject any compressed form conservatively: expanding it correctly is more
+    // error-prone than refusing a range that no legitimate tool fetch needs.
+    return false;
   }
-  const groups = expanded.split(':');
+  const groups = addr.split(':');
   if (groups.length !== 8) return false;
   const first = parseInt(groups[0], 16);
   if (first === 0) return false;                                // ::/128, ::1

@@ -67,7 +67,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^5.0.0",
-    "wrangler": "^4.147.0",
+    "wrangler": "4.147.0",
     "ws": "^8.21.3"
   },
   "overridesNotes": "// is not supported inside npm overrides; the dompurify override exists because monaco-editor 0.56.0 pins dompurify@3.4.8, which carries four advisories (GHSA-c2j3-45gr-mqc4 et al.) fixed in 3.4.13+ — all patch releases. Drop the override once monaco re-pins.",

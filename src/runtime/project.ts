@@ -752,7 +752,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         throw new RuntimeError(`${job.message} failed (exit ${output.exitCode}).${commandFailureSummary(output.stdout, output.stderr)}`);
       }
       if (job.step === 1) { await this.startProcess(job, ['npm', 'run', 'build']); job.step = 2; job.message = 'Building application'; await this.saveJob(job); return; }
-      if (job.step === 2 && projectManifest(snapshot.files).scripts.test) { await this.startProcess(job, ['npm', 'test']); job.step = 3; job.message = 'Running project tests'; await this.saveJob(job); return; }
+      if (job.step === 2 && job.kind !== 'preview' && projectManifest(snapshot.files).scripts.test) { await this.startProcess(job, ['npm', 'test']); job.step = 3; job.message = 'Running project tests'; await this.saveJob(job); return; }
       if (job.node) {
         if (job.step === 4) throw new RuntimeError('Node preview server exited. Start a new preview job.');
         if (job.kind === 'preview') {
