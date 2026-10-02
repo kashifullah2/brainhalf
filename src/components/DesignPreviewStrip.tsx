@@ -70,7 +70,7 @@ export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenH
         {' · '}
         {hostedFull ? (
           <>Your {HOSTED_APP_LIMIT} app spaces are full.</>
-        ) : failed ? 'The app preview ran into a problem.' : 'Start the app preview to test sign-in and saved data.'}
+        ) : failed ? 'The app preview ran into a problem.' : 'The backend encountered an issue.'}
         <br />
         {hostedFull ? (
           <>
