@@ -145,19 +145,30 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     expect(response.status).toBe(502); expect(agent).toHaveBeenCalledOnce();
   });
   it('serves dashboard navigation with the app shell and private indexing headers', async () => {
-    const assets = vi.fn(async (request: Request) => new URL(request.url).pathname === '/index.html' ? Response.redirect('https://brainhalf.com/', 307) : new Response(new URL(request.url).pathname));
+    // Mirror the production assets binding: .html URLs 307 to the pretty path.
+    // Fetching '/shell.html' would surface that redirect to the browser, and
+    // '/shell' is not an app route — the SPA renders its 404 page.
+    const assets = vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (path.endsWith('.html')) return Response.redirect(`https://brainhalf.com${path.slice(0, -'.html'.length)}`, 307);
+      return new Response(path);
+    });
     const response = await worker.fetch(new Request('https://brainhalf.com/dashboard?project=abc'), { ASSETS: { fetch: assets } } as unknown as import('../worker').PlatformEnv, {} as any);
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('/shell.html');
+    expect(await response.text()).toBe('/shell');
     expect(response.headers.get('X-Robots-Tag')).toContain('noindex');
   });
   it('serves /admin with the empty shell, never the prerendered landing page', async () => {
     // Regression: /admin used to receive the prerendered landing HTML, and
     // hydrating AdminPage against landing markup threw React error #418.
-    const assets = vi.fn(async (request: Request) => new Response(new URL(request.url).pathname));
+    const assets = vi.fn(async (request: Request) => {
+      const path = new URL(request.url).pathname;
+      if (path.endsWith('.html')) return Response.redirect(`https://brainhalf.com${path.slice(0, -'.html'.length)}`, 307);
+      return new Response(path);
+    });
     const response = await worker.fetch(new Request('https://brainhalf.com/admin'), { ASSETS: { fetch: assets } } as unknown as import('../worker').PlatformEnv, {} as any);
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('/shell.html');
+    expect(await response.text()).toBe('/shell');
     expect(response.headers.get('X-Robots-Tag')).toContain('noindex');
   });
   it('checks runtime ownership and constructs the trusted service identity itself', async () => {

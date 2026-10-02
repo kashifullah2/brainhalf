@@ -1004,7 +1004,10 @@ export default {
       // the prerendered landing page: hydrating the dashboard or admin console
       // against landing markup threw React hydration error #418 in production.
       const shellPaths = ['/dashboard', '/admin'];
-      const assetRequest = shellPaths.includes(url.pathname) ? new Request(new URL('/shell.html', url), request) : request;
+      // Fetch the extensionless asset URL: the assets binding 307-redirects
+      // /shell.html to /shell, and passing that redirect to the browser lands
+      // on a path the SPA router does not know (its 404 page).
+      const assetRequest = shellPaths.includes(url.pathname) ? new Request(new URL('/shell', url), request) : request;
       return withShellSecurity(await env.ASSETS.fetch(assetRequest), privateSearch || shellPaths.includes(url.pathname));
     }
 

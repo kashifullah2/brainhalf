@@ -86,11 +86,11 @@ function relativeTime(timestamp: number | null): string {
 }
 
 function percent(value: number | null): string {
-  return value === null ? '—' : `${Math.round(value * 100)}%`;
+  return value === null || value === undefined || Number.isNaN(value) ? '—' : `${Math.round(value * 100)}%`;
 }
 
 function duration(ms: number | null): string {
-  if (ms === null) return '—';
+  if (ms === null || ms === undefined || Number.isNaN(ms)) return '—';
   const minutes = ms / 60_000;
   if (minutes < 60) return `${Math.round(minutes)} min`;
   const hours = minutes / 60;
@@ -686,11 +686,16 @@ export default function AdminPage() {
             </table>
           </div>
           </>}
-          {tab === 'models' && <>
+          {tab === 'models' && <div className="admin-models-grid">
             <div className="admin-card" aria-label="Built-in BrainHalf models">
-              <h3>BrainHalf integrated models</h3>
-              <p className="admin-hint">Turn the built-in models on or off for everyone. When off, new generations and model tests are refused. Custom models you add below are unaffected.</p>
-              <div className="admin-toggle-row">
+              <div className="admin-card-head">
+                <span className="admin-stat-icon"><Brain size={17} aria-hidden="true" /></span>
+                <div>
+                  <h2>Built-in models</h2>
+                  <p>Turn the built-in models on or off for everyone. When the master switch is off, new generations and model tests are refused. Custom models are unaffected. Individual models you turn off disappear from the model picker.</p>
+                </div>
+              </div>
+              <div className="admin-toggle-row admin-master-toggle">
                 <button
                   type="button"
                   role="switch"
@@ -701,12 +706,8 @@ export default function AdminPage() {
                 >
                   <span className="admin-toggle-knob" />
                 </button>
-                <span className="admin-toggle-label">{integratedEnabled ? 'On' : 'Off'}</span>
+                <span className="admin-toggle-label">All built-in models {integratedEnabled ? 'on' : 'off'}</span>
               </div>
-            </div>
-            <div className="admin-card" aria-label="Turn individual models on or off">
-              <h3>Individual models</h3>
-              <p className="admin-hint">Turn specific built-in models on or off. Models you turn off disappear from the model picker and cannot be used for new generations.</p>
               <div className="admin-model-list">
                 {CLIENT_SELECTABLE_MODELS.map(m => {
                   const key = `${m.provider}:${m.name}`;
@@ -730,8 +731,13 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="admin-card" aria-label="Test a built-in model">
-              <h3>Test a built-in model</h3>
-              <p className="admin-hint">Runs the standard speed test against the selected integrated model.</p>
+              <div className="admin-card-head">
+                <span className="admin-stat-icon"><Play size={17} aria-hidden="true" /></span>
+                <div>
+                  <h2>Test a built-in model</h2>
+                  <p>Runs the standard speed test against the selected integrated model.</p>
+                </div>
+              </div>
               <div className="admin-form-grid">
                 <label>Model
                   <select value={builtinTestModel} onChange={e => setBuiltinTestModel(e.target.value)}>
@@ -752,8 +758,13 @@ export default function AdminPage() {
               {builtinTestOutput && <pre className="admin-test-output" aria-live="polite">{builtinTestOutput}</pre>}
             </div>
             <div className="admin-card" aria-label="Add a custom model">
-              <h3>Add a model</h3>
-              <p className="admin-hint">Connect any OpenAI-compatible API. The API key is encrypted before it is stored. Test generations are unlimited — no token cap is applied.</p>
+              <div className="admin-card-head">
+                <span className="admin-stat-icon"><Plus size={17} aria-hidden="true" /></span>
+                <div>
+                  <h2>Add a custom model</h2>
+                  <p>Connect any OpenAI-compatible API. The API key is encrypted before it is stored. Test generations are unlimited — no token cap is applied.</p>
+                </div>
+              </div>
               <div className="admin-form-grid">
                 <label>Display name
                   <input type="text" value={modelForm.name} onChange={e => setModelForm(f => ({ ...f, name: e.target.value }))} placeholder="My custom model" />
@@ -772,7 +783,10 @@ export default function AdminPage() {
                 {modelSaving ? <Loader2 size={14} className="admin-spin" aria-hidden="true" /> : <Plus size={14} aria-hidden="true" />} Add model
               </button>
             </div>
-            <div className="admin-table-wrap">
+            <div className="admin-table-bar admin-models-table-bar">
+              <h2>Custom models <span className="admin-count">{models.length}</span></h2>
+            </div>
+            <div className="admin-table-wrap admin-models-table">
               <table className="admin-table">
                 <thead><tr><th>Model</th><th>Base URL</th><th>Model ID</th><th><span className="admin-sr">Actions</span></th></tr></thead>
                 <tbody>
@@ -801,8 +815,13 @@ export default function AdminPage() {
               const model = models.find(m => m.id === testModelId);
               return model ? (
                 <div className="admin-card" aria-label={`Test ${model.name}`}>
-                  <h3>Test {model.name}</h3>
-                  <p className="admin-hint">Unlimited generation — the model writes until it stops on its own.</p>
+                  <div className="admin-card-head">
+                    <span className="admin-stat-icon"><Play size={17} aria-hidden="true" /></span>
+                    <div>
+                      <h2>Test {model.name}</h2>
+                      <p>Unlimited generation — the model writes until it stops on its own.</p>
+                    </div>
+                  </div>
                   <label className="admin-test-label">Prompt
                     <textarea value={testPrompt} onChange={e => setTestPrompt(e.target.value)} placeholder="Write a story about…" rows={3} />
                   </label>
@@ -813,7 +832,7 @@ export default function AdminPage() {
                 </div>
               ) : null;
             })()}
-          </>}
+          </div>}
           <p className="admin-hint admin-warning-box" role="note">Deleting a project erases it completely — app files, backend, backups, and the registry entry. Deleting an account removes the account and all of its projects. Neither can be undone.</p>
         </section>
       </>}
