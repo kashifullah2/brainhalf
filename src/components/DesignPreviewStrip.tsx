@@ -39,15 +39,12 @@ export function plainLanguageCause(message: string): string {
  * so the strip names the problem and offers a one-tap route to the app
  * spaces manager plus a retry.
  */
-export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenHostedSlots, hasAuthOrDataFeatures = true }: {
+export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenHostedSlots }: {
   backend: Backend;
   runtime: Runtime;
   status: string;
   filesRef: { current: Record<string, string> };
   onOpenHostedSlots?: () => void;
-  /** False when the project has no sign-in or saved-data features; hides the
-   *  strip's prompts. Build-failure and hosted-full states always stay visible. */
-  hasAuthOrDataFeatures?: boolean;
 }) {
   const failed = backend.failed;
   // A full account is a user-actionable state, not a build bug: name it and
@@ -55,16 +52,15 @@ export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenH
   // B3: the 429 can arrive BEFORE any job exists (register() gate), so the
   // hosted-limit message on backend.message must count even when failed=false.
   const hostedFull = isHostedLimitError(backend.message) || isHostedLimitError(runtime.error);
-  // No auth/data features and nothing wrong: the "test sign-in and saved
-  // data" prompts are irrelevant noise, so the strip stays out of the way.
-  // Fault, failure, and hosted-full states always stay visible.
-  if (!hasAuthOrDataFeatures && !failed && !hostedFull && !backend.fault) return null;
+  // Only show for error/fault/hosted-full states — the idle "start app preview"
+  // prompt is gone; the backend auto-starts and a building pill replaces it.
+  if (!failed && !hostedFull && !backend.fault) return null;
   const body = failed
     ? null
     : backend.message
       || runtime.error
       || (runtime.status?.availability?.state !== 'ready' ? runtime.status?.availability?.message : '')
-      || 'Start your app preview to connect its data features.';
+      || 'The backend encountered an issue.';
 
   return (
     <div className={`preview-health-strip${backend.fault || failed ? ' has-fault' : ''}`} role="status">

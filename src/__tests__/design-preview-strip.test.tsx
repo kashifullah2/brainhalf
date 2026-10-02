@@ -18,6 +18,7 @@ function mockBackend(overrides: Partial<Backend>): Backend {
     fault: false,
     failed: false,
     liveUrl: null,
+    isBuilding: false,
     canStart: false,
     canUpdate: false,
     ...overrides,
@@ -149,7 +150,7 @@ describe('DesignPreviewStrip', () => {
     expect(html).toContain('ERESOLVE Could not resolve peer vite');
     expect(html).not.toContain('Start app preview</button>');
   });
-  it('renders the neutral start state when nothing has failed', () => {
+  it('renders nothing in the neutral start state — backend auto-starts, no strip needed', () => {
     const html = renderToStaticMarkup(
       <DesignPreviewStrip
         backend={mockBackend({ canStart: true })}
@@ -158,10 +159,7 @@ describe('DesignPreviewStrip', () => {
         filesRef={filesRef}
       />
     );
-    expect(html).not.toContain('has-fault');
-    expect(html).toContain('Start app preview');
-    expect(html).not.toContain('Retry app preview');
-    expect(html).not.toContain('<details');
+    expect(html).toBe('');
   });
   it('keeps the fault styling when the backend reports a fault', () => {
     const html = renderToStaticMarkup(
@@ -209,36 +207,26 @@ describe('projectHasAuthOrDataFeatures', () => {
   });
 });
 
-describe('DesignPreviewStrip auth/data gating', () => {
-  const idleStrip = (hasAuthOrDataFeatures?: boolean) =>
+describe('DesignPreviewStrip always-on idle behavior', () => {
+  const idleStrip = () =>
     renderToStaticMarkup(
       <DesignPreviewStrip
         backend={mockBackend({ canStart: true })}
         runtime={idleRuntime}
         status="Ready"
         filesRef={filesRef}
-        hasAuthOrDataFeatures={hasAuthOrDataFeatures}
       />
     );
-  it('hides the strip when the project has no auth or data features', () => {
-    expect(idleStrip(false)).toBe('');
+  it('hides the strip in idle state — backend auto-starts, no prompt needed', () => {
+    expect(idleStrip()).toBe('');
   });
-  it('keeps the strip when the project has auth or data features', () => {
-    const html = idleStrip(true);
-    expect(html).toContain('Design preview');
-    expect(html).toContain('test sign-in and saved data');
-  });
-  it('defaults to visible when the flag is not provided', () => {
-    expect(idleStrip(undefined)).toContain('Design preview');
-  });
-  it('still shows build failures even with no auth or data features', () => {
+  it('shows build failures regardless of project type', () => {
     const html = renderToStaticMarkup(
       <DesignPreviewStrip
         backend={mockBackend({ failed: true, canStart: true, message: 'Build failed. Build output: error TS2322' })}
         runtime={idleRuntime}
         status="Ready"
         filesRef={filesRef}
-        hasAuthOrDataFeatures={false}
       />
     );
     expect(html).toContain('The app preview ran into a problem.');

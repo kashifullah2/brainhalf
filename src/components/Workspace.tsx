@@ -21,7 +21,7 @@ import { selectAppEntry, selectHtmlEntry, isStarterApp } from '../lib/preview-en
 import { previewFiles, PREVIEW_SANDBOX } from '../lib/preview-isolation';
 import { setPreviewStatus, setPlatformStatus } from '../lib/status-store';
 import { bindProjectStore } from '../lib/project-store';
-import { validateBackendFiles, isFullStackProject, projectHasAuthOrDataFeatures } from '../lib/backend-runner';
+import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
 import { diagnosePreviewError, plainPreviewError } from '../lib/preview-diagnostics';
 import { createTypeScriptStarter } from '../lib/project-starters';
 import { useProjectRuntime } from '../lib/project-runtime-client';
@@ -268,10 +268,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   const previewTargetOrigin = useMemo(() => previewMessageTargetOrigin(), []);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
-  // Sign-in / saved-data prompts only make sense when the project actually
-  // has auth or data features; otherwise the preview strip is hidden.
-  const hasAuthOrDataFeatures = useMemo(() => projectHasAuthOrDataFeatures(files), [files]);
-
   const viewportWidth = useViewportWidth();
   const compactToolbar = viewportWidth < 1100;
   const [fileExplorerOverride, setFileExplorerOverride] = useState<boolean | null>(null);
@@ -992,6 +988,9 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         setPreviewLoadError('');
       }
       setEdgeRefreshCounter(current => current + 1);
+      // Auto-start the backend when opening an existing full-stack project so
+      // the live preview is always available without a manual "Start" click.
+      if (generated && isFullStackProject(newFiles)) startBackend(newFiles);
     };
 
     const handleWorkspaceFilesChanged = ({ projectId, files: changedFiles }: { projectId: string; files: FileMap }) => {
@@ -1520,7 +1519,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                   </div>
                 )}
                 {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && (
-                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} hasAuthOrDataFeatures={hasAuthOrDataFeatures} />
+                  <>
+                    {backend.isBuilding && status !== 'Generating' && (
+                      <div className="preview-building-pill preview-building-pill--backend" role="status"><Loader2 size={13} className="lucide-spin" /><span>{backend.message || 'Starting your backend — live preview on its way…'}</span></div>
+                    )}
+                    <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} />
+                  </>
                 )}
                 {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
                 <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
@@ -1896,7 +1900,12 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                 </div>
               )}
               {isFullStackProject(files) && !isWaitingForFirstApp && !backend.liveUrl && (
-                <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} hasAuthOrDataFeatures={hasAuthOrDataFeatures} />
+                <>
+                  {backend.isBuilding && status !== 'Generating' && (
+                    <div className="preview-building-pill preview-building-pill--backend" role="status"><Loader2 size={13} className="lucide-spin" /><span>{backend.message || 'Starting your backend — live preview on its way…'}</span></div>
+                  )}
+                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} />
+                </>
               )}
               {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
               <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
