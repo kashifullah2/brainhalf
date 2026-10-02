@@ -325,7 +325,10 @@ export class AuthRegistry {
       }
       this.ensureSchema();
       if (path === '/outcomes' && method === 'POST') {
-        const event = await request.json() as OutcomeEvent;
+        let event: OutcomeEvent;
+        try { event = await request.json() as OutcomeEvent; }
+        catch { return this.json(400, { error: 'Invalid JSON body' }); }
+        if (!event || typeof event !== 'object') return this.json(400, { error: 'Invalid outcome event' });
         const owner = this.sql.exec('SELECT user_id FROM project_owners WHERE project_id=? AND deleted_at IS NULL', event.projectId || '').toArray()[0];
         if (!owner || owner.user_id !== event.ownerId) return this.json(403, { error: 'Invalid outcome scope' });
         new ProductOutcomes(this.state.storage).record(event);
@@ -449,6 +452,7 @@ export class AuthRegistry {
           this.sql.exec('DELETE FROM project_cleanup WHERE project_id = ?', projectId);
           this.sql.exec('DELETE FROM project_claim_idempotency WHERE project_id = ?', projectId);
         });
+        this.galleryCache = null;
         return this.json(200, { ok: true, deleted: projectId });
       }
       // Operator user delete: remove the account and everything it owns.
@@ -678,21 +682,39 @@ export class AuthRegistry {
         const existing = this.sql
           .exec('SELECT id FROM users WHERE email = ?', email)
           .toArray() as Array<{ id: string }>;
-        if (existing.length > 0) return this.json(409, { error: 'An account with this email already exists' });
+        if (existing.length > 0) {
+          // Enumeration-safe: indistinguishable from a fresh signup. The
+          // caller (email.ts) skips the verification email for existing
+          // accounts but returns the identical 202 to the browser.
+          return this.json(200, { userId: existing[0].id, email, alreadyExists: true });
+        }
 
         const id = randomId('usr_');
         const passwordHash = await hashPassword(password);
         const now = Date.now();
-        this.state.storage.transactionSync(() => {
-        this.sql.exec(
-          'INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)',
-          id,
-          email,
-          passwordHash,
-          now
-        );
-        if (body.requireVerification) this.sql.exec('INSERT INTO email_verification (user_id, verified_at) VALUES (?, NULL)', id);
-        });
+        try {
+          this.state.storage.transactionSync(() => {
+          this.sql.exec(
+            'INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)',
+            id,
+            email,
+            passwordHash,
+            now
+          );
+          if (body.requireVerification) this.sql.exec('INSERT INTO email_verification (user_id, verified_at) VALUES (?, NULL)', id);
+          });
+        } catch (err) {
+          // Lost a signup race: another request registered this email between
+          // our SELECT and INSERT. Respond exactly like the alreadyExists
+          // branch above — a 500 here would both 500 a legit user and leak
+          // the address via timing/status.
+          const msg = err instanceof Error ? err.message : String(err);
+          if (/UNIQUE constraint failed|SQLITE_CONSTRAINT/i.test(msg)) {
+            const winner = this.sql.exec('SELECT id FROM users WHERE email = ?', email).toArray() as Array<{ id: string }>;
+            return this.json(200, { userId: winner[0]?.id ?? id, email, alreadyExists: true });
+          }
+          throw err;
+        }
         return this.json(201, { userId: id, email });
       }
 
@@ -1039,6 +1061,12 @@ export class AuthRegistry {
         if (!source.length || source[0].showcase !== 1) return this.json(404, { error: 'This app is not listed in the gallery' });
         const live = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', body.userId).toArray()[0]?.total || 0);
         if (live >= MAX_PROJECTS_PER_USER) return this.json(409, { error: 'You have reached the project limit. Delete a project to make room.' });
+        const total = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ?', body.userId).toArray()[0]?.total || 0);
+        if (total >= MAX_PROJECT_ROWS_PER_USER) {
+          return this.json(409, {
+            error: 'You have reached the project limit. Deleting projects keeps their ids reserved; contact support to reclaim them.',
+          });
+        }
         const projectId = crypto.randomUUID();
         const name = `${source[0].name.replace(/ \(remix\)$/u, '').slice(0, 112)} (remix)`;
         const now = Date.now();
@@ -1069,7 +1097,11 @@ export class AuthRegistry {
         const userId = url.searchParams.get('userId');
         if (userId) { try { new ProductOutcomes(this.state.storage).activity(userId); } catch { console.warn('Workspace activity measurement unavailable'); } }
         if (!userId) return this.json(400, { error: 'Missing userId' });
-        const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') || 100)));
+        // The hosted-slot sweep builds its keep-set from this endpoint and
+        // must see every live project (up to MAX_PROJECT_ROWS_PER_USER=200
+        // lifetime rows). Clamping at 100 would silently drop the oldest
+        // projects from `keep` and their slots would be swept while live.
+        const limit = Math.min(500, Math.max(1, Number(url.searchParams.get('limit') || 100)));
         const rows = this.sql
           .exec(
             'SELECT project_id, user_id, name, created_at, updated_at, published FROM project_owners WHERE user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT ?',
@@ -1102,7 +1134,7 @@ export class AuthRegistry {
         if (typeof body.name !== 'string' || !body.name.trim()) return this.json(400, { error: 'Invalid name' });
         const name = body.name.slice(0, 120);
         const rows = this.sql
-          .exec('SELECT user_id FROM project_owners WHERE project_id = ?', projectId as string)
+          .exec('SELECT user_id FROM project_owners WHERE project_id = ? AND deleted_at IS NULL', projectId as string)
           .toArray() as Array<{ user_id: string }>;
         if (rows.length === 0 || rows[0].user_id !== body.userId)
           return this.json(403, { error: 'Not the project owner' });

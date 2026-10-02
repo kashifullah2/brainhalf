@@ -113,6 +113,24 @@ it('does not expose account existence or turn Google-only accounts into password
   expect(delivery).not.toHaveBeenCalled();
 });
 
+it('does not reveal via signup whether an email is already registered', async () => {
+  // First signup creates the account and sends one verification email.
+  const first = await post('auth/signup', { email: 'taken@example.com', password: 'strong-password', requireVerification: false });
+  expect(first.status).toBe(202);
+  const firstBody = await first.json();
+  expect(delivery).toHaveBeenCalledTimes(1);
+  // Second signup with the same email must be indistinguishable from the
+  // first: same status, same body, and no new verification email (which
+  // would confirm the account exists and harass the owner).
+  delivery.mockClear();
+  const second = await post('auth/signup', { email: 'taken@example.com', password: 'strong-password', requireVerification: false });
+  expect(second.status).toBe(202);
+  expect(await second.json()).toEqual(firstBody);
+  expect(delivery).not.toHaveBeenCalled();
+  // The original account is untouched: exactly one user row, still unverified.
+  expect(db.prepare('SELECT COUNT(*) AS n FROM users WHERE email = ?').get('taken@example.com')).toMatchObject({ n: 1 });
+});
+
 it('rate limits repeated emails and replaces older verification links', async () => {
   await post('auth/signup', { email: 'person@example.com', password: 'strong-password' });
   const first = deliveredToken();

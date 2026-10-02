@@ -30,7 +30,7 @@ import { isStarterApp, relativeProjectImport, selectAppEntry } from './lib/previ
 import { getAppSessionToken } from './lib/app-session';
 import { isPublicPreviewFile, isPublicPreviewRead, PREVIEW_ACCESS_HEADER } from './lib/project-access';
 import { isolatedPreviewHtml, previewFiles } from './lib/preview-isolation';
-import { isConversationalPrompt, isDestructivePrompt, isQuestionPrompt, isAmbiguousPrompt, shouldAutoPlannerMode } from './lib/prompt-mode';
+import { isConversationalPrompt, isDestructivePrompt, isQuestionPrompt, isAmbiguousPrompt, shouldAutoPlannerMode, shouldUseStagedPipeline } from './lib/prompt-mode';
 import { isBlockedSecretFile } from './lib/secret-files';
 import { boundedConversation, contextFileAllowed, fileContextRank } from './lib/agent-context';
 import { generationControls, generationContextLimits } from './lib/generation-controls';
@@ -2001,7 +2001,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // instructions contradict the tool-less mode blocks.
           const existingAppForStaging = this.runSql`SELECT content FROM project_files WHERE path = '/src/App.tsx'`[0]?.content ?? '';
           const isFreshBuild = !existingAppForStaging || isStarterApp(existingAppForStaging);
-          const isStaged = !plannerMode && !modes?.questionMode && !modes?.destructiveMode && !modes?.ambiguousMode && !resumeChain && isFreshBuild && !isConversationalPrompt(actualPrompt) && !fileOutputRetry && !actualPrompt.includes('<edit ') && !(typeof process !== 'undefined' && process.env?.VITEST);
+          // shouldUseStagedPipeline is unit-tested (prompt-mode.test.ts); the
+          // VITEST guard stays at the call site so tests can exercise the logic.
+          const isStaged = shouldUseStagedPipeline({ plannerMode, modes, resumeChain, isFreshBuild, actualPrompt, fileOutputRetry })
+            && !(typeof process !== 'undefined' && process.env?.VITEST);
           const pipelineStages = isStaged ? [
             { stageId: 'architecture', notice: 'Step 1 of 3: Architecture & Schema', extraPrompt: '\n\nSTAGE 1 INSTRUCTION: Write ONLY schema/migration files, shared contract types, and config files (e.g. migrations/*.sql, shared/*.ts, package.json). Do NOT write App.tsx, any /src/components/*.tsx files, or worker/index.ts yet.' },
             { stageId: 'layout', notice: 'Step 2 of 3: Frontend components', extraPrompt: '\n\nSTAGE 2 INSTRUCTION: Write ALL frontend files. Start with /src/App.tsx FIRST (mandatory write order), then write EVERY component file it imports — all /src/components/*.tsx. Write every sub-import too. Do NOT write worker/index.ts or backend routes yet.' },
@@ -2872,6 +2875,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       wasTruncated: false,
     };
 
+    // The client honors a single trigger-auto-reply per response. Truncation
+    // retries and syntax repairs can both fire on the same response; without
+    // this guard the second frame is silently dropped and its repair lost.
+    let triggerSent = false;
+    const sendTriggerOnce = (message: string) => {
+      if (triggerSent) return;
+      triggerSent = true;
+      try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message })); } catch { }
+    };
+
     if (!text) return summary;
 
     summary.sawCodeLikeOutput = /<file\s+path=|<edit\s+path=|<delete\s+path=|```|File:\s*\/[a-zA-Z0-9._/-]+/i.test(text);
@@ -2988,9 +3001,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         } catch { }
       } else {
         this.truncationRetries = retriesSoFar + 1;
-        try {
-          connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: TRUNCATION_RETRY_MESSAGE }));
-        } catch { }
+        sendTriggerOnce(TRUNCATION_RETRY_MESSAGE);
       }
     }
     if (pendingWrites.size === 0 && pendingDeletes.size === 0) return summary;
@@ -3052,7 +3063,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           `Regenerate ONLY these files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
           `Do not modify any other file. Check that every bracket, brace, parenthesis and JSX tag is closed before finishing.`;
         try { connection.send(JSON.stringify({ type: 'generation_notice', message: `A file didn't pass the syntax check. Repairing it now…` })); } catch { }
-        try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch { }
+        sendTriggerOnce(repairPrompt);
       } else {
         const warn = JSON.stringify({
           type: 'error',

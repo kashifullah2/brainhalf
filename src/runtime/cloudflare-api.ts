@@ -15,7 +15,14 @@ export interface CustomHostname {
 // Best effort: any parse failure still yields the status-only message.
 async function errorDetail(response: Response): Promise<string> {
   try {
-    const body = await readBoundedJson<{ errors?: Array<{ code?: number; message?: string }> }>(response, 64_000);
+    // Bound the diagnostic read: a stalled error body must not hold the
+    // request path for tens of seconds just to extract a message.
+    const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 3000));
+    const body = await Promise.race([
+      readBoundedJson<{ errors?: Array<{ code?: number; message?: string }> }>(response, 64_000),
+      timeout,
+    ]);
+    if (!body) { await response.body?.cancel().catch(() => {}); return ''; }
     const first = body.errors?.find(error => error?.message);
     return first ? `${first.message}${first.code ? ` (code ${first.code})` : ''}` : '';
   } catch {

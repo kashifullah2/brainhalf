@@ -66,7 +66,7 @@ export function authUnavailable(): Response {
 }
 
 /** Extract a bearer token from any of the supported transport locations. */
-export function extractToken(request: Request): string | null {
+export function extractToken(request: Request, options: { allowQueryToken?: boolean } = {}): string | null {
   // 1. Authorization: Bearer <token>
   const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
   if (authHeader) {
@@ -79,12 +79,18 @@ export function extractToken(request: Request): string | null {
   const cookieMatch = cookieHeader.match(new RegExp(`(?:^|;\\s*)${AUTH_COOKIE}=([^;]+)`));
   if (cookieMatch) return cookieMatch[1].trim();
 
-  // 3. Query parameter (WebSockets cannot set request headers in browsers)
-  try {
-    const token = new URL(request.url).searchParams.get('token');
-    if (token) return token.trim();
-  } catch {
-    /* not a URL */
+  // 3. Query parameter — opt-in only. Browsers cannot set request headers on
+  //    `new WebSocket`, so the upgrade URL is the one place a credential may
+  //    ride in a query string (and even there the client prefers single-use
+  //    tickets). Everywhere else a token in the URL leaks into access logs,
+  //    browser history, and Referer headers.
+  if (options.allowQueryToken) {
+    try {
+      const token = new URL(request.url).searchParams.get('token');
+      if (token) return token.trim();
+    } catch {
+      /* not a URL */
+    }
   }
 
   return null;
@@ -117,7 +123,15 @@ export async function verifySession(
   env: RegistryEnv
 ): Promise<AuthenticatedUser | null> {
   try {
-    const token = extractToken(request);
+    // ?token= is honored only for WebSocket upgrades and agent routes — the
+    // transports that cannot carry headers or cookies. On every other endpoint
+    // a query-string token would leak into logs, history, and referrers.
+    let allowQueryToken = request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
+    if (!allowQueryToken) {
+      try { allowQueryToken = new URL(request.url).pathname.startsWith('/agents/'); }
+      catch { /* not a URL */ }
+    }
+    const token = extractToken(request, { allowQueryToken });
     const secret = getSessionSecret(env);
     const verified = await verifyTokenSignature(token, secret);
     if (!verified) return null;
@@ -303,9 +317,15 @@ export async function handleSignup(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  const result = (await res.json()) as { userId?: string; email?: string; error?: string };
+  const result = (await res.json()) as { userId?: string; email?: string; error?: string; alreadyExists?: boolean };
   if (!res.ok || !result.userId) {
     return json(res.status || 400, { error: result.error || 'Signup failed' });
+  }
+  // The registry returns alreadyExists for duplicate emails (enumeration-safe).
+  // This legacy direct-signup path must not mint a session for an existing
+  // account without verifying the password.
+  if (result.alreadyExists) {
+    return json(409, { error: 'An account with this email already exists' });
   }
 
   const { token } = await issueToken(secret, result.userId, TOKEN_TTL_SECONDS);

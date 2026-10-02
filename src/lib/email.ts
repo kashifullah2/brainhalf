@@ -114,12 +114,21 @@ export async function handleEmailRequest(request: Request, env: EmailEnv): Promi
     if (path === '/api/auth/signup') {
       const created = await registry(env, '/auth/signup', { email, password: body.password, requireVerification: true });
       if (!created.ok) return reply(created.status, await created.json());
-      try { await actionEmail(env, email, 'verify'); }
-      catch (cause) {
-        // The account exists but the verification email failed — log the real
-        // cause so a signup 503 is diagnosable from the Worker logs.
-        console.error(`Signup verification email failed for ${email}: ${cause instanceof Error ? cause.message : String(cause)}`);
-        return reply(503, { error: 'Your account was created, but the email could not be delivered. Use “Resend verification email” to try again.' });
+      const createdBody = (await created.json().catch(() => ({}))) as { alreadyExists?: boolean };
+      // alreadyExists: the registry returned success for a duplicate email so
+      // the browser response is identical either way (no account enumeration).
+      // Skip the verification email — sending one would confirm the address
+      // is registered and pester the account owner on every retry.
+      if (!createdBody.alreadyExists) {
+        try { await actionEmail(env, email, 'verify'); }
+        catch (cause) {
+          // The account exists but the verification email failed — log the real
+          // cause so a signup 503 is diagnosable from the Worker logs. Log a
+          // hash, not the raw address: email is PII and logs are broadly read.
+          const emailHash = await sha256Hex(email).catch(() => 'unhashable');
+          console.error(`Signup verification email failed for ${emailHash.slice(0, 12)}: ${cause instanceof Error ? cause.message : String(cause)}`);
+          return reply(503, { error: 'Your account was created, but the email could not be delivered. Use “Resend verification email” to try again.' });
+        }
       }
       return reply(202, { verificationRequired: true, message: 'Check your email to verify your account, then sign in.' });
     }

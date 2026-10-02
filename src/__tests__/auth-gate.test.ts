@@ -62,6 +62,22 @@ describe('P1 Auth — session verification (fail closed)', () => {
     expect(await verifySession(req, envWith(registry))).toEqual({ userId: USER_ID });
   });
 
+  it('rejects a ?token= query on regular API endpoints (token would leak into logs/history)', async () => {
+    const { token } = await issueToken(SECRET, USER_ID);
+    const registry = await registryFor(token);
+    const req = new Request(`https://brainhalf.com/api/projects?token=${token}`);
+    expect(await verifySession(req, envWith(registry))).toBeNull();
+  });
+
+  it('accepts a ?token= query on WebSocket upgrades (browsers cannot set headers there)', async () => {
+    const { token } = await issueToken(SECRET, USER_ID);
+    const registry = await registryFor(token);
+    const req = new Request(`https://brainhalf.com/api/projects?token=${token}`, {
+      headers: { Upgrade: 'websocket' },
+    });
+    expect(await verifySession(req, envWith(registry))).toEqual({ userId: USER_ID });
+  });
+
   it('denies a token whose session row has been revoked', async () => {
     const { token } = await issueToken(SECRET, USER_ID);
     const registry = await registryFor(null); // nothing is a known session
@@ -112,16 +128,17 @@ describe('P1 Auth — token extraction', () => {
     expect(extractToken(req)).toBe('tok-abc');
   });
 
-  it('reads a query token', () => {
+  it('reads a query token only when explicitly allowed (WebSocket transport)', () => {
     const req = new Request('https://x/y?token=tok-q');
-    expect(extractToken(req)).toBe('tok-q');
+    expect(extractToken(req)).toBeNull();
+    expect(extractToken(req, { allowQueryToken: true })).toBe('tok-q');
   });
 
   it('prefers the Authorization header, then cookie, then query', async () => {
     const req = new Request(`https://x/y?token=tok-q`, {
       headers: { authorization: 'Bearer tok-h', cookie: `${AUTH_COOKIE}=tok-c` },
     });
-    expect(extractToken(req)).toBe('tok-h');
+    expect(extractToken(req, { allowQueryToken: true })).toBe('tok-h');
   });
 
   it('returns null when no token is present anywhere', () => {

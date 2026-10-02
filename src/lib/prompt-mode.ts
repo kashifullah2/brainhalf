@@ -2,6 +2,7 @@
  * Planning is an explicit intent, not a consequence of a detailed app brief.
  * Long requirements and lists must still build the application by default.
  */
+import { isSystemContinuation } from './chat-transcript';
 export function shouldAutoPlannerMode(prompt: string): boolean {
   const text = (prompt || '').trim();
   if (!text) return false;
@@ -90,4 +91,34 @@ export function isAmbiguousPrompt(prompt: string): boolean {
   // Very short bare imperatives with no object at all: "surprise me".
   if (/^(surprise me|impress me|show me something)[\s.!]*$/i.test(text)) return true;
   return false;
+}
+
+/**
+ * Staging (the 3-stage architecture/layout/backend pipeline) is for fresh
+ * full-app builds only. System continuations ([AUTO-FIX], [AUTO-CONTINUE],
+ * truncation retries) must never enter staging: the stage instructions
+ * contradict the continuation's explicit orders (e.g. "regenerate ONLY these
+ * files"), so the repair fails while burning 3 model calls of the user's
+ * budget. Same for questions, destructive confirmations, clarifying prompts,
+ * resumes, and edits to an existing app.
+ */
+export function shouldUseStagedPipeline(options: {
+  plannerMode: boolean;
+  modes?: { questionMode?: boolean; destructiveMode?: boolean; ambiguousMode?: boolean };
+  resumeChain: unknown;
+  isFreshBuild: boolean;
+  actualPrompt: string;
+  fileOutputRetry: boolean;
+}): boolean {
+  const { plannerMode, modes, resumeChain, isFreshBuild, actualPrompt, fileOutputRetry } = options;
+  return !plannerMode
+    && !modes?.questionMode
+    && !modes?.destructiveMode
+    && !modes?.ambiguousMode
+    && !resumeChain
+    && isFreshBuild
+    && !isSystemContinuation(actualPrompt)
+    && !isConversationalPrompt(actualPrompt)
+    && !fileOutputRetry
+    && !actualPrompt.includes('<edit ');
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldAutoPlannerMode, isQuestionPrompt, isDestructivePrompt, isAmbiguousPrompt } from '../lib/prompt-mode';
+import { shouldAutoPlannerMode, isQuestionPrompt, isDestructivePrompt, isAmbiguousPrompt, shouldUseStagedPipeline } from '../lib/prompt-mode';
 import { BUSINESS_APPS, businessValidationPrompt } from '../lib/business-apps';
 
 describe('prompt mode heuristics', () => {
@@ -86,5 +86,53 @@ describe('isAmbiguousPrompt', () => {
     expect(isAmbiguousPrompt('write a haiku about the sea')).toBe(false);
     expect(isAmbiguousPrompt('hello')).toBe(false);
     expect(isAmbiguousPrompt('delete all files')).toBe(false);
+  });
+});
+
+describe('shouldUseStagedPipeline', () => {
+  const freshBuild = {
+    plannerMode: false,
+    modes: undefined,
+    resumeChain: undefined,
+    isFreshBuild: true,
+    fileOutputRetry: false,
+  };
+
+  it('stages fresh full-app builds', () => {
+    expect(shouldUseStagedPipeline({ ...freshBuild, actualPrompt: 'build a bakery landing page' })).toBe(true);
+  });
+
+  it('never stages system continuations ([AUTO-FIX] repair turns)', () => {
+    // The [AUTO-FIX] repair prompt orders "regenerate ONLY these files" — the
+    // 3-stage pipeline would prepend contradictory stage instructions.
+    expect(shouldUseStagedPipeline({
+      ...freshBuild,
+      actualPrompt: '[AUTO-FIX] These files were discarded because of syntax errors:\n- /src/App.tsx: ...',
+    })).toBe(false);
+  });
+
+  it('never stages truncation-retry continuations', () => {
+    expect(shouldUseStagedPipeline({
+      ...freshBuild,
+      actualPrompt: 'The previous response ended with an unfinished file.',
+    })).toBe(false);
+  });
+
+  it('never stages question, destructive, or ambiguous turns', () => {
+    expect(shouldUseStagedPipeline({
+      ...freshBuild, modes: { questionMode: true }, actualPrompt: 'write a haiku',
+    })).toBe(false);
+    expect(shouldUseStagedPipeline({
+      ...freshBuild, modes: { destructiveMode: true }, actualPrompt: 'delete all files',
+    })).toBe(false);
+    expect(shouldUseStagedPipeline({
+      ...freshBuild, modes: { ambiguousMode: true }, actualPrompt: 'make something cool',
+    })).toBe(false);
+  });
+
+  it('never stages edits to an existing app', () => {
+    expect(shouldUseStagedPipeline({
+      ...freshBuild, isFreshBuild: false, actualPrompt: 'add a dark mode toggle',
+    })).toBe(false);
   });
 });

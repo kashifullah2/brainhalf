@@ -644,16 +644,28 @@ export default {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
       try {
+        // The registry clamps this endpoint; request enough rows to cover
+        // the full lifetime cap (MAX_PROJECT_ROWS_PER_USER=200). A truncated
+        // list would drop live projects from `keep` and sweep their slots.
         const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
-        const res = await registry.fetch(`https://registry/projects?userId=${encodeURIComponent(user.userId)}`);
+        const res = await registry.fetch(`https://registry/projects?userId=${encodeURIComponent(user.userId)}&limit=250`);
         const body = await res.text();
-        if (res.ok && env.RUNTIME) {
+        if (res.ok && env.PILOT) {
           // Self-heal hosted app spaces: slots left behind by deleted projects
           // otherwise block previews and publishing until manually removed.
+          // Calls the pilot coordinator directly via the cross-worker binding
+          // instead of routing through the runtime worker's entrypoint, which
+          // may be an older deployment lacking the sweep route.
           try {
             const projects = (JSON.parse(body)?.projects || []) as Array<{ id?: unknown }>;
             const keep = projects.map(project => project?.id).filter((id): id is string => typeof id === 'string');
-            await env.RUNTIME.fetch(new Request('https://runtime/hosted/sweep', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-bh-project': keep[0] || 'sweep', 'x-bh-owner': user.userId }, body: JSON.stringify({ keep }) }));
+            const pilot = env.PILOT as unknown as {
+              getByName(name: string): {
+                releaseUnknown(ownerId: string, keep: ReadonlySet<string>): Promise<number>;
+              };
+            };
+            const released = await pilot.getByName('pilot').releaseUnknown(user.userId, new Set(keep));
+            if (released > 0) console.log(`Hosted slot sweep released ${released} stale slot(s)`);
           } catch (err) { console.error('Hosted slot sweep failed:', err); }
         }
         return withCors(new Response(body, { status: res.status, headers: { 'Content-Type': 'application/json' } }), origin);

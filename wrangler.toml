@@ -38,6 +38,15 @@ class_name = "ChatAgent"
 name = "REGISTRY"
 class_name = "AuthRegistry"
 
+# Cross-worker binding to the pilot coordinator defined in brainhalf-runtime.
+# Lets the main worker sweep stale hosted-slot registrations directly instead
+# of routing through the runtime worker's entrypoint (which may be an older
+# deployment that lacks the sweep route). Same DO namespace, same instances.
+[[durable_objects.bindings]]
+name = "PILOT"
+class_name = "PilotCoordinator"
+script_name = "brainhalf-runtime"
+
 # Durable Object migration safety: renaming a class_name above without a
 # matching `renamed_classes` entry here makes Wrangler treat the new name as a
 # brand-new class and abandon the old one's storage in place -- every ChatAgent
