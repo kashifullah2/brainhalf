@@ -263,13 +263,16 @@ export async function verifyStoredSession(): Promise<SessionUser | null> {
  * `fetch` that always carries the session token and reacts to auth failure by
  * clearing the stale session and signalling the app to show the login screen.
  */
-export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+export async function authFetch(input: string, init: RequestInit = {}, options: { clearOnUnauthorized?: boolean } = {}): Promise<Response> {
   const revision = sessionRevision;
   const token = getToken();
   const headers = new Headers(init.headers || {});
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const res = await fetch(input, { ...init, headers, credentials: 'include' });
-  if (res.status === 401 && revision === sessionRevision && token === getToken()) {
+  // Advisory polls (e.g. model availability) must not end the session: a 401
+  // from a non-auth endpoint can be transient or a backend blip, and clearing
+  // here would dump the user out of their workspace mid-session.
+  if (res.status === 401 && options.clearOnUnauthorized !== false && revision === sessionRevision && token === getToken()) {
     clear();
   }
   return res;

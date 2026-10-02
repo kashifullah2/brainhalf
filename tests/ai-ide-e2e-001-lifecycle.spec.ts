@@ -27,7 +27,7 @@ test('local lifecycle: stop, switch, authenticated deletion, reload, mobile gene
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   const alphaCard = page.locator('.landing-project-card').filter({ hasText: alpha.prompt });
   await alphaCard.getByRole('button', { name: 'Project actions' }).click();
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete Project', exact: true }).click();
   await expect(alphaCard).toHaveCount(0);
   expect(state.deletions).toEqual([alpha.id]);

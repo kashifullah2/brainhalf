@@ -99,7 +99,9 @@ describe('Project Store & LocalStorage State Management', () => {
 
       expect(fetchSpy).toHaveBeenCalledWith(
         `/api/projects/${proj.id}`,
-        expect.objectContaining({ method: 'PATCH' })
+        expect.objectContaining({ method: 'PATCH' }),
+        // Advisory sync: a 401 must never end the local session.
+        expect.objectContaining({ clearOnUnauthorized: false })
       );
       const body = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body ?? '{}'));
       expect(body).toEqual({ name: 'Server Synced Name' });

@@ -93,7 +93,8 @@ try {
   assert.equal(deleted.status, 200, `Runtime deletion failed: ${await deleted.clone().text()}`);
   assert.equal((await runtime.dispatchFetch(`${origin}/api/auth/session`, { headers: { Cookie: cookie } })).status, 404);
   assert.equal((await control('/status')).status, 410);
-  for (const project of ['replacement-1', 'replacement-2', 'replacement-3']) {
+  // The hosted app limit is 10 (MAX_HOSTED_APP_SPACES): fill every slot.
+  for (const project of Array.from({ length: 10 }, (_, index) => `replacement-${index + 1}`)) {
     const response = await control('/status', 'GET', undefined, project);
     assert.equal(response.status, 200, `Deleted project must not consume pilot quota: ${await response.text()}`);
     assert.equal((await control('/preview-ticket', 'POST', {}, project)).status, 200);

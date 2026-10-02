@@ -334,7 +334,7 @@ export function updateProjectName(id: string, name: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
       signal: AbortSignal.timeout(15_000),
-    }).catch(() => {});
+    }, { clearOnUnauthorized: false }).catch(() => {});
   } catch { /* never break local rename */ }
 }
 

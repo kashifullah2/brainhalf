@@ -288,7 +288,7 @@ export function HostedFullNotice({ onOpenHostedSlots }: { onOpenHostedSlots?: ()
   </p>;
 }
 
-function PublicationFailure({ projectId, job, canRepair }: { projectId: string; job: RuntimeJob; canRepair: boolean }) {
+export function PublicationFailure({ projectId, job, canRepair }: { projectId: string; job: RuntimeJob; canRepair: boolean }) {
   const [repairNotice, setRepairNotice] = useState('');
   const [details, setDetails] = useState<{ logs: Array<{ job: string; text: string }>; verification?: { jobId: string; checks: Array<{ name: string; passed: boolean; detail: string }> } | null } | null>(null);
   const [error, setError] = useState('');

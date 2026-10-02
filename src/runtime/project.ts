@@ -717,7 +717,14 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         // are not retried — a second attempt would stall for the same duration.
         if (job.step === 1 && !job.installRetried && !output.timedOut) {
           job.installRetried = true;
-          await this.startProcess(job, ['npm', 'install', '--no-audit', '--no-fund']);
+          // Model-authored manifests can mix versions whose declared peer ranges
+          // disagree (e.g. a plugin built for an older Vite next to the current
+          // one) even though the combination runs fine. ERESOLVE is npm being
+          // strict, not a real failure — retry those with --legacy-peer-deps.
+          const peerConflict = /\bERESOLVE\b/i.test(`${output.stdout}\n${output.stderr}`);
+          await this.startProcess(job, peerConflict
+            ? ['npm', 'install', '--legacy-peer-deps', '--no-audit', '--no-fund']
+            : ['npm', 'install', '--no-audit', '--no-fund']);
           job.message = 'Installing dependencies'; await this.saveJob(job); return;
         }
         throw new RuntimeError(`${job.message} failed (exit ${output.exitCode}).${commandFailureSummary(output.stdout, output.stderr)}`);

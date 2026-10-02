@@ -1,0 +1,63 @@
+import { expect, test, type Page } from '@playwright/test';
+const now = new Date('2026-09-24T12:00:00Z');
+const names = ['Zeta analytics', 'Untitled Project', 'Alpine storefront', 'Member portal', 'Studio portfolio', 'Weekly workflow', 'Team messaging', 'Autumn reservations'];
+const descriptions = ['Revenue reports and customer metrics.', 'A quiet place to organize your next idea.'];
+const projects = Array.from({ length: 32 }, (_, index) => ({
+  id: `recent-${index}`, name: names[index] || `Archive app ${index}`,
+  createdAt: now.getTime() - 40 * 86400000,
+  updatedAt: now.getTime() - (index < 3 ? index * 60000 : index < 5 ? 86400000 + index * 60000 : index < 7 ? 2 * 86400000 + index * 60000 : (index + 1) * 86400000),
+  status: index === 2 ? 'error' : index === 3 ? 'building' : 'ready',
+  published: index % 4 === 0,
+}));
+async function setup(page: Page) {
+  await page.clock.setFixedTime(now);
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (!['localhost', '127.0.0.1'].includes(url.hostname)) return route.abort();
+    if (url.pathname === '/api/auth/session') return route.fulfill({ json: { userId: 'dev-user-1' } });
+    if (url.pathname === '/api/account/deletions') return route.fulfill({ json: { deletions: [] } });
+    if (url.pathname === '/api/projects') return route.fulfill({ json: { projects } });
+    if (url.pathname === '/api/auth/ws-ticket') return route.fulfill({ json: { ticket: 'bhwt_recent_fixture' } });
+    if (url.pathname.endsWith('/publication')) return route.fulfill({ json: { published: false } });
+    if (url.pathname.endsWith('/runtime/status')) return route.fulfill({ json: { enabled: false, jobs: [], releases: [], availability: { state: 'pilot_only', message: 'Hosting unavailable for this fixture.' } } });
+    if (url.pathname.startsWith('/preview/')) return route.fulfill({ contentType: 'text/html', body: '<h1>x</h1>' });
+    return route.continue();
+  });
+  await page.routeWebSocket(/\/agents\//, socket => socket.send(JSON.stringify({ type: 'history', data: [] })));
+  await page.addInitScript(({ projects, descriptions }) => {
+    if (window !== window.top || localStorage.getItem('recent-fixture')) return;
+    localStorage.setItem('recent-fixture', 'true');
+    localStorage.setItem('bh_session_token', 'bh_dev_local_token_not_a_real_session');
+    localStorage.setItem('bh_session_user', JSON.stringify({ id: 'dev-user-1' }));
+    localStorage.setItem('brainhalf_account:dev-user-1:brainhalf_projects', JSON.stringify(projects));
+    for (const [index, project] of projects.entries()) {
+      localStorage.setItem(`brainhalf_account:dev-user-1:brainhalf_messages_${project.id}`, JSON.stringify([{ role: 'user', content: descriptions[index] || 'An earlier app idea.' }]));
+    }
+  }, { projects, descriptions });
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await expect(page.locator('.landing-project-card')).toHaveCount(8);
+}
+test('debug menu reopen', async ({ page }) => {
+  await setup(page);
+  const draft = page.locator('.landing-project-card').filter({ has: page.getByRole('heading', { name: 'Untitled project', exact: true }) });
+  await expect(draft.getByRole('button', { name: 'Continue building' })).toBeVisible();
+  await expect(draft.getByRole('button', { name: 'Open Untitled project', exact: true })).toBeVisible();
+  await expect(draft.locator('.recent-project-status')).toHaveText('Draft');
+  await page.evaluate(async () => { const s = await import('/src/lib/status-store.ts'); s.setPlatformStatus('Building', '', 'recent-1'); });
+  await expect(draft.locator('.recent-project-status')).toHaveText('In progress');
+  await page.evaluate(async () => { const s = await import('/src/lib/status-store.ts'); s.setPlatformStatus('Error', '', 'recent-1'); });
+  await expect(draft.locator('.recent-project-status')).toHaveText('Needs attention');
+  const actions = draft.getByRole('button', { name: /Project actions/ });
+  await actions.click();
+  await expect(page.getByRole('menu', { name: /Project actions for/ })).toBeVisible();
+  console.log('DBG after click1 menus:', await page.getByRole('menu').count());
+  await page.keyboard.press('Escape');
+  await expect(actions).toBeFocused();
+  console.log('DBG after escape menus:', await page.getByRole('menu').count());
+  await actions.click();
+  await page.waitForTimeout(500);
+  console.log('DBG after click2 menus:', await page.getByRole('menu').count(), 'expanded:', await actions.getAttribute('aria-expanded'));
+  console.log('DBG focused:', await page.evaluate(() => document.activeElement?.textContent));
+  await expect(page.getByRole('menuitem', { name: 'Rename', exact: true })).toBeVisible();
+});

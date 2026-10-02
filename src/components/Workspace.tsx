@@ -34,6 +34,7 @@ import ConfirmModal from './ConfirmModal';
 import BuildProgress, { type FileProgress } from './BuildProgress';
 import GenerationProgress from './GenerationProgress';
 import ProjectConsole from './ProjectConsole';
+import PublishPopover from './PublishPopover';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
@@ -226,6 +227,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   // UI) instead of a duplicate dialog. The nonce re-triggers the navigation
   // even when the section value repeats.
   const [consoleSectionRequest, setConsoleSectionRequest] = useState<{ section: string; nonce: number } | null>(null);
+  // Header "Go live" opens a small publish panel under the button — naming the
+  // app, choosing who can see it, and publishing to production all happen
+  // there without leaving the workspace.
+  const [publishOpen, setPublishOpen] = useState(false);
   const backend = useAutomaticBackend(activeProjectId, runtime);
   const startBackend = backend.start;
   
@@ -1316,46 +1321,95 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         </div>
 
         <div className="studio-workspace-actions">
-          <ActionMenu label="Advanced options" className="studio-project-actions" items={[
+          <ActionMenu label="Project actions" className="studio-project-actions" items={[
             { label: 'View code', icon: <Code2 />, onSelect: () => selectTab('code'), disabled: !Object.keys(files).length },
             { label: 'Project console', icon: <Server />, onSelect: () => selectTab('console'), separator: true },
             { label: 'Download ZIP', icon: <Download />, onSelect: () => { void handleExportZip(); }, disabled: !Object.keys(files).length },
             { label: 'Export to GitHub', icon: <GitBranch />, onSelect: () => github.openModal(), disabled: !Object.keys(files).length, separator: true },
             { label: 'Help & guides', icon: <HelpCircle />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
-            { label: 'Start over', icon: <RotateCcw />, onSelect: () => setShowResetConfirm(true), danger: true, separator: true },
+            { label: 'Reset workspace', icon: <RotateCcw />, onSelect: () => setShowResetConfirm(true), danger: true, separator: true },
           ]}><Settings size={18} /></ActionMenu>
 
-
           <button
-            onClick={() => {
-              if (hasGeneratedApp) {
-                setConsoleSectionRequest({ section: 'Go live', nonce: Date.now() });
-                selectTab('console');
+            type="button"
+            className="studio-share-button"
+            onClick={async () => {
+              const shareUrl = `${window.location.origin}${window.location.pathname}?project=${activeProjectId}`;
+              const ok = await copyText(shareUrl);
+              if (ok) {
+                setShareCopied(true);
+              } else {
+                setShareFallback(shareUrl);
               }
             }}
-            className="studio-publish-button"
-            disabled={!hasGeneratedApp}
             style={{
-              background: hasGeneratedApp ? 'var(--accent-primary)' : 'rgba(36, 60, 75, 0.04)',
-              color: hasGeneratedApp ? 'var(--text-on-accent)' : 'var(--text-muted)',
-              border: hasGeneratedApp ? 'none' : '1px solid rgba(36, 60, 75, 0.08)',
+              background: 'rgba(36, 60, 75, 0.05)',
+              border: '1px solid rgba(36, 60, 75, 0.08)',
               borderRadius: '8px',
-              padding: '5px 14px',
+              padding: '5px 12px',
+              color: 'var(--text-primary)',
               fontSize: '12px',
-              fontWeight: 600,
-              cursor: hasGeneratedApp ? 'pointer' : 'not-allowed',
+              fontWeight: 500,
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              boxShadow: hasGeneratedApp ? '0 2px 8px var(--focus-ring)' : 'none',
-              transition: 'all 0.15s ease'
+              gap: '6px'
             }}
-            title={hasGeneratedApp ? "Put your app on the web" : "Generate an app in chat first"}
-            aria-label={hasGeneratedApp ? "Put your app on the web" : "Generate an app in chat first"}
+            title="Copy a link that opens this project (requires sign-in)"
+            aria-label="Copy project link"
           >
-            <Cloud size={14} strokeWidth={2} />
-            <span>Go live</span>
+            <Share2 size={14} strokeWidth={1.8} />
+            <span aria-live="polite">{shareCopied ? 'Copied!' : 'Copy link'}</span>
           </button>
+
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => {
+                if (hasGeneratedApp) setPublishOpen(open => !open);
+              }}
+              className="studio-publish-button"
+              disabled={!hasGeneratedApp}
+              aria-haspopup="dialog"
+              aria-expanded={publishOpen}
+              style={{
+                background: hasGeneratedApp ? 'var(--accent-primary)' : 'rgba(36, 60, 75, 0.04)',
+                color: hasGeneratedApp ? 'var(--text-on-accent)' : 'var(--text-muted)',
+                border: hasGeneratedApp ? 'none' : '1px solid rgba(36, 60, 75, 0.08)',
+                borderRadius: '8px',
+                padding: '5px 14px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: hasGeneratedApp ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: hasGeneratedApp ? '0 2px 8px var(--focus-ring)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+              title={hasGeneratedApp ? "Put your app on the web" : "Generate an app in chat first"}
+              aria-label={hasGeneratedApp ? "Put your app on the web" : "Generate an app in chat first"}
+            >
+              <Cloud size={14} strokeWidth={2} />
+              <span>Go live</span>
+            </button>
+            {publishOpen && hasGeneratedApp && (
+              <PublishPopover
+                projectId={activeProjectId}
+                files={files}
+                onClose={() => setPublishOpen(false)}
+                onCustomDomain={() => {
+                  setPublishOpen(false);
+                  setConsoleSectionRequest({ section: 'Web address', nonce: Date.now() });
+                  selectTab('console');
+                }}
+                onOpenHostedSlots={() => {
+                  setPublishOpen(false);
+                  setConsoleSectionRequest({ section: 'My live apps', nonce: Date.now() });
+                  selectTab('console');
+                }}
+              />
+            )}
+          </div>
 
         </div>
       </div>
@@ -1488,7 +1542,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
                 </PreviewCanvas>
-                {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+                {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+                {hasGeneratedApp && status === 'Generating' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it’s ready.</span></div>}
               </div>
             </div>
           </div>
@@ -1863,12 +1918,20 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
               </PreviewCanvas>
-              {hasGeneratedApp && previewIssue && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+              {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+              {hasGeneratedApp && status === 'Generating' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it’s ready.</span></div>}
 
             </div>
           </div>
         )}
       </div>
+
+      <footer className="studio-workspace-footer">
+        <div className="studio-build-meta" aria-label="Build information">
+        <span><FolderCode size={12} />{Object.keys(files).length} files</span>
+        <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Terminal size={14} />Console</button><button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
+        </div>
+      </footer>
 
       {/* GitHub export modal */}
       {github.modalElement}

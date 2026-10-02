@@ -310,7 +310,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     for (let attempt = 0; attempt < delays.length; attempt++) {
       if (attempt > 0) await new Promise(r => setTimeout(r, delays[attempt]));
       try {
-        const res = await authFetch('/api/models/status');
+        const res = await authFetch('/api/models/status', {}, { clearOnUnauthorized: false });
         if (!res.ok) continue;
         const body = await res.json() as {
           integratedModelsEnabled?: boolean;
@@ -984,6 +984,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 saveProjectMessages(activeProjectId, freshWelcome);
                 appEvents.emit('generation-status', { status: 'Ready', detail: 'Fresh project ready', projectId: activeProjectId });
               }
+            }
+            // B1 follow-up: storage never keeps failed replies, so a reload
+            // after an empty reply ends with the person's unanswered prompt.
+            // Resurface the recovery card as a session-only turn (storage stays
+            // clean via stripPoisonedTail) instead of silently dropping it.
+            const appliedTail = messagesRef.current[messagesRef.current.length - 1];
+            if (!isGeneratingRef.current && appliedTail?.role === 'user' && !appliedTail.internal && !isSystemContinuation(appliedTail.content)) {
+              const recovered = [...messagesRef.current, { role: 'ai' as const, content: EMPTY_RESPONSE_MESSAGE, timestamp: Date.now() }];
+              messagesRef.current = recovered;
+              setMessages(recovered);
+              appEvents.emit('generation-status', { status: 'Error', error: EMPTY_RESPONSE_MESSAGE, projectId: activeProjectId });
             }
             // History applied (whichever branch above ran): land on the latest
             // message instead of opening at the top of a long conversation.

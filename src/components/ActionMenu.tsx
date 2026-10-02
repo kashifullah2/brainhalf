@@ -52,14 +52,24 @@ export default function ActionMenu({ label, children, items, className = '' }: {
       if (!menu.current?.contains(event.target as Node)) dismiss();
     };
     document.addEventListener('pointerdown', outside);
-    window.addEventListener('resize', dismiss);
-    window.addEventListener('blur', dismiss);
-    window.addEventListener('scroll', scroll, true);
+    // Attach scroll/blur/resize dismissal one beat after opening: the smooth
+    // scroll-into-view that preceded the opening click can keep firing scroll
+    // events for a few frames, and those must not instantly close the menu.
+    let detachDismiss: (() => void) | undefined;
+    const dismissTimer = window.setTimeout(() => {
+      window.addEventListener('resize', dismiss);
+      window.addEventListener('blur', dismiss);
+      window.addEventListener('scroll', scroll, true);
+      detachDismiss = () => {
+        window.removeEventListener('resize', dismiss);
+        window.removeEventListener('blur', dismiss);
+        window.removeEventListener('scroll', scroll, true);
+      };
+    }, 150);
     return () => {
       document.removeEventListener('pointerdown', outside);
-      window.removeEventListener('resize', dismiss);
-      window.removeEventListener('blur', dismiss);
-      window.removeEventListener('scroll', scroll, true);
+      window.clearTimeout(dismissTimer);
+      detachDismiss?.();
     };
   }, [open]);
 

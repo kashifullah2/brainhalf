@@ -8,7 +8,7 @@ test('contact form uses real fields, handles delivery and displays the supplied 
   await page.getByLabel('Your name', { exact: true }).fill('Example Person');
   await page.getByLabel('Email address', { exact: true }).fill('person@example.com');
   await page.getByLabel('How can we help?', { exact: true }).fill('Please help me understand my workspace.');
-  await expect(page.locator('.landing-brand-logo image')).toHaveAttribute('href', '/android-chrome-512x512.png');
+  await expect(page.locator('.brainhalf-logo-svg image').first()).toHaveAttribute('href', '/brainhalf-logo-128.png');
   await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Your message has been sent');
   expect(message.email).toBe('person@example.com');

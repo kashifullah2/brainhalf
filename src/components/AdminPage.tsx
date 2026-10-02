@@ -337,6 +337,15 @@ export default function AdminPage() {
       if (!reader) { setTestOutput('Error: No response stream.'); return; }
       const decoder = new TextDecoder();
       let buffer = '';
+      // Reasoning models stream <think> blocks (and separate reasoning_content
+      // deltas). Show the answer, not the monologue. Think tags can span
+      // chunks, so strip from the accumulated text rather than per-chunk.
+      let rawOutput = '';
+      const stripThinking = (text: string) => text
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/<think>[\s\S]*$/i, '')
+        .replace(/<\/?(?:t(?:h(?:i(?:n(?:k)?)?)?)?)?$/i, '')
+        .replace(/^\s+/, '');
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -349,9 +358,9 @@ export default function AdminPage() {
           const data = trimmed.slice(5).trim();
           if (data === '[DONE]') continue;
           try {
-            const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+            const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }> };
             const content = parsed.choices?.[0]?.delta?.content;
-            if (content) setTestOutput(prev => prev + content);
+            if (content) { rawOutput += content; setTestOutput(stripThinking(rawOutput)); }
           } catch { /* ignore malformed chunks */ }
         }
       }

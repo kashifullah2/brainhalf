@@ -127,7 +127,8 @@ test('chat controls and content fit narrow screens without hiding overflow', asy
 
 test('manual backend and demo controls are removed', async ({ page }) => {
   await setup(page);
-  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await page.getByRole('button', { name: 'Project actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'View code', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Add Backend API', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Enable demo API|Disable demo API/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Project actions', exact: true }).click();
@@ -469,7 +470,7 @@ test('landing controls expose labels, visible focus and keyboard project activat
 
 test('enabled Publish text meets normal-text contrast', async ({ page }) => {
   await setup(page);
-  const publish = page.getByRole('button', { name: 'Open publishing in the project console', exact: true });
+  const publish = page.getByRole('button', { name: 'Put your app on the web', exact: true });
   await expect(publish).toBeEnabled();
   const ratio = await publish.evaluate(button => {
     const style = getComputedStyle(button);
@@ -584,8 +585,8 @@ test('Publish app starts publication and it can be cancelled before going live',
   state.connections[0].send(JSON.stringify({ type: 'file_updated', path: '/package.json', content: '{"scripts":{"build":"vite build"}}' }));
   await expect.poll(async () => (await readProjectFiles(page, 'dev-user-1', projectId))?.['/package.json']).toBeTruthy();
   expect(publishing.submitted).toEqual([]);
-  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
-  const publication = page.getByRole('region', { name: 'Project publication' });
+  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  const publication = page.getByRole('dialog', { name: 'Project publication' });
   await publication.getByRole('button', { name: 'Publish app', exact: true }).click();
   const slugPicker = page.getByRole('region', { name: 'Choose app name' });
   await slugPicker.getByRole('button', { name: /Skip/ }).click();
@@ -601,8 +602,8 @@ test('publication ownership failures preserve the session without exposing a pub
   const publishing = await setupPublication(page, true);
   state.connections[0].send(JSON.stringify({ type: 'file_updated', path: '/package.json', content: '{"scripts":{"build":"vite build"}}' }));
   await expect.poll(async () => (await readProjectFiles(page, 'dev-user-1', projectId))?.['/package.json']).toBeTruthy();
-  await page.getByRole('button', { name: 'Open publishing in the project console', exact: true }).click();
-  const publication = page.getByRole('region', { name: 'Project publication' });
+  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  const publication = page.getByRole('dialog', { name: 'Project publication' });
   await publication.getByRole('button', { name: 'Publish app', exact: true }).click();
   const slugPicker = page.getByRole('region', { name: 'Choose app name' });
   await slugPicker.getByRole('button', { name: /Skip/ }).click();
@@ -616,15 +617,15 @@ test('dashboard rename and confirmation dialogs trap and restore focus', async (
   await setup(page);
   await page.getByRole('button', { name: 'Return to Home', exact: true }).click();
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
-  const actions = page.getByRole('button', { name: 'Project actions' }).first();
+  const actions = page.getByRole('button', { name: /Project actions for/ }).first();
   await actions.click();
-  await page.getByRole('button', { name: 'Rename', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
   await expect(page.getByLabel('Project name', { exact: true })).toBeFocused();
   await expectFocusContained(page);
   await page.keyboard.press('Escape');
   await expect(actions).toBeFocused();
   await actions.click();
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   await expectFocusContained(page);
   await page.keyboard.press('Escape');
   await expect(actions).toBeFocused();
@@ -833,9 +834,11 @@ test('empty replies show recovery, survive reload, and retry the saved prompt on
   await expect(page.getByRole('listbox')).toBeVisible();
   expect(state.messages.filter(message => message.prompt)).toHaveLength(1);
   await page.keyboard.press('Escape');
-  // Reload must recover the failure from saved content, not a transient React flag.
+  // B1: storage never keeps the failed reply, so the saved tail stays the
+  // unanswered prompt; the recovery card is resurfaced session-side on reload.
   const saved = await page.evaluate(projectId => JSON.parse(localStorage.getItem(`brainhalf_account:dev-user-1:brainhalf_messages_${projectId}`)!), projectId);
-  expect(saved[saved.length - 1].content).toContain('didn’t return a response');
+  expect(saved[saved.length - 1].role).toBe('user');
+  expect(saved[saved.length - 1].content).toBe('Build a habit tracker with weekly progress');
   await page.reload({ waitUntil: 'networkidle' });
   await expect.poll(() => state.connections.length).toBe(2);
   await expect(page.getByTestId('model-status-pill')).toContainText('Error');
@@ -932,7 +935,8 @@ test('appearance: workspace, code editor and agent tools share the selected them
   await setup(page);
   for (const theme of ['dark', 'light']) {
     if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: `Switch to ${theme} mode` }).click();
-    await page.getByRole('button', { name: 'Code', exact: true }).click();
+    await page.getByRole('button', { name: 'Project actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'View code', exact: true }).click();
     await expect(page.locator('.monaco-editor').first()).toBeVisible();
     await expect(page.locator('.monaco-editor').first()).toHaveCSS('background-color', theme === 'dark' ? 'rgb(19, 19, 19)' : 'rgb(255, 255, 255)');
     await page.screenshot({ path: `/tmp/brainhalf-workspace-${theme}.png`, fullPage: true });

@@ -3,7 +3,7 @@
 
 /* Navbar — matches the public header: centered, blurred, with section links
    and a clear Operator badge so the private area is unmistakable. */
-.admin-header { position:sticky; top:0; z-index:10; border-bottom:1px solid var(--border-subtle); background:color-mix(in srgb, var(--studio-page, var(--bg-primary)) 88%, transparent); -webkit-backdrop-filter:blur(14px) saturate(1.4); backdrop-filter:blur(14px) saturate(1.4); }
+.admin-header { position:sticky; top:0; z-index:300; border-bottom:1px solid var(--border-subtle); background:var(--studio-page, var(--bg-primary)); }
 .admin-header-inner { max-width:1120px; margin:0 auto; padding:0 clamp(20px,4vw,40px); min-height:66px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
 .admin-brand { display:flex; align-items:center; gap:10px; color:inherit; text-decoration:none; font-size:18px; }
 .admin-brand strong { font-weight:650; letter-spacing:-0.5px; }

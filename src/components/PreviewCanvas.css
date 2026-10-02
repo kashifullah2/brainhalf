@@ -28,6 +28,8 @@
 .live-preview-failed span { font-size: 13px; line-height: 1.6; max-width: 340px; }
 .live-preview-failed button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 13px; font-weight: 600; padding: 9px 16px; cursor: pointer; }
 .preview-health-strip { min-height: 36px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); border-top: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 12px; }
+.preview-building-pill { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 20; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--bg-panel); border: 1px solid var(--border-subtle); box-shadow: 0 6px 20px rgba(10, 20, 30, 0.18); color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.preview-building-pill svg { color: var(--accent-primary); flex: none; }
 .preview-health-strip > span, .preview-health-strip > .preview-health-strip-body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .preview-build-detail { margin-top: 4px; font-size: 12px; }
 .preview-build-detail > summary { cursor: pointer; font-weight: 600; color: var(--text-primary); display: inline-block; }

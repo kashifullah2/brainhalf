@@ -1622,7 +1622,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // pipeline (token caps, logging) works unchanged.
           let resolved: AllowedModel;
           if (customModel) {
-            resolved = { id: customModel.modelId, name: customModel.name, provider: 'custom', maxTokens: 8192, clientSelectable: false };
+            resolved = { id: customModel.modelId, name: customModel.name, provider: 'custom', maxTokens: 32768, clientSelectable: false };
           } else {
             const allowlisted = resolveModel(requestedModel, data.provider);
             if (!allowlisted) {
@@ -1965,7 +1965,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               const { createOpenAI } = await import('@ai-sdk/openai');
               const custom = createOpenAI({ apiKey: customModel.apiKey, baseURL: customModel.baseUrl, compatibility: 'compatible' } as any);
               aiModel = custom.chat(customModel.modelId);
-              maxTokensForModel = 8192;
+              // OpenAI-compatible custom endpoints vary in ceiling; 32k matches
+              // the platform default instead of truncating every app at 8k.
+              maxTokensForModel = 32768;
             } catch (err) {
               sendError(err instanceof Error ? err.message : 'Custom model is not configured');
               return;
@@ -2016,6 +2018,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               : [model.id];
 
             let lastStreamError: unknown = null;
+
+            // Custom OpenAI-compatible endpoints vary wildly in tool support.
+            // When the tool payload itself is rejected, the stage retries once
+            // tool-less — the <file> text protocol still delivers the app.
+            let customToolsDisabled = false;
 
             for (let stageIdx = 0; stageIdx < pipelineStages.length; stageIdx++) {
               const stage = pipelineStages[stageIdx];
@@ -2068,8 +2075,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   messages: currentNativeMessages,
                   // B4/B5: destructive and question modes are tool-less — the model
                   // answers in text only; zero file operations are possible.
-                  tools: plannerMode || fileOutputRetry || modes?.destructiveMode || modes?.questionMode || modes?.ambiguousMode ? undefined : agentTools,
-                  toolChoice: fileOutputRetry ? 'none' : 'auto',
+                  tools: plannerMode || fileOutputRetry || customToolsDisabled || modes?.destructiveMode || modes?.questionMode || modes?.ambiguousMode ? undefined : agentTools,
+                  toolChoice: fileOutputRetry || customToolsDisabled ? 'none' : 'auto',
                   stopWhen: isStepCount(maxSteps + 1),
                   prepareStep: ({ stepNumber, messages }) => stepNumber >= maxSteps ? {
                     activeTools: [],
@@ -2177,6 +2184,17 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     continue;
                   }
                   const classification = classifyGenerationError(effectiveErr);
+                  // A custom endpoint rejecting the tool payload (400s naming
+                  // tools/functions/schema) is not a transient failure — drop
+                  // the tools and retry the stage once with plain text output.
+                  if (customModel && !customToolsDisabled && !displayContent && !abortController.signal.aborted
+                    && /\btools?\b|\bfunctions?\b|schema|400|bad request|invalid (?:param|argument|request)/i.test(errMessage)) {
+                    customToolsDisabled = true;
+                    console.warn(`Custom model ${customModel.name} rejected tool calling; retrying stage "${stage.stageId}" without tools`);
+                    try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'This model does not support tool calls — switching to direct file output…', stage: stage.stageId, requestId: data.idempotencyKey })); } catch { }
+                    idx--; // Retry the same candidate; the loop increment restores idx.
+                    continue;
+                  }
                   // Transient provider failures (rate limit, overload, dropped
                   // connection, timeout) get automatic retries — but only when
                   // nothing was shown to the user yet, so a retry can never

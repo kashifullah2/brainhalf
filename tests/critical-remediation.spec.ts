@@ -9,7 +9,7 @@ test('deletion retains recovery files on failure and awaits a successful authent
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   const card = page.locator('.landing-project-card').filter({ hasText: project.prompt });
   await card.getByRole('button', { name: 'Project actions' }).click();
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   await page.route(`**/api/projects/${project.id}`, route => route.fulfill({ status: 503, json: { error: 'Controlled deletion failure' } }));
   await page.getByRole('dialog').getByRole('button', { name: 'Delete Project' }).click();
   await expect(page.getByRole('alert')).toHaveText('Controlled deletion failure');

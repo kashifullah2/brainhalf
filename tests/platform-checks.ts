@@ -78,7 +78,8 @@ export async function runPlatformLevelChecks(
       }
     });
     await check('Manage and preview panels can be opened', async () => {
-      await page.getByRole('button', { name: 'Code', exact: true }).click();
+      await page.getByRole('button', { name: 'Project actions', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'View code', exact: true }).click();
       await expect(page.getByRole('treeitem').first()).toBeVisible();
       await page.getByRole('button', { name: 'Preview', exact: true }).last().click();
       await expect(page.getByTitle('Application Preview')).toBeVisible();

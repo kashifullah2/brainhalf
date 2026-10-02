@@ -10,6 +10,7 @@ const providerState = vi.hoisted(() => ({ model: undefined as any }));
 vi.mock('cloudflare:workers', () => ({ tracing: { enterSpan: async (_name: string, callback: any) => callback({ setAttribute: () => {} }) } }));
 vi.mock('agents', () => ({ Agent: class {} }));
 vi.mock('@ai-sdk/amazon-bedrock', () => ({ createAmazonBedrock: () => () => providerState.model }));
+vi.mock('@ai-sdk/openai', () => ({ createOpenAI: () => ({ chat: () => providerState.model }) }));
 
 import { BUILDER_SCHEMA } from '../lib/builder-service';
 import { ChatAgent } from '../agent';
@@ -124,6 +125,45 @@ describe('Agent generation against the installed AI SDK', () => {
     expect(failure?.error).toBe('The AI model provider rejected the request credentials. Please contact support.');
     expect(failure?.code).toBe('provider_auth');
     expect(database.prepare('SELECT provider_calls, status FROM generation_usage').get()).toEqual({ provider_calls: 1, status: 'failed' });
+  });
+
+  it('retries a custom model stage without tools when the endpoint rejects the tool payload', async () => {
+    const { agent, database, events, run } = createAgent();
+    const inner = budgetRegistry();
+    agent.env = {
+      REGISTRY: {
+        idFromName: (name: string) => name,
+        get(name: string) {
+          const stub = inner.get(name);
+          return {
+            fetch: (input: Request | string, init?: RequestInit) => {
+              const url = typeof input === 'string' ? input : input.url;
+              if (url.includes('/internal/custom-model/cm_test')) {
+                return Promise.resolve(Response.json({ id: 'cm_test', baseUrl: 'https://custom.example/v1', modelId: 'custom-x', apiKey: 'sk-test', name: 'Custom X' }));
+              }
+              return stub.fetch(input, init);
+            },
+          };
+        },
+      },
+      REQUIRED_MODEL_PROVIDERS: 'aws',
+      AWS_BEARER_TOKEN_BEDROCK: 'test-key',
+    };
+    const source = 'export default () => <h1>Custom model app</h1>;';
+    let step = 0;
+    providerState.model = new MockLanguageModelV4({ doStream: async () => {
+      if (step++ === 0) throw new APICallError({ message: 'Invalid request: tools are not supported by this model', url: 'https://custom.example/v1/chat/completions', requestBodyValues: {}, statusCode: 400, isRetryable: false });
+      return response(`Here is your app.\n<file path="/src/App.tsx">${source}</file>`);
+    } });
+    await run({ model: 'cm_test' });
+    expect(providerState.model.doStreamCalls).toHaveLength(2);
+    expect(providerState.model.doStreamCalls[0].tools?.length).toBeGreaterThan(0);
+    expect(providerState.model.doStreamCalls[1].tools || []).toHaveLength(0);
+    expect(providerState.model.doStreamCalls[1].toolChoice).toEqual({ type: 'none' });
+    expect(events.some(event => event.type === 'generation_notice' && /tool calls/.test(String(event.message ?? '')))).toBe(true);
+    expect(events.filter(event => event.type === 'error')).toEqual([]);
+    expect(database.prepare("SELECT content FROM project_files WHERE path='/src/App.tsx'").get()?.content).toBe(source);
+    expect(database.prepare('SELECT status FROM generation_usage').get()?.status).toBe('completed');
   });
 
   it('shows Workers AI text before the tool-enabled response finishes and persists it only once', async () => {

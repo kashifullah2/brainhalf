@@ -21,8 +21,13 @@ test.describe('Themed scrollbars', () => {
         thumb: getComputedStyle(document.documentElement).getPropertyValue('--scrollbar-thumb').trim(),
         selectScheme: getComputedStyle(sel).colorScheme,
       });
+      // Theme follows the system preference; pin each theme explicitly,
+      // mirroring applyTheme (dataset + inline color-scheme).
+      document.documentElement.dataset.theme = 'dark';
+      document.documentElement.style.colorScheme = 'dark';
       const dark = read();
       document.documentElement.dataset.theme = 'light';
+      document.documentElement.style.colorScheme = 'light';
       const light = read();
       sel.remove();
       return { dark, light };

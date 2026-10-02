@@ -92,6 +92,12 @@ ATTACHMENTS AND AGENT TOOLS:
 7. DEPENDENCY MANAGEMENT (package.json):
    For any package beyond React, react-router-dom and lucide-react, create or update
    <file path="/package.json"> with a standard "dependencies" map.
+   Keep every added package compatible with the project's existing toolchain:
+   check the vite, react and typescript versions already in package.json and
+   choose plugin/tooling versions that support them (never add a Vite plugin
+   whose peer range excludes the project's Vite version). The starter toolchain
+   already transforms JSX/TSX — do not add @vitejs/plugin-react or a Babel
+   pipeline unless the project's vite.config already uses it.
 
 8. ROUTING RULES:
    When routing is needed, include a router provider in the application's own composition so exported code works without the preview harness. Do not nest routers. The preview adapts BrowserRouter/HashRouter to its isolated memory navigation. Preserve existing router setup and framework conventions.

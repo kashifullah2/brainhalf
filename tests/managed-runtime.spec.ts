@@ -5,7 +5,9 @@ import type { RuntimeStatus } from '../src/runtime/types';
 const backendFiles = {
   ...lifecycleProjects[0].files,
   '/package.json': JSON.stringify({ private: true, scripts: { build: 'vite build' }, brainhalf: { runtime: 'workers' } }),
-  '/worker/index.ts': 'export default { async fetch() { return new Response("saved backend"); } };',
+  // The /api/auth reference marks the project as having sign-in features so the
+  // preview health strip (Start app preview) renders for these tests.
+  '/worker/index.ts': 'export default { async fetch(request: Request) { const path = new URL(request.url).pathname; if (path.startsWith("/api/auth/")) return new Response("{}"); return new Response("saved backend"); } };',
 };
 
 function previewStatus(ready = false): RuntimeStatus {

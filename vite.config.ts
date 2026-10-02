@@ -346,9 +346,19 @@ function backendDevPlugin() {
 // https://vitejs.dev/config/
 export default defineConfig({
   // Audit HTML captures are evidence, not application entry points.
-  optimizeDeps: { entries: ['index.html'] },
+  // Pre-bundle the lazy workspace chunks' deps (Monaco). Otherwise the dev
+  // server discovers them mid-session, re-optimizes, and full-reloads the
+  // page — which races dynamic imports and can leave the app stuck on
+  // "Loading workspace".
+  optimizeDeps: { entries: ['index.html'], include: ['@monaco-editor/react', 'monaco-editor'] },
   server: {
     cors: false,
+    // Test artifacts are written while e2e specs run; without these ignores the
+    // dev server hot-reloads mid-test and invalidates modules (?t=), which makes
+    // specs flaky and lets dynamic imports land on duplicate module instances.
+    watch: {
+      ignored: ['**/.git/**', '**/node_modules/**', '**/dist/**', '**/test-results/**', '**/playwright-report/**'],
+    },
   },
   plugins: [react(), backendDevPlugin()],
   resolve: {

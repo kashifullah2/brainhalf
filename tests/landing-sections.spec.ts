@@ -123,8 +123,9 @@ test.describe('Landing sections layout QA', () => {
     const tile = page.locator('.bento-tile').first();
     await tile.scrollIntoViewIfNeeded();
     await tile.hover();
-    const glow = await tile.evaluate(el => getComputedStyle(el, '::before').opacity);
-    expect(parseFloat(glow)).toBeGreaterThan(0);
+    // The glow fades in over 200ms; wait for the transition instead of
+    // sampling a single mid-flight frame.
+    await expect.poll(async () => parseFloat(await tile.evaluate(el => getComputedStyle(el, '::before').opacity))).toBeGreaterThan(0);
   });
 
   test('how-it-works sticky visual changes while scrolling', async ({ page }) => {

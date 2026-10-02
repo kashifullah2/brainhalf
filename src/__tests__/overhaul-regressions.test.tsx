@@ -120,9 +120,13 @@ describe('single publish UI (duplicate PublishDialog removed)', () => {
     expect(events).not.toContain('open-deploy-modal');
   });
 
-  it('the header Go live button opens the console Go live section', () => {
+  it('the header Go live button opens the inline publish popover', () => {
     const workspace = readFileSync(resolve(__dirname, '../components/Workspace.tsx'), 'utf8');
-    expect(workspace).toContain("section: 'Go live'");
+    // Publishing happens in the small panel under the button — no tab switch.
+    expect(workspace).toContain('PublishPopover');
+    expect(workspace).toContain('setPublishOpen');
+    // Custom domains still route to the console's Web address section.
+    expect(workspace).toContain("section: 'Web address'");
     expect(workspace).toContain("selectTab('console')");
     // Command palette removed for farmer-friendly simplicity
     expect(workspace).not.toContain('CommandPalette');

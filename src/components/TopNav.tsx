@@ -5,6 +5,7 @@ import { getProjects, updateProjectName } from '../lib/project-store';
 import { setTheme, useTheme } from '../lib/theme';
 import ActionMenu from './ActionMenu';
 import BrainHalfLogo from './BrainHalfLogo';
+import ThemeToggle from './ThemeToggle';
 
 interface TopNavProps {
   activeProjectId: string;
@@ -186,6 +187,7 @@ const TopNav: React.FC<TopNavProps> = ({
       <div className="top-nav-right-cluster" style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
 
 
+        <ThemeToggle />
         <ActionMenu label="User profile and menu" className="studio-account-trigger" items={[
           ...(onOpenDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={15} />, onSelect: onOpenDashboard }] : []),
           { label: 'Gallery', icon: <LayoutGrid size={15} />, onSelect: () => { window.location.assign('/gallery'); } },

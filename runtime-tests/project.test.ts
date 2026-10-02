@@ -614,6 +614,23 @@ describe('Project runtime with real SQLite state', () => {
     expect(sandbox.exec.mock.calls.filter(call => call[0][0] === 'npm' && call[0][1] === 'install')).toHaveLength(2);
     expect(sandbox.exec.mock.calls.some(call => call[0][1] === 'ci')).toBe(false);
   });
+  it('retries an ERESOLVE peer conflict with --legacy-peer-deps', async () => {
+    const p = await project(); const objects = new Map<string, string>();
+    p.env.ARTIFACTS = { put: async (key: string, value: string) => objects.set(key, value), get: async (key: string) => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)!) } : null };
+    const conflict = { id: 'proc-conflict', status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 1, timedOut: false, stdout: '', stderr: 'npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree\nnpm error Could not resolve dependency:\nnpm error peer vite@"^4.2.0 || ^5.0.0 || ^6.0.0" from @vitejs/plugin-react@4.3.4' }), kill: vi.fn(async () => {}) };
+    const passing = { id: 'proc-ok', status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 0, timedOut: false, stdout: 'added 12 packages', stderr: '' }), kill: vi.fn(async () => {}) };
+    sandbox.exec.mockResolvedValueOnce(conflict).mockResolvedValue(passing);
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'proc-conflict' ? conflict : passing);
+    const response = await p.call('/jobs', 'POST', { kind: 'build', files: { 'package.json': JSON.stringify({ brainhalf: { runtime: 'workers' }, scripts: { build: 'build' } }), 'src/App.tsx': 'source' } });
+    expect(response.status).toBe(202);
+    for (let i = 0; i < 8; i++) await p.object.alarm();
+    const current = p.map.get('current');
+    expect(current.status).toBe('passed');
+    expect(current.installRetried).toBe(true);
+    const installs = sandbox.exec.mock.calls.filter(call => call[0][0] === 'npm' && call[0][1] === 'install');
+    expect(installs).toHaveLength(2);
+    expect(installs[1][0]).toContain('--legacy-peer-deps');
+  });
   it('names the npm cause when dependency installation fails on the retry too', async () => {
     const p = await project(); const objects = new Map<string, string>();
     p.env.ARTIFACTS = { put: async (key: string, value: string) => objects.set(key, value), get: async (key: string) => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)!) } : null };

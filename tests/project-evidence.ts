@@ -49,7 +49,8 @@ export async function assertProjectView(page: Page, project: ProjectEvidence, ot
   await expect(page.getByLabel('Message to the app builder')).toBeVisible();
   await expect(page.locator('.message-content').filter({ hasText: project.prompt })).toBeVisible();
   expect(await page.locator('.message-content').filter({ hasText: other.prompt }).count(), 'Other project history must never appear in the mounted conversation').toBe(0);
-  await page.getByRole('button', { name: 'Code', exact: true }).click();
+  await page.getByRole('button', { name: 'Project actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'View code', exact: true }).click();
   await expect(page.getByRole('treeitem').filter({ hasText: project.uniqueFile })).toBeVisible();
   await expect(page.getByRole('treeitem').filter({ hasText: other.uniqueFile })).toHaveCount(0);
   await page.getByRole('button', { name: 'Preview', exact: true }).last().click();
