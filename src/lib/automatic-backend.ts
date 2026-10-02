@@ -192,7 +192,11 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   const failed = Boolean((latestJob && latestJob.status === 'failed') || rememberedFailure);
   // B2/B3: a remembered failure survives job-list pruning so the error stays visible.
   const failureMessage = (latestJob?.status === 'failed' && latestJob.message) ? latestJob.message : rememberedFailure;
-  const message = openError || (fault ? notice : showJobMessage ? latestJob.message : ready ? 'App preview is running. Update it to use your latest changes.' : (failureMessage || notice));
+  // When the preview is running, a failed verify/publish job message must not
+  // bleed into the "Live app preview" strip — those failures belong in the
+  // publish panel. Only preview/build failures affect the preview strip.
+  const previewRelevantMessage = showJobMessage && (!ready || latestJob.kind === 'preview' || latestJob.kind === 'build');
+  const message = openError || (fault ? notice : previewRelevantMessage ? latestJob.message : ready ? 'App preview is running. Update it to use your latest changes.' : (failureMessage || notice));
   const available = runtime.status?.enabled && runtime.status.availability?.state === 'ready';
   return { start, open, message, ready, fault, failed, liveUrl,
     canStart: Boolean(available && !busy && !activeJob && !ready),
