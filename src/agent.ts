@@ -13,7 +13,7 @@ import { formatToolTranscript, isSystemContinuation, ToolTranscriptStream, toolS
 import { applyExactEdits } from './lib/exact-edits';
 import { BACKEND_NOT_RUNNING, usesSimulatedApi } from './lib/preview-mode';
 import { createTypeScriptStarter } from './lib/project-starters';
-import { prepareModuleSource, buildTranspileErrorModule } from './lib/preview-module-transform';
+import { prepareModuleSource, buildTranspileErrorModule, findDanglingImports } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
 import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, type AllowedModel } from './lib/models';
@@ -3047,6 +3047,27 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     }
 
     for (const { path } of brokenFiles) pendingWrites.delete(path);
+
+    // Dangling imports: the builder sometimes writes `import Sidebar from
+    // './components/Sidebar'` without ever writing the Sidebar file. Syntax
+    // validation passes (the import is valid syntax) but the preview fails
+    // with "Cannot resolve module". Detect those here and queue the missing
+    // files for [AUTO-FIX] regeneration alongside the syntax-broken ones.
+    try {
+      const existingRows = this.runSql<{ path: string }>`SELECT path FROM project_files`;
+      const existingPaths = new Set((existingRows || []).map(r => r.path));
+      const dangling = findDanglingImports(pendingWrites, existingPaths);
+      for (const { importer, specifier, resolvedPath } of dangling) {
+        // Guess the intended file: prefer .tsx for components, .ts otherwise.
+        const candidate = /components\//.test(resolvedPath) ? `${resolvedPath}.tsx` : `${resolvedPath}.ts`;
+        if (!brokenFiles.some(f => f.path === candidate)) {
+          console.warn(`Dangling import in ${importer}: '${specifier}' resolves to ${resolvedPath} which was never written; queueing ${candidate} for repair.`);
+          brokenFiles.push({ path: candidate, error: `Imported by ${importer} via '${specifier}' but the file was never written` });
+        }
+      }
+    } catch (err) {
+      console.warn('Dangling-import check failed:', err instanceof Error ? err.message : String(err));
+    }
 
     // A dropped file used to mean a "successful" generation with a missing
     // component. Now the agent repairs it automatically: a bounded [AUTO-FIX]

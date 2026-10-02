@@ -264,3 +264,68 @@ export function buildTranspileErrorModule(path: string, errMsg: string): string 
       export const App = TranspileErrorView;
     `;
   }
+
+/**
+ * Find imports that point at files which do not exist — neither in the batch
+ * being saved nor in the already-saved project. The builder sometimes writes
+ * `import Sidebar from './components/Sidebar'` without ever writing the
+ * Sidebar file; syntax validation passes (the import is valid syntax) but the
+ * preview fails with "Cannot resolve module". Returns each dangling reference
+ * so the caller can queue the missing file for [AUTO-FIX] regeneration.
+ */
+export function findDanglingImports(
+  files: Map<string, string>,
+  existingPaths: Set<string>
+): Array<{ importer: string; specifier: string; resolvedPath: string }> {
+  const known = new Set<string>(existingPaths);
+  for (const path of files.keys()) known.add(path);
+
+  const dangling: Array<{ importer: string; specifier: string; resolvedPath: string }> = [];
+  // Matches: import x from './y', import './y', export * from './y', import('./y')
+  const importPattern = /(?:import|export)[^'"]*?from\s*['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+  for (const [importer, content] of files) {
+    if (!/\.(?:[cm]?[jt]sx?)$/.test(importer)) continue;
+    // Strip comments so commented-out imports are not flagged.
+    const code = content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    let match: RegExpExecArray | null;
+    importPattern.lastIndex = 0;
+    while ((match = importPattern.exec(code)) !== null) {
+      const specifier = match[1] ?? match[2];
+      if (!specifier || !specifier.startsWith('.')) continue; // bare package import
+      const resolved = resolveImportPath(importer, specifier);
+      if (!isKnownModule(resolved, known)) {
+        dangling.push({ importer, specifier, resolvedPath: resolved });
+      }
+    }
+  }
+  return dangling;
+}
+
+/** Resolve a relative import specifier to a candidate file path. */
+function resolveImportPath(importer: string, specifier: string): string {
+  const dir = importer.slice(0, importer.lastIndexOf('/'));
+  const parts = (dir + '/' + specifier).split('/');
+  const stack: string[] = [];
+  for (const part of parts) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') stack.pop();
+    else stack.push(part);
+  }
+  return '/' + stack.join('/');
+}
+
+/** Check the resolved path against known files, trying extensions and index files. */
+function isKnownModule(resolved: string, known: Set<string>): boolean {
+  if (known.has(resolved)) return true;
+  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+  for (const ext of extensions) {
+    if (known.has(resolved + ext)) return true;
+  }
+  for (const ext of extensions) {
+    if (known.has(resolved + '/index' + ext)) return true;
+  }
+  // CSS and other assets imported for side effects.
+  if (known.has(resolved + '.css')) return true;
+  return false;
+}
