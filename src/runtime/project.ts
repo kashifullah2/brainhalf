@@ -702,8 +702,30 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       const state = await process.status();
       if (job.node && job.step === 4 && state.state === 'running') {
         const backend = await box.getProcess(job.processIds[job.processIds.length - 2]);
-        if (!backend || (await backend.status()).state !== 'running') throw new RuntimeError('The Node API server exited. Review the job logs and retry.');
-        await process.waitForPort(3000, { timeout: 1000 });
+        if (!backend || (await backend.status()).state !== 'running') {
+          // The frontend staying up masks a dead API: /api 404s while the UI
+          // claims "running". Capture the backend's own output so the crash
+          // is diagnosable from the job logs.
+          if (backend) {
+            try {
+              const backendOutput = await backend.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes });
+              this.log(job.id, `Node API server exited.\n${backendOutput.stdout}\n${backendOutput.stderr}`);
+            } catch { /* best effort; the throw below still reports the exit */ }
+          }
+          throw new RuntimeError('The Node API server exited. Review the job logs and retry.');
+        }
+        // Ready means BOTH servers accept connections — probing only the
+        // frontend port told users "running" while the API behind /api was
+        // still booting. A timeout here is not a failure: the recovery alarm
+        // re-checks within seconds, so slow-booting backends (migrations,
+        // seed data) get time instead of a failed job after 1 second.
+        try {
+          await process.waitForPort(3000, { timeout: 10_000 });
+          await backend.waitForPort(3001, { timeout: 10_000 });
+        } catch {
+          job.message = 'Waiting for the app servers to accept connections';
+          await this.assertRunning(job); await this.saveJob(job); return;
+        }
         job.previewReady = true; job.message = 'Node development server running'; await this.assertRunning(job); await this.saveJob(job); return;
       }
       if (state.state === 'running') return;

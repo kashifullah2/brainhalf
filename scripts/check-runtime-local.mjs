@@ -101,6 +101,14 @@ try {
   }
   assert.equal((await control('/status', 'GET', undefined, 'over-quota')).status, 200, 'Read-only status never reserves a hosted slot');
   assert.equal((await control('/preview-ticket', 'POST', {}, 'over-quota')).status, 429, 'Explicit preview admission still enforces the hosted limit');
+  // Deleting projects frees their slots on the next account sync: keeping two
+  // live projects must release the other eight registrations and admit again.
+  const swept = await control('/hosted/sweep', 'POST', { keep: ['replacement-1', 'replacement-2'] }, 'replacement-1');
+  assert.equal(swept.status, 200, `Slot sweep failed: ${await swept.clone().text()}`);
+  assert.equal((await swept.json()).released, 8);
+  const sweptAgain = await control('/hosted/sweep', 'POST', { keep: ['replacement-1', 'replacement-2'] }, 'replacement-1');
+  assert.equal((await sweptAgain.json()).released, 0, 'Sweep is idempotent');
+  assert.equal((await control('/preview-ticket', 'POST', {}, 'over-quota')).status, 200, 'Swept slots admit new work again');
   console.log('Local workerd checks passed: service entrypoint, pilot gate, encrypted settings, private preview, single-use tickets, SQLite contact inbox, signup/verification, password reset and session revocation, scoped backend email capture, environment isolation, stop and deletion. No cloud providers were called.');
 } finally {
   await runtime.dispose();

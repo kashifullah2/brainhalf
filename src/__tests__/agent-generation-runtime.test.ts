@@ -655,6 +655,23 @@ describe('Project tool parity and recovery from prose-only builds', () => {
     expect(events.filter(event => event.type === 'error' || event.type === 'trigger-auto-reply')).toEqual([]);
   });
 
+  it.each(['cloudflare', 'native'])('never writes <file> blocks the %s model emits during a question turn', async provider => {
+    // The <file> text protocol is a second output channel: even with tools
+    // withheld, a model could smuggle writes into a question/destructive
+    // answer. Extraction must be read-only in tool-less turns.
+    const { agent, database, events, connection } = createAgent();
+    const sneaky = 'Recursion is a function calling itself.\n<file path="/src/App.tsx">export default () => <h1>should never be written</h1>;</file>';
+    if (provider === 'cloudflare') {
+      const binding = vi.fn().mockResolvedValue(stream(sneaky));
+      agent.env = { REGISTRY: budgetRegistry(), REQUIRED_MODEL_PROVIDERS: 'cloudflare', AI: { run: binding } };
+    } else {
+      providerState.model = new MockLanguageModelV4({ doStream: response(sneaky) });
+    }
+    await agent.runGeneration(connection, { model: provider === 'cloudflare' ? undefined : 'claude-sonnet-6' }, 'system', 'What is recursion?', agent.writeEpoch.begin(), false, null, { questionMode: true });
+    expect(database.prepare('SELECT path FROM project_files').all()).toEqual([]);
+    expect(events.filter(event => event.type === 'error')).toEqual([]);
+  });
+
   it('validates Workers AI project-tool arguments before touching files', async () => {
     const { agent, database, run } = createAgent();
     const binding = vi.fn().mockResolvedValueOnce(call('write_file', { path: '/src/broken.ts', content: { bad: true } })).mockResolvedValueOnce({ response: 'Invalid arguments.' });

@@ -146,6 +146,37 @@ it('reports missing configuration and rejected delivery without exposing secrets
   expect(await response.text()).not.toMatch(/secret-test|private-provider-details/);
 });
 
+it('email-status reports a missing API key truthfully to operators', async () => {
+  env.ADMIN_EMAILS = 'operator@example.com';
+  const credentials = { email: 'operator@example.com', password: 'operator-password' };
+  expect((await publicRequest('auth/signup', 'POST', credentials)).status).toBe(202);
+  expect((await publicRequest('auth/verify-email', 'POST', { token: deliveredToken() })).status).toBe(200);
+  const login = await publicRequest('auth/login', 'POST', credentials);
+  const token = (await login.json() as any).token;
+
+  env.RESEND_API_KEY = '';
+  const missing = await publicRequest('admin/email-status', 'GET', undefined, token);
+  expect(missing.status).toBe(200);
+  const missingBody = await missing.json() as any;
+  expect(missingBody.configured).toBe(false);
+  expect(missingBody.hint).toContain('RESEND_API_KEY');
+
+  env.RESEND_API_KEY = 'test-resend-key';
+  const present = await publicRequest('admin/email-status', 'GET', undefined, token);
+  expect((await present.json() as any).configured).toBe(true);
+});
+
+it('logs the real cause when signup verification delivery hits a network failure', async () => {
+  const errors: string[] = [];
+  const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { errors.push(args.map(String).join(' ')); });
+  delivery.mockRejectedValueOnce(new Error('connect ETIMEDOUT'));
+  const signup = await publicRequest('auth/signup', 'POST', { email: 'network@example.com', password: 'network-password' });
+  expect(signup.status).toBe(503);
+  expect(await signup.text()).not.toContain('ETIMEDOUT');
+  expect(errors.join('\n')).toContain('connect ETIMEDOUT');
+  spy.mockRestore();
+});
+
 function publicRequest(path: string, method = 'POST', body?: unknown, token?: string) {
   return worker.fetch(new Request(`https://brainhalf.com/api/${path}`, {
     method,

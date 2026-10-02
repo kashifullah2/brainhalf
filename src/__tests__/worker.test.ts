@@ -148,7 +148,16 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     const assets = vi.fn(async (request: Request) => new URL(request.url).pathname === '/index.html' ? Response.redirect('https://brainhalf.com/', 307) : new Response(new URL(request.url).pathname));
     const response = await worker.fetch(new Request('https://brainhalf.com/dashboard?project=abc'), { ASSETS: { fetch: assets } } as unknown as import('../worker').PlatformEnv, {} as any);
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe('/');
+    expect(await response.text()).toBe('/shell.html');
+    expect(response.headers.get('X-Robots-Tag')).toContain('noindex');
+  });
+  it('serves /admin with the empty shell, never the prerendered landing page', async () => {
+    // Regression: /admin used to receive the prerendered landing HTML, and
+    // hydrating AdminPage against landing markup threw React error #418.
+    const assets = vi.fn(async (request: Request) => new Response(new URL(request.url).pathname));
+    const response = await worker.fetch(new Request('https://brainhalf.com/admin'), { ASSETS: { fetch: assets } } as unknown as import('../worker').PlatformEnv, {} as any);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('/shell.html');
     expect(response.headers.get('X-Robots-Tag')).toContain('noindex');
   });
   it('checks runtime ownership and constructs the trusted service identity itself', async () => {

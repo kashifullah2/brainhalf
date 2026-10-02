@@ -236,7 +236,12 @@ function previewDenied(status: number): Response {
 export function shellSecurityHeaders(): Record<string, string> {
   const csp = [
     `default-src 'none'`,
-    `script-src 'self' 'unsafe-eval' data: blob: https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google`,
+    // Verified against the built bundle: nothing in the shell evaluates code
+    // (the sucrase/new Function path runs only inside the sandboxed preview
+    // iframe, which has its own CSP), and headless-Chrome checks of the public
+    // pages — including GTM/AdSense — report zero violations without
+    // 'unsafe-eval', data:, or blob: script sources.
+    `script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net`,
     `img-src 'self' data: https: blob:`,
     `font-src 'self' data: https://fonts.gstatic.com`,
@@ -494,7 +499,9 @@ export default {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
       if (!isOperator(env, user)) return withCors(forbidden(), origin);
-      const hasKey = Boolean((env as Record<string, unknown>).RESEND_API_KEY as string | undefined)?.toString().trim();
+      // Boolean(x)?.toString().trim() always yields the truthy strings 'true'
+      // or 'false' — read the raw value so a missing key is actually reported.
+      const hasKey = Boolean(String((env as Record<string, unknown>).RESEND_API_KEY || '').trim());
       const fromEmail = String((env as Record<string, unknown>).RESEND_FROM_EMAIL || '').trim();
       return withCors(Response.json({
         configured: Boolean(hasKey && fromEmail),
@@ -640,6 +647,15 @@ export default {
         const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
         const res = await registry.fetch(`https://registry/projects?userId=${encodeURIComponent(user.userId)}`);
         const body = await res.text();
+        if (res.ok && env.RUNTIME) {
+          // Self-heal hosted app spaces: slots left behind by deleted projects
+          // otherwise block previews and publishing until manually removed.
+          try {
+            const projects = (JSON.parse(body)?.projects || []) as Array<{ id?: unknown }>;
+            const keep = projects.map(project => project?.id).filter((id): id is string => typeof id === 'string');
+            await env.RUNTIME.fetch(new Request('https://runtime/hosted/sweep', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-bh-project': keep[0] || 'sweep', 'x-bh-owner': user.userId }, body: JSON.stringify({ keep }) }));
+          } catch (err) { console.error('Hosted slot sweep failed:', err); }
+        }
         return withCors(new Response(body, { status: res.status, headers: { 'Content-Type': 'application/json' } }), origin);
       } catch (err) {
         console.error('Failed to list projects:', err);
@@ -783,6 +799,15 @@ export default {
 
       try {
         const res = await registry.fetch(target.toString(), init);
+
+        if (request.method === 'DELETE' && res.ok && env.RUNTIME) {
+          // Release the hosted slot immediately: a deleted project must stop
+          // counting against the account's app-space limit right away, not
+          // whenever the async cleanup queue happens to run.
+          try {
+            await env.RUNTIME.fetch(new Request('https://runtime/unregister', { method: 'POST', headers: { 'x-bh-project': projectId, 'x-bh-owner': user.userId } }));
+          } catch (err) { console.error('Hosted slot release failed:', err); }
+        }
 
         return withCors(new Response(await res.text(), { status: res.status, headers: { 'Content-Type': 'application/json' } }), origin);
       } catch (err) {
@@ -975,10 +1000,11 @@ export default {
       // withShellSecurity sets no-store caching, so the previous special case
       // for '/' and '/index.html' is no longer needed — every shell response
       // gets the same headers through one path.
-      // Fetch the root asset: html_handling canonicalizes /index.html to /,
-      // which would otherwise redirect a dashboard reload back to the landing page.
+      // Authenticated routes get shell.html (empty root, noindex head), never
+      // the prerendered landing page: hydrating the dashboard or admin console
+      // against landing markup threw React hydration error #418 in production.
       const shellPaths = ['/dashboard', '/admin'];
-      const assetRequest = shellPaths.includes(url.pathname) ? new Request(new URL('/', url), request) : request;
+      const assetRequest = shellPaths.includes(url.pathname) ? new Request(new URL('/shell.html', url), request) : request;
       return withShellSecurity(await env.ASSETS.fetch(assetRequest), privateSearch || shellPaths.includes(url.pathname));
     }
 

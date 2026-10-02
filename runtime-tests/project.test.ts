@@ -645,6 +645,44 @@ describe('Project runtime with real SQLite state', () => {
     expect(current.message).toContain('No matching version found for fake-dep@^9.9.9');
     expect(sandbox.exec.mock.calls.filter(call => call[0][0] === 'npm' && call[0][1] === 'install')).toHaveLength(2);
   });
+  it('marks a Node preview ready only after BOTH servers accept connections, retrying slow boots', async () => {
+    // Regression: readiness used to probe only the frontend port with a 1s
+    // timeout, so the UI said "running" while /api was dead, and slow-booting
+    // backends failed the whole job instead of being re-checked.
+    const p = await project();
+    p.env.ARTIFACTS = { get: async () => ({ json: async () => ({ files: {}, revision: 'revision' }) }) };
+    let backendUp = false;
+    const backend = { id: 'backend', status: async () => ({ state: 'running' }), output: async () => ({ exitCode: 1, stdout: '', stderr: '' }), waitForPort: vi.fn(async () => { if (!backendUp) throw new Error('Process did not become ready'); }), kill: vi.fn() };
+    const frontend = { id: 'frontend', status: async () => ({ state: 'running' }), output: async () => ({ exitCode: 0, stdout: '', stderr: '' }), waitForPort: vi.fn(async () => {}), kill: vi.fn() };
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'backend' ? backend : frontend);
+    const job = { id: 'preview', kind: 'preview', node: true, static: false, status: 'running', revision: 'revision', environment: 'development', createdAt: Date.now(), leaseUntil: Date.now() + 45_000, sourceKey: 'source', step: 4, sandboxId: 'box', processIds: ['backend', 'frontend'], message: 'Starting Node API and frontend' };
+    await p.ctx.storage.put('current', job);
+    await (p.object as any).advance(structuredClone(job));
+    let current = p.map.get('current');
+    expect(current.status).toBe('running');
+    expect(current.previewReady).toBeUndefined();
+    expect(current.message).toBe('Waiting for the app servers to accept connections');
+    expect(frontend.waitForPort).toHaveBeenCalledWith(3000, expect.objectContaining({ timeout: 10_000 }));
+    expect(backend.waitForPort).toHaveBeenCalledWith(3001, expect.objectContaining({ timeout: 10_000 }));
+    backendUp = true;
+    await (p.object as any).advance(p.map.get('current'));
+    current = p.map.get('current');
+    expect(current.previewReady).toBe(true);
+    expect(current.message).toBe('Node development server running');
+  });
+  it('captures the Node API server output when it exits during preview startup', async () => {
+    const p = await project();
+    p.env.ARTIFACTS = { get: async () => ({ json: async () => ({ files: {}, revision: 'revision' }) }) };
+    const backend = { id: 'backend', status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 1, stdout: '', stderr: 'Error: listen EADDRINUSE :::3001' }), waitForPort: vi.fn(), kill: vi.fn() };
+    const frontend = { id: 'frontend', status: async () => ({ state: 'running' }), output: async () => ({ exitCode: 0, stdout: '', stderr: '' }), waitForPort: vi.fn(async () => {}), kill: vi.fn() };
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'backend' ? backend : frontend);
+    const job = { id: 'preview', kind: 'preview', node: true, static: false, status: 'running', revision: 'revision', environment: 'development', createdAt: Date.now(), leaseUntil: Date.now() + 45_000, sourceKey: 'source', step: 4, sandboxId: 'box', processIds: ['backend', 'frontend'], message: 'Starting Node API and frontend' };
+    await p.ctx.storage.put('current', job);
+    await expect((p.object as any).advance(structuredClone(job))).rejects.toThrow('The Node API server exited');
+    const logs = p.db.prepare('SELECT text FROM logs').all().map((row: any) => row.text).join('\n');
+    expect(logs).toContain('EADDRINUSE');
+    expect(backend.waitForPort).not.toHaveBeenCalled();
+  });
   it('encrypts per-environment credentials and returns only public connection fields', async () => {
     const p = await project();
     const saved = await p.call('/integrations/resend', 'PUT', { apiKey: 're_private_key', from: 'sender@example.com', contactTo: 'owner@example.com' });

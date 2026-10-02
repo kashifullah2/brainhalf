@@ -30,8 +30,14 @@ try {
     const { head, html } = render(path);
     const destination = resolve('dist', path === '/' ? 'index.html' : `${path.slice(1)}.html`);
     await mkdir(dirname(destination), { recursive: true });
-    await writeFile(destination, template.replace(/<!--seo-head-start-->[\s\S]*?<!--seo-head-end-->/, head).replace('<div id="root"></div>', `<div id="root" data-prerendered="true">${html}</div>`));
+    await writeFile(destination, template.replace(/<!--seo-head-start-->[\s\S]*?<!--seo-head-end-->/, head).replace('<div id="root"></div>', `<div id="root" data-prerendered="true" data-prerender-path="${path}">${html}</div>`));
   }
+  // The authenticated shell (/dashboard, /admin) must NOT serve prerendered
+  // public markup — hydrating a different view against it throws React #418
+  // and leaks landing-page SEO head (title, canonical) onto operator routes.
+  // Give the worker an empty-root shell with a noindex head for those routes.
+  const shellHead = '<title>BrainHalf</title><meta name="robots" content="noindex, nofollow" />';
+  await writeFile(resolve('dist/shell.html'), template.replace(/<!--seo-head-start-->[\s\S]*?<!--seo-head-end-->/, shellHead));
   await writeFile(resolve('dist/sitemap.xml'), sitemap());
   await writeFile(resolve('dist/llms.txt'), llmsText());
   console.log(`Prerendered ${paths.length} pages and generated sitemap.xml and llms.txt.`);

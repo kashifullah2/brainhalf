@@ -2140,7 +2140,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   const stageNewPaths = new Set([...toolWrittenPaths].filter(p => !stageToolWrittenPaths.has(p)));
                   if (!text.trim() && (plannerMode || isConversationalPrompt(actualPrompt)) && stageNewPaths.size === 0) throw new Error('The model returned no response. Please retry.');
 
-                  const extraction = this.extractAndSaveFiles(text, connection, epoch);
+                  const extraction = this.extractAndSaveFiles(text, connection, epoch, plannerMode || !!modes?.destructiveMode || !!modes?.questionMode || !!modes?.ambiguousMode);
                   extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...stageNewPaths])];
                   extraction.writtenCount = extraction.writtenPaths.length;
 
@@ -2614,7 +2614,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
       if (!outputContent.trim() && (!expectFiles || isConversationalPrompt(actualPrompt)) && assetPaths.size === 0) throw new Error('The model returned no response. Please retry.');
       emitDisplay(transcript.push('', true));
-      const extraction = this.extractAndSaveFiles(outputContent, connection, epoch);
+      // expectFiles is false exactly for tool-less turns (planner, question,
+      // destructive, ambiguous): scan the reply for diagnostics, never write.
+      const extraction = this.extractAndSaveFiles(outputContent, connection, epoch, !expectFiles);
       extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...assetPaths])];
       extraction.writtenCount = extraction.writtenPaths.length;
       this.saveGenerationTurn(actualPrompt, displayContent || (assetPaths.size ? `Updated ${[...assetPaths].join(', ')}.` : ''), epoch);
@@ -2859,7 +2861,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     return { writes, sawFileTag, wasTruncated };
   }
 
-  private extractAndSaveFiles(text: string, connection: Connection, epoch?: number): ExtractionSummary {
+  private extractAndSaveFiles(text: string, connection: Connection, epoch?: number, readOnly = false): ExtractionSummary {
     const summary: ExtractionSummary = {
       writtenCount: 0,
       deletedCount: 0,
@@ -2881,6 +2883,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       console.log('Generation superseded; discarding extracted files');
       return summary;
     }
+
+    // B4/B5 hardening: question, destructive, ambiguous and planner turns are
+    // tool-less — but the <file> text protocol is a second output channel that
+    // bypasses the withheld tools. In read-only turns, scan for diagnostics
+    // (sawCodeLikeOutput) without writing anything to the project.
+    if (readOnly) return summary;
 
     const pendingWrites: Map<string, string> = new Map();
     const pendingDeletes: Set<string> = new Set();

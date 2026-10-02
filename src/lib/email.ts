@@ -20,14 +20,22 @@ async function registry(env: RegistryEnv, path: string, body: unknown) {
 }
 
 async function send(env: EmailEnv, to: string, subject: string, text: string, html: string, replyTo?: string): Promise<void> {
-  const response = await fetch('https://api.resend.com/emails', {
+  let response: Response;
+  try {
+    response = await fetch('https://api.resend.com/emails', {
     method: 'POST', signal: AbortSignal.timeout(15_000),
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY!.trim()}`, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify({ from: `BrainHalf <${env.RESEND_FROM_EMAIL!.trim()}>`, to: [to], subject, text,
       html: `<div style="font-family:Arial,sans-serif;color:#153147;max-width:560px;margin:auto;padding:28px"><img src="cid:brainhalf-logo" width="48" height="48" alt="BrainHalf"><h1 style="font-size:24px">${escape(subject)}</h1>${html}<p style="margin-top:32px;color:#64748b">BrainHalf · Build your next idea</p></div>`,
       attachments: [{ filename: 'brainhalf.png', content: BRAND_IMAGE_BASE64, content_id: 'brainhalf-logo' }],
       ...(replyTo ? { reply_to: replyTo } : {}), }),
-  });
+    });
+  } catch (cause) {
+    // Network failures and the 15s timeout reject here — without this log the
+    // signup 503 has no diagnosable cause in the Worker logs.
+    console.error(`Resend API unreachable: ${cause instanceof Error ? cause.message : String(cause)}`);
+    throw new Error('Email delivery unavailable (network)');
+  }
   if (!response.ok) {
     let detail = '';
     try { detail = (await response.text()).slice(0, 500); } catch { /* ignore */ }
@@ -42,10 +50,16 @@ async function actionEmail(env: EmailEnv, email: string, kind: 'verify' | 'reset
   if (!response.ok) {
     let detail = '';
     try { detail = (await response.text()).slice(0, 500); } catch { /* ignore */ }
-    console.error(`email/issue failed: status=${response.status} body=${detail}`);
+  console.error(`email/issue failed: status=${response.status} body=${detail}`);
     throw new Error('Email service unavailable');
   }
-  const action = await response.json() as { token: string; email: string } | null;
+  let action: { token: string; email: string } | null;
+  try {
+    action = await response.json() as { token: string; email: string } | null;
+  } catch (cause) {
+    console.error(`email/issue returned malformed JSON: ${cause instanceof Error ? cause.message : String(cause)}`);
+    throw new Error('Email service unavailable');
+  }
   if (!action) return;
   // Fragments never go to servers, access logs, or referrer headers.
   const url = `${SITE}/${kind === 'reset' ? 'reset-password' : 'verify-email'}#token=${action.token}`;
@@ -101,7 +115,12 @@ export async function handleEmailRequest(request: Request, env: EmailEnv): Promi
       const created = await registry(env, '/auth/signup', { email, password: body.password, requireVerification: true });
       if (!created.ok) return reply(created.status, await created.json());
       try { await actionEmail(env, email, 'verify'); }
-      catch { return reply(503, { error: 'Your account was created, but the email could not be delivered. Use “Resend verification email” to try again.' }); }
+      catch (cause) {
+        // The account exists but the verification email failed — log the real
+        // cause so a signup 503 is diagnosable from the Worker logs.
+        console.error(`Signup verification email failed for ${email}: ${cause instanceof Error ? cause.message : String(cause)}`);
+        return reply(503, { error: 'Your account was created, but the email could not be delivered. Use “Resend verification email” to try again.' });
+      }
       return reply(202, { verificationRequired: true, message: 'Check your email to verify your account, then sign in.' });
     }
     if (!['/api/auth/forgot-password', '/api/auth/resend-verification'].includes(path)) return reply(404, { error: 'Not found' });
@@ -109,8 +128,11 @@ export async function handleEmailRequest(request: Request, env: EmailEnv): Promi
     if (!rate.ok) return reply(503, { error: 'Email service is temporarily unavailable.' });
     if ((await rate.json() as { ok: boolean }).ok) {
       try { await actionEmail(env, email, path.endsWith('/forgot-password') ? 'reset' : 'verify'); }
-      catch { console.warn('Transactional email delivery failed'); }
+      catch (cause) { console.warn(`Transactional email delivery failed: ${cause instanceof Error ? cause.message : String(cause)}`); }
     }
     return reply(202, generic);
-  } catch { return reply(503, { error: 'The request could not be completed. Please try again.' }); }
+  } catch (cause) {
+    console.error(`Email request failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    return reply(503, { error: 'The request could not be completed. Please try again.' });
+  }
 }

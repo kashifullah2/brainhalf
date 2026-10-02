@@ -11,6 +11,19 @@ export interface CustomHostname {
   verification_errors?: string[];
 }
 
+// Extracts Cloudflare's structured error text from a failed response body.
+// Best effort: any parse failure still yields the status-only message.
+async function errorDetail(response: Response): Promise<string> {
+  try {
+    const body = await readBoundedJson<{ errors?: Array<{ code?: number; message?: string }> }>(response, 64_000);
+    const first = body.errors?.find(error => error?.message);
+    return first ? `${first.message}${first.code ? ` (code ${first.code})` : ''}` : '';
+  } catch {
+    await response.body?.cancel().catch(() => {});
+    return '';
+  }
+}
+
 /** Only the control Worker holds this token. It is never bound to generated apps. */
 export class CloudflareAPI {
   constructor(private accountId: string, private token: string | undefined, private zoneId?: string) {}
@@ -26,11 +39,21 @@ export class CloudflareAPI {
       signal: AbortSignal.timeout(30_000), redirect: 'manual',
     });
     if (method === 'DELETE' && [204, 404].includes(response.status)) return undefined as T;
-    if (!response.ok) { await response.body?.cancel(); throw new RuntimeError(`Cloudflare ${method} failed (${response.status}). Check the runtime token permissions and account limits.`, 502); }
-    const body = await readBoundedJson<{ success?: boolean; result: T }>(response, 8_000_000);
-    if (!response.ok || body.success === false) throw new RuntimeError(`Cloudflare ${method} failed (${response.status}). Check the runtime token permissions and account limits.`, 502);
+    // Always surface Cloudflare's own error text (e.g. "Authentication error"
+    // code 10003, missing-permission errors) — a bare status code leaves
+    // users guessing which token permission or limit actually failed.
+    if (!response.ok) {
+      const detail = await errorDetail(response);
+      throw new RuntimeError(`Cloudflare ${method} failed (${response.status})${detail ? `: ${detail}` : ''}. Check the runtime token permissions and account limits.`, 502);
+    }
+    const body = await readBoundedJson<{ success?: boolean; errors?: Array<{ code?: number; message?: string }>; result: T }>(response, 8_000_000);
+    if (body.success === false) {
+      const first = body.errors?.find(error => error?.message);
+      throw new RuntimeError(`Cloudflare ${method} failed (${response.status})${first ? `: ${first.message}${first.code ? ` (code ${first.code})` : ''}` : ''}. Check the runtime token permissions and account limits.`, 502);
+    }
     return body.result;
   }
+
 
   private zoneRequest<T>(path: string, method = 'GET', data?: unknown): Promise<T> {
     if (!this.zoneId) throw new RuntimeError('Custom domain support is not configured for this account.', 503);

@@ -49,6 +49,15 @@ export class RuntimeControl extends WorkerEntrypoint<RuntimeEnv> {
         await this.env.PILOT.getByName('pilot').unregister(alias, scope);
         return Response.json({ ok: true });
       }
+      if (new URL(request.url).pathname === '/hosted/sweep' && request.method === 'POST') {
+        // Owner-level reconciliation: the main Worker knows which projects
+        // still exist; drop slot registrations left behind by deleted
+        // projects so they stop counting against the hosted-app limit.
+        const body = await request.json().catch(() => ({})) as { keep?: unknown };
+        const keep = new Set((Array.isArray(body.keep) ? body.keep : []).filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id)));
+        const released = await this.env.PILOT.getByName('pilot').releaseUnknown(scope.ownerId, keep);
+        return Response.json({ ok: true, released });
+      }
       if (new URL(request.url).pathname === '/delete') {
         const project = this.env.PROJECTS.getByName(scope.projectId);
         // No alias argument: initialize must keep the stored slug so teardown

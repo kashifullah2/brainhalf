@@ -94,3 +94,38 @@ describe('RuntimeControl /unregister (hosted slot release)', () => {
     expect(await res.json()).toEqual({ error: 'The project runtime could not complete this request. Try again.' });
   });
 });
+
+describe('RuntimeControl /hosted/sweep (orphaned slot reconciliation)', () => {
+  it('releases registrations for projects the owner no longer has', async () => {
+    const releaseUnknown = vi.fn().mockResolvedValue(3);
+    const getByName = vi.fn().mockReturnValue({ releaseUnknown });
+    const res = await control({ PILOT: { getByName }, PROJECTS: { getByName: () => ({}) } }).fetch(new Request('https://runtime/hosted/sweep', {
+      method: 'POST',
+      headers: { 'x-bh-project': 'proj-1', 'x-bh-owner': 'owner-1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keep: ['proj-1', 'proj-2'] }),
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, released: 3 });
+    expect(releaseUnknown).toHaveBeenCalledWith('owner-1', new Set(['proj-1', 'proj-2']));
+  });
+
+  it('drops malformed keep entries instead of failing the sweep', async () => {
+    const releaseUnknown = vi.fn().mockResolvedValue(0);
+    const env = { PILOT: { getByName: () => ({ releaseUnknown }) }, PROJECTS: { getByName: () => ({}) } };
+    const res = await control(env).fetch(new Request('https://runtime/hosted/sweep', {
+      method: 'POST',
+      headers: { 'x-bh-project': 'proj-1', 'x-bh-owner': 'owner-1', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keep: ['proj-1', 42, null, 'bad id!!'] }),
+    }));
+    expect(res.status).toBe(200);
+    expect(releaseUnknown).toHaveBeenCalledWith('owner-1', new Set(['proj-1']));
+  });
+
+  it('rejects a missing owner scope without sweeping', async () => {
+    const releaseUnknown = vi.fn();
+    const env = { PILOT: { getByName: () => ({ releaseUnknown }) }, PROJECTS: { getByName: () => ({}) } };
+    const res = await control(env).fetch(new Request('https://runtime/hosted/sweep', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }));
+    expect(res.status).toBe(400);
+    expect(releaseUnknown).not.toHaveBeenCalled();
+  });
+});

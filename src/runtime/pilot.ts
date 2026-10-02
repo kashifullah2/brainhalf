@@ -136,6 +136,27 @@ export class PilotCoordinator extends DurableObject<RuntimeEnv> {
       return { released: true };
     });
   }
+  /** Drop registrations whose project is gone from the owner's account.
+   *  Deletion cleanup was historically best-effort (and old clients removed
+   *  projects locally without any server cleanup), so slots for deleted
+   *  projects lingered and blocked new work at the account limit. A
+   *  registration whose project still exists is kept, even with nothing
+   *  deployed — the owner releases those from the app-spaces list. */
+  async releaseUnknown(ownerId: string, keep: ReadonlySet<string>): Promise<number> {
+    return this.ctx.storage.transaction(async txn => {
+      const prefix = `owner-project:${encodeURIComponent(ownerId)}:`;
+      let released = 0;
+      for (const [key] of await txn.list({ prefix })) {
+        const alias = key.slice(prefix.length);
+        const scope = await txn.get<ProjectScope>(`project:${alias}`);
+        if (scope && scope.ownerId === ownerId && keep.has(scope.projectId)) continue;
+        await txn.delete(`project:${alias}`);
+        await txn.delete(key);
+        released++;
+      }
+      return released;
+    });
+  }
   async acquire(id: string, kind: 'sandbox' | 'browser', projectId: string): Promise<PilotAdmission> {
     return admit(() => this.ctx.storage.transaction(async txn => {
       const now = Date.now();

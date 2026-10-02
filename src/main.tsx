@@ -34,7 +34,12 @@ if (root && window.self === window.top && !/^\/(preview|p)(\/|$)/.test(window.lo
   initializeAnalytics();
   // Anonymous visitors hydrate the exact public markup generated at build time.
   // Sessions and private URLs start fresh so no account state is prerendered.
-  if (root.dataset.prerendered === 'true' && (!appRoute || (home && !getToken() && !isPrivateSearch(window.location.search)))) {
+  // The path guard is the safety net: if a route is ever served the wrong
+  // prerendered HTML (as /admin was, via the landing page), hydrateRoot would
+  // throw React #418 — fall back to a fresh client render instead.
+  const prerenderedPath = root.dataset.prerenderPath;
+  const matchesServedPage = root.dataset.prerendered === 'true' && prerenderedPath === (home ? '/' : path);
+  if (matchesServedPage && (!appRoute || (home && !getToken() && !isPrivateSearch(window.location.search)))) {
     hydrateRoot(root, tree);
   } else {
     createRoot(root).render(tree);
