@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import { FileCode, Check, Copy, Code2, ChevronDown } from 'lucide-react';
 import { getLanguageFromPath, highlightCodeToLines } from '../lib/prism-loader';
 import { appEvents } from '../lib/events';
@@ -24,7 +25,7 @@ const CodeFileBlock: React.FC<CodeFileBlockProps> = ({ filePath, content, isStre
 
   const highlightedLines = useMemo(() => {
     if (!isExpanded && !isStreaming) return [];
-    return highlightCodeToLines(content || '', language);
+    return highlightCodeToLines(content || '', language).map(line => DOMPurify.sanitize(line));
   }, [content, language, isExpanded, isStreaming]);
 
   const handleCopy = async () => {

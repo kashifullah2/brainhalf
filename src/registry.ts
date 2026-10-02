@@ -756,7 +756,7 @@ export class AuthRegistry {
           body.tokenHash,
           body.userId,
           now,
-          Math.floor(body.expiresAt * 1000)
+          Math.floor(body.expiresAt * 1000) // body.expiresAt is Unix seconds; DB stores milliseconds for Date.now() comparisons
         );
         return this.json(201, { ok: true });
       }

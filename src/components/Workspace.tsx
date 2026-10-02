@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import Editor, { loader } from '@monaco-editor/react';
 import { basicReactTemplate } from '../lib/templates';
-import { appEvents } from '../lib/events';
+import { appEvents, type GenerationStatusPayload } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
 import { useGithubSync } from './GithubSyncModal';
 import { PREVIEW_LOAD_TIMEOUT, PREVIEW_SYNC_DEBOUNCE } from '../lib/timeouts';
@@ -791,7 +791,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
   /* ---------------- Generation events ---------------- */
   useEffect(() => {
     let active = true;
-    const handleGenerationStatus = ({ status: newStatus, detail, file, error, projectId }: any) => {
+    const handleGenerationStatus = ({ status: newStatus, detail, file, error, projectId }: GenerationStatusPayload) => {
       if (projectId && projectId !== activeProjectId) return;
       if (newStatus === 'Generating') {
         setUndoCheckpoint(null);

@@ -1,8 +1,9 @@
 type FileMap = Record<string, string>;
 
-type GenerationStatusPayload = {
+export type GenerationStatusPayload = {
   status: string;
   detail?: string;
+  file?: string;
   error?: string;
   projectId?: string;
 };

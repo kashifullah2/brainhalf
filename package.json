@@ -45,7 +45,7 @@
     "ai": "^7.0.97",
     "jszip": "^3.10.2",
     "lucide-react": "^1.43.0",
-    "pdfjs-dist": "^5.7.284",
+    "pdfjs-dist": "^6.3.289",
     "prismjs": "^1.30.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -67,10 +67,10 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^5.0.0",
-    "wrangler": "4.135.0",
+    "wrangler": "^4.147.0",
     "ws": "^8.21.3"
   },
-  "overridesNotes": "// is not supported inside npm overrides; the dompurify override exists because monaco-editor 0.56.0 pins dompurify@3.4.8, which carries four advisories (GHSA-c2j3-45gr-mqc4 et al.) fixed in 3.4.13+ \u2014 all patch releases. Drop the override once monaco re-pins.",
+  "overridesNotes": "// is not supported inside npm overrides; the dompurify override exists because monaco-editor 0.56.0 pins dompurify@3.4.8, which carries four advisories (GHSA-c2j3-45gr-mqc4 et al.) fixed in 3.4.13+ — all patch releases. Drop the override once monaco re-pins.",
   "overrides": {
     "dompurify": "^3.4.15"
   }
