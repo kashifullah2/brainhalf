@@ -75,7 +75,9 @@ export function classifyGenerationError(error: unknown): GenerationErrorInfo {
     if (category === 'overloaded') return { category, retryable: true, userMessage: 'The AI model provider is temporarily overloaded.' };
     return { category, retryable: false, userMessage: 'The AI model provider rejected the request credentials. Please contact support.' };
   }
-  return { category: 'unknown', retryable: false, userMessage: message || 'Generation failed unexpectedly.' };
+  // P8: Never expose raw error messages for unknown errors — they may
+  // contain stack traces, file paths, or other internals.
+  return { category: 'unknown', retryable: false, userMessage: 'Generation failed unexpectedly.' };
 }
 
 /** Code sent to the client so it can render category-specific guidance. */

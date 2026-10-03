@@ -53,8 +53,10 @@ describe('classifyGenerationError', () => {
     expect(classifyGenerationError({ status: 403, message: 'x' })).toMatchObject({ category: 'auth', retryable: false });
   });
 
-  it('falls back to unknown with the original message preserved', () => {
-    expect(classifyGenerationError(new Error('something odd happened'))).toMatchObject({ category: 'unknown', retryable: false, userMessage: 'something odd happened' });
+  it('falls back to unknown with a generic message (never raw internals)', () => {
+    // P8 security: unknown errors must not expose raw messages which may
+    // contain stack traces, file paths, or other internals.
+    expect(classifyGenerationError(new Error('something odd happened'))).toMatchObject({ category: 'unknown', retryable: false, userMessage: 'Generation failed unexpectedly.' });
     expect(classifyGenerationError(undefined)).toMatchObject({ category: 'unknown', userMessage: 'Generation failed unexpectedly.' });
   });
 
