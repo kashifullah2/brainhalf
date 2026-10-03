@@ -467,3 +467,29 @@ export function ensureEntryPoint(files: Record<string, string>): Record<string, 
   }
   return files;
 }
+
+/**
+ * Bolt-style deterministic scaffold: pure boilerplate files the model must
+ * never spend tokens writing. The platform injects these after generation.
+ * Only files with zero app-specific content are included — package.json
+ * (needs per-app deps), App.tsx and styles.css (the model's job) are excluded.
+ */
+const SCAFFOLD_PATHS = [
+  '/src/main.tsx',
+  '/index.html',
+  '/tsconfig.json',
+  '/vite.config.ts',
+  '/src/components/AppBoundary.tsx',
+] as const;
+
+export function ensureScaffold(files: Record<string, string>): Record<string, string> {
+  const starter = createTypeScriptStarter();
+  const next = { ...files };
+  for (const path of SCAFFOLD_PATHS) {
+    if (next[path] === undefined && next[path.slice(1)] === undefined) {
+      const content = starter[path];
+      if (content !== undefined) next[path] = content;
+    }
+  }
+  return next;
+}

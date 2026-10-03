@@ -325,7 +325,8 @@ describe('Agent generation against the installed AI SDK', () => {
     const schema = providerState.model.doStreamCalls[0].tools.find((entry: any) => entry.name === 'write_file');
     expect(schema.inputSchema.properties).toHaveProperty('path');
     // Platform ensures /src/main.tsx exists after generation (QA B11 safeguard).
-    expect(database.prepare('SELECT path FROM project_files ORDER BY path').all().map(row => row.path)).toEqual(['/src/App.jsx', '/src/main.tsx', '/src/styles.css', '/src/utils.ts']);
+    // Deterministic scaffold (Fix 2): index.html, tsconfig, vite.config, AppBoundary injected.
+    expect(database.prepare('SELECT path FROM project_files ORDER BY path').all().map(row => row.path)).toEqual(['/index.html', '/src/App.jsx', '/src/components/AppBoundary.tsx', '/src/main.tsx', '/src/styles.css', '/src/utils.ts', '/tsconfig.json', '/vite.config.ts']);
     const visible = firstText + '<agent-tools>write_file</agent-tools>' + secondText;
     expect(database.prepare("SELECT content FROM messages WHERE role = 'assistant'").get()?.content).toBe(visible);
     expect(events.filter(event => event.type === 'stream' && !event.chunk.done).map(event => event.chunk.response).join('')).toBe(visible);
@@ -339,7 +340,8 @@ describe('Agent generation against the installed AI SDK', () => {
     const { run, events, database } = createAgent();
     providerState.model = new MockLanguageModelV4({ doStream: [response('', { toolName: 'write_file', input: { path: '/src/App.tsx', content: 'export default function App() { return <h1>Ready</h1>; }' } }), response('Ready.')] });
     await run();
-    expect(database.prepare('SELECT path FROM project_files').get()?.path).toBe('/src/App.tsx');
+    // Model's file exists (scaffold files like /index.html are also injected by platform).
+    expect(database.prepare("SELECT path FROM project_files WHERE path = '/src/App.tsx'").get()?.path).toBe('/src/App.tsx');
     expect(events.some(event => event.type === 'trigger-auto-reply')).toBe(false);
   });
 

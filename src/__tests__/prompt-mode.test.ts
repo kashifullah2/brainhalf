@@ -98,8 +98,14 @@ describe('shouldUseStagedPipeline', () => {
     fileOutputRetry: false,
   };
 
-  it('stages fresh full-app builds', () => {
-    expect(shouldUseStagedPipeline({ ...freshBuild, actualPrompt: 'build a bakery landing page' })).toBe(true);
+  it('uses single-pass for normal fresh builds (speed fix)', () => {
+    // Lovable/Bolt-style: single-pass is the default. Staging only for huge prompts.
+    expect(shouldUseStagedPipeline({ ...freshBuild, actualPrompt: 'build a bakery landing page' })).toBe(false);
+  });
+
+  it('stages huge fresh builds', () => {
+    const huge = 'Build a massive enterprise app with many modules. '.repeat(60); // ~480 words
+    expect(shouldUseStagedPipeline({ ...freshBuild, actualPrompt: huge })).toBe(true);
   });
 
   it('never stages system continuations ([AUTO-FIX] repair turns)', () => {

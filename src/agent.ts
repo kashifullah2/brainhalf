@@ -12,7 +12,7 @@ import { parseEditPairs, parseMessageSegments } from './lib/message-parser';
 import { formatToolTranscript, isSystemContinuation, ToolTranscriptStream, toolSummaryMarkup } from './lib/chat-transcript';
 import { applyExactEdits } from './lib/exact-edits';
 import { BACKEND_NOT_RUNNING, usesSimulatedApi } from './lib/preview-mode';
-import { createTypeScriptStarter, ensureEntryPoint } from './lib/project-starters';
+import { createTypeScriptStarter, ensureEntryPoint, ensureScaffold } from './lib/project-starters';
 import { prepareModuleSource, buildTranspileErrorModule, findDanglingImports } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
@@ -996,22 +996,27 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   }
 
   /**
-   * Platform-level safeguard for QA B11: ensures /src/main.tsx exists.
-   * The model is blocked from writing harness entries, but the production
-   * build needs the real file. Called after generation completes.
-   * Writes directly via SQL to avoid tracking as a model-generated file.
+   * Platform-level safeguard: ensures deterministic scaffold files exist.
+   * Bolt-style — pure boilerplate (main.tsx, index.html, tsconfig, vite
+   * config, AppBoundary) is injected by the platform so the model never
+   * spends tokens writing it. Called after generation completes.
+   * Writes directly via SQL to avoid tracking as model-generated files.
    */
   private ensureEntryPointExists(): void {
-    const rows = [...this.sql`SELECT path FROM project_files WHERE path IN ('/src/main.tsx', 'src/main.tsx', '/src/main.jsx', 'src/main.jsx')`];
-    if (rows.length > 0) return;
-    // No entry point — create from the TypeScript starter.
-    // Bypass upsertFile's generation tracking: this is a platform safeguard,
-    // not model output, and must not appear in completed_files.
     const starter = createTypeScriptStarter();
-    const entry = starter['/src/main.tsx'];
-    if (entry) {
-      const path = '/src/main.tsx';
-      this.runSql`INSERT INTO project_files (path, content) VALUES (${path}, ${entry})
+    const has = (p: string): boolean => {
+      const row = this.sql`SELECT 1 FROM project_files WHERE path = ${p} OR path = ${p.slice(1)} LIMIT 1`;
+      return [...row].length > 0;
+    };
+    const scaffold: Record<string, string> = {};
+    if (!has('/src/main.tsx') && !has('/src/main.jsx')) {
+      if (starter['/src/main.tsx']) scaffold['/src/main.tsx'] = starter['/src/main.tsx'];
+    }
+    for (const p of ['/index.html', '/tsconfig.json', '/vite.config.ts', '/src/components/AppBoundary.tsx'] as const) {
+      if (!has(p) && starter[p]) scaffold[p] = starter[p];
+    }
+    for (const [path, content] of Object.entries(scaffold)) {
+      this.runSql`INSERT INTO project_files (path, content) VALUES (${path}, ${content})
                  ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
     }
   }

@@ -111,14 +111,23 @@ export function shouldUseStagedPipeline(options: {
   fileOutputRetry: boolean;
 }): boolean {
   const { plannerMode, modes, resumeChain, isFreshBuild, actualPrompt, fileOutputRetry } = options;
-  return !plannerMode
-    && !modes?.questionMode
-    && !modes?.destructiveMode
-    && !modes?.ambiguousMode
-    && !resumeChain
-    && isFreshBuild
-    && !isSystemContinuation(actualPrompt)
-    && !isConversationalPrompt(actualPrompt)
-    && !fileOutputRetry
-    && !actualPrompt.includes('<edit ');
+  if (plannerMode
+    || modes?.questionMode
+    || modes?.destructiveMode
+    || modes?.ambiguousMode
+    || resumeChain
+    || !isFreshBuild
+    || isSystemContinuation(actualPrompt)
+    || isConversationalPrompt(actualPrompt)
+    || fileOutputRetry
+    || actualPrompt.includes('<edit ')) {
+    return false;
+  }
+  // Speed fix (Lovable/Bolt-style): single-pass is the default. The 3-stage
+  // pipeline (architecture → frontend → backend) triples the system-prompt
+  // cost and streams "Step 1 of 3" notices. Only stage when the prompt is
+  // huge (likely 15+ files) or explicitly asks for phased delivery.
+  const wordCount = actualPrompt.trim().split(/\s+/).length;
+  const wantsPhased = /\bphase[d]?\b|\bstep[ -]?by[ -]?step\b|\bstage[d]?\b/i.test(actualPrompt);
+  return wordCount > 400 || wantsPhased;
 }
