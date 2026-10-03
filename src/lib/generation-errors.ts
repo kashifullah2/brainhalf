@@ -39,7 +39,7 @@ export function classifyGenerationError(error: unknown): GenerationErrorInfo {
       : typeof (error as { statusCode?: unknown })?.statusCode === 'number' ? (error as { statusCode: number }).statusCode
         : undefined;
 
-  if (status === 429 || /rate.?limit|too many requests|quota exceeded|throttl/.test(text)) {
+  if (status === 429 || /rate.?limit|too many requests|quota exceeded|throttl|too much traffic/.test(text)) {
     return { category: 'rate_limited', retryable: true, userMessage: 'The AI model is receiving too much traffic right now.' };
   }
   if ((status !== undefined && [502, 503, 529].includes(status)) || /overload|capacity|service unavailable|temporarily unavailable|upstream error|bad gateway/.test(text)) {
@@ -48,7 +48,7 @@ export function classifyGenerationError(error: unknown): GenerationErrorInfo {
   if (/fetch failed|econnreset|econnrefused|etimedout|eai_again|socket hang up|network error|connection (?:reset|refused|closed|error)|broken pipe/.test(text)) {
     return { category: 'network', retryable: true, userMessage: 'The connection to the AI model provider dropped.' };
   }
-  if (/timed? out|deadline exceeded|timeout/.test(text)) {
+  if (/timed? out|deadline exceeded|timeout|took too long/.test(text)) {
     return { category: 'timeout', retryable: true, userMessage: 'The AI model took too long to respond.' };
   }
   if (/context length|context window|maximum context|prompt is too long|too many tokens|reduce the length/.test(text)) {
@@ -63,7 +63,7 @@ export function classifyGenerationError(error: unknown): GenerationErrorInfo {
   // transient, and the raw code must never reach the user. These checks sit
   // after context-length and auth so a 4-digit token count or credential
   // message is never swallowed by them.
-  if (/\b8\d{3}\b/.test(text) || /\binternal server error\b/.test(text)) {
+  if (/\b8\d{3}\b/.test(text) || /\binternal (server )?error\b/.test(text)) {
     return { category: 'overloaded', retryable: true, userMessage: 'The AI model provider hit an internal error.' };
   }
   if (/\b3\d{3}\b/.test(text)) {
