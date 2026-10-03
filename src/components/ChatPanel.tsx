@@ -2513,9 +2513,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               </span>
             </div>
             <div className="studio-resume-banner-actions">
-              <button type="button" className="studio-resume-primary" onClick={handleResumeGeneration}>
-                <Play size={14} /> Resume building
-              </button>
+              {resumableJob.autoResume ? (
+                <span className="studio-resume-auto" role="status">
+                  <Loader2 size={14} className="lucide-spin" /> Resuming automatically…
+                </span>
+              ) : (
+                <button type="button" className="studio-resume-primary" onClick={handleResumeGeneration}>
+                  <Play size={14} /> Resume building
+                </button>
+              )}
               <button
                 type="button"
                 className="studio-resume-dismiss"

@@ -2447,14 +2447,19 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           const job = jobs.get(accounting.id);
           const resumable = jobOutcome.kind === 'interrupted' && !!job && jobs.canResume(job);
           deferTerminal(() => {
+            const jobError = jobOutcome?.error ?? job?.error;
             const payload = JSON.stringify({
               type: 'generation_interrupted',
               // A terminal failure carries no job: there is nothing to resume.
               job: resumable && job ? {
                 id: job.id,
                 completedFiles: job.completedFiles.length,
-                error: jobOutcome?.error ?? job.error,
+                error: jobError,
                 resumesLeft: Math.max(0, MAX_RESUMES - job.resumeCount),
+                // Live interruptions from connection drops or transient provider
+                // errors auto-resume on the client (bounded by MAX_RESUMES) —
+                // the user didn't ask to stop, so don't make them click.
+                autoResume: !!jobError && /connection dropped|internal error|temporarily overloaded|too much traffic|took too long to respond/i.test(jobError),
               } : null,
               resumable,
             });
