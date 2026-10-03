@@ -531,3 +531,10 @@
 @media (prefers-reduced-motion: reduce) {
  .studio-workspace *, .studio-workspace *::before, .studio-workspace *::after { scroll-behavior: auto !important; transition: none !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Viewport controls in the top bar (moved from preview sub-toolbar) */
+.topbar-viewport.viewport-segmented-control {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: none;
+}

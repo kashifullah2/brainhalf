@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { Check, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
+import { Check, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, Tablet, Smartphone, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import { setTheme, useTheme } from '../lib/theme';
@@ -207,6 +207,23 @@ const TopNav: React.FC<TopNavProps> = ({
           {/* Refresh + open — only when Preview is active */}
           {activeTab === 'preview' && (
             <div className="bolt-preview-icon-group">
+              {/* Viewport size — moved to top bar for one-click access */}
+              {onViewportMode && (
+                <div className="viewport-segmented-control topbar-viewport" role="group" aria-label="Preview screen size">
+                  {([
+                    ['desktop', 'Desktop', Monitor],
+                    ['tablet', 'Tablet', Tablet],
+                    ['mobile', 'Mobile', Smartphone],
+                  ] as const).map(([value, label, Icon]) => (
+                    <button type="button" key={value}
+                      className={`viewport-pill-btn${viewportMode === value ? ' active' : ''}`}
+                      aria-label={label} title={label} aria-pressed={viewportMode === value}
+                      onClick={() => onViewportMode(value)}>
+                      <Icon size={14} strokeWidth={1.7} />
+                    </button>
+                  ))}
+                </div>
+              )}
               {onInspect && (
                 <button type="button" className={`bolt-icon-btn${inspectActive ? ' active' : ''}`}
                   title={inspectActive ? 'Cancel element selection' : 'Inspect element'}

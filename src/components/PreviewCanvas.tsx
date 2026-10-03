@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowUpRight, Monitor, MousePointer2, RotateCcw, Smartphone, Tablet } from 'lucide-react';
+import { ArrowUpRight, MousePointer2, RotateCcw } from 'lucide-react';
 import './PreviewCanvas.css';
 
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
@@ -27,8 +27,9 @@ export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, r
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  // Changing device starts fitted; a prior 100% phone view must not strand a tablet off-screen.
-  const changeMode = (next: ViewportMode) => { setZoom('fit'); onModeChange(next); };
+  // Changing device (now via the top bar) resets zoom to fit; a prior 100%
+  // phone view must not strand a tablet off-screen.
+  useEffect(() => { setZoom('fit'); }, [mode]);
   const width = mode === 'tablet' ? 768 : 375;
   const height = mode === 'tablet' ? 1024 : 812;
   const fitScale = Math.max(.05, Math.min(1, size.width / (width + 12), size.height / (height + 12)));
@@ -38,22 +39,8 @@ export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, r
     : `${width} × ${height}`;
 
   return <div className={`preview-canvas preview-canvas-${mode}`}>
-    {/* Compact sub-toolbar: viewport toggles + dimensions + zoom */}
+    {/* Sub-toolbar: dimensions + zoom (viewport toggles moved to the top bar) */}
     <div className="preview-canvas-toolbar preview-canvas-toolbar-minimal">
-      <div className="viewport-segmented-control" role="group" aria-label="Preview screen size">
-        {([
-          ['desktop', 'Desktop', Monitor],
-          ['tablet', 'Tablet', Tablet],
-          ['mobile', 'Mobile', Smartphone],
-        ] as const).map(([value, label, Icon]) => (
-          <button type="button" key={value}
-            className={`viewport-pill-btn${mode === value ? ' active' : ''}`}
-            aria-label={label} title={label} aria-pressed={mode === value}
-            onClick={() => changeMode(value)}>
-            <Icon size={14} strokeWidth={1.7} />
-          </button>
-        ))}
-      </div>
       <span className="preview-canvas-dimensions" title={`Preview dimensions: ${dimensions} pixels`}>
         {mode === 'desktop' ? 'Responsive' : `${width} × ${height}`}
       </span>
