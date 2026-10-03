@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, Tablet, Smartphone, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Server, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
+import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Server, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import { setTheme, useTheme } from '../lib/theme';
@@ -142,27 +142,23 @@ const TopNav: React.FC<TopNavProps> = ({
 
   return (
     <div className={`top-nav${isWorkspaceMode ? ' top-nav-workspace' : ''}`} role="banner">
-      {/* LEFT: Logo / User / Project name / New */}
+
+      {/* LEFT: Logo / project name / new */}
       <div className="top-nav-left-cluster">
         {onGoHome && (
           <button onClick={onGoHome} className="studio-workspace-brand" title="Return to Home" aria-label="Return to Home">
-            <BrainHalfLogo size={26} color="currentColor" strokeWidth={1.6} />
+            <BrainHalfLogo size={22} color="currentColor" strokeWidth={1.6} />
+            {!isWorkspaceMode && <span>BrainHalf</span>}
           </button>
-        )}
-        {isWorkspaceMode && <span className="studio-nav-divider" aria-hidden="true">/</span>}
-        {isWorkspaceMode && (
-          <span className="top-nav-user-chip" aria-hidden="true">{userInitial}</span>
         )}
         {isWorkspaceMode && <span className="studio-nav-divider" aria-hidden="true">/</span>}
         <div className="top-nav-project-tab">
           {isEditing ? (
             <div className="studio-project-rename">
-              <input type="text" value={editedName} onChange={event => setEditedName(event.target.value)}
-                onKeyDown={event => {
-                  if (event.key === 'Enter') handleSaveName();
-                  if (event.key === 'Escape') setIsEditing(false);
-                }} autoFocus aria-label="Rename project input" />
-              <button onClick={handleSaveName} title="Save name" aria-label="Save name"><Check size={15} /></button>
+              <input type="text" value={editedName} onChange={e => setEditedName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setIsEditing(false); }}
+                autoFocus aria-label="Rename project input" />
+              <button onClick={handleSaveName} title="Save" aria-label="Save name"><Check size={14} /></button>
             </div>
           ) : (
             <span className="studio-control-tooltip-anchor studio-project-rename-anchor"
@@ -171,83 +167,68 @@ const TopNav: React.FC<TopNavProps> = ({
               onFocus={() => setShowProjectTooltip(projectTitleTruncated)}
               onBlur={() => setShowProjectTooltip(false)}
             >
-              <button
-                ref={projectNameButtonRef}
-                className="top-nav-project-name-button"
-                type="button"
+              <button ref={projectNameButtonRef} className="top-nav-project-name-button" type="button"
                 aria-label={`Rename project ${projectName}`}
                 aria-describedby={showProjectTooltip && projectTitleTruncated ? projectTooltipId : undefined}
-                onClick={() => { setIsEditing(true); setEditedName(projectName); }}
-                title="Click to rename"
+                onClick={() => { setIsEditing(true); setEditedName(projectName); }} title="Click to rename"
               >
                 {projectName}
                 <Pencil size={11} className="top-nav-rename-hint" aria-hidden="true" />
               </button>
               {showProjectTooltip && projectTitleTruncated && (
-                <span role="tooltip" id={projectTooltipId} className="studio-control-tooltip">
-                  {projectName}
-                </span>
+                <span role="tooltip" id={projectTooltipId} className="studio-control-tooltip">{projectName}</span>
               )}
             </span>
           )}
         </div>
-        <button
-          type="button"
-          className="top-nav-new-project-btn icon-btn"
-          onClick={() => onNewProject ? onNewProject() : onGoHome?.()}
-          title="New project"
-          aria-label="New project"
-          disabled={creatingProject}
-          aria-disabled={creatingProject}
-        ><Plus size={16} strokeWidth={1.7} /></button>
+        {isWorkspaceMode && (
+          <button type="button" className="top-nav-new-project-btn icon-btn"
+            onClick={() => onNewProject ? onNewProject() : onGoHome?.()}
+            title="New project" aria-label="New project"
+            disabled={creatingProject} aria-disabled={creatingProject}
+          ><Plus size={15} strokeWidth={1.7} /></button>
+        )}
       </div>
 
-      {/* CENTER: Workspace tabs + preview URL bar (Bolt-style) */}
+      {/* CENTER: Workspace tabs + preview action icons */}
       {isWorkspaceMode && !isMobile && (
         <div className="top-nav-center-cluster">
           <div className="bolt-tabs" role="tablist" aria-label="Workspace view">
-            <button role="tab" type="button" aria-selected={activeTab === 'preview'} className={`bolt-tab${activeTab === 'preview' ? ' active' : ''}`} onClick={() => onSelectTab?.('preview')}>
-              <Monitor size={14} strokeWidth={1.75} /><span>Preview</span>
+            <button role="tab" type="button" aria-selected={activeTab === 'preview'}
+              className={`bolt-tab${activeTab === 'preview' ? ' active' : ''}`}
+              onClick={() => onSelectTab?.('preview')}>
+              <Monitor size={13} strokeWidth={1.75} /><span>Preview</span>
             </button>
-            <button role="tab" type="button" aria-selected={activeTab === 'code'} className={`bolt-tab${activeTab === 'code' ? ' active' : ''}`} onClick={() => onSelectTab?.('code')}>
-              <Code2 size={14} strokeWidth={1.75} /><span>Code</span>
+            <button role="tab" type="button" aria-selected={activeTab === 'code'}
+              className={`bolt-tab${activeTab === 'code' ? ' active' : ''}`}
+              onClick={() => onSelectTab?.('code')}>
+              <Code2 size={13} strokeWidth={1.75} /><span>Code</span>
             </button>
-            <button role="tab" type="button" aria-selected={activeTab === 'console'} className={`bolt-tab${activeTab === 'console' ? ' active' : ''}`} onClick={() => onSelectTab?.('console')}>
-              <Terminal size={14} strokeWidth={1.75} /><span>Terminal</span>
+            <button role="tab" type="button" aria-selected={activeTab === 'console'}
+              className={`bolt-tab${activeTab === 'console' ? ' active' : ''}`}
+              onClick={() => onSelectTab?.('console')}>
+              <Terminal size={13} strokeWidth={1.75} /><span>Terminal</span>
             </button>
           </div>
 
-          {/* Viewport + URL bar — only when in Preview tab */}
+          {/* Refresh + open — only when Preview is active */}
           {activeTab === 'preview' && (
-            <div className="bolt-url-bar-group">
-              <div className="bolt-viewport-pills" role="group" aria-label="Preview screen size">
-                {([
-                  ['desktop', 'Desktop', Monitor],
-                  ['tablet', 'Tablet', Tablet],
-                  ['mobile', 'Mobile', Smartphone],
-                ] as const).map(([value, label, Icon]) => (
-                  <button key={value} type="button"
-                    className={`bolt-viewport-btn${viewportMode === value ? ' active' : ''}`}
-                    aria-label={label} title={label} aria-pressed={viewportMode === value}
-                    onClick={() => onViewportMode?.(value)}
-                  ><Icon size={14} strokeWidth={1.7} /></button>
-                ))}
-              </div>
-              <div className="bolt-url-bar" aria-label="Preview URL">
-                <span className="bolt-url-text">{previewUrl ? previewUrl.replace(/^https?:\/\/[^/]+/, '') || '/' : '/'}</span>
-              </div>
-              <div className="bolt-preview-tools">
-                {onInspect && (
-                  <button type="button" className={`bolt-icon-btn${inspectActive ? ' active' : ''}`}
-                    title={inspectActive ? 'Cancel selection' : 'Inspect element'}
-                    aria-label="Inspect element" disabled={!previewReady} onClick={onInspect}
-                  ><MousePointer2 size={14} /></button>
-                )}
-                <button type="button" className="bolt-icon-btn" title="Refresh preview" aria-label="Refresh preview"
-                  disabled={!previewReady} onClick={onRefreshPreview}><RotateCcw size={14} /></button>
-                <button type="button" className="bolt-icon-btn" title="Open in new tab" aria-label="Open preview in new tab"
-                  disabled={!openPreviewReady} onClick={onOpenPreview}><ArrowUpRight size={14} /></button>
-              </div>
+            <div className="bolt-preview-icon-group">
+              {onInspect && (
+                <button type="button" className={`bolt-icon-btn${inspectActive ? ' active' : ''}`}
+                  title={inspectActive ? 'Cancel element selection' : 'Inspect element'}
+                  aria-label="Inspect element" disabled={!previewReady} onClick={onInspect}>
+                  <MousePointer2 size={13} />
+                </button>
+              )}
+              <button type="button" className="bolt-icon-btn" title="Refresh preview"
+                aria-label="Refresh preview" disabled={!previewReady} onClick={onRefreshPreview}>
+                <RotateCcw size={13} />
+              </button>
+              <button type="button" className="bolt-icon-btn" title="Open preview in new tab"
+                aria-label="Open preview in new tab" disabled={!openPreviewReady} onClick={onOpenPreview}>
+                <ArrowUpRight size={13} />
+              </button>
             </div>
           )}
         </div>
@@ -256,37 +237,39 @@ const TopNav: React.FC<TopNavProps> = ({
       {/* Mobile tabs */}
       {isMobile && onSelectMobileTab && (
         <div className="segmented-control studio-mobile-tabs" style={{ padding: '2px', flexShrink: 0 }}>
-          <button className={`segmented-tab ${mobileTab === 'chat' ? 'active' : ''}`} onClick={() => onSelectMobileTab('chat')} aria-pressed={mobileTab === 'chat'} style={{ padding: '4px 10px', fontSize: '11.5px' }}>
-            <Bot size={16} strokeWidth={1.75} /><span>Chat</span>
-          </button>
-          <button className={`segmented-tab ${mobileTab === 'code' ? 'active' : ''}`} onClick={() => onSelectMobileTab('code')} aria-pressed={mobileTab === 'code'} style={{ padding: '4px 10px', fontSize: '11.5px' }}>
-            <Code2 size={16} strokeWidth={1.75} /><span>Code</span>
-          </button>
-          <button className={`segmented-tab ${mobileTab === 'preview' ? 'active' : ''}`} onClick={() => onSelectMobileTab('preview')} aria-pressed={mobileTab === 'preview'} style={{ padding: '4px 10px', fontSize: '11.5px' }}>
-            <Play size={16} strokeWidth={1.75} /><span>Preview</span>
-          </button>
+          {([['chat', 'Chat', Bot], ['code', 'Code', Code2], ['preview', 'Preview', Play]] as const).map(([tab, label, Icon]) => (
+            <button key={tab} className={`segmented-tab${mobileTab === tab ? ' active' : ''}`}
+              onClick={() => onSelectMobileTab(tab)} aria-pressed={mobileTab === tab}
+              style={{ padding: '4px 10px', fontSize: '11.5px' }}>
+              <Icon size={16} strokeWidth={1.75} /><span>{label}</span>
+            </button>
+          ))}
         </div>
       )}
 
-      {/* RIGHT: Settings / Share / Publish + user menu */}
+      {/* RIGHT: Settings menu + Publish CTA + user menu */}
       <div className="top-nav-right-cluster">
         {isWorkspaceMode && !isMobile && (
           <>
+            {/* Settings: all project actions + share consolidated here */}
             <ActionMenu label="Project actions" className="studio-project-actions" items={[
               { label: 'View code', icon: <Code2 size={14} />, onSelect: () => onSelectTab?.('code'), disabled: !hasFiles },
-              { label: 'Project console', icon: <Server size={14} />, onSelect: () => onSelectTab?.('console'), separator: true },
+              { label: 'Terminal / console', icon: <Terminal size={14} />, onSelect: () => onSelectTab?.('console'), separator: true },
+              {
+                label: shareCopied ? 'Link copied!' : 'Copy project link',
+                icon: <Share2 size={14} />,
+                onSelect: () => onShare?.(),
+                separator: true,
+              },
               { label: 'Download ZIP', icon: <Download size={14} />, onSelect: () => onExportZip?.(), disabled: !hasFiles },
               { label: 'Export to GitHub', icon: <GitBranch size={14} />, onSelect: () => onExportGithub?.(), disabled: !hasFiles, separator: true },
-              { label: 'Help & guides', icon: <HelpCircle size={14} />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
+              { label: 'Help & guides', icon: <HelpCircle size={14} />, onSelect: () => window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer') },
               { label: 'Reset workspace', icon: <RotateCcw size={14} />, onSelect: () => onResetWorkspace?.(), danger: true, separator: true },
-            ]}><Settings size={16} strokeWidth={1.75} /></ActionMenu>
+            ]}>
+              <Settings size={15} strokeWidth={1.75} />
+            </ActionMenu>
 
-            <button type="button" className="bolt-action-btn" onClick={onShare}
-              title="Copy project link" aria-label="Copy project link">
-              <Share2 size={14} strokeWidth={1.75} />
-              <span>{shareCopied ? 'Copied!' : 'Share'}</span>
-            </button>
-
+            {/* Publish — primary CTA, always visible */}
             <div style={{ position: 'relative' }}>
               <button type="button"
                 className={`bolt-publish-btn${hasGeneratedApp ? ' ready' : ''}`}
@@ -297,7 +280,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 title={hasGeneratedApp ? 'Put your app on the web' : 'Generate an app in chat first'}
                 aria-label={hasGeneratedApp ? 'Publish app' : 'Generate an app first'}
               >
-                <Cloud size={14} strokeWidth={2} />
+                <Cloud size={13} strokeWidth={2} />
                 <span>Publish</span>
               </button>
               {publishPopoverSlot}
@@ -309,15 +292,14 @@ const TopNav: React.FC<TopNavProps> = ({
 
         <ActionMenu label="User profile and menu" className="studio-account-trigger" items={[
           ...(onOpenDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={15} />, onSelect: onOpenDashboard }] : []),
-          { label: 'Gallery', icon: <LayoutGrid size={15} />, onSelect: () => { window.location.assign('/gallery'); } },
+          { label: 'Gallery', icon: <LayoutGrid size={15} />, onSelect: () => window.location.assign('/gallery') },
           ...(onGoHome ? [{ label: 'Back to home', icon: <Home size={15} />, onSelect: onGoHome }] : []),
           { label: theme === 'light' ? 'Dark mode' : 'Light mode', icon: theme === 'light' ? <Moon size={15} /> : <Sun size={15} />, onSelect: () => setTheme(theme === 'light' ? 'dark' : 'light') },
           ...(onLogout ? [{ label: 'Sign out', icon: <LogOut size={15} />, onSelect: () => { void onLogout(); }, separator: true }] : []),
         ]}>
           <span className="studio-account-avatar">{userInitial}</span>
           {!isMobile && !isWorkspaceMode && <span className="studio-account-name">{currentUser?.name || currentUser?.email || 'Account'}</span>}
-          {!isMobile && !isWorkspaceMode && <ChevronDown size={13} />}
-          {isWorkspaceMode && <ChevronDown size={13} />}
+          <ChevronDown size={12} />
         </ActionMenu>
       </div>
     </div>

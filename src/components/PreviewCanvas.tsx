@@ -38,13 +38,31 @@ export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, r
     : `${width} × ${height}`;
 
   return <div className={`preview-canvas preview-canvas-${mode}`}>
-    {/* Dimensions watermark — controls moved to top bar */}
+    {/* Compact sub-toolbar: viewport toggles + dimensions + zoom */}
     <div className="preview-canvas-toolbar preview-canvas-toolbar-minimal">
-      <span className="preview-canvas-dimensions" title={`Preview dimensions: ${dimensions} pixels`}>{mode === 'desktop' && <span>Responsive <span aria-hidden="true">·</span> </span>}{dimensions}</span>
-      {mode !== 'desktop' && <select aria-label="Preview zoom" value={zoom} onChange={event => setZoom(event.target.value)} className="preview-zoom-select">
-        <option value="fit">Fit · {Math.round(fitScale * 100)}%</option>
-        <option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option>
-      </select>}
+      <div className="viewport-segmented-control" role="group" aria-label="Preview screen size">
+        {([
+          ['desktop', 'Desktop', Monitor],
+          ['tablet', 'Tablet', Tablet],
+          ['mobile', 'Mobile', Smartphone],
+        ] as const).map(([value, label, Icon]) => (
+          <button type="button" key={value}
+            className={`viewport-pill-btn${mode === value ? ' active' : ''}`}
+            aria-label={label} title={label} aria-pressed={mode === value}
+            onClick={() => changeMode(value)}>
+            <Icon size={14} strokeWidth={1.7} />
+          </button>
+        ))}
+      </div>
+      <span className="preview-canvas-dimensions" title={`Preview dimensions: ${dimensions} pixels`}>
+        {mode === 'desktop' ? 'Responsive' : `${width} × ${height}`}
+      </span>
+      {mode !== 'desktop' && (
+        <select aria-label="Preview zoom" value={zoom} onChange={e => setZoom(e.target.value)} className="preview-zoom-select">
+          <option value="fit">Fit {Math.round(fitScale * 100)}%</option>
+          <option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option>
+        </select>
+      )}
     </div>
     <div ref={canvas} className="preview-canvas-scroll">
       <div className="preview-device-space" style={mode === 'desktop' ? undefined : { width: (width + 12) * scale, height: (height + 12) * scale }}>
