@@ -22,6 +22,7 @@ import { validateRuntimeProviders } from './lib/runtime-config';
 import { BEDROCK_ALIASES, createBedrockClient, providerCredentials, providerModel, selectModelTransport, type ProviderLanguageModel } from './lib/provider-clients';
 import { buildDynamicImportMap as buildDynamicImportMapModule, isHarnessEntry as isHarnessEntryModule } from './lib/preview-import-map';
 import { buildSystemPrompt as buildSystemPromptModule } from './lib/system-prompt';
+import { ensureHtmlDoctype } from './lib/html-normalize';
 import { BusyLock, IdempotencyStore, WriteEpoch, dedupeAdjacent } from './lib/concurrency';
 import { RateLimiter } from './lib/rate-limit';
 import { AGENT_MIGRATIONS, runMigrations } from './lib/migrations';
@@ -970,6 +971,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
   /** Writes one file, rejecting oversized content and protected paths. */
   private upsertFile(path: string, content: string): boolean {
+    // Full HTML documents must carry a doctype or browsers render the app in
+    // quirks mode. Idempotent; also applied by the write tool so its cached
+    // copy matches what is stored.
+    content = ensureHtmlDoctype(path, content);
     if (isBlockedSecretFile(path)) {
       // A generated app may legitimately author /server/.env; it is stored, but
       // never served. Storage is allowed, reads are filtered.
@@ -1689,6 +1694,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 return { success: false, error: 'This generation was superseded; write discarded.' };
               }
               const cleanPath = normalizePath(path);
+              // Mirror upsertFile's doctype normalization so the inspected
+              // copy and broadcast payload match what is actually stored.
+              const normalizedContent = ensureHtmlDoctype(cleanPath, content);
               if (this.isHarnessEntry(cleanPath)) return { success: false, error: 'This entry point is owned by the preview.' };
               // Enforce frontend-first write order:
               // (1) Block served-backend/component writes until App.tsx is written.
@@ -1736,14 +1744,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 return { success: false, error: 'Read the complete current file before changing it. It may have changed since your last read.' };
               }
               if (/\.(?:[cm]?jsx?|tsx?)$/i.test(cleanPath)) transform(content, { transforms: ['typescript', 'jsx'], filePath: cleanPath });
-              if (!this.upsertFile(cleanPath, content)) return { success: false, error: `File exceeds the ${MAX_FILE_BYTES} byte limit` };
-              inspectedFiles.set(cleanPath, content);
+              if (!this.upsertFile(cleanPath, normalizedContent)) return { success: false, error: `File exceeds the ${MAX_FILE_BYTES} byte limit` };
+              inspectedFiles.set(cleanPath, normalizedContent);
               toolWrittenPaths.add(cleanPath);
               if (this.activeGeneration?.epoch === epoch) this.activeGeneration.filesChanged = true;
               this.backupToR2(this.senderUserId(connection)).catch(console.error);
               const update = JSON.stringify(isBlockedSecretFile(cleanPath)
                 ? { type: 'file_updated', path: cleanPath, redacted: true }
-                : { type: 'file_updated', path: cleanPath, content });
+                : { type: 'file_updated', path: cleanPath, content: normalizedContent });
               try { connection.send(update); } catch {}
               try { this.broadcast(update, [connection.id]); } catch {}
               return { success: true, path: cleanPath };

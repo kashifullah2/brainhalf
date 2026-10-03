@@ -2651,9 +2651,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                       textAlign: 'left'
                     }}
                   >
-                    <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>{m.name}</span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+                        <span style={{ overflowWrap: 'break-word', minWidth: 0 }}>{m.name}</span>
                         {m.badge && (
                           <span style={{
                             fontSize: '9px',
@@ -2673,7 +2673,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                         {formatModelReliability(m.id, getReliabilityScope())}
                       </span>
                     </span>
-                    {selectedModelId === m.id && <Check size={13} color="var(--accent-light)" />}
+                    {selectedModelId === m.id && <Check size={13} color="var(--accent-light)" style={{ flexShrink: 0, marginLeft: 6 }} />}
                   </button>
                 ))}
               </div>

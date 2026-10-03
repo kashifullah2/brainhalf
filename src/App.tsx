@@ -315,6 +315,16 @@ function App() {
       prefetchWsTicket();
       handleSelectProject(newProj.id);
       setCurrentView('workspace');
+    } else if (!new URLSearchParams(window.location.search).has('project')) {
+      // Plain sign-in (no pending prompt): leaving the user on the marketing
+      // homepage makes it look like login did nothing — take them to their
+      // projects instead. A ?project= deep link keeps its workspace target.
+      // Don't call handleOpenDashboard: it reads the stale `user` state.
+      setCurrentView('dashboard');
+      const url = new URL(window.location.href);
+      url.pathname = '/dashboard';
+      url.searchParams.delete('project');
+      window.history.pushState({}, '', url.toString());
     }
   };
 

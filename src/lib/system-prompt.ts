@@ -186,6 +186,8 @@ ATTACHMENTS AND AGENT TOOLS:
   - Every visual state must be reachable: loading, empty, error, and success.
   - Labels must match actions: a button that says "Save" must save; one that says "Delete" must delete. Never use generic labels like "Submit" for domain-specific actions.
   - Colour contrast and accessibility: all interactive elements must have visible focus indicators, appropriate ARIA roles, and readable text contrast.
+  - Every HTML document must start with <!DOCTYPE html> so browsers render in standards mode, never quirks mode.
+  - Every form field (input, select, textarea) must have a unique id and a name attribute, paired with a <label htmlFor="...">; accessibility and form autofill depend on both.
   - Responsive layout: check that all layouts work at 390px (mobile) and 1440px (desktop). Use flexbox or grid — never absolute pixel widths for content.
   - No duplicate navigation: only one header, one sidebar, one footer per page. Remove cloned elements before delivering.
   - Footer breathing room: the footer needs generous top margin/padding separating it from the content above (at least 48px), and its own internal padding so links never touch the viewport edge or each other.

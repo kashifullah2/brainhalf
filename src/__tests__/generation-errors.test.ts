@@ -25,6 +25,21 @@ describe('classifyGenerationError', () => {
     expect(classifyGenerationError(new Error('The request timed out'))).toMatchObject({ category: 'timeout', retryable: true });
   });
 
+  it('treats Workers AI numeric platform faults as retryable with clean messages', () => {
+    const upstream = classifyGenerationError(new Error('AiError: 3046'));
+    expect(upstream).toMatchObject({ category: 'timeout', retryable: true });
+    expect(upstream.userMessage).not.toContain('3046');
+    const internal = classifyGenerationError(new Error('8005: Internal server error'));
+    expect(internal).toMatchObject({ category: 'overloaded', retryable: true });
+    expect(internal.userMessage).not.toContain('8005');
+    expect(generationErrorCode(internal)).toBe('provider_busy');
+  });
+
+  it('keeps context-length and auth precedence over numeric-code rules', () => {
+    expect(classifyGenerationError(new Error('prompt is too long: 8300 tokens over the limit')).category).toBe('context_length');
+    expect(classifyGenerationError(new Error('invalid api key')).category).toBe('auth');
+  });
+
   it('treats context-length errors as non-retryable with guidance', () => {
     const info = classifyGenerationError(new Error('prompt is too long: 200000 tokens > 150000 maximum'));
     expect(info.category).toBe('context_length');

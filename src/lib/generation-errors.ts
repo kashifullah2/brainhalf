@@ -57,6 +57,18 @@ export function classifyGenerationError(error: unknown): GenerationErrorInfo {
   if (status === 401 || status === 403 || /unauthorized|invalid api key|authentication failed|permission denied|access denied|invalid x-api-key/.test(text)) {
     return { category: 'auth', retryable: false, userMessage: 'The AI model provider rejected the request credentials. Please contact support.' };
   }
+  // Workers AI surfaces platform faults as numeric codes with no HTTP status
+  // ("AiError: 3046", "8005: Internal server error"). 3xxx codes are upstream
+  // timeouts/capacity faults and 8xxx are internal provider errors — both
+  // transient, and the raw code must never reach the user. These checks sit
+  // after context-length and auth so a 4-digit token count or credential
+  // message is never swallowed by them.
+  if (/\b8\d{3}\b/.test(text) || /\binternal server error\b/.test(text)) {
+    return { category: 'overloaded', retryable: true, userMessage: 'The AI model provider hit an internal error.' };
+  }
+  if (/\b3\d{3}\b/.test(text)) {
+    return { category: 'timeout', retryable: true, userMessage: 'The AI model took too long to respond.' };
+  }
   for (const [pattern, category] of STATUS_PATTERNS) {
     if (!pattern.test(text)) continue;
     if (category === 'rate_limited') return { category, retryable: true, userMessage: 'The AI model is receiving too much traffic right now.' };
