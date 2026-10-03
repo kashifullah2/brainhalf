@@ -677,7 +677,12 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   }
 
   if (waitingForFiles || !dependencies || dependencies.files !== files) {
-    return <PreparingPreview />;
+    return (
+      <>
+        {stylesCode && <style dangerouslySetInnerHTML={{ __html: stylesCode.replace(/<\/style/gi, '<\\/style') }} />}
+        <PreparingPreview />
+      </>
+    );
   }
 
   return (

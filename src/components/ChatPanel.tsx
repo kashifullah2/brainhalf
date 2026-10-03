@@ -642,7 +642,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const onInitialPromptConsumedRef = useRef(onInitialPromptConsumed);
   useEffect(() => { onInitialPromptConsumedRef.current = onInitialPromptConsumed; }, [onInitialPromptConsumed]);
   useEffect(() => {
-    if (initialPrompt) pendingAutoSendRef.current = initialPrompt;
+    // Always sync the ref — clearing it when null prevents a stale prompt
+    // from a previous project from auto-sending when a different project's
+    // WebSocket receives its history event.
+    pendingAutoSendRef.current = initialPrompt ?? null;
   }, [initialPrompt]);
 
   useLayoutEffect(() => {
@@ -2722,7 +2725,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               >
                 <span className="studio-model-caption">Model</span>
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {(models.find(m => m.id === selectedModelId)?.name ?? selectedModelId).replace(/\s*\([^)]*\)/g, '')}
+                  {(models.find(m => m.id === selectedModelId)?.name ?? friendlyModelName(selectedModelId)).replace(/\s*\([^)]*\)/g, '')}
                 </span>
                 <ChevronDown size={14} aria-hidden="true" style={{ flexShrink: 0 }} />
               </button>
