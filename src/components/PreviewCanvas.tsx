@@ -38,26 +38,13 @@ export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, r
     : `${width} × ${height}`;
 
   return <div className={`preview-canvas preview-canvas-${mode}`}>
-    <div className="preview-canvas-toolbar">
-      <div className="viewport-segmented-control" role="group" aria-label="Preview screen size">
-        {([
-          ['desktop', 'Desktop view', Monitor],
-          ['tablet', 'Tablet view (768px)', Tablet],
-          ['mobile', 'Mobile view (375px)', Smartphone],
-        ] as const).map(([value, label, Icon]) => <button type="button" key={value}
-          className={`viewport-pill-btn${mode === value ? ' active' : ''}`}
-          aria-label={label} title={label} aria-pressed={mode === value} onClick={() => changeMode(value)}><Icon size={18} strokeWidth={1.7} /></button>)}
-      </div>
+    {/* Dimensions watermark — controls moved to top bar */}
+    <div className="preview-canvas-toolbar preview-canvas-toolbar-minimal">
       <span className="preview-canvas-dimensions" title={`Preview dimensions: ${dimensions} pixels`}>{mode === 'desktop' && <span>Responsive <span aria-hidden="true">·</span> </span>}{dimensions}</span>
-      <div className="preview-canvas-tools">
-        {mode !== 'desktop' && <select aria-label="Preview zoom" value={zoom} onChange={event => setZoom(event.target.value)}>
-          <option value="fit">Fit · {Math.round(fitScale * 100)}%</option>
-          <option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option>
-        </select>}
-        {onInspect && <button type="button" className={`studio-preview-inspect${inspectActive ? ' active' : ''}`} title={inspectActive ? 'Cancel element selection' : 'Click an element to edit it'} aria-label={inspectActive ? 'Cancel element selection' : 'Select element to edit'} aria-pressed={inspectActive} disabled={!ready} onClick={onInspect}><MousePointer2 size={16} /></button>}
-        <button type="button" className="studio-preview-refresh" title="Refresh preview" aria-label="Refresh preview" disabled={!ready} onClick={onRefresh}><RotateCcw size={16} /></button>
-        <button type="button" className="studio-preview-popout" title="Open preview in a new tab" aria-label="Open preview in a new tab" disabled={!openReady} onClick={onOpen}><ArrowUpRight size={18} /></button>
-      </div>
+      {mode !== 'desktop' && <select aria-label="Preview zoom" value={zoom} onChange={event => setZoom(event.target.value)} className="preview-zoom-select">
+        <option value="fit">Fit · {Math.round(fitScale * 100)}%</option>
+        <option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option>
+      </select>}
     </div>
     <div ref={canvas} className="preview-canvas-scroll">
       <div className="preview-device-space" style={mode === 'desktop' ? undefined : { width: (width + 12) * scale, height: (height + 12) * scale }}>

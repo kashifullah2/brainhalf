@@ -35,6 +35,7 @@ import BuildProgress, { type FileProgress } from './BuildProgress';
 import GenerationProgress from './GenerationProgress';
 import ProjectConsole from './ProjectConsole';
 import PublishPopover from './PublishPopover';
+import TopNav from './TopNav';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
@@ -66,6 +67,14 @@ interface WorkspaceProps {
   activeProjectId: string;
   mobileTab?: 'chat' | WorkspaceTab;
   onSelectMobileTab?: (tab: WorkspaceTab | 'chat') => void;
+  // TopNav passthrough props
+  currentUser?: { email?: string; name?: string; devMode?: boolean } | null;
+  onGoHome?: () => void;
+  onNewProject?: () => void;
+  onOpenDashboard?: () => void;
+  onLogout?: () => void | Promise<void>;
+  creatingProject?: boolean;
+  isMobile?: boolean;
 }
 
 const MAX_LOG_ENTRIES = 250;
@@ -219,7 +228,10 @@ const GENERATION_TIPS = [
   'The builder reviews your project before writing — planning takes a moment.',
 ];
 
-const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSelectMobileTab }) => {
+const Workspace: React.FC<WorkspaceProps> = ({
+  activeProjectId, mobileTab, onSelectMobileTab,
+  currentUser, onGoHome, onNewProject, onOpenDashboard, onLogout, creatingProject, isMobile,
+}) => {
   const { isCurrent, getProjectFiles, getProjectFilesAsync, saveProjectFiles, saveProjectFilesDebounced, flushProjectFileWrites, forkProject, setActiveProjectId } = useMemo(bindProjectStore, []);
   const [files, setFiles] = useState<FileMap>(() => migrateStarter(getProjectFiles(activeProjectId) || baselineFiles()));
   const runtime = useProjectRuntime(activeProjectId, 'development', true);
@@ -1309,109 +1321,60 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProjectId, mobileTab, onSel
         }}
       />
       {shareFallback && <ConfirmModal isOpen title="Copy personal project link" message={`This link opens your project when you're logged in to BrainHalf:\n\n${shareFallback}`} confirmLabel="Done" cancelLabel="Close" isDestructive={false} onConfirm={() => setShareFallback(null)} onCancel={() => setShareFallback(null)} />}
-      {/* Header. minHeight rather than height, and the nav scrolls rather than
-          overflowing, so the tabs never collide with the status area on narrow
-          viewports. */}
-      <div className="workspace-toolbar">
-        <div className="studio-workspace-tabs" aria-label="Workspace view" data-mobile={mobileTab !== undefined || undefined}>
-          {mobileTab === undefined && <button type="button" onClick={() => selectTab('preview')} aria-pressed={resolvedActiveTab === 'preview'} className={resolvedActiveTab === 'preview' ? 'active' : ''}><Monitor size={15} />Preview</button>}
-          {mobileTab !== undefined && <span className="studio-mobile-workspace-label">{isEditorTab ? 'Project files' : resolvedActiveTab === 'console' ? 'Console' : resolvedActiveTab === 'logs' ? 'Activity' : 'Your app'}</span>}
-          {(isEditorTab || splitView) && <button type="button" className="studio-files-toggle" onClick={() => setFileExplorerOverride(!showFileExplorer)} aria-pressed={showFileExplorer} title={showFileExplorer ? 'Hide project files' : 'Show project files'} aria-label={showFileExplorer ? 'Hide project files' : 'Show project files'}><PanelLeft size={14} /></button>}
-        </div>
-
-        <div className="studio-workspace-actions">
-          <ActionMenu label="Project actions" className="studio-project-actions" items={[
-            { label: 'View code', icon: <Code2 />, onSelect: () => selectTab('code'), disabled: !Object.keys(files).length },
-            { label: 'Project console', icon: <Server />, onSelect: () => selectTab('console'), separator: true },
-            { label: 'Download ZIP', icon: <Download />, onSelect: () => { void handleExportZip(); }, disabled: !Object.keys(files).length },
-            { label: 'Export to GitHub', icon: <GitBranch />, onSelect: () => github.openModal(), disabled: !Object.keys(files).length, separator: true },
-            { label: 'Help & guides', icon: <HelpCircle />, onSelect: () => { window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer'); } },
-            { label: 'Reset workspace', icon: <RotateCcw />, onSelect: () => setShowResetConfirm(true), danger: true, separator: true },
-          ]}><Settings size={18} /></ActionMenu>
-
-          <button
-            type="button"
-            className="studio-share-button"
-            onClick={async () => {
-              const shareUrl = `${window.location.origin}${window.location.pathname}?project=${activeProjectId}`;
-              const ok = await copyText(shareUrl);
-              if (ok) {
-                setShareCopied(true);
-              } else {
-                setShareFallback(shareUrl);
-              }
+      {/* Bolt-style unified topbar — replaces separate workspace-toolbar */}
+      <TopNav
+        activeProjectId={activeProjectId}
+        currentUser={currentUser}
+        onGoHome={onGoHome}
+        onNewProject={onNewProject}
+        onOpenDashboard={onOpenDashboard}
+        onLogout={onLogout}
+        creatingProject={creatingProject}
+        isMobile={isMobile}
+        mobileTab={mobileTab}
+        onSelectMobileTab={onSelectMobileTab}
+        activeTab={resolvedActiveTab}
+        onSelectTab={selectTab}
+        hasGeneratedApp={hasGeneratedApp}
+        hasFiles={Object.keys(files).length > 0}
+        viewportMode={viewportMode}
+        onViewportMode={setViewportMode}
+        onRefreshPreview={() => setEdgeRefreshCounter(value => value + 1)}
+        onOpenPreview={handlePopoutPreview}
+        previewReady={hasGeneratedApp && previewLoadState !== 'error'}
+        openPreviewReady={hasGeneratedApp && previewLoadState !== 'error'}
+        previewUrl={backend.liveUrl || (typeof window !== 'undefined' ? `${window.location.origin}/preview/${activeProjectId}/index.html` : `/preview/${activeProjectId}/index.html`)}
+        shareCopied={shareCopied}
+        onShare={async () => {
+          const shareUrl = `${window.location.origin}${window.location.pathname}?project=${activeProjectId}`;
+          const ok = await copyText(shareUrl);
+          if (ok) { setShareCopied(true); } else { setShareFallback(shareUrl); }
+        }}
+        publishOpen={publishOpen}
+        onPublish={() => { if (hasGeneratedApp) setPublishOpen(open => !open); }}
+        onExportZip={() => { void handleExportZip(); }}
+        onExportGithub={() => github.openModal()}
+        onResetWorkspace={() => setShowResetConfirm(true)}
+        inspectActive={inspectModeActive}
+        onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined}
+        publishPopoverSlot={publishOpen && hasGeneratedApp ? (
+          <PublishPopover
+            projectId={activeProjectId}
+            files={files}
+            onClose={() => setPublishOpen(false)}
+            onCustomDomain={() => {
+              setPublishOpen(false);
+              setConsoleSectionRequest({ section: 'Web address', nonce: Date.now() });
+              selectTab('console');
             }}
-            style={{
-              background: 'rgba(36, 60, 75, 0.05)',
-              border: '1px solid rgba(36, 60, 75, 0.08)',
-              borderRadius: '8px',
-              padding: '5px 12px',
-              color: 'var(--text-primary)',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
+            onOpenHostedSlots={() => {
+              setPublishOpen(false);
+              setConsoleSectionRequest({ section: 'My live apps', nonce: Date.now() });
+              selectTab('console');
             }}
-            title="Copy a link that opens this project (requires sign-in)"
-            aria-label="Copy project link"
-          >
-            <Share2 size={14} strokeWidth={1.8} />
-            <span aria-live="polite">{shareCopied ? 'Copied!' : 'Copy link'}</span>
-          </button>
-
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => {
-                if (hasGeneratedApp) setPublishOpen(open => !open);
-              }}
-              className="studio-publish-button"
-              disabled={!hasGeneratedApp}
-              aria-haspopup="dialog"
-              aria-expanded={publishOpen}
-              style={{
-                background: hasGeneratedApp ? 'var(--accent-primary)' : 'rgba(36, 60, 75, 0.04)',
-                color: hasGeneratedApp ? 'var(--text-on-accent)' : 'var(--text-muted)',
-                border: hasGeneratedApp ? 'none' : '1px solid rgba(36, 60, 75, 0.08)',
-                borderRadius: '8px',
-                padding: '5px 14px',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: hasGeneratedApp ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: hasGeneratedApp ? '0 2px 8px var(--focus-ring)' : 'none',
-                transition: 'all 0.15s ease'
-              }}
-              title={hasGeneratedApp ? "Put your app on the web" : "Generate an app in chat first"}
-              aria-label={hasGeneratedApp ? "Put your app on the web" : "Generate an app in chat first"}
-            >
-              <Cloud size={14} strokeWidth={2} />
-              <span>Go live</span>
-            </button>
-            {publishOpen && hasGeneratedApp && (
-              <PublishPopover
-                projectId={activeProjectId}
-                files={files}
-                onClose={() => setPublishOpen(false)}
-                onCustomDomain={() => {
-                  setPublishOpen(false);
-                  setConsoleSectionRequest({ section: 'Web address', nonce: Date.now() });
-                  selectTab('console');
-                }}
-                onOpenHostedSlots={() => {
-                  setPublishOpen(false);
-                  setConsoleSectionRequest({ section: 'My live apps', nonce: Date.now() });
-                  selectTab('console');
-                }}
-              />
-            )}
-          </div>
-
-        </div>
-      </div>
+          />
+        ) : undefined}
+      />
 
       {/* Content */}
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden', minHeight: 0 }}>

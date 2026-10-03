@@ -499,19 +499,7 @@ function App() {
     <Suspense fallback={<div className="studio-session-loading" aria-busy="true" aria-label="Loading workspace"><div><BrainHalfLogo size={28} strokeWidth={1.5} color="currentColor" /></div></div>}>
     <div className="app-container studio-workspace">
       <div className="main-content">
-        <TopNav
-          activeProjectId={activeProjectId}
-          onSelectProject={handleSelectProject}
-          onGoHome={requestGoHome}
-          onNewProject={requestCreateNewProject}
-          onOpenDashboard={requestOpenDashboard}
-          mobileTab={mobileTab}
-          onSelectMobileTab={setMobileTab}
-          isMobile={isMobile}
-          currentUser={user}
-          onLogout={handleLogout}
-          creatingProject={creatingProject}
-        />
+        {/* TopNav is now rendered inside Workspace for workspace mode (Bolt-style unified topbar) */}
         <div className={`workspace-area ${isMobile ? 'is-mobile' : ''}`}>
           <div style={{ display: !isMobile || mobileTab === 'chat' ? 'contents' : 'none' }}>
             <SectionErrorBoundary name="Chat">
@@ -561,7 +549,19 @@ function App() {
           )}
           <div style={{ display: !isMobile || mobileTab !== 'chat' ? 'contents' : 'none' }}>
             <SectionErrorBoundary name="Workspace">
-            <Workspace key={`workspace-${user.id}-${activeProjectId}`} activeProjectId={activeProjectId} mobileTab={isMobile ? mobileTab : undefined} onSelectMobileTab={isMobile ? setMobileTab : undefined} />
+            <Workspace
+              key={`workspace-${user.id}-${activeProjectId}`}
+              activeProjectId={activeProjectId}
+              mobileTab={isMobile ? mobileTab : undefined}
+              onSelectMobileTab={isMobile ? setMobileTab : undefined}
+              currentUser={user}
+              onGoHome={requestGoHome}
+              onNewProject={requestCreateNewProject}
+              onOpenDashboard={requestOpenDashboard}
+              onLogout={handleLogout}
+              creatingProject={creatingProject}
+              isMobile={isMobile}
+            />
             </SectionErrorBoundary>
           </div>
         </div>

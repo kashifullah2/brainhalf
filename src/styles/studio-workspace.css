@@ -14,8 +14,58 @@
 .studio-workspace ::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 8px; border: 1px solid transparent; }
 .studio-workspace * { scrollbar-color: var(--border-medium) transparent; scrollbar-width: thin; }
 .studio-workspace .main-content { background: var(--bg-canvas); }
-.studio-workspace .top-nav { height: var(--header-height); min-height: var(--header-height); z-index: 100; flex-shrink: 0; padding: 0 24px; background: var(--bg-topnav); border-bottom: 1px solid var(--border-subtle); gap: 18px; }
-.studio-workspace .top-nav-left-cluster { display: flex; align-items: center; gap: 14px; min-width: 0; }
+/* ── Bolt-style unified topbar ── */
+.studio-workspace .top-nav { height: var(--header-height); min-height: var(--header-height); z-index: 100; flex-shrink: 0; padding: 0 14px; background: var(--bg-topnav); border-bottom: 1px solid var(--border-subtle); gap: 0; display: flex; align-items: center; }
+.studio-workspace .top-nav-workspace { padding: 0 12px; gap: 8px; }
+.studio-workspace .top-nav-left-cluster { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 0; padding: 0 4px; }
+
+/* Center cluster: tabs + URL bar */
+.top-nav-center-cluster { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; min-width: 0; overflow: hidden; }
+.bolt-tabs { display: flex; align-items: center; gap: 1px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 3px; flex-shrink: 0; }
+.bolt-tab { display: flex; align-items: center; gap: 5px; padding: 5px 11px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--text-muted); font-size: 12px; font-weight: 400; transition: background 100ms, color 100ms; white-space: nowrap; }
+.bolt-tab:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+.bolt-tab.active { color: var(--text-primary); background: var(--bg-card); border-color: var(--border-subtle); box-shadow: 0 1px 3px rgba(0,0,0,.08); font-weight: 500; }
+.bolt-tab svg { flex-shrink: 0; }
+
+/* URL bar group */
+.bolt-url-bar-group { display: flex; align-items: center; gap: 4px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 4px 6px 4px 10px; max-width: 380px; min-width: 180px; flex: 1; }
+.bolt-viewport-pills { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.bolt-viewport-btn { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--text-muted); transition: background 100ms, color 100ms; }
+.bolt-viewport-btn:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+.bolt-viewport-btn.active { color: var(--text-primary); background: var(--bg-card); border-color: var(--border-subtle); }
+.bolt-url-bar { flex: 1; min-width: 0; overflow: hidden; }
+.bolt-url-text { display: block; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono, monospace); }
+.bolt-preview-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.bolt-icon-btn { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 5px; background: none; color: var(--text-muted); transition: background 100ms, color 100ms; }
+.bolt-icon-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-surface-hover); }
+.bolt-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.bolt-icon-btn.active { color: var(--accent-primary); background: var(--bg-surface); }
+
+/* Right action buttons */
+.studio-workspace .top-nav-right-cluster { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }
+.bolt-action-btn { display: flex; align-items: center; gap: 5px; padding: 5px 11px; border: 1px solid var(--border-medium); border-radius: 7px; background: var(--bg-card); color: var(--text-primary); font-size: 12px; font-weight: 500; transition: background 100ms, border-color 100ms; white-space: nowrap; }
+.bolt-action-btn:hover { background: var(--bg-surface); border-color: var(--border-strong); }
+.bolt-publish-btn { display: flex; align-items: center; gap: 5px; padding: 5px 13px; border: 1px solid var(--border-medium); border-radius: 7px; background: var(--bg-card); color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: not-allowed; opacity: 0.7; white-space: nowrap; }
+.bolt-publish-btn.ready { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--text-on-accent); cursor: pointer; opacity: 1; box-shadow: 0 2px 8px var(--focus-ring); transition: transform 100ms, box-shadow 100ms; }
+.bolt-publish-btn.ready:hover { transform: translateY(-1px); box-shadow: 0 4px 12px var(--focus-ring); }
+
+/* User chip (avatar circle in workspace mode) */
+.top-nav-user-chip { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--bg-surface-hover); color: var(--accent-primary); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+
+/* Workspace topbar account trigger: compact in bolt mode */
+.top-nav-workspace .studio-account-trigger { min-height: 32px !important; padding: 4px 8px !important; }
+.top-nav-workspace .studio-account-name { display: none; }
+
+/* Reduced new-project button in workspace mode */
+.top-nav-workspace .top-nav-new-project-btn { min-width: 32px; width: 32px; height: 32px; }
+
+/* Settings icon button in workspace mode */
+.top-nav-workspace .studio-project-actions > button { min-height: 32px; min-width: 32px; padding: 6px !important; background: transparent !important; border: 0 !important; color: var(--text-muted) !important; }
+.top-nav-workspace .studio-project-actions > button:hover { color: var(--text-primary) !important; background: var(--bg-surface) !important; }
+
+/* Minimal preview canvas toolbar (controls moved to topbar) */
+.preview-canvas-toolbar-minimal { padding: 4px 10px; min-height: auto; background: transparent; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 8px; }
+.preview-zoom-select { font-size: 11px; background: var(--bg-card); border: 1px solid var(--border-medium); border-radius: 5px; padding: 2px 6px; color: var(--text-secondary); cursor: pointer; }
 .studio-workspace-brand { display: inline-flex; align-items: center; flex: none; gap: 9px; padding: 5px 0; border: 0; background: none; color: var(--text-primary); }
 .studio-workspace-brand > span { font-size: 20px; font-weight: 600; letter-spacing: -.8px; }
 .studio-nav-divider { font-size: 24px; font-weight: 400; color: var(--border-medium); margin: 0 5px; }
