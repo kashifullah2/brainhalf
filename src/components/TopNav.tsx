@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { Play, Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Server, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
+import { Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Server, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import { setTheme, useTheme } from '../lib/theme';
@@ -201,13 +201,8 @@ const TopNav: React.FC<TopNavProps> = ({
             </button>
             <button role="tab" type="button" aria-selected={activeTab === 'code'}
               className={`bolt-tab${activeTab === 'code' ? ' active' : ''}`}
-              onClick={() => onSelectTab?.('code')}>
-              <Code2 size={13} strokeWidth={1.75} /><span>Code</span>
-            </button>
-            <button role="tab" type="button" aria-selected={activeTab === 'console'}
-              className={`bolt-tab${activeTab === 'console' ? ' active' : ''}`}
-              onClick={() => onSelectTab?.('console')}>
-              <Terminal size={13} strokeWidth={1.75} /><span>Terminal</span>
+              onClick={() => onSelectTab?.('code')} title="Code" aria-label="Code editor">
+              <Code2 size={13} strokeWidth={1.75} />
             </button>
           </div>
 
@@ -237,7 +232,7 @@ const TopNav: React.FC<TopNavProps> = ({
       {/* Mobile tabs */}
       {isMobile && onSelectMobileTab && (
         <div className="segmented-control studio-mobile-tabs" style={{ padding: '2px', flexShrink: 0 }}>
-          {([['chat', 'Chat', Bot], ['code', 'Code', Code2], ['preview', 'Preview', Play]] as const).map(([tab, label, Icon]) => (
+          {([['chat', 'Chat', Bot], ['code', 'Code', Code2]] as const).map(([tab, label, Icon]) => (
             <button key={tab} className={`segmented-tab${mobileTab === tab ? ' active' : ''}`}
               onClick={() => onSelectMobileTab(tab)} aria-pressed={mobileTab === tab}
               style={{ padding: '4px 10px', fontSize: '11.5px' }}>
