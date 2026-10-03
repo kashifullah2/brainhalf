@@ -60,7 +60,10 @@ async function actionEmail(env: EmailEnv, email: string, kind: 'verify' | 'reset
     console.error(`email/issue returned malformed JSON: ${cause instanceof Error ? cause.message : String(cause)}`);
     throw new Error('Email service unavailable');
   }
-  if (!action) return;
+  if (!action || !action.token || !action.email) {
+    console.error('email/issue returned empty action: no token/email issued');
+    throw new Error('Email service unavailable');
+  }
   // Fragments never go to servers, access logs, or referrer headers.
   const url = `${SITE}/${kind === 'reset' ? 'reset-password' : 'verify-email'}#token=${action.token}`;
   const subject = kind === 'reset' ? 'Reset your BrainHalf password' : 'Verify your BrainHalf email';
