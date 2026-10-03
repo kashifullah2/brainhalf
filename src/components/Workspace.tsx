@@ -452,6 +452,27 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const previewLoadStateRef = useRef(previewLoadState);
   useEffect(() => { previewLoadStateRef.current = previewLoadState; }, [previewLoadState]);
   useEffect(() => setPreviewIssue(null), [activeProjectId]);
+  // Self-heal stale "Cannot resolve module" errors: if the missing file arrives
+  // (e.g. via a fix run), the old error overlay must not stick around obscuring
+  // the preview. Clear it and let the preview retry with the complete file set.
+  useEffect(() => {
+    if (!previewIssue || previewIssue.layer !== 'frontend') return;
+    const m = /Cannot resolve module "([^"]+)"/.exec(previewIssue.error);
+    if (!m) return;
+    const spec = m[1];
+    // Resolve relative to the importing file's directory.
+    const importerDir = previewIssue.file.slice(0, previewIssue.file.lastIndexOf('/'));
+    const resolved = (importerDir + '/' + spec).split('/').reduce<string[]>((acc, part) => {
+      if (part === '..') acc.pop(); else if (part !== '.') acc.push(part);
+      return acc;
+    }, []).join('/');
+    const exists = files[resolved] !== undefined || files[resolved + '.tsx'] !== undefined || files[resolved + '.ts'] !== undefined || files[resolved + '.jsx'] !== undefined || files[resolved + '.js'] !== undefined;
+    if (exists) {
+      setPreviewIssue(null);
+      setPreviewLoadError('');
+      if (previewLoadStateRef.current === 'error') markPreviewState('loading');
+    }
+  }, [files, previewIssue]);
   useEffect(() => {
     setPreviewLoadState('idle');
     setPreviewLoadError('');

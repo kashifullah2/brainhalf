@@ -235,6 +235,7 @@ export interface ResumableJobInfo {
   completedFiles: number;
   error: string | null;
   resumesLeft: number;
+  autoResume?: boolean;
 }
 
 /**
@@ -252,6 +253,7 @@ export function toResumableJobInfo(raw: unknown): ResumableJobInfo | null {
     completedFiles: num(j.completedFiles),
     error: typeof j.error === 'string' ? j.error : null,
     resumesLeft: num(j.resumesLeft),
+    autoResume: j.autoResume === true,
   };
 }
 
@@ -1996,6 +1998,17 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       projectId: activeProjectId,
     });
   }, [activeProjectId, projectScope, models, selectedModelId]);
+
+  // Auto-resume connection-drop interruptions: the server marks jobs interrupted
+  // by a dropped connection (not a user stop) with autoResume. Resume automatically
+  // after a brief delay so the user sees what's happening and can still dismiss.
+  useEffect(() => {
+    if (!resumableJob?.autoResume || !resumableJob.id) return;
+    const t = setTimeout(() => {
+      if (resumableJobRef.current?.id === resumableJob.id) handleResumeGeneration();
+    }, 2500);
+    return () => clearTimeout(t);
+  }, [resumableJob?.id, resumableJob?.autoResume, handleResumeGeneration]);
 
   const repairBudgetRef = useRef(new RepairBudget());
 

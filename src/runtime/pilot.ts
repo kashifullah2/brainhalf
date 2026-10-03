@@ -31,7 +31,10 @@ export class PilotCoordinator extends DurableObject<RuntimeEnv> {
       const usage = dailyUsage(await txn.get<DailyUsage>('owner:daily'));
       if (kind === 'jobs' && usage.jobs.includes(jobId!)) return;
       if (kind === 'emails' && jobId && (usage.emails || []).includes(jobId)) return;
-      if (usage.used[kind] >= OWNER_RUNTIME_LIMITS[kind]) throw new RuntimeError(`Daily account ${kind} limit reached. Limits reset at midnight UTC.`, 429);
+      if (usage.used[kind] >= OWNER_RUNTIME_LIMITS[kind]) {
+        const what = kind === 'jobs' ? 'backend previews' : kind === 'emails' ? 'emails' : 'requests';
+        throw new RuntimeError(`You've used today's allowance for ${what}. It resets at midnight UTC — the frontend preview and code editing still work, and your backend will start again after the reset.`, 429);
+      }
       usage.used[kind]++;
       if (kind === 'jobs') usage.jobs.push(jobId!);
       if (kind === 'emails' && jobId) { usage.emails ||= []; usage.emails.push(jobId); }

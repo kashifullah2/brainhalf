@@ -379,6 +379,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    */
   private syntaxRepairAttempts = 0;
   /**
+   * Bounded final-repair attempts for the post-generation completeness check.
+   * The per-batch dangling-import check can miss files when generation cuts off
+   * between batches; this is the last line of defense before the user sees the app.
+   */
+  private finalCompletenessRepairAttempts = 0;
+  /**
    * Epoch of the generation whose turn was last persisted via
    * saveGenerationTurn. Lets the failure handler preserve the user's prompt
    * without duplicating a turn that was already saved (e.g. a completed
@@ -923,7 +929,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // marked running: the in-memory session is gone but the job row survives.
     // Surface those orphans as resumable instead of letting them vanish.
     // Best-effort; history delivery must never fail because of it.
-    let resumableJob: { id: string; completedFiles: number; error: string | null; resumesLeft: number } | null = null;
+    let resumableJob: { id: string; completedFiles: number; error: string | null; resumesLeft: number; autoResume?: boolean } | null = null;
     try {
       const jobs = this.generationJobs();
       if (!this.activeGeneration) {
@@ -936,6 +942,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           completedFiles: resumable.completedFiles.length,
           error: resumable.error,
           resumesLeft: Math.max(0, MAX_RESUMES - resumable.resumeCount),
+          // Connection drops and transient provider errors (not user stops) auto-resume
+          // on reconnect: the user didn't ask to stop, so don't make them click.
+          // Bounded by MAX_RESUMES.
+          autoResume: !!resumable.error && /connection dropped|internal error|temporarily overloaded|too much traffic|took too long to respond/i.test(resumable.error),
         };
       }
     } catch { /* resumable state is auxiliary */ }
@@ -1024,6 +1034,47 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   /** True for the preview harness entry point, which this object owns. */
   private isHarnessEntry(cleanPath: string): boolean {
     return isHarnessEntryModule(cleanPath);
+  }
+
+  /**
+   * Post-generation completeness check. The per-batch dangling-import check in
+   * extractAndSaveFiles can miss files when generation cuts off between batches
+   * (e.g. App.tsx written in batch 1, AuthPage.tsx never written because the
+   * build ended early). This runs once after the final stage completes, scanning
+   * ALL project files for unresolvable imports. Missing files trigger one bounded
+   * [AUTO-FIX] repair; if that was already used, the user gets a clear warning
+   * listing exactly what's missing instead of a silent broken preview.
+   */
+  private verifyFinalCompleteness(connection: Connection): void {
+    try {
+      const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
+      const allFiles = new Map<string, string>();
+      for (const r of rows || []) allFiles.set(r.path, r.content || '');
+      if (allFiles.size === 0) return;
+      const missing = findDanglingImports(allFiles, new Set<string>());
+      if (missing.length === 0) return;
+      const candidates = [...new Set(missing.map(d => /components\//.test(d.resolvedPath) ? `${d.resolvedPath}.tsx` : `${d.resolvedPath}.ts`))];
+      console.warn(`Final completeness check: ${candidates.length} imported file(s) never written: ${candidates.join(', ')}`);
+      if (this.finalCompletenessRepairAttempts < 1) {
+        this.finalCompletenessRepairAttempts++;
+        const list = candidates.slice(0, 8).map(p => `- ${p}`).join('\n');
+        const repairPrompt =
+          `[AUTO-FIX] The build finished but these files are imported by the app and were never written:\n${list}\n\n` +
+          `Generate ONLY these missing files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
+          `Match the existing app's architecture, imports, and styling. Do not modify any other file.`;
+        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The build was missing ${candidates.length} file(s). Generating them now…` })); } catch { }
+        try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch { }
+      } else {
+        try {
+          connection.send(JSON.stringify({
+            type: 'error',
+            error: `The app is incomplete: ${candidates.length} file(s) imported by the app were never generated (${candidates.slice(0, 5).join(', ')}${candidates.length > 5 ? ', …' : ''}). Ask the builder to create them.`,
+          }));
+        } catch { }
+      }
+    } catch (err) {
+      console.warn('Final completeness check failed:', err instanceof Error ? err.message : String(err));
+    }
   }
 
   private pendingAuth = new Map<string, Promise<boolean>>();
@@ -1523,7 +1574,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
     // server recognizes via its own continuation prompts.
-    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; }
+    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; this.finalCompletenessRepairAttempts = 0; }
     const controls = generationControls(data);
     const generationTimeoutMs = controls.timeoutMs;
     const maxSteps = controls.maxSteps;
@@ -2208,6 +2259,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     // Skip in question/destructive/ambiguous modes (no app generated).
                     if (!modes?.questionMode && !modes?.destructiveMode && !modes?.ambiguousMode && !plannerMode) {
                       try { this.ensureEntryPointExists(); } catch { /* build will surface if missing */ }
+                      // Final safety net: catch imports that dangle because generation
+                      // cut off between batches (per-batch check can't see the future).
+                      // Only when this generation wrote files — a greeting or text
+                      // reply must never trigger a hidden file-repair turn.
+                      if (extraction.writtenCount > 0) {
+                        try { this.verifyFinalCompleteness(connection); } catch { /* never block completion */ }
+                      }
                     }
                   } else {
                     currentNativeMessages.push({ role: 'assistant', content: text });
@@ -2298,6 +2356,18 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       }
       console.error('Error handling message in ChatAgent:', err);
       let cleanError = ((err instanceof Error ? err.message : '') || 'Failed to process AI generation.').replace(/^undefined:\s*/i, '');
+      // Never surface raw provider internals (e.g. "8005: Internal server error",
+      // "AiError: 3046", stack traces) in chat or history — use the classifier's
+      // user-facing message for those. Meaningful messages the code already
+      // produced (e.g. "Quota exceeded", "The model returned no response") are
+      // left alone. The raw error stays in console.error above.
+      if (!(err instanceof AiBudgetError) && !(err instanceof GenerationUserError)
+        && /\b[38]\d{3}\b|internal server error|AiError/i.test(cleanError)) {
+        try {
+          const classified = classifyGenerationError(err);
+          if (classified.category !== 'unknown' && classified.userMessage) cleanError = classified.userMessage;
+        } catch { /* keep raw as fallback */ }
+      }
       if (err instanceof AiBudgetError && err.status === 429) {
         // Preserve the user's prompt in the server-side conversation history even
         // when the concurrent generation limit is exceeded, so it survives a

@@ -57,4 +57,22 @@ describe('findDanglingImports', () => {
     ]);
     expect(findDanglingImports(files, new Set())).toHaveLength(0);
   });
+
+  it('catches the BookHaven cut-off: full project scan finds imports never written in any batch', () => {
+    // Simulates the post-generation state where App.tsx was saved in an early
+    // batch but AuthPage/ProfilePage/AdminDashboard were never written because
+    // generation cut off. The per-batch check misses this; the final scan must not.
+    const allProjectFiles = new Map([
+      ['/src/App.tsx', `import AuthPage from './components/AuthPage';\nimport ProfilePage from './components/ProfilePage';\nimport AdminDashboard from './components/AdminDashboard';\nexport default function App() { return null; }`],
+      ['/src/components/Header.tsx', `export default function Header() { return null; }`],
+      ['/src/main.tsx', `import App from './App';`],
+    ]);
+    const dangling = findDanglingImports(allProjectFiles, new Set());
+    const missing = dangling.map(d => d.resolvedPath).sort();
+    expect(missing).toEqual([
+      '/src/components/AdminDashboard',
+      '/src/components/AuthPage',
+      '/src/components/ProfilePage',
+    ]);
+  });
 });
