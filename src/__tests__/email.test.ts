@@ -203,6 +203,16 @@ function publicRequest(path: string, method = 'POST', body?: unknown, token?: st
   }), env, {} as any);
 }
 
+it('forwards EMAIL_VERIFICATION_REQUIRED code through the worker login endpoint', async () => {
+  const credentials = { email: 'code@example.com', password: 'code-password' };
+  await publicRequest('auth/signup', 'POST', credentials);
+  const loginResponse = await publicRequest('auth/login', 'POST', credentials);
+  expect(loginResponse.status).toBe(403);
+  const loginBody = await loginResponse.json() as any;
+  expect(loginBody.code).toBe('EMAIL_VERIFICATION_REQUIRED');
+  expect(typeof loginBody.error).toBe('string');
+});
+
 it('completes signup, verification, sign-in, session, ticket and logout through public endpoints', async () => {
   const credentials = { email: 'roundtrip@example.com', password: 'roundtrip-password' };
   expect((await publicRequest('auth/signup', 'POST', credentials)).status).toBe(202);

@@ -354,9 +354,9 @@ export async function handleLogin(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  const result = (await res.json()) as { userId?: string; email?: string; error?: string };
+  const result = (await res.json()) as { userId?: string; email?: string; error?: string; code?: string };
   if (!res.ok || !result.userId) {
-    return json(res.status || 401, { error: result.error || 'Login failed' });
+    return json(res.status || 401, { error: result.error || 'Login failed', ...(result.code ? { code: result.code } : {}) });
   }
 
   const { token } = await issueToken(secret, result.userId, TOKEN_TTL_SECONDS);
