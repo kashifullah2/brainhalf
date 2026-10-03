@@ -16,6 +16,26 @@
   Content-Security-Policy: default-src 'none'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.adtrafficquality.google https://csi.gstatic.com; worker-src 'self' blob:; frame-src 'self' https://*.apps.brainhalf.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://securepubads.g.doubleclick.net https://*.adtrafficquality.google; manifest-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
+# Preview routes are handled by the Worker (run_worker_first), which sets its
+# own preview CSP via previewSecurityHeaders(). These overrides prevent the
+# catch-all /* shell CSP from stacking a second, stricter policy on top — when
+# a browser receives two CSP headers it enforces both, so the missing
+# 'unsafe-eval' in the shell policy would block the preview's new Function()
+# transpilation even though the Worker's CSP allows it.
+/preview/*
+  Content-Security-Policy: sandbox allow-scripts allow-forms; default-src 'none'; script-src blob: 'unsafe-inline' 'unsafe-eval' 'self' https://esm.sh https://*.esm.sh https://cdn.tailwindcss.com https://static.cloudflareinsights.com; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src data: https:; font-src data: https://fonts.gstatic.com; connect-src https: http://localhost:5173 http://127.0.0.1:5173; frame-src 'none'; worker-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'self' http://localhost:5173 http://127.0.0.1:5173
+  X-Frame-Options: SAMEORIGIN
+  Cross-Origin-Resource-Policy: cross-origin
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
+
+/p/*
+  Content-Security-Policy: sandbox allow-scripts allow-forms; default-src 'none'; script-src blob: 'unsafe-inline' 'unsafe-eval' 'self' https://esm.sh https://*.esm.sh https://cdn.tailwindcss.com https://static.cloudflareinsights.com; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src data: https:; font-src data: https://fonts.gstatic.com; connect-src https: http://localhost:5173 http://127.0.0.1:5173; frame-src 'none'; worker-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'self' http://localhost:5173 http://127.0.0.1:5173
+  X-Frame-Options: SAMEORIGIN
+  Cross-Origin-Resource-Policy: cross-origin
+  Cache-Control: no-store
+  X-Robots-Tag: noindex, nofollow
+
 # Fingerprinted bundles can be cached without serving stale releases.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

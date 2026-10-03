@@ -14,6 +14,7 @@ vi.mock('../agent', () => ({
 }));
 
 import { shellSecurityHeaders } from '../worker';
+import { previewSecurityHeaders } from '../lib/preview-isolation';
 
 /**
  * Cloudflare serves the static shell from [assets] without invoking the Worker
@@ -87,6 +88,19 @@ describe('deploy config drift (public/_headers vs worker)', () => {
       'Permissions-Policy',
     ]) {
       expect(file[key], `${key} must match between _headers and the worker`).toBe(worker[key]);
+    }
+  });
+
+  it('overrides the shell CSP for preview routes with the preview CSP', () => {
+    const parsed = parseHeaders(raw);
+    const previewCsp = previewSecurityHeaders()['Content-Security-Policy'];
+    const normalize = (csp: string) =>
+      csp.split(';').map(d => d.trim()).filter(Boolean).sort();
+
+    for (const pattern of ['/preview/*', '/p/*']) {
+      expect(parsed[pattern], `${pattern} must be defined in _headers`).toBeDefined();
+      expect(parsed[pattern]['Content-Security-Policy'], `${pattern} must have a CSP`).toBeDefined();
+      expect(normalize(parsed[pattern]['Content-Security-Policy'])).toEqual(normalize(previewCsp));
     }
   });
 });
