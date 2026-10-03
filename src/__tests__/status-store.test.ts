@@ -155,11 +155,11 @@ describe('Status Store & Platform Status Single Source of Truth', () => {
       expect(visuals.isBuilding).toBe(true);
     });
 
-    it('verifies visuals for "Stopped" state: both labels read "Stopped" with a green dot', () => {
+    it('verifies visuals for "Stopped" state: both labels read "Stopped" with a gray dot', () => {
       const visuals = getStatusVisuals('Stopped');
       expect(visuals.topBarLabel).toBe('Stopped');
       expect(visuals.modelPanelLabel).toBe('Stopped');
-      expect(visuals.dotColor).toBe('#10b981');
+      expect(visuals.dotColor).toBe('#6b7280');
       expect(visuals.isBuilding).toBe(false);
     });
 

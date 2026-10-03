@@ -26,6 +26,7 @@ import ToolSummary from './ToolSummary';
 import { formatToolTranscript, isSystemContinuation } from '../lib/chat-transcript';
 import ConfirmModal from './ConfirmModal';
 import { usePlatformStatus } from '../lib/status-store';
+import { classifyGenerationError } from '../lib/generation-errors';
 import { CLIENT_SELECTABLE_MODELS, DEFAULT_MODEL_ID, type ModelProvider } from '../lib/models';
 import BrainHalfLogo from './BrainHalfLogo';
 import { PendingChatRequest } from '../lib/pending-chat-request';
@@ -74,7 +75,7 @@ export function resolveAvailableModels(
   const disabled = new Set(Array.isArray(body.disabledModels) ? body.disabledModels : []);
   const custom: ModelDef[] = Array.isArray(body.customModels) ? body.customModels.map(cm => ({
     id: cm.id,
-    name: cm.name,
+    name: sanitizeCustomModelName(cm.name, cm.id),
     provider: 'custom' as const,
     category: 'fast' as const,
     badge: 'Custom',
@@ -121,10 +122,29 @@ export function friendlyModelName(rawId: string): string {
   const withoutScope = rawId.replace(/^@cf\//, '');
   const parts = withoutScope.split('/');
   const last = parts[parts.length - 1] || rawId;
-  return last
-    .split(/[-_]/)
+  const words = last.split(/[-_]/);
+  // If any word is a long opaque token (≥10 chars with mixed case or digits
+  // suggesting a generated ID), fall back to showing the raw last segment.
+  const looksOpaque = words.some(w => w.length >= 10 && /[A-Z]/.test(w) && /[a-z]/.test(w));
+  if (looksOpaque) return last;
+  return words
     .map(word => word ? word.charAt(0).toUpperCase() + word.slice(1) : word)
     .join(' ');
+}
+
+/**
+ * Sanitizes an admin-supplied custom model display name. If the name looks
+ * like a raw ID (opaque token, or same as the model id) it falls back to
+ * friendlyModelName applied to the id.
+ */
+function sanitizeCustomModelName(name: string, id: string): string {
+  if (!name || name === id) return friendlyModelName(id);
+  // If the name contains no spaces and has mixed-case opaque segments, treat
+  // it as a raw ID that an admin pasted into the name field.
+  if (!/\s/.test(name) && /[A-Z]/.test(name) && /[a-z]/.test(name) && name.length > 20) {
+    return friendlyModelName(name);
+  }
+  return name;
 }
 
 interface Message {
@@ -559,6 +579,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   }, [input]);
 
   const isGeneratingRef = useRef(false);
+  // Deduplicates consecutive generation_notice retry messages: only the first
+  // retry notice per error category is surfaced to avoid three identical lines.
+  const lastNoticeMessageRef = useRef<string | null>(null);
   const messagesRef = useRef<Message[]>(messages);
   const composerVisible = historyLoaded || composerUnlocked;
   const scheduleAutoScroll = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -1142,7 +1165,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             }
           } else if (data.type === 'generation_notice') {
             if (isGeneratingRef.current && data.requestId === generationClockRef.current?.record.id && ['accepted', 'model'].includes(data.stage)) generationClockRef.current?.mark(data.stage);
-            if (isGeneratingRef.current && typeof data.message === 'string') appEvents.emit('generation-status', { status: 'Generating', detail: data.message, projectId: activeProjectId });
+            if (isGeneratingRef.current && typeof data.message === 'string') {
+              // Suppress duplicate retry notices (e.g. three identical "The AI
+              // model took too long to respond. Retrying…" lines).
+              const dedupeKey = data.message.trim();
+              if (dedupeKey !== lastNoticeMessageRef.current) {
+                lastNoticeMessageRef.current = dedupeKey;
+                appEvents.emit('generation-status', { status: 'Generating', detail: data.message, projectId: activeProjectId });
+              }
+            }
             // A notice for a generation this tab isn't tracking (e.g. started
             // in another tab) supersedes any interrupted build server-side, so
             // a stale Resume offer must not linger.
@@ -1167,7 +1198,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             pendingContinuationRef.current = null;
             setIsGenerating(false);
             isGeneratingRef.current = false;
-            const errMsg = data.error || data.message || 'Generation failed';
+            // Classify raw provider errors (e.g. "3046: Request timeout",
+            // "8005: Internal server error") so raw codes never reach the user.
+            const rawErrMsg = data.error || data.message || 'Generation failed';
+            const classified = classifyGenerationError(new Error(rawErrMsg));
+            const errMsg = classified.category !== 'unknown' ? classified.userMessage : rawErrMsg;
             if (wasGenerating && data.code === 'hosting_unavailable') {
               const prompt = [...messagesRef.current].reverse().find(message => message.role === 'user')?.content;
               if (prompt) setExportPrompt({ notice: errMsg, resume: () => { if (isCurrent()) handleSendMessageRef.current?.(prompt); } });
@@ -1802,6 +1837,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     setElapsedSeconds(0);
     setIsGenerating(true);
     isGeneratingRef.current = true;
+    lastNoticeMessageRef.current = null;
     appEvents.emit('generation-status', { status: 'Generating', detail: workspaceReadyRef.current ? 'Sending your request…' : 'Preparing your workspace…', projectId: activeProjectId });
 
     const sendWithWs = (ws: WebSocket) => {
@@ -2026,6 +2062,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 role="status"
                 aria-live="polite"
                 aria-atomic="true"
+                title={platformStatus.detail || undefined}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -2033,6 +2070,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   fontSize: '11px',
                   color: 'var(--text-muted)',
                   userSelect: 'none',
+                  cursor: platformStatus.detail ? 'help' : 'default',
                 }}
               >
                 <span style={{
@@ -2040,10 +2078,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   height: '5px',
                   borderRadius: '50%',
                   background: platformStatus.dotColor,
-                  boxShadow: 'none',
                   flexShrink: 0,
                 }} />
                 <span>{platformStatus.modelPanelLabel}</span>
+                {(platformStatus.status === 'Stopped' || platformStatus.status === 'Error') && platformStatus.detail && (
+                  <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    — {platformStatus.detail}
+                  </span>
+                )}
               </div>
           <ActionMenu label="Conversation actions" className="studio-conversation-menu" items={[
             { label: 'Jump to latest message', icon: <ArrowDown />, onSelect: () => { messagesEndRef.current?.scrollIntoView({ block: 'end' }); } },
@@ -2084,12 +2126,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       <div 
         className="studio-message-stream"
         onScroll={handleMessagesScroll}
-        style={{ 
-          flex: 1, 
-          padding: '24px 20px', 
-          overflowY: 'auto', 
-          display: 'flex', 
-          flexDirection: 'column', 
+        style={{
+          flex: 1,
+          padding: '24px 20px 120px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
           gap: '20px',
           scrollBehavior: 'smooth'
         }}>
@@ -2785,7 +2827,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           </div>
 
         </div>
-        <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{emptySendHint ? 'Type your idea first — describe the app you want to build.' : isGenerating ? 'Draft now. Send when the builder finishes.' : 'Your changes start here.'}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
+        <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{emptySendHint ? 'Type your idea first — describe the app you want to build.' : isGenerating ? 'Queued — sends when the builder finishes.' : ''}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
       </div>
 
       {/* Accessible Non-Blocking Chat Dialog */}

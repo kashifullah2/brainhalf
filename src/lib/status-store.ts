@@ -11,9 +11,12 @@ export interface StatusVisuals {
   dotColor: string;
   glow: string;
   isBuilding: boolean;
+  /** Human-readable reason for Error/Stopped states, if known. */
+  detail?: string;
 }
 
 const projectStatuses = new Map<string, PlatformStatus>();
+const projectDetails = new Map<string, string>();
 const previewErrors = new Set<string>();
 let statusScope = getProjectStorageScope();
 
@@ -22,6 +25,7 @@ function ensureStatusScope(): void {
   if (current === statusScope) return;
   statusScope = current;
   projectStatuses.clear();
+  projectDetails.clear();
   previewErrors.clear();
 }
 
@@ -50,8 +54,8 @@ export function getStatusVisuals(status: PlatformStatus): StatusVisuals {
         status: 'Stopped',
         topBarLabel: 'Stopped',
         modelPanelLabel: 'Stopped',
-        dotColor: '#10b981',
-        glow: '0 0 6px rgba(16, 185, 129, 0.5)',
+        dotColor: '#6b7280',
+        glow: 'none',
         isBuilding: false,
       };
     case 'Connecting':
@@ -97,6 +101,8 @@ export function setPlatformStatus(newStatus: PlatformStatus, detail: string = ''
   ensureStatusScope();
   if (!projectId) return;
   projectStatuses.set(projectId, newStatus);
+  if (detail) projectDetails.set(projectId, detail);
+  else projectDetails.delete(projectId);
   appEvents.emit('platform-status-sync', {
     status: newStatus,
     detail,
@@ -107,9 +113,11 @@ export function setPlatformStatus(newStatus: PlatformStatus, detail: string = ''
 export function resetPlatformStatusToReady(projectId?: string) {
   if (projectId) {
     projectStatuses.delete(projectId);
+    projectDetails.delete(projectId);
     previewErrors.delete(projectId);
   } else {
     projectStatuses.clear();
+    projectDetails.clear();
     previewErrors.clear();
   }
   appEvents.emit('platform-status-sync', {
@@ -200,5 +208,7 @@ export function usePlatformStatus(activeProjectId: string): StatusVisuals {
     };
   }, [activeProjectId]);
 
-  return getStatusVisuals(currentStatus);
+  const detail = projectDetails.get(activeProjectId);
+  const visuals = getStatusVisuals(currentStatus);
+  return detail ? { ...visuals, detail } : visuals;
 }

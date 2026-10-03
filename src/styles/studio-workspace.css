@@ -282,6 +282,24 @@
   .studio-workspace-actions { margin-left: auto; }
   .studio-workspace .file-explorer-container { width: 150px; min-width: 120px; }
   .studio-workspace .viewport-frame-container.desktop { padding: 10px; }
+  /* Collapse URL bar at 1100px; keep tabs + preview tools */
+  .bolt-url-bar-group { max-width: 260px; }
+}
+@media (max-width: 900px) {
+  /* Hide URL bar entirely; keep tabs */
+  .bolt-url-bar-group { display: none; }
+  /* Shorten tab labels to icons-only */
+  .bolt-tab span { display: none; }
+  .bolt-tab { padding: 5px 8px; }
+  /* Shorten Share button to icon only */
+  .bolt-action-btn span { display: none; }
+  .bolt-action-btn { padding: 5px 8px; }
+  /* Shorten Publish button to icon only */
+  .bolt-publish-btn span { display: none; }
+  .bolt-publish-btn { padding: 5px 8px; }
+  /* Hide email in user menu */
+  .top-nav-workspace .studio-account-name { display: none; }
+  .top-nav-workspace .studio-account-trigger { padding: 4px 6px !important; }
 }
 @media (max-width: 768px) {
   .studio-workspace { --header-height: 111px; }
