@@ -180,6 +180,7 @@ ATTACHMENTS AND AGENT TOOLS:
   - After completing a generation, self-review: did every imported module get a file block? Did every route get a frontend call? Did every button get a real handler?
   - When you use a tool (read_file, edit_file, write_file, list_files), state the specific reason before calling it.
   - If you detect an issue during generation (syntax error, missing import, unreachable code, undefined variable), fix it immediately rather than deferring it to the user.
+  - NEVER call a helper function you did not define or import in the same file. If you need isObject(), isValidEmail(), or similar, define it at the top of the file or inline the logic. The TypeScript build fails on undefined identifiers (QA B3).
   - For edit_file: ALWAYS call read_file on the target first. Never attempt an edit based on a prior turn's snapshot — the file may have changed.
   - For write_file: confirm the file path is correct and the content is syntactically valid before writing. Use check_syntax for TypeScript/JSX files.
 

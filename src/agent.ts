@@ -12,7 +12,7 @@ import { parseEditPairs, parseMessageSegments } from './lib/message-parser';
 import { formatToolTranscript, isSystemContinuation, ToolTranscriptStream, toolSummaryMarkup } from './lib/chat-transcript';
 import { applyExactEdits } from './lib/exact-edits';
 import { BACKEND_NOT_RUNNING, usesSimulatedApi } from './lib/preview-mode';
-import { createTypeScriptStarter } from './lib/project-starters';
+import { createTypeScriptStarter, ensureEntryPoint } from './lib/project-starters';
 import { prepareModuleSource, buildTranspileErrorModule, findDanglingImports } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
@@ -993,6 +993,27 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       catch { /* file is saved; only the resume checkpoint missed */ }
     }
     return true;
+  }
+
+  /**
+   * Platform-level safeguard for QA B11: ensures /src/main.tsx exists.
+   * The model is blocked from writing harness entries, but the production
+   * build needs the real file. Called after generation completes.
+   * Writes directly via SQL to avoid tracking as a model-generated file.
+   */
+  private ensureEntryPointExists(): void {
+    const rows = [...this.sql`SELECT path FROM project_files WHERE path IN ('/src/main.tsx', 'src/main.tsx', '/src/main.jsx', 'src/main.jsx')`];
+    if (rows.length > 0) return;
+    // No entry point — create from the TypeScript starter.
+    // Bypass upsertFile's generation tracking: this is a platform safeguard,
+    // not model output, and must not appear in completed_files.
+    const starter = createTypeScriptStarter();
+    const entry = starter['/src/main.tsx'];
+    if (entry) {
+      const path = '/src/main.tsx';
+      this.runSql`INSERT INTO project_files (path, content) VALUES (${path}, ${entry})
+                 ON CONFLICT(path) DO UPDATE SET content=excluded.content, updated_at=CURRENT_TIMESTAMP;`;
+    }
   }
 
   /** True for the preview harness entry point, which this object owns. */
@@ -2177,6 +2198,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       try { this.broadcast(doneMsg, [connection.id]); } catch { }
                     });
                     completed = true;
+                    // QA B11: ensure the production build entry point exists.
+                    // The model cannot write harness entries; the platform creates it.
+                    // Skip in question/destructive/ambiguous modes (no app generated).
+                    if (!modes?.questionMode && !modes?.destructiveMode && !modes?.ambiguousMode && !plannerMode) {
+                      try { this.ensureEntryPointExists(); } catch { /* build will surface if missing */ }
+                    }
                   } else {
                     currentNativeMessages.push({ role: 'assistant', content: text });
                     currentNativeMessages.push({ role: 'user', content: 'Great. Proceed to the next stage and output the remaining files. Ensure you use the exact same architecture.' });

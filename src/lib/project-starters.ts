@@ -448,3 +448,22 @@ button:focus-visible, input:focus-visible { outline: 3px solid #087f73; outline-
 ul { list-style: none; padding: 0; } li { padding: 16px 0; border-bottom: 1px solid #dce2e9; } li span { overflow-wrap: anywhere; min-width: 0; }
 @media (max-width: 480px) { .app { margin: 12px auto; padding: 16px; } form { padding: 16px; } li { flex-wrap: wrap; } }
 `;
+
+/**
+ * Ensures the React entry point exists. QA B11: the preview owns /src/main.tsx
+ * (the model is blocked from writing it), but the production build needs the
+ * real file. If neither /src/main.tsx nor /src/main.jsx exists, create the
+ * TypeScript entry from the starter.
+ */
+export function ensureEntryPoint(files: Record<string, string>): Record<string, string> {
+  const hasTsx = files['/src/main.tsx'] !== undefined || files['src/main.tsx'] !== undefined;
+  const hasJsx = files['/src/main.jsx'] !== undefined || files['src/main.jsx'] !== undefined;
+  if (hasTsx || hasJsx) return files;
+  // No entry point — create the TypeScript one from the starter.
+  const starter = createTypeScriptStarter();
+  const entry = starter['/src/main.tsx'];
+  if (entry) {
+    return { ...files, '/src/main.tsx': entry };
+  }
+  return files;
+}

@@ -324,7 +324,8 @@ describe('Agent generation against the installed AI SDK', () => {
     expect(providerState.model.doStreamCalls).toHaveLength(2);
     const schema = providerState.model.doStreamCalls[0].tools.find((entry: any) => entry.name === 'write_file');
     expect(schema.inputSchema.properties).toHaveProperty('path');
-    expect(database.prepare('SELECT path FROM project_files ORDER BY path').all().map(row => row.path)).toEqual(['/src/App.jsx', '/src/styles.css', '/src/utils.ts']);
+    // Platform ensures /src/main.tsx exists after generation (QA B11 safeguard).
+    expect(database.prepare('SELECT path FROM project_files ORDER BY path').all().map(row => row.path)).toEqual(['/src/App.jsx', '/src/main.tsx', '/src/styles.css', '/src/utils.ts']);
     const visible = firstText + '<agent-tools>write_file</agent-tools>' + secondText;
     expect(database.prepare("SELECT content FROM messages WHERE role = 'assistant'").get()?.content).toBe(visible);
     expect(events.filter(event => event.type === 'stream' && !event.chunk.done).map(event => event.chunk.response).join('')).toBe(visible);

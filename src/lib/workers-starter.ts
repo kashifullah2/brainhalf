@@ -68,10 +68,35 @@ export async function sendAppEmail(env: BrainHalfServices, event: { userId: stri
     '/worker/backend.test.mjs': `import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
-import worker from '../dist-worker/index.js';
+import { readFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
+import { buildSync } from 'esbuild';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+// Bundle the worker from source on-the-fly. Do NOT import from dist-worker:
+// that build artifact may not exist if the build script was overwritten
+// during generation (QA B1). esbuild is a devDependency of every backend.
+const cacheDir = join(root, 'node_modules', '.cache');
+mkdirSync(cacheDir, { recursive: true });
+const outFile = join(cacheDir, 'test-worker-bundle.mjs');
+buildSync({
+  entryPoints: [join(root, 'worker', 'index.ts')],
+  bundle: true,
+  format: 'esm',
+  platform: 'neutral',
+  outfile: outFile,
+  logLevel: 'silent',
+});
+const worker = (await import(pathToFileURL(outFile).href)).default;
+
 test('private CRUD validates input, persists data, and isolates users', async () => {
-  const db = new DatabaseSync(':memory:'); db.exec(readFileSync('migrations/0001_items.sql','utf8'));
+  const db = new DatabaseSync(':memory:');
+  // Apply all migrations in order — never hardcode a filename (QA B2/B9:
+  // the builder renames tables per domain; the test must follow).
+  const migDir = join(root, 'migrations');
+  const migrations = existsSync(migDir) ? readdirSync(migDir).filter(f => f.endsWith('.sql')).sort() : [];
+  for (const m of migrations) db.exec(readFileSync(join(migDir, m), 'utf8'));
   const env = { BRAINHALF_MANAGED: 'true', DB: { prepare(sql) { return { bind(...params) { return { async all() { return {results:db.prepare(sql).all(...params)}; }, async run() { return {meta:db.prepare(sql).run(...params)}; } }; } }; } } };
   const call = (path, method='GET', body, user='alice') => worker.fetch(new Request('https://app.example'+path, {method,headers:{Origin:'https://app.example',...(user ? {'x-bh-user-id':user}:{}),'Content-Type':'application/json'},body:body === undefined ? undefined : JSON.stringify(body)}),env);
   try {
