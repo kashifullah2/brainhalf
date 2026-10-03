@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://brainhalf.com/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://brainhalf.com/gallery</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://brainhalf.com/pricing</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://brainhalf.com/free-ai-app-builder</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://brainhalf.com/faq</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://brainhalf.com/about</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://brainhalf.com/contact</loc><changefreq>yearly</changefreq><priority>0.5</priority></url>
+  <url><loc>https://brainhalf.com/privacy</loc><changefreq>yearly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://brainhalf.com/terms</loc><changefreq>yearly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://brainhalf.com/guides/build-an-app-with-ai</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://brainhalf.com/guides/full-stack-apps</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://brainhalf.com/use-cases/ai-dashboard-builder</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://brainhalf.com/use-cases/ai-website-builder</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+</urlset>
