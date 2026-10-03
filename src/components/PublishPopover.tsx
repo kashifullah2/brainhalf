@@ -260,7 +260,7 @@ export default function PublishPopover({ projectId, files, onClose, onCustomDoma
       <PublicationFailure key={job.id} projectId={projectId} job={job} canRepair={!busy && !generating && !active} />
     </>}
 
-    {!publishing && job?.status !== 'failed' && <>
+    {!publishing && <>
       {release && liveUrl && <div className="publish-popover-live">
         <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="publish-popover-url">{liveUrl.replace(/^https?:\/\//, '')}</a>
         <button type="button" className="publish-popover-icon" aria-label="Copy app address" title="Copy app address" onClick={() => void copyUrl()}>{copied ? <Check size={14} /> : <Copy size={14} />}</button>
