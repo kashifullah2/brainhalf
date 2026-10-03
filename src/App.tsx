@@ -1,6 +1,6 @@
 import './styles/studio-workspace.css';
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { GripVertical } from 'lucide-react';
+import { Bot, Code2, GripVertical, Monitor } from 'lucide-react';
 import LandingPage from './components/LandingPage';
 import LoginScreen from './components/LoginScreen';
 import { ErrorBoundary, SectionErrorBoundary } from './components/ErrorBoundary';
@@ -500,6 +500,21 @@ function App() {
     <div className="app-container studio-workspace">
       <div className="main-content">
         {/* TopNav is now rendered inside Workspace for workspace mode (Bolt-style unified topbar) */}
+        {/* Mobile view switcher. Lives outside workspace-area because the
+            Workspace (and the TopNav inside it) is display:none while the chat
+            tab is active — a tab bar rendered there could never switch away
+            from chat. */}
+        {isMobile && (
+          <div className="segmented-control studio-mobile-tabs" role="tablist" aria-label="Workspace view">
+            {([['chat', 'Chat', Bot], ['preview', 'Preview', Monitor], ['code', 'Code', Code2]] as const).map(([tab, label, Icon]) => (
+              <button key={tab} role="tab" type="button" className={`segmented-tab${mobileTab === tab ? ' active' : ''}`}
+                aria-selected={mobileTab === tab}
+                onClick={() => setMobileTab(tab)}>
+                <Icon size={16} strokeWidth={1.75} aria-hidden="true" /><span>{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className={`workspace-area ${isMobile ? 'is-mobile' : ''}`}>
           <div style={{ display: !isMobile || mobileTab === 'chat' ? 'contents' : 'none' }}>
             <SectionErrorBoundary name="Chat">

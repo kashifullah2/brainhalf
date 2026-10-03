@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { Check, Bot, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Server, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
+import { Check, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import { setTheme, useTheme } from '../lib/theme';
@@ -51,8 +51,6 @@ const TopNav: React.FC<TopNavProps> = ({
   activeProjectId,
   onProjectRenamed,
   onSelectProject: _onSelectProject,
-  mobileTab = 'chat',
-  onSelectMobileTab,
   isMobile = false,
   currentUser,
   onLogout,
@@ -226,19 +224,6 @@ const TopNav: React.FC<TopNavProps> = ({
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Mobile tabs */}
-      {isMobile && onSelectMobileTab && (
-        <div className="segmented-control studio-mobile-tabs" style={{ padding: '2px', flexShrink: 0 }}>
-          {([['chat', 'Chat', Bot], ['code', 'Code', Code2]] as const).map(([tab, label, Icon]) => (
-            <button key={tab} className={`segmented-tab${mobileTab === tab ? ' active' : ''}`}
-              onClick={() => onSelectMobileTab(tab)} aria-pressed={mobileTab === tab}
-              style={{ padding: '4px 10px', fontSize: '11.5px' }}>
-              <Icon size={16} strokeWidth={1.75} /><span>{label}</span>
-            </button>
-          ))}
         </div>
       )}
 

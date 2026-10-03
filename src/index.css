@@ -1838,14 +1838,12 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
     display: none;
   }
 
-  /* Two-row top nav: identity + project name + deploy on row one, the
-     Chat/Code/Preview segmented control wrapped to a full-width row two.
-     At <=768px a single row cannot hold hamburger + name + status + tabs +
-     deploy + overflow, and the right cluster used to be clipped off-screen,
-     which made "More project actions" unreachable. --header-height is the same
-     variable workspace-area subtracts, so the workspace tracks the header. */
+  /* Single-row top nav: the Chat/Preview/Code segmented control moved out of
+     the top nav into App.tsx (it was display:none exactly when needed — on
+     the chat tab), so the header is back to one row. --header-height is the
+     same variable workspace-area subtracts, so the workspace tracks it. */
   :root {
-    --header-height: 108px;
+    --header-height: 58px;
   }
 
   .top-nav {

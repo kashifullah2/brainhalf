@@ -595,6 +595,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   // On first open, cached messages render from localStorage before any WS
   // history arrives: jump straight to the latest instead of the top.
   useEffect(() => {
+    // Nothing to jump to while the welcome screen is showing — on short
+    // viewports scrolling to the end clips the hero above the fold.
+    if (!messagesRef.current.some(message => message.role === 'user')) return;
     scheduleAutoScroll('instant');
   }, [scheduleAutoScroll]);
 
@@ -1025,7 +1028,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             // History applied (whichever branch above ran): land on the latest
             // message instead of opening at the top of a long conversation.
             // 'instant' avoids a slow swoosh through the whole transcript.
-            scheduleAutoScroll('instant');
+            // Skip when the conversation is still just the welcome greeting —
+            // scrolling to the end clips the welcome hero on short viewports.
+            if (messagesRef.current.some(message => message.role === 'user')) scheduleAutoScroll('instant');
           } else if (data.type === 'stream') {
             if (!isGeneratingRef.current) return;
             if (data.chunk?.response) {
