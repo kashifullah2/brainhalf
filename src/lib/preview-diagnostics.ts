@@ -39,6 +39,14 @@ export function diagnosePreviewError(error: string): PreviewDiagnostic {
     };
   }
 
+  if (text.includes('dependency loading failed') || text.includes('failed to fetch dynamically imported module')) {
+    return {
+      category: 'network',
+      likelyCause: 'A package the app uses could not be loaded from the CDN.',
+      suggestedFix: 'Check that the package name and version exist on npm. The builder can fix this automatically.',
+    };
+  }
+
   if (text.includes('failed to fetch') || text.includes('networkerror') || text.includes('cors')) {
     return {
       category: 'network',

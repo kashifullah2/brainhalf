@@ -208,7 +208,7 @@ const TopNav: React.FC<TopNavProps> = ({
           {activeTab === 'preview' && (
             <div className="bolt-preview-icon-group">
               {/* Viewport size — moved to top bar for one-click access */}
-              {onViewportMode && (
+              {onViewportMode && previewReady && (
                 <div className="viewport-segmented-control topbar-viewport" role="group" aria-label="Preview screen size">
                   {([
                     ['desktop', 'Desktop', Monitor],

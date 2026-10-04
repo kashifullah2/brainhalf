@@ -42,7 +42,7 @@ export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, r
     {/* Sub-toolbar: dimensions + zoom (viewport toggles moved to the top bar) */}
     <div className="preview-canvas-toolbar preview-canvas-toolbar-minimal">
       <span className="preview-canvas-dimensions" title={`Preview dimensions: ${dimensions} pixels`}>
-        {mode === 'desktop' ? 'Responsive' : `${width} × ${height}`}
+        {dimensions}
       </span>
       {mode !== 'desktop' && (
         <select aria-label="Preview zoom" value={zoom} onChange={e => setZoom(e.target.value)} className="preview-zoom-select">

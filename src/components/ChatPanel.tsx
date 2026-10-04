@@ -2854,7 +2854,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           </div>
 
         </div>
-        <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{emptySendHint ? 'Type your idea first — describe the app you want to build.' : isGenerating ? 'Queued — sends when the builder finishes.' : ''}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
+        <div className="studio-composer-caption" style={{ visibility: composerVisible ? 'visible' : 'hidden' }}><span role="status">{emptySendHint ? 'Type your idea first — describe the app you want to build.' : isGenerating && input.trim() ? 'Queued — sends when the builder finishes.' : isGenerating ? 'The builder is working…' : ''}</span><span>↵ Send <span aria-hidden="true">·</span> Shift + ↵ New line</span></div>
       </div>
 
       {/* Accessible Non-Blocking Chat Dialog */}

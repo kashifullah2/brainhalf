@@ -79,7 +79,7 @@ export default function GenerationProgress({
 
         {total > 0 && (
           <span className="bh-gen-progress-count" aria-hidden="true">
-            {saved}/{total}
+            {pct}%
           </span>
         )}
       </div>

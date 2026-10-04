@@ -146,12 +146,12 @@ describe('Status Store & Platform Status Single Source of Truth', () => {
       expect(visuals.isBuilding).toBe(false);
     });
 
-    it('verifies visuals for "Building" state: Both read "Building", both blue dot with glow', () => {
+    it('verifies visuals for "Building" state: Both read "Building", amber dot with glow', () => {
       const visuals = getStatusVisuals('Building');
       expect(visuals.topBarLabel).toBe('Building');
       expect(visuals.modelPanelLabel).toBe('Building');
-      expect(visuals.dotColor).toBe('#3b82f6');
-      expect(visuals.glow).toContain('rgba(59, 130, 246');
+      expect(visuals.dotColor).toBe('#f59e0b');
+      expect(visuals.glow).toContain('rgba(245, 158, 11');
       expect(visuals.isBuilding).toBe(true);
     });
 

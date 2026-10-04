@@ -1364,14 +1364,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
         onSelectMobileTab={onSelectMobileTab}
         activeTab={resolvedActiveTab}
         onSelectTab={selectTab}
-        hasGeneratedApp={hasGeneratedApp}
+        hasGeneratedApp={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
         hasFiles={Object.keys(files).length > 0}
         viewportMode={viewportMode}
         onViewportMode={setViewportMode}
         onRefreshPreview={() => setEdgeRefreshCounter(value => value + 1)}
         onOpenPreview={handlePopoutPreview}
-        previewReady={hasGeneratedApp && previewLoadState !== 'error'}
-        openPreviewReady={hasGeneratedApp && previewLoadState !== 'error'}
+        previewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
+        openPreviewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
         previewUrl={backend.liveUrl || (typeof window !== 'undefined' ? `${window.location.origin}/preview/${activeProjectId}/index.html` : `/preview/${activeProjectId}/index.html`)}
         shareCopied={shareCopied}
         onShare={async () => {
@@ -1380,7 +1380,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           if (ok) { setShareCopied(true); } else { setShareFallback(shareUrl); }
         }}
         publishOpen={publishOpen}
-        onPublish={() => { if (hasGeneratedApp) setPublishOpen(open => !open); }}
+        onPublish={() => { if (hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error') setPublishOpen(open => !open); }}
         onExportZip={() => { void handleExportZip(); }}
         onExportGithub={() => github.openModal()}
         onResetWorkspace={() => setShowResetConfirm(true)}
@@ -1493,10 +1493,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 {previewLoadState === 'error' && (
                   <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
-                    <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
-                    <h2>We couldn't open your latest preview.</h2>
-                    <p>{previewLoadError || previewIssue?.error || 'Your app finished, but the preview couldn’t load.'}</p>
-                    <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
+                    <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
+                    <h2>Your preview ran into a problem.</h2>
+                    <p>{previewIssue?.plainExplanation || "Your app finished building, but something went wrong showing it. The builder can try to fix this."}</p>
+                    {previewIssue ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit("auto-fix-error", { ...previewIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button> : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>}
                   </div>
                 )}
                 {isReadOnlyProject && (
@@ -1541,7 +1541,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
                 </PreviewCanvas>
                 {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
-                {hasGeneratedApp && status === 'Generating' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it's ready.</span></div>}
+                {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it's ready.</span></div>}
               </div>
             </div>
           </div>
@@ -1863,10 +1863,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
               {previewLoadState === 'error' && (
                 <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
-                  <span className="studio-eyebrow-label">PREVIEW LOAD FAILED</span>
-                  <h2>We couldn't open your latest preview.</h2>
-                  <p>{previewLoadError || previewIssue?.error || 'Your app finished, but the preview couldn’t load.'}</p>
-                  <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
+                  <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
+                  <h2>Your preview ran into a problem.</h2>
+                  <p>{previewIssue?.plainExplanation || "Your app finished building, but something went wrong showing it. The builder can try to fix this."}</p>
+                  {previewIssue ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit("auto-fix-error", { ...previewIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button> : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>}
                 </div>
               )}
               {isReadOnlyProject && (
@@ -1939,7 +1939,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
               </PreviewCanvas>
               {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
-              {hasGeneratedApp && status === 'Generating' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it’s ready.</span></div>}
+              {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it’s ready.</span></div>}
 
             </div>
           </div>

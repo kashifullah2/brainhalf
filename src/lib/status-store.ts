@@ -36,8 +36,8 @@ export function getStatusVisuals(status: PlatformStatus): StatusVisuals {
         status: 'Building',
         topBarLabel: 'Building',
         modelPanelLabel: 'Building',
-        dotColor: '#3b82f6',
-        glow: '0 0 6px rgba(59, 130, 246, 0.7)',
+        dotColor: '#f59e0b',
+        glow: '0 0 6px rgba(245, 158, 11, 0.7)',
         isBuilding: true,
       };
     case 'Error':

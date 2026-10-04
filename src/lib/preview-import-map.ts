@@ -27,7 +27,7 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
     'react': 'https://esm.sh/react@19.2.8',
     'react-dom': 'https://esm.sh/react-dom@19.2.8?external=react',
     'react-dom/client': 'https://esm.sh/react-dom@19.2.8/client?external=react',
-    'lucide-react': 'https://esm.sh/lucide-react@0.344.0?external=react',
+    'lucide-react': 'https://esm.sh/lucide-react@0.468.0?external=react,react-dom',
     'framer-motion': 'https://esm.sh/framer-motion@11.18.2?external=react,react-dom',
     'clsx': 'https://esm.sh/clsx@2.1.0',
     'tailwind-merge': 'https://esm.sh/tailwind-merge@2.2.1',
@@ -65,7 +65,7 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
     'react-router-dom': KNOWN_PACKAGES['react-router-dom'],
     'react-router': KNOWN_PACKAGES['react-router'],
     'lucide-react': KNOWN_PACKAGES['lucide-react'],
-    'lucide-react/': 'https://esm.sh/lucide-react@0.344.0/',
+    'lucide-react/': 'https://esm.sh/lucide-react@0.468.0/',
     'react-icons': KNOWN_PACKAGES['react-icons'],
     'react-icons/': 'https://esm.sh/react-icons@5.0.1/',
     'framer-motion': KNOWN_PACKAGES['framer-motion'],
@@ -117,7 +117,7 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
         if (!version && KNOWN_PACKAGES[packageName]) {
           version = new URL(KNOWN_PACKAGES[packageName]).pathname.slice(packageName.length + 1);
         }
-        const suffix = packageName === 'react' ? '' : '?external=react,react-dom';
+        const suffix = packageName === 'react' || packageName === 'react-dom' ? '' : '?external=react,react-dom';
         importMap[pkg] = `https://esm.sh/${packageName}${version}${subpath}${suffix}`;
       }
     }

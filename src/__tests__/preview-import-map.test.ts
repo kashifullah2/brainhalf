@@ -13,7 +13,7 @@ describe('7.3 buildDynamicImportMap', () => {
     const map = JSON.parse(buildDynamicImportMap([]));
     expect(map.imports['react']).toBe('https://esm.sh/react@19.2.8');
     expect(map.imports['react-dom/client']).toBe('https://esm.sh/react-dom@19.2.8/client?external=react');
-    expect(map.imports['lucide-react']).toBe('https://esm.sh/lucide-react@0.344.0?external=react');
+    expect(map.imports['lucide-react']).toBe('https://esm.sh/lucide-react@0.468.0?external=react,react-dom');
   });
 
   it('resolves an import found in the generated source', () => {
