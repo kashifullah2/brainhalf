@@ -1334,8 +1334,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Single source of truth for the preview error overlay — used in both split
   // and single-panel layouts. Renders null when the error should not be shown.
-  const PreviewErrorOverlay = previewLoadState === 'error' && status !== 'Generating' && !backend.ready
-    ? () => (
+  const previewErrorOverlay = previewLoadState === 'error' && status !== 'Generating' && !backend.ready
+    ? (
         <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
           <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
           <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
@@ -1525,7 +1525,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                   </div>
                 )}
-                {PreviewErrorOverlay && <PreviewErrorOverlay />}
+                {previewErrorOverlay}
                 {isReadOnlyProject && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%)', borderBottom: '1px solid rgba(56, 189, 248, 0.25)', fontSize: '12px', color: 'var(--text-primary)', zIndex: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1891,7 +1891,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                 </div>
               )}
-              {PreviewErrorOverlay && <PreviewErrorOverlay />}
+              {previewErrorOverlay}
               {isReadOnlyProject && (
                 <div style={{
                   display: 'flex',
