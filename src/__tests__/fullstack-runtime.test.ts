@@ -98,7 +98,7 @@ describe('Generated Workers application', () => {
       for (const [path, content] of Object.entries(files)) { const destination = join(directory, path.replace(/^\//, '')); mkdirSync(dirname(destination), { recursive: true }); writeFileSync(destination, content); }
       symlinkSync(resolve('node_modules'), join(directory, 'node_modules'), 'dir');
       for (const args of [['run', 'build'], ['test']]) {
-        await execute('npm', args, { cwd: directory, env: environment, timeout: 60_000 });
+        await execute('pnpm', args, { cwd: directory, env: environment, timeout: 60_000 });
       }
       const database = new DatabaseSync(':memory:');
       try { database.exec(files['/migrations/0001_items.sql']); expect(database.prepare("SELECT name FROM sqlite_schema WHERE name='items'").get()).toBeTruthy(); }
