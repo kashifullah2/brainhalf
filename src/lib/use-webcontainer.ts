@@ -32,6 +32,13 @@ export interface WebContainerState {
   restart: () => void;
 }
 
+// Keyed by package.json content — skip npm install when unchanged across project switches.
+const installedPkgHashCache = new Map<string, boolean>();
+
+function getPkgHash(files: Record<string, string>): string {
+  return files['/package.json'] || files['package.json'] || '';
+}
+
 export function useWebContainer(
   projectId: string,
   files: Record<string, string>,
@@ -49,6 +56,10 @@ export function useWebContainer(
   const prevFilesRef = useRef<Record<string, string>>({});
   const bootedRef = useRef(false);
   const restartNonce = useRef(0);
+  // Use a ref for files so boot() doesn't need files in its deps array —
+  // avoiding recreation (and accidental re-boot) on every file change.
+  const filesRef = useRef(files);
+  filesRef.current = files;
 
   const writeToTerminal = useCallback((data: string) => {
     terminalRef.current?.write(data);
@@ -65,13 +76,14 @@ export function useWebContainer(
 
   const boot = useCallback(async (nonce: number) => {
     if (!supported) return;
+    const currentFiles = filesRef.current;
     try {
       setStatus('booting');
       setError(null);
       setPreviewUrl(null);
 
       writeToTerminal('\x1b[2J\x1b[H');
-      writeToTerminal('\x1b[1;36m⚡ Booting WebContainer...\x1b[0m\r\n');
+      writeToTerminal('\x1b[1;36m⚡ Booting runtime...\x1b[0m\r\n');
 
       const container = await getWebContainer();
       if (nonce !== restartNonce.current) return;
@@ -79,24 +91,33 @@ export function useWebContainer(
 
       setStatus('mounting');
       writeToTerminal('\x1b[1;33m📁 Mounting project files...\x1b[0m\r\n');
-      await mountFiles(container, files);
+      await mountFiles(container, currentFiles);
       if (nonce !== restartNonce.current) return;
       mountedRef.current = true;
-      prevFilesRef.current = { ...files };
+      prevFilesRef.current = { ...currentFiles };
 
-      setStatus('installing');
-      writeToTerminal('\x1b[1;33m📦 Installing dependencies...\x1b[0m\r\n');
-      const exitCode = await installDependencies(container, writeToTerminal);
-      if (nonce !== restartNonce.current) return;
+      // Skip npm install when package.json is unchanged from a prior install in this session.
+      const pkgHash = getPkgHash(currentFiles);
+      const alreadyInstalled = pkgHash && installedPkgHashCache.get(pkgHash);
 
-      if (exitCode !== 0) {
-        const msg = `npm install failed with exit code ${exitCode}`;
-        writeToTerminal(`\x1b[1;31m❌ ${msg}\x1b[0m\r\n`);
-        setError(msg);
-        setStatus('error');
-        return;
+      if (!alreadyInstalled) {
+        setStatus('installing');
+        writeToTerminal('\x1b[1;33m📦 Installing dependencies...\x1b[0m\r\n');
+        const exitCode = await installDependencies(container, writeToTerminal);
+        if (nonce !== restartNonce.current) return;
+
+        if (exitCode !== 0) {
+          const msg = `npm install failed with exit code ${exitCode}`;
+          writeToTerminal(`\x1b[1;31m❌ ${msg}\x1b[0m\r\n`);
+          setError(msg);
+          setStatus('error');
+          return;
+        }
+        if (pkgHash) installedPkgHashCache.set(pkgHash, true);
+        writeToTerminal('\x1b[1;32m✅ Dependencies installed\x1b[0m\r\n');
+      } else {
+        writeToTerminal('\x1b[1;32m✅ Dependencies up to date\x1b[0m\r\n');
       }
-      writeToTerminal('\x1b[1;32m✅ Dependencies installed\x1b[0m\r\n');
 
       setStatus('starting');
       writeToTerminal('\x1b[1;33m🚀 Starting dev server...\x1b[0m\r\n');
@@ -127,15 +148,16 @@ export function useWebContainer(
       setError(msg);
       setStatus('error');
     }
-  }, [supported, files, writeToTerminal]);
+  }, [supported, writeToTerminal]); // files intentionally excluded — read via filesRef
 
   useEffect(() => {
     if (!supported) return;
     const nonce = ++restartNonce.current;
     boot(nonce);
     return () => { restartNonce.current++; };
-  }, [projectId]);
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Incremental file sync — write changed/deleted files without reinstalling.
   useEffect(() => {
     if (!mountedRef.current || !containerRef.current) return;
     const prev = prevFilesRef.current;
@@ -149,6 +171,13 @@ export function useWebContainer(
     }
     if (Object.keys(changed).length === 0 && removed.length === 0) return;
     prevFilesRef.current = { ...files };
+
+    // If package.json changed, invalidate the install cache so next boot reinstalls.
+    if (changed['/package.json'] || changed['package.json']) {
+      const newHash = getPkgHash(files);
+      if (newHash) installedPkgHashCache.delete(newHash);
+    }
+
     syncDelta(containerRef.current, changed, removed).catch(() => {});
   }, [files]);
 
