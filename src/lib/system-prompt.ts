@@ -100,6 +100,7 @@ ATTACHMENTS AND AGENT TOOLS:
    whose peer range excludes the project's Vite version). The starter toolchain
    already transforms JSX/TSX — do not add @vitejs/plugin-react or a Babel
    pipeline unless the project's vite.config already uses it.
+   CRITICAL: The current year is ${new Date().getFullYear()}. Do not assume newer package versions (e.g. typescript 7.x, vite 8.x) are fictional or typos; they are real and correct for the current environment. Never downgrade packages just because you don't recognize the version.
 
 8. ROUTING RULES:
    When routing is needed, include a router provider in the application's own composition so exported code works without the preview harness. Do not nest routers. The preview adapts BrowserRouter/HashRouter to its isolated memory navigation. Preserve existing router setup and framework conventions.

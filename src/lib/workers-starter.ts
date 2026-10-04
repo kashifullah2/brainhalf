@@ -97,7 +97,7 @@ test('private CRUD validates input, persists data, and isolates users', async ()
   const migDir = join(root, 'migrations');
   const migrations = existsSync(migDir) ? readdirSync(migDir).filter(f => f.endsWith('.sql')).sort() : [];
   for (const m of migrations) db.exec(readFileSync(join(migDir, m), 'utf8'));
-  const env = { BRAINHALF_MANAGED: 'true', DB: { prepare(sql) { return { bind(...params) { return { async all() { return {results:db.prepare(sql).all(...params)}; }, async run() { return {meta:db.prepare(sql).run(...params)}; } }; } }; } } };
+  const env = { BRAINHALF_MANAGED: 'true', DB: { prepare(sql) { return { bind(...params) { return { async all() { return {results:db.prepare(sql).all(...params)}; }, async run() { return {meta:db.prepare(sql).run(...params)}; }, async first() { return db.prepare(sql).get(...params); } }; } }; } } };
   const call = (path, method='GET', body, user='alice') => worker.fetch(new Request('https://app.example'+path, {method,headers:{Origin:'https://app.example',...(user ? {'x-bh-user-id':user}:{}),'Content-Type':'application/json'},body:body === undefined ? undefined : JSON.stringify(body)}),env);
   try {
     assert.equal((await call('/api/items','GET',undefined,'')).status,401);
