@@ -2616,6 +2616,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
           <textarea
             ref={textareaRef}
+            id="chat-input"
+            name="chat-input"
             aria-label="Message to the app builder"
             className="chat-input"
             value={input}

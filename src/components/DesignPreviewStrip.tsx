@@ -1,8 +1,9 @@
 import React from 'react';
-import { ArrowUpRight, Server } from 'lucide-react';
+import { ArrowUpRight, Server, RotateCcw } from 'lucide-react';
 import { useAutomaticBackend } from '../lib/automatic-backend';
 import { useProjectRuntime } from '../lib/project-runtime-client';
 import { HOSTED_APP_LIMIT, isHostedLimitError } from '../lib/hosted-limit';
+import { appEvents } from '../lib/events';
 
 type Backend = ReturnType<typeof useAutomaticBackend>;
 type Runtime = Pick<ReturnType<typeof useProjectRuntime>, 'error' | 'status'>;
@@ -79,8 +80,7 @@ export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenH
           </>
         ) : failed ? (
           <>
-            {plainLanguageCause(backend.message)}{' '}
-            Nothing for you to fix — describe what you want in the chat and BrainHalf will sort it out.
+            {plainLanguageCause(backend.message)}
             <details className="preview-build-detail">
               <summary>Technical details</summary>
               <code>{backend.message || 'No additional details were recorded.'}</code>
@@ -100,9 +100,14 @@ export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenH
           )}
         </>
       ) : (<>
-      {backend.canStart && (
+      {failed && (
+        <button type="button" disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { error: backend.message || 'Backend failed to start', layer: 'backend' })}>
+          <RotateCcw size={14} style={{ marginRight: '6px' }} /> Ask the builder to fix
+        </button>
+      )}
+      {!failed && backend.canStart && (
         <button type="button" disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>
-          {failed ? 'Retry app preview' : 'Start app preview'}
+          Start app preview
         </button>
       )}
       {backend.canUpdate && (

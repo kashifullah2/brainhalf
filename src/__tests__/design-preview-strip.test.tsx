@@ -143,8 +143,7 @@ describe('DesignPreviewStrip', () => {
     expect(html).toContain('has-fault');
     expect(html).toContain('The app preview ran into a problem.');
     expect(html).toContain('Some of the app\u2019s building blocks didn\u2019t fit together.');
-    expect(html).toContain('Nothing for you to fix');
-    expect(html).toContain('Retry app preview');
+    expect(html).toContain('Ask the builder to fix');
     expect(html).toContain('<details');
     expect(html).toContain('Technical details');
     expect(html).toContain('ERESOLVE Could not resolve peer vite');

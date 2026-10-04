@@ -15,7 +15,7 @@
   Cross-Origin-Opener-Policy: same-origin
   X-Frame-Options: deny
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://esm.sh https://registry.npmjs.org https://*.webcontainer.io https://*.webcontainer-api.io https://*.stackblitz.io https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.adtrafficquality.google https://csi.gstatic.com; worker-src 'self' blob:; frame-src 'self' https://*.apps.brainhalf.com https://*.webcontainer.io https://*.webcontainer-api.io https://*.stackblitz.io https://stackblitz.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://securepubads.g.doubleclick.net https://*.adtrafficquality.google; manifest-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://esm.sh https://registry.npmjs.org https://*.webcontainer.io https://*.webcontainer-api.io https://*.stackblitz.io https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.adtrafficquality.google https://csi.gstatic.com; worker-src 'self' blob:; frame-src 'self' https://*.apps.brainhalf.com https://*.webcontainer.io https://*.webcontainer-api.io https://*.stackblitz.io https://stackblitz.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://securepubads.g.doubleclick.net https://*.adtrafficquality.google; manifest-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
 # Preview routes are handled by the Worker (run_worker_first), which sets its
@@ -28,6 +28,7 @@
   Content-Security-Policy: sandbox allow-scripts allow-forms; default-src 'none'; script-src blob: 'unsafe-inline' 'unsafe-eval' 'self' https://esm.sh https://*.esm.sh https://cdn.tailwindcss.com https://static.cloudflareinsights.com; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src data: https:; font-src data: https://fonts.gstatic.com; connect-src https: http://localhost:5173 http://127.0.0.1:5173; frame-src 'none'; worker-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'self' http://localhost:5173 http://127.0.0.1:5173
   X-Frame-Options: SAMEORIGIN
   Cross-Origin-Resource-Policy: cross-origin
+  Cross-Origin-Embedder-Policy: credentialless
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
 
@@ -35,6 +36,7 @@
   Content-Security-Policy: sandbox allow-scripts allow-forms; default-src 'none'; script-src blob: 'unsafe-inline' 'unsafe-eval' 'self' https://esm.sh https://*.esm.sh https://cdn.tailwindcss.com https://static.cloudflareinsights.com; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src data: https:; font-src data: https://fonts.gstatic.com; connect-src https: http://localhost:5173 http://127.0.0.1:5173; frame-src 'none'; worker-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'self' http://localhost:5173 http://127.0.0.1:5173
   X-Frame-Options: SAMEORIGIN
   Cross-Origin-Resource-Policy: cross-origin
+  Cross-Origin-Embedder-Policy: credentialless
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
 

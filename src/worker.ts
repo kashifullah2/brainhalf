@@ -241,7 +241,7 @@ export function shellSecurityHeaders(): Record<string, string> {
     // iframe, which has its own CSP), and headless-Chrome checks of the public
     // pages — including GTM/AdSense — report zero violations without
     // 'unsafe-eval', data:, or blob: script sources.
-    `script-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google`,
+    `script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net`,
     `img-src 'self' data: https: blob:`,
     `font-src 'self' data: https://fonts.gstatic.com`,

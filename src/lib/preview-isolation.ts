@@ -57,6 +57,7 @@ export function previewSecurityHeaders(): Record<string, string> {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()',
     'Access-Control-Allow-Origin': 'null',
     'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Cross-Origin-Embedder-Policy': 'credentialless',
     // An explicit empty ruleset prevents Speed Brain from injecting its
     // same-origin prefetch URL into an opaque-origin sandbox document.
     'Speculation-Rules': '"/preview-rules.json"',
