@@ -302,7 +302,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [statusError, setStatusError] = useState('');
   useAutomaticBuildFix(activeProjectId, runtime, status === 'Generating');
 
-  const wcEnabled = webContainerSupported();
+  // Switched to Lovable-style Instant Preview by bypassing WebContainers
+  const wcEnabled = false; // webContainerSupported();
   const wc = useWebContainer(activeProjectId, files);
 
   const fileProgressKey = `bh_fileprogress_${activeProjectId}`;
