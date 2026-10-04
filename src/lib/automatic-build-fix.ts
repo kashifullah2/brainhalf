@@ -20,7 +20,10 @@ export function useAutomaticBuildFix(projectId: string, runtime: Runtime, isGene
   const processedJobs = useRef(new Set<string>());
 
   useEffect(() => {
-    processedJobs.current = new Set();
+    // Ignore any jobs that already existed when we mounted/switched projects,
+    // so we don't auto-start the agent on a failure from a previous session.
+    processedJobs.current = new Set((runtime.status?.jobs ?? []).map(j => j.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   useEffect(() => {

@@ -47,7 +47,7 @@ describe('dark-grey theme (no navy regression)', () => {
 describe('AdminPage smoke render', () => {
   it('renders the operator header with section anchors and the loading state', () => {
     const html = renderToStaticMarkup(<AdminPage />);
-    expect(html).toContain('admin-page');
+    expect(html).toContain('admin-layout');
     expect(html).toContain('Operator');
     expect(html).toContain('Accounts &amp; product health');
     expect(html).toContain('href="#overview"');
