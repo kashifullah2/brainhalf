@@ -40,7 +40,7 @@ import TopNav from './TopNav';
 import { useWebContainer } from '../lib/use-webcontainer';
 import { webContainerSupported } from '../lib/webcontainer';
 import WebContainerPreview from './WebContainerPreview';
-
+import BuilderOverlay from './BuilderOverlay';
 const TerminalPanel = lazy(() => import('./Terminal'));
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
@@ -1516,6 +1516,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 <GenerationProgress files={Object.keys(files)} progress={fileProgress} />
               )}
               <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+                <BuilderOverlay
+                  isGenerating={status === 'Generating'}
+                  fileProgress={fileProgress}
+                  files={Object.keys(files)}
+                  previewReady={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState !== 'error')}
+                  isFirstGeneration={!hasGeneratedApp && generationEverAttempted}
+                />
                 {isWaitingForFirstApp && previewLoadState !== 'error' && (
                   <div className={`studio-preview-empty${status === 'Error' ? ' has-error' : ''}`} role="status" aria-live="polite">
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
@@ -1881,6 +1888,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
             {/* Canvas Area with Responsive Viewport Chassis */}
             <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+              <BuilderOverlay
+                isGenerating={status === 'Generating'}
+                fileProgress={fileProgress}
+                files={Object.keys(files)}
+                previewReady={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState !== 'error')}
+                isFirstGeneration={!hasGeneratedApp && generationEverAttempted}
+              />
               {/* Keep fresh, building and failed projects distinct without showing a fake app. */}
               {isWaitingForFirstApp && previewLoadState !== 'error' && (
                 <div className={`studio-preview-empty${status === 'Error' ? ' has-error' : ''}`} role="status" aria-live="polite">

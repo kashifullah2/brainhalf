@@ -2353,7 +2353,27 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                             </div>
                           )}
 
-                          {segments.map((seg, sIdx) => {
+                          {(() => {
+                            const isFirstAiMessage = messages.findIndex(m => m.role === 'ai') === idx;
+                            
+                            // If this is the very first AI message, hide the raw code/text to make it magical.
+                            if (isFirstAiMessage) {
+                              return (
+                                <div className="first-generation-summary-card" style={{ padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: isCurrentGenerating ? 'rgba(54, 89, 217, 0.1)' : 'rgba(34, 197, 94, 0.1)', color: isCurrentGenerating ? 'var(--accent-light)' : '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    {isCurrentGenerating ? <Sparkles size={20} className="lucide-pulse" /> : <Check size={20} />}
+                                  </div>
+                                  <div>
+                                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{isCurrentGenerating ? 'Building your app…' : 'App built successfully'}</h4>
+                                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                      {isCurrentGenerating ? 'The builder is writing the initial code and setting up the environment.' : 'Initial scaffolding is complete. The app is running in the preview.'}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return segments.map((seg, sIdx) => {
                             if (seg.type === 'text') {
                               return (
                                 <AssistantMarkdown key={sIdx} content={seg.content} />
@@ -2413,7 +2433,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                               );
                             }
                             return null;
-                          })}
+                          });
+                          })()}
 
                           {msg.role === 'ai' && msg.changes && msg.changes.length > 0 && (
                             <GenerationChanges
