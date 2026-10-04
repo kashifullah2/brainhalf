@@ -242,6 +242,9 @@ export function useProjectRuntime(projectId: string, environment: ProjectEnviron
     };
   }, [projectId, environment, refreshVersion, enabled]);
 
+  // Disabled pagehide listener to prevent the cloud backend from being
+  // killed and restarted (triggering a full rebuild) on every page refresh.
+  /*
   useEffect(() => {
     const onPageHide = () => {
       const job = status?.jobs.find(job => job.kind !== 'publish' && ['queued', 'running', 'stopping'].includes(job.status));
@@ -257,6 +260,7 @@ export function useProjectRuntime(projectId: string, environment: ProjectEnviron
     window.addEventListener('pagehide', onPageHide);
     return () => window.removeEventListener('pagehide', onPageHide);
   }, [projectId, status]);
+  */
 
   return { status, error, refresh };
 }
