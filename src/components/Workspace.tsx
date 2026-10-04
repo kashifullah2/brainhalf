@@ -1558,8 +1558,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     sandbox={PREVIEW_SANDBOX}
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
+                      // During generation the file set is partial — Vite HMR errors are expected.
+                      // Skip status changes here; the generation flow handles final error state.
+                      if (generationActiveRef.current) return;
                       const message = 'The preview failed to load.';
-                      // iframe onError fires for network/HTTP failures — file and layer are unknown here.
                       setPreviewIssue({ error: message, plainExplanation: 'Your app could not be loaded in the preview. The builder can try to fix this.', file: '', layer: isFullStackProject(files) ? 'backend' : 'frontend' });
                       setStatus('Error');
                       setPreviewStatus(activeProjectId, 'Error');
@@ -1950,8 +1952,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     sandbox={PREVIEW_SANDBOX}
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
+                      // During generation the file set is partial — Vite HMR errors are expected.
+                      // Skip status changes here; the generation flow handles final error state.
+                      if (generationActiveRef.current) return;
                       const message = 'The preview failed to load.';
-                      // iframe onError fires for network/HTTP failures — file and layer are unknown here.
                       setPreviewIssue({ error: message, plainExplanation: 'Your app could not be loaded in the preview. The builder can try to fix this.', file: '', layer: isFullStackProject(files) ? 'backend' : 'frontend' });
                       setStatus('Error');
                       setPreviewStatus(activeProjectId, 'Error');
