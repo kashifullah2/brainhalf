@@ -1,7 +1,8 @@
-import { WebContainer } from '@webcontainer/api';
+type WebContainerType = typeof import('@webcontainer/api').WebContainer;
+type WebContainerInstance = InstanceType<WebContainerType>;
 
-let instance: WebContainer | null = null;
-let bootPromise: Promise<WebContainer> | null = null;
+let instance: WebContainerInstance | null = null;
+let bootPromise: Promise<WebContainerInstance> | null = null;
 
 export function webContainerSupported(): boolean {
   try {
@@ -11,13 +12,15 @@ export function webContainerSupported(): boolean {
   }
 }
 
-export async function getWebContainer(): Promise<WebContainer> {
+export async function getWebContainer(): Promise<WebContainerInstance> {
   if (instance) return instance;
   if (bootPromise) return bootPromise;
   if (!webContainerSupported()) {
     throw new Error('WebContainers require cross-origin isolation (SharedArrayBuffer). Falling back to edge preview.');
   }
-  bootPromise = WebContainer.boot().then(wc => {
+  bootPromise = import('@webcontainer/api').then(({ WebContainer }) =>
+    WebContainer.boot()
+  ).then(wc => {
     instance = wc;
     bootPromise = null;
     return wc;
@@ -28,7 +31,7 @@ export async function getWebContainer(): Promise<WebContainer> {
   return bootPromise;
 }
 
-export function getWebContainerSync(): WebContainer | null {
+export function getWebContainerSync(): WebContainerInstance | null {
   return instance;
 }
 
