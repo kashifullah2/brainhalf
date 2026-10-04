@@ -1369,7 +1369,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         onSelectMobileTab={onSelectMobileTab}
         activeTab={resolvedActiveTab}
         onSelectTab={selectTab}
-        hasGeneratedApp={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
+        hasGeneratedApp={hasGeneratedApp && status !== 'Generating'}
         hasFiles={Object.keys(files).length > 0}
         viewportMode={viewportMode}
         onViewportMode={setViewportMode}
@@ -1385,7 +1385,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           if (ok) { setShareCopied(true); } else { setShareFallback(shareUrl); }
         }}
         publishOpen={publishOpen}
-        onPublish={() => { if (hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error') setPublishOpen(open => !open); }}
+        onPublish={() => { if (hasGeneratedApp && status !== 'Generating') setPublishOpen(open => !open); }}
         onExportZip={() => { void handleExportZip(); }}
         onExportGithub={() => github.openModal()}
         onResetWorkspace={() => setShowResetConfirm(true)}
@@ -1495,7 +1495,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                   </div>
                 )}
-                {previewLoadState === 'error' && status !== 'Generating' && (
+                {previewLoadState === 'error' && status !== 'Generating' && !backend.liveUrl && (
                   <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                     <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
@@ -1867,7 +1867,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                 </div>
               )}
-              {previewLoadState === 'error' && status !== 'Generating' && (
+              {previewLoadState === 'error' && status !== 'Generating' && !backend.liveUrl && (
                 <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                   <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>

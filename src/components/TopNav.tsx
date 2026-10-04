@@ -208,7 +208,7 @@ const TopNav: React.FC<TopNavProps> = ({
           {activeTab === 'preview' && (
             <div className="bolt-preview-icon-group">
               {/* Viewport size — moved to top bar for one-click access */}
-              {onViewportMode && previewReady && (
+              {onViewportMode && hasGeneratedApp && (
                 <div className="viewport-segmented-control topbar-viewport" role="group" aria-label="Preview screen size">
                   {([
                     ['desktop', 'Desktop', Monitor],
@@ -218,7 +218,8 @@ const TopNav: React.FC<TopNavProps> = ({
                     <button type="button" key={value}
                       className={`viewport-pill-btn${viewportMode === value ? ' active' : ''}`}
                       aria-label={label} title={label} aria-pressed={viewportMode === value}
-                      onClick={() => onViewportMode(value)}>
+                      disabled={!previewReady}
+                      onClick={() => previewReady && onViewportMode(value)}>
                       <Icon size={14} strokeWidth={1.7} />
                     </button>
                   ))}
