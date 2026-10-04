@@ -2394,25 +2394,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                               );
                             } else if (seg.type === 'thought') {
                               return (
-                                <details key={sIdx} className="agent-thought-block" open={!seg.isStreaming} style={{
+                                <div key={sIdx} className="agent-thought-block" style={{
                                   padding: '8px 12px',
                                   background: 'var(--bg-surface-2)',
                                   border: '1px solid var(--border-color)',
                                   borderRadius: '6px',
                                   fontSize: '13px',
-                                  color: 'var(--text-secondary)'
+                                  color: 'var(--text-secondary)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
                                 }}>
-                                  <summary style={{ cursor: 'pointer', fontWeight: 500, outline: 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    {seg.isStreaming && <Loader2 size={13} className="lucide-spin" />}
-                                    {seg.isStreaming ? 'The builder is thinking…' : 'Thought process'}
-                                    {seg.isStreaming && <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>{elapsedSeconds}s</span>}
-                                  </summary>
-                                  {!seg.isStreaming && (
-                                    <div style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-                                      {seg.content}
-                                    </div>
-                                  )}
-                                </details>
+                                  {seg.isStreaming
+                                    ? <><Loader2 size={13} className="lucide-spin" /><span>The builder is planning…</span><span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)' }}>{elapsedSeconds}s</span></>
+                                    : <><span style={{ opacity: 0.6 }}>✓</span><span>Planning step complete</span></>
+                                  }
+                                </div>
                               );
                             }
                             return null;

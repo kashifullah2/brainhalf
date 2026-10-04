@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useId } from 'react';
+import React, { useState, useEffect, useRef, useId, useMemo } from 'react';
 import { Check, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, Tablet, Smartphone, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
@@ -89,7 +89,14 @@ const TopNav: React.FC<TopNavProps> = ({
     setOverrideName(null);
   }
 
-  const currentProjectName = getProjects().find(p => p.id === activeProjectId)?.name || 'Untitled Project';
+  // Only re-read the project list when the active project ID changes or the
+  // override name is cleared (project switch). The override state handles
+  // in-session renames so we don't need to re-scan on every streaming render.
+  const currentProjectName = useMemo(
+    () => getProjects().find(p => p.id === activeProjectId)?.name || 'Untitled Project',
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeProjectId, overrideName === null],
+  );
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
@@ -208,7 +215,7 @@ const TopNav: React.FC<TopNavProps> = ({
           {activeTab === 'preview' && (
             <div className="bolt-preview-icon-group">
               {/* Viewport size — moved to top bar for one-click access */}
-              {onViewportMode && hasGeneratedApp && (
+              {onViewportMode && previewReady && (
                 <div className="viewport-segmented-control topbar-viewport" role="group" aria-label="Preview screen size">
                   {([
                     ['desktop', 'Desktop', Monitor],
@@ -218,8 +225,7 @@ const TopNav: React.FC<TopNavProps> = ({
                     <button type="button" key={value}
                       className={`viewport-pill-btn${viewportMode === value ? ' active' : ''}`}
                       aria-label={label} title={label} aria-pressed={viewportMode === value}
-                      disabled={!previewReady}
-                      onClick={() => previewReady && onViewportMode(value)}>
+                      onClick={() => onViewportMode(value)}>
                       <Icon size={14} strokeWidth={1.7} />
                     </button>
                   ))}

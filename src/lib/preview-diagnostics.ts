@@ -63,6 +63,55 @@ export function diagnosePreviewError(error: string): PreviewDiagnostic {
 }
 
 /**
+ * Best-effort extraction of a source file path from an error message.
+ * Returns empty string when no path can be found — never fabricates one.
+ */
+export function extractFileFromError(error: string): string {
+  const patterns = [
+    /(?:at|in|from)\s+(\/src\/[^\s:,'"()\]]+)/,
+    /(?:Module not found|Cannot find module|Cannot resolve)[^'"]*['"]([^'"]+)['"]/,
+    /(\/(?:src|worker|server|shared|migrations)\/[^\s:,'"()\]]+\.(?:[cm]?[jt]sx?|sql|css))/,
+  ];
+  for (const p of patterns) {
+    const m = p.exec(error);
+    if (m?.[1]) return m[1];
+  }
+  return '';
+}
+
+/**
+ * Detects whether an error originated from the frontend or backend layer.
+ * Defaults to 'frontend' when the layer cannot be determined.
+ */
+export function detectLayerFromError(error: string): 'frontend' | 'backend' {
+  const lower = error.toLowerCase();
+  if (
+    lower.includes('[backend') ||
+    lower.includes('/worker/') ||
+    lower.includes('/server/') ||
+    lower.includes('d1_error') ||
+    lower.includes('d1 error') ||
+    lower.includes('no such table') ||
+    lower.includes('sql') ||
+    lower.includes('database') ||
+    lower.includes('workers runtime')
+  ) return 'backend';
+  return 'frontend';
+}
+
+/**
+ * Strips patterns that commonly carry secrets before showing an error in the UI.
+ * Not a guaranteed sanitizer — just a best-effort filter.
+ */
+export function sanitizeErrorForDisplay(error: string): string {
+  return error
+    .replace(/([?&](?:key|token|api_key|apikey|access_token|secret|auth)[=:])([^\s&"'<>{}\]]{4,})/gi, '$1[redacted]')
+    .replace(/(Authorization:\s*(?:Bearer|Basic)\s+)[^\s"']{6,}/gi, '$1[redacted]')
+    .replace(/\b[A-Za-z0-9+/]{60,}={0,2}\b/g, '[encoded-data]')
+    .slice(0, 600);
+}
+
+/**
  * Plain-language explanation of a preview error for non-technical users.
  * Used in the preview strip instead of the raw error message.
  */

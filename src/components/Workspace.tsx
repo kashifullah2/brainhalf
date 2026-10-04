@@ -23,7 +23,7 @@ import { previewFiles, PREVIEW_SANDBOX } from '../lib/preview-isolation';
 import { setPreviewStatus, setPlatformStatus } from '../lib/status-store';
 import { bindProjectStore } from '../lib/project-store';
 import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
-import { diagnosePreviewError, plainPreviewError } from '../lib/preview-diagnostics';
+import { diagnosePreviewError, plainPreviewError, extractFileFromError, detectLayerFromError, sanitizeErrorForDisplay } from '../lib/preview-diagnostics';
 import { createTypeScriptStarter } from '../lib/project-starters';
 import { useProjectRuntime } from '../lib/project-runtime-client';
 import PreviewCanvas from './PreviewCanvas';
@@ -1325,8 +1325,30 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const isEditorTab = resolvedActiveTab === 'code';
 
   const previewActionIssue: PreviewIssue | null = previewIssue ?? (previewLoadError
-    ? { error: previewLoadError, plainExplanation: 'The preview could not be shown yet. The builder can try to fix this.', file: activeFileRef.current || '/src/App.tsx', layer: 'frontend' }
+    ? (() => {
+        const layer = detectLayerFromError(previewLoadError);
+        const file = extractFileFromError(previewLoadError);
+        return { error: previewLoadError, plainExplanation: plainPreviewError(diagnosePreviewError(previewLoadError), layer), file, layer };
+      })()
     : null);
+
+  // Single source of truth for the preview error overlay — used in both split
+  // and single-panel layouts. Renders null when the error should not be shown.
+  const PreviewErrorOverlay = previewLoadState === 'error' && status !== 'Generating' && !backend.ready
+    ? () => (
+        <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
+          <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
+          <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
+          <h2>Your preview ran into a problem.</h2>
+          <p>{previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.'}</p>
+          {previewActionIssue
+            ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit('auto-fix-error', { ...previewActionIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button>
+            : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
+          }
+          {previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{sanitizeErrorForDisplay(previewActionIssue.error)}</pre></details>}
+        </div>
+      )
+    : null;
 
   return (
     <div className="workspace-panel-container">
@@ -1495,16 +1517,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                   </div>
                 )}
-                {previewLoadState === 'error' && status !== 'Generating' && !backend.liveUrl && (
-                  <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
-                    <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
-                    <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
-                    <h2>Your preview ran into a problem.</h2>
-                    <p>{previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.'}</p>
-                    {previewActionIssue ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit('auto-fix-error', { ...previewActionIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button> : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>}
-                    {previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{previewActionIssue.error}</pre></details>}
-                  </div>
-                )}
+                {PreviewErrorOverlay && <PreviewErrorOverlay />}
                 {isReadOnlyProject && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: 'linear-gradient(90deg, rgba(14, 165, 233, 0.15) 0%, rgba(99, 102, 241, 0.15) 100%)', borderBottom: '1px solid rgba(56, 189, 248, 0.25)', fontSize: '12px', color: 'var(--text-primary)', zIndex: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1538,7 +1551,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
                       const message = 'The preview failed to load.';
-                      setPreviewIssue({ error: message, plainExplanation: 'Your app could not be loaded in the preview. The builder can try to fix this.', file: activeFileRef.current, layer: 'frontend' });
+                      // iframe onError fires for network/HTTP failures — file and layer are unknown here.
+                      setPreviewIssue({ error: message, plainExplanation: 'Your app could not be loaded in the preview. The builder can try to fix this.', file: '', layer: isFullStackProject(files) ? 'backend' : 'frontend' });
                       setStatus('Error');
                       setPreviewStatus(activeProjectId, 'Error');
                       markPreviewState('error', message);
@@ -1867,16 +1881,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                 </div>
               )}
-              {previewLoadState === 'error' && status !== 'Generating' && !backend.liveUrl && (
-                <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
-                  <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
-                  <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
-                  <h2>Your preview ran into a problem.</h2>
-                  <p>{previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.'}</p>
-                  {previewActionIssue ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit('auto-fix-error', { ...previewActionIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button> : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>}
-                  {previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{previewActionIssue.error}</pre></details>}
-                </div>
-              )}
+              {PreviewErrorOverlay && <PreviewErrorOverlay />}
               {isReadOnlyProject && (
                 <div style={{
                   display: 'flex',
@@ -1938,7 +1943,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
                       const message = 'The preview failed to load.';
-                      setPreviewIssue({ error: message, plainExplanation: 'Your app could not be loaded in the preview. The builder can try to fix this.', file: activeFileRef.current, layer: 'frontend' });
+                      // iframe onError fires for network/HTTP failures — file and layer are unknown here.
+                      setPreviewIssue({ error: message, plainExplanation: 'Your app could not be loaded in the preview. The builder can try to fix this.', file: '', layer: isFullStackProject(files) ? 'backend' : 'frontend' });
                       setStatus('Error');
                       setPreviewStatus(activeProjectId, 'Error');
                       markPreviewState('error', message);
