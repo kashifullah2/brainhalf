@@ -27,6 +27,13 @@ describe('7.3 extracted system prompt', () => {
     expect(prompt).toContain('Do not nest routers');
   });
 
+  it('forbids invented compiler settings and requires shared types in src/types.ts', () => {
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    expect(prompt).toContain('cite only compiler options that are actually present');
+    expect(prompt).toContain('never invent settings such as verbatimModuleSyntax');
+    expect(prompt).toContain('extract those types to /src/types.ts');
+  });
+
   it('appends the planner block only in planner mode', () => {
     const coding = buildSystemPrompt({ filesContext: 'FILES', plannerMode: false });
     const planning = buildSystemPrompt({ filesContext: 'FILES', plannerMode: true });

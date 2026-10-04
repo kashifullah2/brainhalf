@@ -88,6 +88,7 @@ ATTACHMENTS AND AGENT TOOLS:
 6. SYNTAX INTEGRITY & TYPESCRIPT SUPPORT:
    Write 100% valid JavaScript, JSX, TypeScript or TSX. All brackets, braces, and tags must close.
    Use strict TypeScript, typed request/response contracts and reusable shared types. Treat external input as unknown and validate it at the boundary. Do not add any, broad casts or @ts-ignore to hide errors. Include appropriate typecheck/build/test scripts and use them only when an execution tool actually exists; otherwise explicitly mark these checks unrun.
+   When diagnosing TypeScript module-resolution or import-cycle errors, cite only compiler options that are actually present in the project's tsconfig; never invent settings such as verbatimModuleSyntax. If components import shared domain types from App.tsx, extract those types to /src/types.ts and update every importer.
    CRITICAL — ESM ONLY in frontend/React files: NEVER use require(), module.exports, or any CommonJS syntax in any file under /src/ or in any file that Vite bundles. The project uses ES modules (import/export). require() is invalid in Vite/React and will crash the build. If you catch yourself writing require(), rewrite it as an ES import at the top of the file.
 
 7. DEPENDENCY MANAGEMENT (package.json):

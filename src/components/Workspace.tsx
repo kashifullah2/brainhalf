@@ -47,6 +47,7 @@ type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error'
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs' | 'terminal';
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 type FileMap = Record<string, string>;
+type PreviewIssue = { error: string; plainExplanation: string; file: string; layer: 'backend' | 'frontend' };
 
 function computeFileDelta(previous: FileMap, next: FileMap): { changed: FileMap; removed: string[] } {
   const changed: FileMap = {};
@@ -453,7 +454,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const logsEndRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const syncedPreviewFilesRef = useRef<FileMap>({});
-  const [previewIssue, setPreviewIssue] = useState<{ error: string; plainExplanation: string; file: string; layer: 'backend' | 'frontend' } | null>(null);
+  const [previewIssue, setPreviewIssue] = useState<PreviewIssue | null>(null);
   const [previewLoadState, setPreviewLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [previewLoadError, setPreviewLoadError] = useState('');
   const previewLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1323,6 +1324,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   const isEditorTab = resolvedActiveTab === 'code';
 
+  const previewActionIssue: PreviewIssue | null = previewIssue ?? (previewLoadError
+    ? { error: previewLoadError, plainExplanation: 'The preview could not be shown yet. The builder can try to fix this.', file: activeFileRef.current || '/src/App.tsx', layer: 'frontend' }
+    : null);
+
   return (
     <div className="workspace-panel-container">
       {previewFixRequest?.projectId === activeProjectId && <ConfirmModal
@@ -1495,8 +1500,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                     <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
                     <h2>Your preview ran into a problem.</h2>
-                    <p>{previewIssue?.plainExplanation || "Your app finished building, but something went wrong showing it. The builder can try to fix this."}</p>
-                    {previewIssue ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit("auto-fix-error", { ...previewIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button> : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>}
+                    <p>{previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.'}</p>
+                    {previewActionIssue ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit('auto-fix-error', { ...previewActionIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button> : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>}
+                    {previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{previewActionIssue.error}</pre></details>}
                   </div>
                 )}
                 {isReadOnlyProject && (
@@ -1866,8 +1872,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                   <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
                   <h2>Your preview ran into a problem.</h2>
-                  <p>{previewIssue?.plainExplanation || "Your app finished building, but something went wrong showing it. The builder can try to fix this."}</p>
-                  {previewIssue ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit("auto-fix-error", { ...previewIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button> : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>}
+                  <p>{previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.'}</p>
+                  {previewActionIssue ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit('auto-fix-error', { ...previewActionIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button> : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>}
+                  {previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{previewActionIssue.error}</pre></details>}
                 </div>
               )}
               {isReadOnlyProject && (
