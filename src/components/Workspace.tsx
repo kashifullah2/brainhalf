@@ -3,7 +3,7 @@ import { useAutomaticBuildFix } from '../lib/automatic-build-fix';
 import { useTheme } from '../lib/theme';
 import { authFetch } from '../lib/auth-client';
 import { apiOrigin } from '../lib/api-origin';
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import {
   Code2, Columns2, Monitor, Loader2,
   Terminal, Copy, Check, FolderCode, Download,
@@ -37,9 +37,14 @@ import GenerationProgress from './GenerationProgress';
 import ProjectConsole from './ProjectConsole';
 import PublishPopover from './PublishPopover';
 import TopNav from './TopNav';
+import { useWebContainer } from '../lib/use-webcontainer';
+import { webContainerSupported } from '../lib/webcontainer';
+import WebContainerPreview from './WebContainerPreview';
+
+const TerminalPanel = lazy(() => import('./Terminal'));
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
-type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
+type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs' | 'terminal';
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 type FileMap = Record<string, string>;
 
@@ -295,6 +300,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // message) — shown in the preview empty-state instead of a generic line.
   const [statusError, setStatusError] = useState('');
   useAutomaticBuildFix(activeProjectId, runtime, status === 'Generating');
+
+  const wcEnabled = webContainerSupported();
+  const wc = useWebContainer(activeProjectId, files);
+
   const fileProgressKey = `bh_fileprogress_${activeProjectId}`;
   const [fileProgress, setFileProgress] = useState<FileProgress>(() => {
     try {
@@ -1510,8 +1519,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   </>
                 )}
                 {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
-                <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
-                  {backend.liveUrl ? (
+                <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={wcEnabled ? wc.restart : () => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!wcEnabled && !backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
+                  {wcEnabled ? (
+                    <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
+                  ) : backend.liveUrl ? (
                     <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
                   ) : previewSessionReady ? <iframe
                     ref={iframeRef}
@@ -1530,7 +1541,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
                 </PreviewCanvas>
                 {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
-                {hasGeneratedApp && status === 'Generating' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it’s ready.</span></div>}
+                {hasGeneratedApp && status === 'Generating' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it's ready.</span></div>}
               </div>
             </div>
           </div>
@@ -1743,6 +1754,21 @@ const Workspace: React.FC<WorkspaceProps> = ({
               </div>
             </div>
           </div>
+        ) : resolvedActiveTab === 'terminal' && wcEnabled ? (
+          <div className="wc-terminal-tab-panel">
+            <div className="wc-terminal-header">
+              <Terminal size={13} />
+              <span>Terminal</span>
+              <span className="wc-terminal-status" data-status={wc.status}>
+                {wc.status === 'ready' ? 'Connected' : wc.status === 'error' ? 'Error' : wc.status === 'installing' ? 'Installing…' : wc.status === 'starting' ? 'Starting…' : 'Booting…'}
+              </span>
+            </div>
+            <div className="wc-terminal-body">
+              <Suspense fallback={<div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 13 }}>Loading terminal…</div>}>
+                <TerminalPanel onReady={wc.attachTerminal} />
+              </Suspense>
+            </div>
+          </div>
         ) : resolvedActiveTab === 'console' ? (
           <ProjectConsole key={activeProjectId} projectId={activeProjectId} files={files} onClose={() => selectTab('preview')} sectionRequest={consoleSectionRequest} />
         ) : resolvedActiveTab === 'logs' ? (
@@ -1891,8 +1917,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 </>
               )}
               {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
-              <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={() => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
-                  {backend.liveUrl ? (
+              <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={wcEnabled ? wc.restart : () => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!wcEnabled && !backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
+                  {wcEnabled ? (
+                    <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
+                  ) : backend.liveUrl ? (
                     <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
                   ) : previewSessionReady ? <iframe
                     ref={iframeRef}
@@ -1921,7 +1949,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
       <footer className="studio-workspace-footer">
         <div className="studio-build-meta" aria-label="Build information">
         <span><FolderCode size={12} />{Object.keys(files).length} files</span>
-        <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Terminal size={14} />Console</button><button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
+        {wcEnabled && <button type="button" onClick={() => selectTab('terminal')} aria-pressed={resolvedActiveTab === 'terminal'}><Terminal size={14} />Terminal</button>}
+        <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Settings size={14} />Console</button><button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
         </div>
       </footer>
 

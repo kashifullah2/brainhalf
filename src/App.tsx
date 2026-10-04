@@ -202,7 +202,7 @@ function App() {
     };
   }, []);
 
-  const [mobileTab, setMobileTab] = useState<'chat' | 'code' | 'preview' | 'console' | 'logs'>('chat');
+  const [mobileTab, setMobileTab] = useState<'chat' | 'code' | 'preview' | 'console' | 'logs' | 'terminal'>('chat');
   const [viewportWidth, setViewportWidth] = useState(() => typeof window === 'undefined' ? 1280 : window.innerWidth);
   const isMobile = viewportWidth <= 768;
   const { minimum: minimumChatWidth, maximum: maximumChatWidth } = panelLimits(viewportWidth);

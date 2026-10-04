@@ -4,11 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Workspace from '../components/Workspace';
 import * as projectStore from '../lib/project-store';
 import { basicReactTemplate } from '../lib/templates';
+import * as wcInstance from '../lib/webcontainer/instance';
 
 describe('Workspace initialization', () => {
   beforeEach(() => {
     vi.spyOn(projectStore, 'getProjectFiles').mockReturnValue(null);
     vi.spyOn(projectStore, 'saveProjectFiles').mockImplementation(() => {});
+    vi.spyOn(wcInstance, 'webContainerSupported').mockReturnValue(false);
     const bound = projectStore.bindProjectStore();
     vi.spyOn(projectStore, 'bindProjectStore').mockReturnValue({ ...bound, getProjectFiles: projectStore.getProjectFiles, saveProjectFiles: projectStore.saveProjectFiles });
   });

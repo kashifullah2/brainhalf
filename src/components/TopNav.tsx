@@ -7,15 +7,15 @@ import ActionMenu from './ActionMenu';
 import BrainHalfLogo from './BrainHalfLogo';
 import ThemeToggle from './ThemeToggle';
 
-type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs';
+type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs' | 'terminal';
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 
 interface TopNavProps {
   activeProjectId: string;
   onProjectRenamed?: (id: string, name: string) => void;
   onSelectProject?: (id: string) => void;
-  mobileTab?: 'chat' | 'code' | 'preview' | 'console' | 'logs';
-  onSelectMobileTab?: (tab: 'chat' | 'code' | 'preview' | 'console' | 'logs') => void;
+  mobileTab?: 'chat' | WorkspaceTab;
+  onSelectMobileTab?: (tab: 'chat' | WorkspaceTab) => void;
   isMobile?: boolean;
   currentUser?: { email?: string; name?: string; devMode?: boolean } | null;
   onLogout?: () => void | Promise<void>;

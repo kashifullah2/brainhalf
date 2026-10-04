@@ -60,7 +60,7 @@ describe('deploy config drift (public/_headers vs worker)', () => {
   it('allows the GitHub export API without allowing arbitrary HTTPS connections', () => {
     const policy = parseHeaders(raw)['/*']['Content-Security-Policy'];
     const connect = policy.split(';').find(directive => directive.trim().startsWith('connect-src'))!;
-    expect(connect.trim().split(/\s+/)).toEqual(['connect-src', "'self'", 'https://cloudflareinsights.com', 'https://api.github.com', 'https://cdn.jsdelivr.net', 'https://www.googletagmanager.com', 'https://*.google-analytics.com', 'https://*.google.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net', 'https://*.googlesyndication.com', 'https://*.adtrafficquality.google', 'https://csi.gstatic.com']);
+    expect(connect.trim().split(/\s+/)).toEqual(['connect-src', "'self'", 'https://cloudflareinsights.com', 'https://api.github.com', 'https://cdn.jsdelivr.net', 'https://esm.sh', 'https://registry.npmjs.org', 'https://*.webcontainer.io', 'https://*.stackblitz.io', 'https://www.googletagmanager.com', 'https://*.google-analytics.com', 'https://*.google.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net', 'https://*.googlesyndication.com', 'https://*.adtrafficquality.google', 'https://csi.gstatic.com']);
   });
 
   it('matches shellSecurityHeaders() directive-for-directive', () => {
@@ -85,6 +85,8 @@ describe('deploy config drift (public/_headers vs worker)', () => {
       'X-Content-Type-Options',
       'Referrer-Policy',
       'Cross-Origin-Resource-Policy',
+      'Cross-Origin-Embedder-Policy',
+      'Cross-Origin-Opener-Policy',
       'Permissions-Policy',
     ]) {
       expect(file[key], `${key} must match between _headers and the worker`).toBe(worker[key]);
