@@ -1407,7 +1407,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
           if (ok) { setShareCopied(true); } else { setShareFallback(shareUrl); }
         }}
         publishOpen={publishOpen}
-        onPublish={() => { if (hasGeneratedApp && status !== 'Generating') setPublishOpen(open => !open); }}
+        onPublish={() => {
+          if (!hasGeneratedApp || status === 'Generating') return;
+          if (previewLoadState === 'error') {
+            addBuildLog('Publishing is blocked until the preview error is fixed — the cloud build would hit the same problem.', 'warn');
+            return;
+          }
+          setPublishOpen(open => !open);
+        }}
+        publishBlockedReason={previewLoadState === 'error' ? 'Fix the preview error before publishing — the cloud build would fail the same way.' : undefined}
         onExportZip={() => { void handleExportZip(); }}
         onExportGithub={() => github.openModal()}
         onResetWorkspace={() => setShowResetConfirm(true)}
@@ -1561,7 +1569,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
                 </PreviewCanvas>
-                {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+                {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
                 {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it's ready.</span></div>}
               </div>
             </div>
@@ -1953,7 +1961,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
               </PreviewCanvas>
-              {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={previewIssue.error.slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+              {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
               {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it’s ready.</span></div>}
 
             </div>

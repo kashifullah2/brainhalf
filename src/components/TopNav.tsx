@@ -38,6 +38,7 @@ interface TopNavProps {
   onShare?: () => void;
   publishOpen?: boolean;
   onPublish?: () => void;
+  publishBlockedReason?: string;
   onExportZip?: () => void;
   onExportGithub?: () => void;
   onResetWorkspace?: () => void;
@@ -72,6 +73,7 @@ const TopNav: React.FC<TopNavProps> = ({
   onShare,
   publishOpen = false,
   onPublish,
+  publishBlockedReason,
   onExportZip,
   onExportGithub,
   onResetWorkspace,
@@ -277,12 +279,12 @@ const TopNav: React.FC<TopNavProps> = ({
             <div style={{ position: 'relative' }}>
               <button type="button"
                 className={`bolt-publish-btn${hasGeneratedApp ? ' ready' : ''}`}
-                disabled={!hasGeneratedApp}
+                disabled={!hasGeneratedApp || !!publishBlockedReason}
                 aria-haspopup="dialog"
                 aria-expanded={publishOpen}
                 onClick={onPublish}
-                title={hasGeneratedApp ? 'Put your app on the web' : 'Generate an app in chat first'}
-                aria-label={hasGeneratedApp ? 'Publish app' : 'Generate an app first'}
+                title={publishBlockedReason || (hasGeneratedApp ? 'Put your app on the web' : 'Generate an app in chat first')}
+                aria-label={publishBlockedReason || (hasGeneratedApp ? 'Publish app' : 'Generate an app first')}
               >
                 <Cloud size={13} strokeWidth={2} />
                 <span>Publish</span>

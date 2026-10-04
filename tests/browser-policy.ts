@@ -6,6 +6,8 @@ export const LOCAL_BROWSER_SPECS = [
   '**/ai-ide-e2e-001-lifecycle.spec.ts',
   '**/platform-checks-regression.spec.ts',
   '**/critical-remediation.spec.ts',
+  '**/publish-gating.spec.ts',
+  '**/a11y-workspace.spec.ts',
   '**/recent-projects.spec.ts',
   '**/workspace-clarity.spec.ts',
   '**/managed-runtime.spec.ts',

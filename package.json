@@ -59,6 +59,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@cloudflare/workers-types": "^5.20260908.1",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.5.0",
