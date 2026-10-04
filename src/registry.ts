@@ -40,6 +40,11 @@ import {
 
 const SCHEMA_VERSION = 1;
 
+/** decodeURIComponent that returns null instead of throwing on malformed input. */
+function safeDecode(value: string): string | null {
+  try { return decodeURIComponent(value); } catch { return null; }
+}
+
 // One minute is generous for a single handshake and short enough that a ticket
 // observed in a log or a trace is already, or is soon, worthless.
 const WS_TICKET_TTL_MS = 60 * 1000;
@@ -66,6 +71,39 @@ export class AuthRegistry {
 
   constructor(state: DurableObjectState, private env: any) {
     this.state = state;
+  }
+
+  /**
+   * Admin accounts are exempt from AI budget limits. The answer is cached for
+   * the DO's lifetime only when it is definitive: a registry timeout used to be
+   * cached as "not an admin", locking the operator out of their own budget
+   * until the Durable Object happened to be evicted.
+   */
+  private async isAdminUnlimited(): Promise<boolean> {
+    if (this.adminUnlimited !== null) return this.adminUnlimited;
+    const adminEmails = String(this.env.ADMIN_EMAILS || '').split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+    let unlimited = false;
+    let definitive = true;
+    if (adminEmails.length) {
+      try {
+        const doName = (this.state.id as any).name as string | undefined;
+        const ownerId = doName?.startsWith('ai-budget:') ? doName.slice('ai-budget:'.length) : '';
+        if (ownerId) {
+          const authDo = this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth'));
+          const res = await authDo.fetch(`https://registry/admin/managed-owner?ownerId=${encodeURIComponent(ownerId)}`);
+          if (res.ok) {
+            const data = await res.json() as { email?: string };
+            unlimited = adminEmails.includes((data.email || '').toLowerCase());
+          } else if (res.status !== 404) {
+            definitive = false;
+          }
+        }
+      } catch {
+        definitive = false; // fail closed for this request, but retry next time
+      }
+    }
+    if (definitive) this.adminUnlimited = unlimited;
+    return unlimited;
   }
 
   private cleanupDependencies() {
@@ -174,11 +212,16 @@ export class AuthRegistry {
     if (!columns.some(column => column.name === 'published')) {
       sql.exec('ALTER TABLE project_owners ADD COLUMN published INTEGER NOT NULL DEFAULT 0');
     }
-    if (!columns.some(column => column.name === 'showcase')) {
-      sql.exec('ALTER TABLE project_owners ADD COLUMN showcase INTEGER NOT NULL DEFAULT 0');
-      sql.exec('ALTER TABLE project_owners ADD COLUMN showcase_description TEXT NOT NULL DEFAULT \'\'');
-      sql.exec('ALTER TABLE project_owners ADD COLUMN remix_count INTEGER NOT NULL DEFAULT 0');
-      sql.exec('ALTER TABLE project_owners ADD COLUMN showcased_at INTEGER');
+    // Each column is checked on its own: the old all-or-nothing block threw
+    // "duplicate column" on retry if a previous run died after the first ALTER.
+    const showcaseColumns: Array<[string, string]> = [
+      ['showcase', 'INTEGER NOT NULL DEFAULT 0'],
+      ['showcase_description', "TEXT NOT NULL DEFAULT ''"],
+      ['remix_count', 'INTEGER NOT NULL DEFAULT 0'],
+      ['showcased_at', 'INTEGER'],
+    ];
+    for (const [name, ddl] of showcaseColumns) {
+      if (!columns.some(column => column.name === name)) sql.exec(`ALTER TABLE project_owners ADD COLUMN ${name} ${ddl}`);
     }
     sql.exec(
       `CREATE TABLE IF NOT EXISTS project_claim_idempotency (
@@ -296,27 +339,7 @@ export class AuthRegistry {
         if (method !== 'POST') return this.json(405, { error: 'Method not allowed' });
         const body = await request.json() as { id?: unknown; lease?: unknown; maxTokens?: unknown };
         if (!body || typeof body.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(body.id)) return this.json(400, { error: 'Invalid AI reservation' });
-        // Check admin status once per DO lifetime (cached in-memory). Admin
-        // accounts are exempt from all AI budget limits.
-        if (this.adminUnlimited === null) {
-          this.adminUnlimited = false;
-          const adminEmails = String(this.env.ADMIN_EMAILS || '').split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
-          if (adminEmails.length) {
-            try {
-              const doName = (this.state.id as any).name as string | undefined;
-              const ownerId = doName?.startsWith('ai-budget:') ? doName.slice('ai-budget:'.length) : '';
-              if (ownerId) {
-                const authDo = this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth'));
-                const res = await authDo.fetch(`https://registry/admin/managed-owner?ownerId=${encodeURIComponent(ownerId)}`);
-                if (res.ok) {
-                  const data = await res.json() as { email?: string };
-                  this.adminUnlimited = adminEmails.includes((data.email || '').toLowerCase());
-                }
-              }
-            } catch { /* fail closed — non-admin on error */ }
-          }
-        }
-        if (this.adminUnlimited) return this.json(200, { ok: true });
+        if (await this.isAdminUnlimited()) return this.json(200, { ok: true });
         if (path === '/ai/start') ledger.start(body.id);
         else if (path === '/ai/end') ledger.end(body.id);
         else if (path === '/ai/reserve' && typeof body.lease === 'string' && typeof body.maxTokens === 'number') ledger.reserve(body.lease, body.id, body.maxTokens);
@@ -419,7 +442,7 @@ export class AuthRegistry {
       // matters: removing the row first would leave the id unowned and
       // claimable, handing the orphaned Durable Object to the next claimant.
       if (path.startsWith('/admin/projects/') && method === 'DELETE') {
-        const projectId = decodeURIComponent(path.slice('/admin/projects/'.length));
+        const projectId = safeDecode(path.slice('/admin/projects/'.length)) ?? '';
         if (!isValidProjectId(projectId)) return this.json(400, { error: 'Invalid request' });
         const rows = this.sql.exec('SELECT user_id FROM project_owners WHERE project_id = ?', projectId).toArray() as Array<{ user_id: string }>;
         if (!rows.length) return this.json(404, { error: 'Project not found' });
@@ -460,18 +483,28 @@ export class AuthRegistry {
       // is removed), then sessions, verification rows, OAuth links, and the
       // user row itself are removed.
       if (path.startsWith('/admin/users/') && method === 'DELETE') {
-        const userId = decodeURIComponent(path.slice('/admin/users/'.length));
+        const userId = safeDecode(path.slice('/admin/users/'.length)) ?? '';
         if (!userId || userId.length > 128) return this.json(400, { error: 'Invalid request' });
         const exists = this.sql.exec('SELECT id, email FROM users WHERE id = ?', userId).toArray() as Array<{ id: string; email: string }>;
         if (!exists.length) return this.json(404, { error: 'User not found' });
         const projectRows = this.sql.exec('SELECT project_id FROM project_owners WHERE user_id = ?', userId).toArray() as Array<{ project_id: string }>;
         const deps = this.cleanupDependencies();
         const deletedProjects: string[] = [];
+        const failedSteps: string[] = [];
         for (const { project_id: projectId } of projectRows) {
-          try { await deps.removeRuntime(projectId, userId); } catch (err) { console.error('Admin user delete: runtime removal failed:', (err as Error)?.message); }
-          try { await deps.eraseAgent(projectId, userId); } catch (err) { console.error('Admin user delete: agent erase failed:', (err as Error)?.message); }
-          try { await deps.removeBackups(projectId); } catch (err) { console.error('Admin user delete: backup removal failed:', (err as Error)?.message); }
-          deletedProjects.push(projectId);
+          let projectOk = true;
+          try { await deps.removeRuntime(projectId, userId); } catch (err) { projectOk = false; failedSteps.push(`${projectId} runtime: ${(err as Error)?.message}`); }
+          try { await deps.eraseAgent(projectId, userId); } catch (err) { projectOk = false; failedSteps.push(`${projectId} agent: ${(err as Error)?.message}`); }
+          try { await deps.removeBackups(projectId); } catch (err) { projectOk = false; failedSteps.push(`${projectId} backups: ${(err as Error)?.message}`); }
+          if (projectOk) deletedProjects.push(projectId);
+        }
+        // Same rule as the single-project hard delete: ownership rows are the only
+        // thing keeping an id from being claimed by someone else. If any storage
+        // step failed, keep the account and its rows so the delete can be retried;
+        // removing them anyway orphaned the project data under a claimable id.
+        if (failedSteps.length > 0) {
+          console.error(`Admin user delete failed for ${userId}; account kept. Failures: ${failedSteps.join('; ')}`);
+          return this.json(500, { error: 'Project cleanup failed; the account was not deleted.', failedSteps });
         }
         const email = exists[0].email;
         this.state.storage.transactionSync(() => {
@@ -487,6 +520,7 @@ export class AuthRegistry {
           this.sql.exec('DELETE FROM oauth_identities WHERE user_id = ?', userId);
           this.sql.exec('DELETE FROM users WHERE id = ?', userId);
         });
+        this.galleryCache = null;
         return this.json(200, { ok: true, deletedUser: email, deletedProjects: deletedProjects.length });
       }
       // Admin custom models: list, add, delete, and test.
@@ -525,13 +559,13 @@ export class AuthRegistry {
         return this.json(201, { id, name: body.name.trim(), baseUrl, modelId: body.modelId.trim() });
       }
       if (path.startsWith('/admin/models/') && method === 'DELETE') {
-        const id = decodeURIComponent(path.slice('/admin/models/'.length).split('/')[0]);
+        const id = safeDecode(path.slice('/admin/models/'.length).split('/')[0]) ?? '';
         if (!id.startsWith('cm_')) return this.json(400, { error: 'Invalid request' });
         this.sql.exec('DELETE FROM custom_models WHERE id = ?', id);
         return this.json(200, { ok: true, deleted: id });
       }
       if (path.startsWith('/admin/models/') && path.endsWith('/test') && method === 'POST') {
-        const id = decodeURIComponent(path.slice('/admin/models/'.length, -'/test'.length));
+        const id = safeDecode(path.slice('/admin/models/'.length, -'/test'.length)) ?? '';
         const body = await json<{ prompt?: string }>();
         if (!body?.prompt?.trim()) return this.json(400, { error: 'A prompt is required.' });
         const rows = this.sql.exec(
@@ -616,7 +650,7 @@ export class AuthRegistry {
       // Internal: full custom model config (including decrypted API key) for
       // the agent's generation path. Only callable within the worker network.
       if (path.startsWith('/internal/custom-model/') && method === 'GET') {
-        const id = decodeURIComponent(path.slice('/internal/custom-model/'.length));
+        const id = safeDecode(path.slice('/internal/custom-model/'.length)) ?? '';
         if (!id.startsWith('cm_')) return this.json(400, { error: 'Invalid request' });
         const rows = this.sql.exec(
           'SELECT base_url, model_id, api_key_encrypted FROM custom_models WHERE id = ?', id
@@ -683,6 +717,7 @@ export class AuthRegistry {
           .exec('SELECT id FROM users WHERE email = ?', email)
           .toArray() as Array<{ id: string }>;
         if (existing.length > 0) {
+          await hashPassword(password); // equalise timing with the new-account path
           // Enumeration-safe: indistinguishable from a fresh signup. The
           // caller (email.ts) skips the verification email for existing
           // accounts but returns the identical 202 to the browser.
@@ -730,7 +765,12 @@ export class AuthRegistry {
         const rows = this.sql
           .exec('SELECT id, password_hash FROM users WHERE email = ?', email)
           .toArray() as Array<{ id: string; password_hash: string }>;
-        if (rows.length === 0) return this.json(401, { error: 'Invalid email or password' });
+        if (rows.length === 0) {
+          // Spend the same PBKDF2 time as a real check; returning instantly
+          // let anyone enumerate registered emails by response time.
+          await hashPassword(password);
+          return this.json(401, { error: 'Invalid email or password' });
+        }
 
         // Same message for unknown user and wrong password — no user enumeration.
         const ok = await verifyPassword(password, rows[0].password_hash);
@@ -763,7 +803,7 @@ export class AuthRegistry {
 
       // Revocation check: is this token still alive?
       if (path.startsWith('/sessions/') && method === 'GET') {
-        const tokenHash = decodeURIComponent(path.slice('/sessions/'.length));
+        const tokenHash = safeDecode(path.slice('/sessions/'.length)) ?? '';
         if (!tokenHash) return this.json(404, { error: 'Session not found' });
         const rows = this.sql
           .exec('SELECT user_id, expires_at FROM sessions WHERE token_hash = ?', tokenHash)
@@ -1075,6 +1115,7 @@ export class AuthRegistry {
           projectId, body.userId, name, now, now
         );
         this.sql.exec('UPDATE project_owners SET remix_count = remix_count + 1 WHERE project_id = ?', body.sourceProjectId as string);
+        this.galleryCache = null;
         return this.json(201, { projectId, name });
       }
 
@@ -1128,11 +1169,11 @@ export class AuthRegistry {
       }
 
       if (path.startsWith('/projects/') && method === 'PATCH') {
-        const projectId = decodeURIComponent(path.slice('/projects/'.length));
+        const projectId = safeDecode(path.slice('/projects/'.length)) ?? '';
         const body = await json<{ userId?: string; name?: string }>();
         if (!isValidProjectId(projectId) || !body?.userId) return this.json(400, { error: 'Invalid request' });
         if (typeof body.name !== 'string' || !body.name.trim()) return this.json(400, { error: 'Invalid name' });
-        const name = body.name.slice(0, 120);
+        const name = body.name.trim().slice(0, 120);
         const rows = this.sql
           .exec('SELECT user_id FROM project_owners WHERE project_id = ? AND deleted_at IS NULL', projectId as string)
           .toArray() as Array<{ user_id: string }>;
@@ -1144,11 +1185,12 @@ export class AuthRegistry {
           Date.now(),
           projectId as string
         );
+        this.galleryCache = null; // a renamed showcase app must not show its old name
         return this.json(200, { ok: true });
       }
 
       if (path.startsWith('/projects/') && method === 'DELETE') {
-        const projectId = decodeURIComponent(path.slice('/projects/'.length));
+        const projectId = safeDecode(path.slice('/projects/'.length)) ?? '';
         const userId = url.searchParams.get('userId');
         if (!isValidProjectId(projectId) || !userId) return this.json(400, { error: 'Invalid request' });
         const rows = this.sql

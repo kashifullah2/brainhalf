@@ -45,6 +45,17 @@ import { GenerationUserError, classifyGenerationError, errorMessage } from './li
 // Transient provider failures (rate limits, overload, dropped connections)
 // get this many automatic retries per pipeline stage before we give up.
 const GENERATION_TRANSIENT_RETRIES = 2;
+
+// A failed WebSocket send used to vanish into an empty catch block, so a client
+// that missed `done`, `error` or `file_updated` looked like a model bug. Count
+// and log (rate-limited) instead; the send itself stays best-effort.
+let sendFailureCount = 0;
+function noteSendFailure(error: unknown): void {
+  sendFailureCount += 1;
+  if (sendFailureCount <= 5 || sendFailureCount % 100 === 0) {
+    console.warn(`WebSocket send failed (#${sendFailureCount}):`, error instanceof Error ? error.message : String(error));
+  }
+}
 import { SourceHistory, sourceChanges } from './lib/source-history';
 import { readJson } from './runtime/integrations';
 import { MAX_GENERATION_RESUME_CHARS, type GenerationSession } from './lib/generation-session';
@@ -920,7 +931,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       // Don't rethrow — the SDK will close the socket with 1011 if we do, which
       // the client sees as 1006 and retries. Instead we close explicitly with a
       // message so the client can surface the error rather than looping forever.
-      try { connection.send(JSON.stringify({ type: 'error', error: 'Session initialisation failed. Please refresh.' })); } catch {}
+      try { connection.send(JSON.stringify({ type: 'error', error: 'Session initialisation failed. Please refresh.' })); } catch (e) { noteSendFailure(e); }
     }
   }
 
@@ -964,7 +975,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       console.warn('Failed retrieving history onConnect:', e);
       connection.send(JSON.stringify({ type: 'history', data: [], workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot(), resumableJob }));
     }
-    try { connection.send(JSON.stringify({ type: 'files_changed', revision: this.getFilesRevision() })); } catch { }
+    try { connection.send(JSON.stringify({ type: 'files_changed', revision: this.getFilesRevision() })); } catch (e) { noteSendFailure(e); }
   }
 
   async onClose(connection: Connection) {
@@ -1045,7 +1056,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * [AUTO-FIX] repair; if that was already used, the user gets a clear warning
    * listing exactly what's missing instead of a silent broken preview.
    */
-  private verifyFinalCompleteness(connection: Connection): void {
+  private verifyFinalCompleteness(connection: Connection, defer: (event: () => void) => void = event => event()): void {
     try {
       const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
       const allFiles = new Map<string, string>();
@@ -1062,8 +1073,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           `[AUTO-FIX] The build finished but these files are imported by the app and were never written:\n${list}\n\n` +
           `Generate ONLY these missing files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
           `Match the existing app's architecture, imports, and styling. Do not modify any other file.`;
-        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The build was missing ${candidates.length} file(s). Generating them now…` })); } catch { }
-        try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch { }
+        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The build was missing ${candidates.length} file(s). Generating them now…` })); } catch (e) { noteSendFailure(e); }
+        defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch (e) { noteSendFailure(e); } });
       } else {
         try {
           connection.send(JSON.stringify({
@@ -1134,7 +1145,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       try {
         parsed = JSON.parse(message);
       } catch {
-        try { connection.send(JSON.stringify({ type: 'error', error: 'Malformed message payload' })); } catch { }
+        try { connection.send(JSON.stringify({ type: 'error', error: 'Malformed message payload' })); } catch (e) { noteSendFailure(e); }
         return;
       }
       if (!parsed || typeof parsed !== 'object') return;
@@ -1143,7 +1154,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       this.ensureSchema();
 
       if (data.type === 'ping') {
-        try { connection.send(JSON.stringify({ type: 'pong' })); } catch { }
+        try { connection.send(JSON.stringify({ type: 'pong' })); } catch (e) { noteSendFailure(e); }
         return;
       }
 
@@ -1181,8 +1192,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         // discarded, then abort the stream itself.
         this.abortGeneration();
         const stoppedMsg = JSON.stringify({ type: 'stopped' });
-        try { connection.send(stoppedMsg); } catch { }
-        try { this.broadcast(stoppedMsg, [connection.id]); } catch { }
+        try { connection.send(stoppedMsg); } catch (e) { noteSendFailure(e); }
+        try { this.broadcast(stoppedMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
         return;
       }
 
@@ -1190,8 +1201,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         try {
           this.runSql`DELETE FROM messages;`;
           const clearedMsg = JSON.stringify({ type: 'history', data: [] });
-          try { connection.send(clearedMsg); } catch { }
-          try { this.broadcast(clearedMsg); } catch { }
+          try { connection.send(clearedMsg); } catch (e) { noteSendFailure(e); }
+          try { this.broadcast(clearedMsg); } catch (e) { noteSendFailure(e); }
         } catch (e) {
           console.error('Error clearing history:', e);
         }
@@ -1267,7 +1278,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           this.backupToR2(this.senderUserId(connection)).catch(console.error);
         } catch (e) {
           console.error('Error syncing files to SQLite:', e);
-          try { connection.send(JSON.stringify({ type: 'error', error: 'File sync failed; workspace unchanged' })); } catch { }
+          try { connection.send(JSON.stringify({ type: 'error', error: 'File sync failed; workspace unchanged' })); } catch (e) { noteSendFailure(e); }
         }
         return;
       }
@@ -1447,7 +1458,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const requestKey = typeof data.idempotencyKey === 'string' ? data.idempotencyKey : null;
       if (!this.idempotency.claim(requestKey)) {
         const dup = JSON.stringify({ type: 'error', error: 'Duplicate request ignored (idempotency key already seen)' });
-        try { connection.send(dup); } catch { }
+        try { connection.send(dup); } catch (e) { noteSendFailure(e); }
         return;
       }
 
@@ -1462,7 +1473,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
       // Early ack so the client switches from "Connecting to AI model..." to
       // "Thinking..." as soon as the server has accepted the prompt.
-      try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Thinking...' })); } catch { }
+      try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Thinking...' })); } catch (e) { noteSendFailure(e); }
 
       // Refuse a second concurrent generation rather than letting two of them
       // interleave their file writes. The client is told why and can retry.
@@ -1501,13 +1512,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (lockResult && 'reason' in lockResult) {
         this.idempotency.release?.(requestKey);
         const busy = JSON.stringify({ type: 'error', error: `A generation is already in progress (${lockResult.reason}). Send 'stop' first.` });
-        try { connection.send(busy); } catch { }
+        try { connection.send(busy); } catch (e) { noteSendFailure(e); }
         return;
       }
       return;
     } catch (e) {
       console.error('Error handling message:', e);
-      try { connection.send(JSON.stringify({ type: 'error', error: errorMessage(e) || 'Internal error' })); } catch { }
+      try { connection.send(JSON.stringify({ type: 'error', error: errorMessage(e) || 'Internal error' })); } catch (e) { noteSendFailure(e); }
     }
   }
 
@@ -1651,8 +1662,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     const sendError = (msg: string, code?: string) => {
       const payload = JSON.stringify(code ? { type: 'error', code, error: msg } : { type: 'error', error: msg });
       deferTerminal(() => {
-        try { connection.send(payload); } catch { }
-        try { this.broadcast(payload, [connection.id]); } catch { }
+        try { connection.send(payload); } catch (e) { noteSendFailure(e); }
+        try { this.broadcast(payload, [connection.id]); } catch (e) { noteSendFailure(e); }
       });
     };
 
@@ -1750,7 +1761,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             for (const [path, content] of Object.entries(files)) {
               assetPaths.add(path);
               const event = JSON.stringify({ type: 'file_updated', path, content });
-              try { connection.send(event); this.broadcast(event, [connection.id]); } catch {}
+              try { connection.send(event); this.broadcast(event, [connection.id]); } catch (e) { noteSendFailure(e); }
             }
             if (this.activeGeneration?.epoch === epoch) this.activeGeneration.filesChanged = true;
             await this.backupToR2(this.senderUserId(connection));
@@ -1829,8 +1840,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               const update = JSON.stringify(isBlockedSecretFile(cleanPath)
                 ? { type: 'file_updated', path: cleanPath, redacted: true }
                 : { type: 'file_updated', path: cleanPath, content: normalizedContent });
-              try { connection.send(update); } catch {}
-              try { this.broadcast(update, [connection.id]); } catch {}
+              try { connection.send(update); } catch (e) { noteSendFailure(e); }
+              try { this.broadcast(update, [connection.id]); } catch (e) { noteSendFailure(e); }
               return { success: true, path: cleanPath };
             } catch (error) {
               return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -2146,8 +2157,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   const frame = pendingFrame;
                   pendingFrame = '';
                   const message = JSON.stringify({ type: 'stream', chunk: { response: frame, done: false } });
-                  try { connection.send(message); } catch { }
-                  try { this.broadcast(message, [connection.id]); } catch { }
+                  try { connection.send(message); } catch (e) { noteSendFailure(e); }
+                  try { this.broadcast(message, [connection.id]); } catch (e) { noteSendFailure(e); }
                 };
                 const sendDisplay = (response: string) => {
                   if (!response) return;
@@ -2207,8 +2218,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                         type: 'tool_call',
                         tool: chunk.toolName,
                       });
-                      try { connection.send(toolMsg); } catch { }
-                      try { this.broadcast(toolMsg, [connection.id]); } catch { }
+                      try { connection.send(toolMsg); } catch (e) { noteSendFailure(e); }
+                      try { this.broadcast(toolMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
                     }
                   }
                 };
@@ -2228,7 +2239,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   const stageNewPaths = new Set([...toolWrittenPaths].filter(p => !stageToolWrittenPaths.has(p)));
                   if (!text.trim() && (plannerMode || isConversationalPrompt(actualPrompt)) && stageNewPaths.size === 0) throw new Error('The model returned no response. Please retry.');
 
-                  const extraction = this.extractAndSaveFiles(text, connection, epoch, plannerMode || !!modes?.destructiveMode || !!modes?.questionMode || !!modes?.ambiguousMode);
+                  const extraction = this.extractAndSaveFiles(text, connection, epoch, plannerMode || !!modes?.destructiveMode || !!modes?.questionMode || !!modes?.ambiguousMode, deferTerminal);
                   extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...stageNewPaths])];
                   extraction.writtenCount = extraction.writtenPaths.length;
 
@@ -2241,8 +2252,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   if (stageNewPaths.size > 0) {
                     flushFrame();
                     const changed = JSON.stringify({ type: 'files_changed' });
-                    try { connection.send(changed); } catch { }
-                    try { this.broadcast(changed, [connection.id]); } catch { }
+                    try { connection.send(changed); } catch (e) { noteSendFailure(e); }
+                    try { this.broadcast(changed, [connection.id]); } catch (e) { noteSendFailure(e); }
                   }
                   this.handleIncompleteAppGeneration({ actualPrompt, responseText: text, extraction, connection, expectFiles: !plannerMode && isLastStage, epoch, deferTerminal });
                   
@@ -2250,8 +2261,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
                     deferTerminal(() => {
                       flushFrame();
-                      try { connection.send(doneMsg); } catch { }
-                      try { this.broadcast(doneMsg, [connection.id]); } catch { }
+                      try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
+                      try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
                     });
                     completed = true;
                     // QA B11: ensure the production build entry point exists.
@@ -2264,7 +2275,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       // Only when this generation wrote files — a greeting or text
                       // reply must never trigger a hidden file-repair turn.
                       if (extraction.writtenCount > 0) {
-                        try { this.verifyFinalCompleteness(connection); } catch { /* never block completion */ }
+                        try { this.verifyFinalCompleteness(connection, deferTerminal); } catch (e) { console.warn('Final completeness check threw:', e); }
                       }
                     }
                   } else {
@@ -2292,7 +2303,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     && /\btools?\b|\bfunctions?\b|schema|400|bad request|invalid (?:param|argument|request)/i.test(errMessage)) {
                     customToolsDisabled = true;
                     console.warn(`Custom model ${customModel.name} rejected tool calling; retrying stage "${stage.stageId}" without tools`);
-                    try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'This model does not support tool calls — switching to direct file output…', stage: stage.stageId, requestId: data.idempotencyKey })); } catch { }
+                    try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'This model does not support tool calls — switching to direct file output…', stage: stage.stageId, requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }
                     idx--; // Retry the same candidate; the loop increment restores idx.
                     continue;
                   }
@@ -2303,7 +2314,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   if (classification.retryable && !displayContent && !abortController.signal.aborted && transientRetries < GENERATION_TRANSIENT_RETRIES) {
                     transientRetries += 1;
                     console.warn(`Transient provider error for ${model.name} (${classification.category}: ${errMessage}); retrying stage "${stage.stageId}" (attempt ${transientRetries + 1})`);
-                    try { connection.send(JSON.stringify({ type: 'generation_notice', message: `${classification.userMessage} Retrying…`, stage: stage.stageId, requestId: data.idempotencyKey })); } catch { }
+                    try { connection.send(JSON.stringify({ type: 'generation_notice', message: `${classification.userMessage} Retrying…`, stage: stage.stageId, requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }
                     // Tests cannot wait out real exponential backoff.
                     const retryDelayMs = typeof process !== 'undefined' && process.env?.VITEST ? 10 : 1_000 * 2 ** transientRetries;
                     await new Promise<void>((resolve) => {
@@ -2463,8 +2474,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               } : null,
               resumable,
             });
-            try { connection.send(payload); } catch { }
-            try { this.broadcast(payload, [connection.id]); } catch { }
+            try { connection.send(payload); } catch (e) { noteSendFailure(e); }
+            try { this.broadcast(payload, [connection.id]); } catch (e) { noteSendFailure(e); }
           });
         } else {
           // Defensive: reached the finally with no recorded outcome (an early
@@ -2555,8 +2566,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         displayContent += token;
         this.rememberGenerationText(token, epoch);
         const msg = JSON.stringify({ type: 'stream', chunk: { response: token, done: false } });
-        try { connection.send(msg); } catch { }
-        try { this.broadcast(msg, [connection.id]); } catch { }
+        try { connection.send(msg); } catch (e) { noteSendFailure(e); }
+        try { this.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
       };
       const emit = (token: string) => {
         outputContent += token;
@@ -2575,7 +2586,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           const answer = await runCapabilityLoop(input => runAI(cfModel, { ...input, max_tokens: requestedMaxTokens || 8192 }, { signal: abortController.signal }), messages, capabilities, abortController.signal, usage => { toolInputTokens += usage.prompt_tokens ?? usage.input_tokens ?? 0; toolOutputTokens += usage.completion_tokens ?? usage.output_tokens ?? 0; this.captureUsage(toolInputTokens, toolOutputTokens); }, name => {
             if (accounting && accounting.firstResponseAt === null) accounting.firstResponseAt = Date.now();
             const event = JSON.stringify({ type: 'tool_call', tool: name });
-            try { connection.send(event); this.broadcast(event, [connection.id]); } catch {}
+            try { connection.send(event); this.broadcast(event, [connection.id]); } catch (e) { noteSendFailure(e); }
           }, emit, { maxSteps });
           // Tool turns already streamed through the same transcript and file
           // collector. Finalize once without replaying the completed response.
@@ -2734,7 +2745,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       emitDisplay(transcript.push('', true));
       // expectFiles is false exactly for tool-less turns (planner, question,
       // destructive, ambiguous): scan the reply for diagnostics, never write.
-      const extraction = this.extractAndSaveFiles(outputContent, connection, epoch, !expectFiles);
+      const extraction = this.extractAndSaveFiles(outputContent, connection, epoch, !expectFiles, deferTerminal);
       extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...assetPaths])];
       extraction.writtenCount = extraction.writtenPaths.length;
       this.saveGenerationTurn(actualPrompt, displayContent || (assetPaths.size ? `Updated ${[...assetPaths].join(', ')}.` : ''), epoch);
@@ -2749,8 +2760,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       });
       const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
       deferTerminal(() => {
-        try { connection.send(doneMsg); } catch { }
-        try { this.broadcast(doneMsg, [connection.id]); } catch { }
+        try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
+        try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
       });
       return true;
     } catch (e) {
@@ -2885,7 +2896,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       `Generate a complete runnable app, not a short snippet.`;
 
     const publishRetry = () => {
-      try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: autoRetryMessage })); } catch { }
+      try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: autoRetryMessage })); } catch (e) { noteSendFailure(e); }
     };
     if (opts.deferTerminal) opts.deferTerminal(publishRetry); else publishRetry();
   }
@@ -2979,7 +2990,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     return { writes, sawFileTag, wasTruncated };
   }
 
-  private extractAndSaveFiles(text: string, connection: Connection, epoch?: number, readOnly = false): ExtractionSummary {
+  private extractAndSaveFiles(text: string, connection: Connection, epoch?: number, readOnly = false, defer: (event: () => void) => void = event => event()): ExtractionSummary {
     const summary: ExtractionSummary = {
       writtenCount: 0,
       deletedCount: 0,
@@ -2997,7 +3008,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     const sendTriggerOnce = (message: string) => {
       if (triggerSent) return;
       triggerSent = true;
-      try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message })); } catch { }
+      // Published only after the generation lock is released (see terminalEvents).
+      // Sent immediately, the client's repair turn raced the still-held lock and
+      // was rejected as busy, so the repair silently never ran.
+      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message })); } catch (e) { noteSendFailure(e); } });
     };
 
     if (!text) return summary;
@@ -3093,7 +3107,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           pendingWrites.set(filePath, updated);
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
-          try { connection.send(JSON.stringify({ type: 'error', error: `Could not apply edit to ${filePath}: ${reason}. Existing contents were preserved.` })); } catch { }
+          try { connection.send(JSON.stringify({ type: 'error', error: `Could not apply edit to ${filePath}: ${reason}. Existing contents were preserved.` })); } catch (e) { noteSendFailure(e); }
         }
       }
     }
@@ -3198,14 +3212,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           `[AUTO-FIX] These files were discarded because of syntax errors and were not saved:\n${list}\n\n` +
           `Regenerate ONLY these files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
           `Do not modify any other file. Check that every bracket, brace, parenthesis and JSX tag is closed before finishing.`;
-        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `A file didn't pass the syntax check. Repairing it now…` })); } catch { }
+        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `A file didn't pass the syntax check. Repairing it now…` })); } catch (e) { noteSendFailure(e); }
         sendTriggerOnce(repairPrompt);
       } else {
         const warn = JSON.stringify({
           type: 'error',
           error: `Discarded ${brokenFiles.length} file(s) with unrecoverable syntax errors after ${MAX_SYNTAX_REPAIRS} automatic repair attempts: ${brokenFiles.map(f => f.path).join(', ')}. Ask the agent to regenerate them one at a time.`
         });
-        try { connection.send(warn); } catch { }
+        try { connection.send(warn); } catch (e) { noteSendFailure(e); }
       }
     }
 
@@ -3253,8 +3267,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
     for (const path of pendingDeletes) {
       const deleteMsg = JSON.stringify({ type: 'file_deleted', path });
-      try { connection.send(deleteMsg); } catch { }
-      try { this.broadcast(deleteMsg, [connection.id]); } catch { }
+      try { connection.send(deleteMsg); } catch (e) { noteSendFailure(e); }
+      try { this.broadcast(deleteMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
     }
 
     for (const path of written) {
@@ -3264,8 +3278,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           ? { type: 'file_updated', path, redacted: true }
           : { type: 'file_updated', path, content }
       );
-      try { connection.send(updateMsg); } catch { }
-      try { this.broadcast(updateMsg, [connection.id]); } catch { }
+      try { connection.send(updateMsg); } catch (e) { noteSendFailure(e); }
+      try { this.broadcast(updateMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
     }
 
     summary.writtenCount = written.length;
@@ -3278,8 +3292,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const snapshotMsg = JSON.stringify({
         type: 'files_changed',
       });
-      try { connection.send(snapshotMsg); } catch { }
-      try { this.broadcast(snapshotMsg, [connection.id]); } catch { }
+      try { connection.send(snapshotMsg); } catch (e) { noteSendFailure(e); }
+      try { this.broadcast(snapshotMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
     } catch (e) {
       console.error('Error broadcasting files_snapshot:', e);
     }
@@ -3331,7 +3345,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       this.abortGeneration();
       const deadline = Date.now() + 5_000;
       while (this.generationLock.isHeld && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
-      try { this.broadcast(JSON.stringify({ type: 'stopped' })); } catch {}
+      try { this.broadcast(JSON.stringify({ type: 'stopped' })); } catch (e) { noteSendFailure(e); }
       return Response.json({ ok: !this.generationLock.isHeld, stopping: this.generationLock.isHeld }, { status: this.generationLock.isHeld ? 202 : 200 });
     }
 
