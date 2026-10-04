@@ -1490,7 +1490,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                   </div>
                 )}
-                {previewLoadState === 'error' && (
+                {previewLoadState === 'error' && status !== 'Generating' && (
                   <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                     <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
@@ -1531,7 +1531,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     sandbox={PREVIEW_SANDBOX}
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
-                      const message = 'The preview failed to load. Refresh, then ask the builder to recreate the app.';
+                      const message = 'The preview failed to load.';
+                      setPreviewIssue({ error: message, plainExplanation: 'Your app could not be loaded in the preview. The builder can try to fix this.', file: activeFileRef.current, layer: 'frontend' });
                       setStatus('Error');
                       setPreviewStatus(activeProjectId, 'Error');
                       markPreviewState('error', message);
@@ -1860,7 +1861,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
                 </div>
               )}
-              {previewLoadState === 'error' && (
+              {previewLoadState === 'error' && status !== 'Generating' && (
                 <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
                   <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
@@ -1929,7 +1930,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     sandbox={PREVIEW_SANDBOX}
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
-                      const message = 'The preview failed to load. Refresh, then ask the builder to recreate the app.';
+                      const message = 'The preview failed to load.';
+                      setPreviewIssue({ error: message, plainExplanation: 'Your app could not be loaded in the preview. The builder can try to fix this.', file: activeFileRef.current, layer: 'frontend' });
                       setStatus('Error');
                       setPreviewStatus(activeProjectId, 'Error');
                       markPreviewState('error', message);
