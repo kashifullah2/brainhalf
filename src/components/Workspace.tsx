@@ -1339,15 +1339,20 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // and single-panel layouts. Renders null when the error should not be shown.
   const previewErrorOverlay = previewLoadState === 'error' && status !== 'Generating' && !backend.ready
     ? (
-        <div className="studio-preview-empty has-error" role="alert" aria-live="polite">
-          <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div><AlertCircle size={32} strokeWidth={1.5} /></div>
-          <span className="studio-eyebrow-label">SOMETHING WENT WRONG</span>
-          <h2>Your preview ran into a problem.</h2>
-          <p>{previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.'}</p>
-          {previewActionIssue
-            ? <button type="button" className="studio-empty-action" onClick={() => appEvents.emit('auto-fix-error', { ...previewActionIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button>
-            : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
-          }
+        <div className="studio-preview-empty has-error premium-error-overlay" role="alert" aria-live="polite">
+          <div className="premium-error-icon-wrapper" aria-hidden="true">
+            <div className="premium-error-icon-bg"></div>
+            <AlertCircle size={36} strokeWidth={1.5} />
+          </div>
+          <span className="studio-eyebrow-label premium-eyebrow">PREVIEW ERROR</span>
+          <h2 className="premium-error-title">Your preview ran into a problem.</h2>
+          <p className="premium-error-desc">{previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.'}</p>
+          <div className="premium-error-actions">
+            {previewActionIssue
+              ? <button type="button" className="studio-empty-action premium-action-btn" onClick={() => appEvents.emit('auto-fix-error', { ...previewActionIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button>
+              : <button type="button" className="studio-empty-action premium-action-btn secondary" onClick={openChat}><MessageSquare size={16} />Open chat</button>
+            }
+          </div>
           {previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{sanitizeErrorForDisplay(previewActionIssue.error)}</pre></details>}
         </div>
       )

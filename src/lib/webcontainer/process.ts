@@ -9,7 +9,7 @@ export async function installDependencies(
   container: WebContainer,
   onOutput?: (data: string) => void,
 ): Promise<number> {
-  const process = await container.spawn('npm', ['install', '--prefer-offline']);
+  const process = await container.spawn('pnpm', ['install']);
   if (onOutput) {
     process.output.pipeTo(new WritableStream({ write(data) { onOutput(data); } })).catch(() => {});
   }
@@ -20,7 +20,7 @@ export async function startDevServer(
   container: WebContainer,
   onOutput?: (data: string) => void,
 ): Promise<DevServerHandle> {
-  const process = await container.spawn('npm', ['run', 'dev']);
+  const process = await container.spawn('pnpm', ['run', 'dev']);
   if (onOutput) {
     process.output.pipeTo(new WritableStream({ write(data) { onOutput(data); } })).catch(() => {});
   }
