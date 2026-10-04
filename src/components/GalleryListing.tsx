@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Globe2 } from 'lucide-react';
 import { authFetch, projectPublication } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
+import { safeCatch } from '../lib/safe-catch';
 
 interface ShowcaseState { showcase: boolean; description: string; remixCount: number }
 
@@ -12,10 +14,9 @@ export default function GalleryListing({ projectId }: { projectId: string }) {
   const [notice, setNotice] = useState('');
   // null = unknown (fail open; the backend 409 still guards the submit).
   const [published, setPublished] = useState<boolean | null>(null);
-  const origin = () => ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
   useEffect(() => {
     const controller = new AbortController();
-    void authFetch(`${origin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, { signal: controller.signal })
+    void authFetch(`${apiOrigin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) {
           const data = await response.json().catch(() => null) as { error?: string } | null;
@@ -25,7 +26,7 @@ export default function GalleryListing({ projectId }: { projectId: string }) {
         setState(data);
         setDescription(data.description);
       })
-      .catch(cause => { if (!controller.signal.aborted) setNotice(cause instanceof Error ? cause.message : 'Gallery listing state could not be loaded.'); });
+      .catch(safeCatch(controller.signal, setNotice, 'Gallery listing state could not be loaded.'));
     return () => controller.abort();
   }, [projectId]);
   // The gallery links to the live app, so listing is only offered once the
@@ -42,7 +43,7 @@ export default function GalleryListing({ projectId }: { projectId: string }) {
     if (busy) return;
     setBusy(true); setNotice('');
     try {
-      const response = await authFetch(`${origin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, {
+      const response = await authFetch(`${apiOrigin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showcase, description }),
       });
       const data = await response.json() as ShowcaseState & { error?: string };

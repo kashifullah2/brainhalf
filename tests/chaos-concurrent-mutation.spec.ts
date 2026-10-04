@@ -1,28 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
-
-// Helper: collect console errors
-function collectConsoleErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on('console', msg => {
-    if (msg.type() === 'error') errors.push(msg.text());
-  });
-  page.on('pageerror', err => errors.push(err.message));
-  return errors;
-}
-
-// Helper: send a prompt and wait for generation to start
-async function sendPrompt(page: Page, prompt: string) {
-  const textarea = page.locator('textarea').first();
-  await textarea.fill(prompt);
-  await page.waitForTimeout(300);
-  const sendBtn = page.locator('button[title*="Send"]').first();
-  await expect(sendBtn).toBeEnabled({ timeout: 5000 });
-  await sendBtn.click();
-  await page.waitForTimeout(500);
-}
+import { BASE_URL, ARTIFACT_DIR, collectConsoleErrors, sendPrompt } from './fixtures/helpers';
 
 // Helper: wait for Stop button to appear (agent generating)
 async function waitForStopButton(page: Page, timeout = 20000) {

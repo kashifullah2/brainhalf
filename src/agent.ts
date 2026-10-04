@@ -355,7 +355,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const ready = !!res?.ok && hostingAvailability(await res.json() as RuntimeStatus).state === 'ready';
       const now = Date.now();
       this.backendReadyCache = { ready, expiresAt: now + (ready ? BACKEND_READY_POSITIVE_TTL : BACKEND_READY_NEGATIVE_TTL) };
-    }).catch(() => {});
+    }).catch((e) => { console.warn('Backend readiness prewarm failed:', e instanceof Error ? e.message : e); });
   }
 
   private abortGeneration() {
@@ -489,6 +489,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         <R,>(closure: () => R): R => this.transact(closure)
       );
       if (applied > 0) console.log(`Schema migrations applied: ${applied}`);
+      if (!this.idempotency.has('__wired__')) {
+        this.idempotency.setSql((sql: string, ...params: any[]) => this.runSql(sql.split('?') as unknown as TemplateStringsArray, ...params));
+      }
     } catch (e) {
       console.warn('Schema migration note:', e);
     }
@@ -899,7 +902,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       try { connection.close(4401, 'Reconnect to verify your session'); } catch {}
       return;
     }
-    try { connection.setState({ userId, sessionHash }); } catch { /* The internal upgrade URI also retains the digest. */ }
+    try { connection.setState({ userId, sessionHash }); } catch (e) { console.warn('Failed to persist connection state:', e instanceof Error ? e.message : e); }
     // Skip authorizeConnection here: the worker's onBeforeConnect already
     // verified session + ownership milliseconds ago. The per-message check
     // in onMessage still runs on every subsequent message, so logout and
@@ -1126,7 +1129,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           return true;
         }
       }
-    } catch { /* Registry outages fail closed. */ }
+    } catch (e) { console.warn('Auth check failed (failing closed):', e instanceof Error ? e.message : e); }
     this.connectionUserIds.delete(connection.id);
     try { connection.close(4401, 'Session expired or project access revoked'); } catch {}
     return false;
@@ -1652,7 +1655,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       clearInterval(accessTimer);
       this.currentAbortController = null;
       this.activeAccounting = null;
-      try { this.runSql`UPDATE generation_usage SET finished_at=${Date.now()},status=${'stopped'} WHERE id=${accounting.id}`; } catch {}
+      try { this.runSql`UPDATE generation_usage SET finished_at=${Date.now()},status=${'stopped'} WHERE id=${accounting.id}`; } catch (e) { console.warn('Failed to record generation stop:', e); }
       if (this.activeGeneration?.epoch === epoch) this.activeGeneration = null;
       return;
     }
@@ -3756,7 +3759,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           return new Response(starterApp, {
             headers: { ...corsHeaders, 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache, no-store' }
           });
-        } catch {}
+        } catch (e) { console.warn('Starter App fallback failed:', e); }
       }
       if (/\/(main|index)\.(jsx|tsx|js|ts)$/i.test(cleanPathForFallback)) {
         try {
@@ -3764,7 +3767,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           return new Response(starterMain, {
             headers: { ...corsHeaders, 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache, no-store' }
           });
-        } catch {}
+        } catch (e) { console.warn('Starter main fallback failed:', e); }
       }
       if (/\.(jsx|tsx|js|ts)$/.test(cleanPathForFallback) || !/\.[a-zA-Z0-9]+$/.test(cleanPathForFallback)) {
         const stubCode = buildMissingComponentStub(cleanPathForFallback);

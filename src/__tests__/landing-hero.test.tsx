@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import LandingHero, { tiltForCursor } from '../components/LandingHero';
+import LandingHero, { tiltForCursor } from '../components/landing/LandingHero';
 
 function renderHero(overrides: Record<string, unknown> = {}) {
   const textareaRef = { current: null };

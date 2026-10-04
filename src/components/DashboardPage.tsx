@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { authFetch, getToken, removeProject } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
 import { appEvents } from '../lib/events';
 import { getProjects, type Project, updateProjectName } from '../lib/project-store';
 import { useModalFocus } from '../lib/use-modal-focus';
@@ -8,7 +9,7 @@ import { BrainHalfLogo } from './BrainHalfLogo';
 import ConfirmModal from './ConfirmModal';
 import RecentProjects from './RecentProjects';
 import SiteHeaderActions from './SiteHeaderActions';
-import './LandingPage.css';
+import './landing/LandingPage.css';
 import './DashboardPage.css';
 
 interface DashboardPageProps {
@@ -36,7 +37,7 @@ function DashboardUsageExtra() {
     const controller = new AbortController();
     const loadUsage = async () => {
       try {
-        const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+        const origin = apiOrigin();
         const token = getToken();
         const response = await fetch(`${origin}/api/account/ai-usage`, {
           signal: controller.signal,
@@ -78,7 +79,7 @@ function DashboardQuotaMeter({ onAtLimit }: { onAtLimit: (atLimit: boolean) => v
     const controller = new AbortController();
     const loadQuota = async () => {
       try {
-        const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+        const origin = apiOrigin();
         const token = getToken();
         const response = await fetch(`${origin}/api/account/project-quota`, {
           signal: controller.signal,
@@ -158,7 +159,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     const controller = new AbortController(); let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try {
-        const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+        const origin = apiOrigin();
         const response = await authFetch(`${origin}/api/account/deletions`, { signal: controller.signal });
         const body = await response.json();
         if (!response.ok || !Array.isArray(body.deletions)) throw new Error('Cleanup status is unavailable.');

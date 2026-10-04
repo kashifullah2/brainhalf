@@ -105,59 +105,86 @@ export class BusyLock {
 /**
  * Idempotency for client retries. A WebSocket reconnect redelivers the last
  * message; without dedup the user gets two generations and two file-write passes
- * for one prompt. Keys are capped so a client cannot use it as a memory sink.
+ * for one prompt.
+ *
+ * Keys are persisted in SQLite so they survive DO hibernation. When no SQL
+ * handle is provided (tests), falls back to an in-memory Map.
  */
 export class IdempotencyStore {
-  private readonly seen = new Map<string, number>();
+  private readonly memory = new Map<string, number>();
   private readonly capacity: number;
+  private sqlFn: ((sql: string, ...values: any[]) => any[]) | null = null;
 
   constructor(capacity = 256) {
     this.capacity = capacity;
   }
 
-  /**
-   * Records `key` and returns true the first time it is seen, false afterwards.
-   * A null/empty key is treated as "no dedup requested" and always accepted.
-   *
-   * Both guards here are deliberate evictions, not errors, because either way
-   * the caller proceeds to generate: a key longer than 256 chars is accepted
-   * rather than stored (it can never be presented again anyway, since a retry
-   * redelivers the identical string), and once the store holds `capacity`
-   * entries the oldest is dropped to make room. That means dedup is a
-   * bounded-history guarantee, not an unbounded one — a message whose key was
-   * evicted will generate again if it is redelivered. capacity defaults to 256,
-   * far above the number of in-flight generations a single ChatAgent holds, so
-   * eviction only happens if a client hammers the agent with hundreds of
-   * distinct keys without a reconnect.
-   */
+  setSql(fn: (sql: string, ...values: any[]) => any[]): void {
+    this.sqlFn = fn;
+  }
+
   claim(key: string | undefined | null): boolean {
     if (!key || typeof key !== 'string') return true;
     if (key.length > 256) return true;
-    if (this.seen.has(key)) return false;
-    if (this.seen.size >= this.capacity) {
-      // Drop the oldest entry rather than refusing future keys.
-      const first = this.seen.keys().next().value;
-      if (first !== undefined) this.seen.delete(first);
+    if (this.sqlFn) {
+      try {
+        const rows = this.sqlFn(`SELECT key FROM idempotency_keys WHERE key = ?`, key);
+        if (rows.length > 0) return false;
+        this.sqlFn(`INSERT INTO idempotency_keys (key, claimed_at) VALUES (?, ?)`, key, Date.now());
+        this.pruneIfNeeded();
+        return true;
+      } catch {
+        return this.claimMemory(key);
+      }
     }
-    this.seen.set(key, Date.now());
-    return true;
+    return this.claimMemory(key);
   }
 
-  /**
-   * Releases a claimed key so subsequent retries are not rejected as duplicates.
-   */
   release(key: string | undefined | null): void {
     if (!key || typeof key !== 'string') return;
-    this.seen.delete(key);
+    if (this.sqlFn) {
+      try { this.sqlFn(`DELETE FROM idempotency_keys WHERE key = ?`, key); } catch {}
+    }
+    this.memory.delete(key);
   }
 
-  /** For tests: was this key recorded? */
   has(key: string): boolean {
-    return this.seen.has(key);
+    if (this.sqlFn) {
+      try {
+        return this.sqlFn(`SELECT key FROM idempotency_keys WHERE key = ?`, key).length > 0;
+      } catch {}
+    }
+    return this.memory.has(key);
   }
 
   get size(): number {
-    return this.seen.size;
+    if (this.sqlFn) {
+      try {
+        const rows = this.sqlFn(`SELECT COUNT(*) as count FROM idempotency_keys`) as Array<{ count: number }>;
+        return rows[0]?.count ?? this.memory.size;
+      } catch {}
+    }
+    return this.memory.size;
+  }
+
+  private claimMemory(key: string): boolean {
+    if (this.memory.has(key)) return false;
+    if (this.memory.size >= this.capacity) {
+      const first = this.memory.keys().next().value;
+      if (first !== undefined) this.memory.delete(first);
+    }
+    this.memory.set(key, Date.now());
+    return true;
+  }
+
+  private pruneIfNeeded(): void {
+    if (!this.sqlFn) return;
+    try {
+      const rows = this.sqlFn(`SELECT COUNT(*) as count FROM idempotency_keys`) as Array<{ count: number }>;
+      if ((rows[0]?.count ?? 0) > this.capacity) {
+        this.sqlFn(`DELETE FROM idempotency_keys WHERE key IN (SELECT key FROM idempotency_keys ORDER BY claimed_at ASC LIMIT 10)`);
+      }
+    } catch {}
   }
 }
 

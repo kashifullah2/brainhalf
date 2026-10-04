@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { ChevronDown, ChevronRight, Clock, FileMinus, FilePlus, FileText, History, RotateCcw, Save, Zap } from 'lucide-react';
 import { authFetch } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
 import type { SourceCheckpoint } from '../lib/source-history';
 import ConfirmModal from './ConfirmModal';
 
@@ -64,8 +65,7 @@ export default function ProjectHistory({ projectId }: { projectId: string }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
 
-  const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
-  const base = `${origin}/agents/chat-agent/${encodeURIComponent(projectId)}/checkpoints`;
+  const base = `${apiOrigin()}/agents/chat-agent/${encodeURIComponent(projectId)}/checkpoints`;
 
   async function request(path = '', init: RequestInit = {}) {
     const response = await authFetch(base + path, {

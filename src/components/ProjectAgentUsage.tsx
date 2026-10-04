@@ -1,6 +1,7 @@
 import type { ProductOutcomes } from '../lib/product-outcomes';
 import { useEffect, useState } from 'react';
 import { authFetch } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
 import { runtimeRequest } from '../lib/project-runtime-client';
 import type { AiUsage } from '../lib/ai-budget';
 import type { RuntimeStatus, VerificationReport } from '../runtime/types';
@@ -17,7 +18,7 @@ export default function ProjectAgentUsage({ projectId }: { projectId: string }) 
   const [version, setVersion] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+    const origin = apiOrigin();
     setError(''); setAllowanceError(''); setOutcomes(null); setOutcomesError('');
     void authFetch(`${origin}/api/account/outcomes`, { signal: controller.signal }).then(async response => {
       const data = await response.json(); if (!response.ok || typeof data.generations !== 'number') throw new Error('Outcome metrics could not be loaded.');

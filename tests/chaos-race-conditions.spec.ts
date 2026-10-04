@@ -1,24 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
-
-function collectConsoleErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
-  page.on('pageerror', err => errors.push(err.message));
-  return errors;
-}
-
-async function sendPrompt(page: Page, prompt: string) {
-  const textarea = page.locator('textarea').first();
-  await textarea.fill(prompt);
-  await page.waitForTimeout(200);
-  const sendBtn = page.locator('button[title*="Send"]').first();
-  await expect(sendBtn).toBeEnabled({ timeout: 5000 });
-  await sendBtn.click();
-  await page.waitForTimeout(300);
-}
+import { BASE_URL, ARTIFACT_DIR, collectConsoleErrors, sendPrompt } from './fixtures/helpers';
 
 test.describe('Chaos: Race Condition Tests', () => {
   test.setTimeout(120000);

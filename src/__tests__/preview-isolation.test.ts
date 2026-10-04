@@ -72,11 +72,14 @@ describe('Untrusted preview execution boundary', () => {
 
   it('keeps the runtime independent of platform identity and caches and routes preview assets through the Worker', () => {
     const runner = readFileSync('src/components/PreviewRunner.tsx', 'utf8');
+    const filesHook = readFileSync('src/lib/use-preview-files.ts', 'utf8');
     expect(runner).not.toContain('project-store');
     expect(runner).not.toContain('auth-client');
+    expect(filesHook).not.toContain('project-store');
+    expect(filesHook).not.toContain('auth-client');
     expect(readFileSync('src/main.tsx', 'utf8')).not.toContain('PreviewRunner');
-    expect(runner).toContain("sync-files-delta");
-    expect(runner).toContain('new Map<string, { source: string; code: string }>()');
+    expect(filesHook).toContain("sync-files-delta");
+    expect(filesHook).toContain('new Map<string, { source: string; code: string }>()');
     expect(readFileSync('src/components/Workspace.tsx', 'utf8')).toContain('sync-files-delta');
     expect(readFileSync('src/preview-main.tsx', 'utf8')).toContain("window.origin === 'null'");
     const routes = JSON.parse(readFileSync('wrangler.toml', 'utf8').match(/run_worker_first\s*=\s*(\[[^\n]+\])/)![1]);

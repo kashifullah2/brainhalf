@@ -1,6 +1,6 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
-import { HOME_FAQS } from '../seo/content';
+import { HOME_FAQS } from '../../seo/content';
 import './FaqSection.css';
 
 /**

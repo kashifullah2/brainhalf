@@ -581,6 +581,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   }, [input]);
 
   const isGeneratingRef = useRef(false);
+  const generationEndedAtRef = useRef(0);
   // Deduplicates consecutive generation_notice retry messages: only the first
   // retry notice per error category is surfaced to avoid three identical lines.
   const lastNoticeMessageRef = useRef<string | null>(null);
@@ -961,13 +962,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               }
             }
             if (isGeneratingRef.current) return;
+            const recentlyGenerated = generationEndedAtRef.current > 0 && Date.now() - generationEndedAtRef.current < 2000;
             if (Array.isArray(data.data) && data.data.length > 0) {
               const loadedMsgs: Message[] = data.data.map((m: any) => ({
                 role: m.role === 'assistant' || m.role === 'ai' ? 'ai' : 'user',
                 content: typeof m.content === 'string' ? m.content : '',
                 internal: m.internal === true || m.role === 'system'
               }));
-              if (shouldApplyIncomingHistory(messagesRef.current, loadedMsgs)) {
+              if (shouldApplyIncomingHistory(messagesRef.current, loadedMsgs) && !(recentlyGenerated && loadedMsgs.length <= messagesRef.current.length)) {
                 const mergedMsgs = mergeHistoryMetadata(messagesRef.current, loadedMsgs);
                 setMessages(mergedMsgs);
                 messagesRef.current = mergedMsgs;
@@ -1106,6 +1108,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
               setIsGenerating(false);
               isGeneratingRef.current = false;
+              generationEndedAtRef.current = Date.now();
 
               // Ensure the final complete message content is committed to state
               const finalContent = aiMessageRef.current;

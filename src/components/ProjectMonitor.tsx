@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Activity } from 'lucide-react';
 import { runtimeRequest } from '../lib/project-runtime-client';
+import { safeCatch } from '../lib/safe-catch';
 import type { ProjectEnvironment } from '../runtime/types';
 
 interface Monitoring { daily: Array<{ day: string; requests: number; errors: number; total_ms: number }>; recent: Array<{ method: string; route: string; status: number; duration_ms: number; created_at: number }> }
 export default function ProjectMonitor({ projectId, environment }: { projectId: string; environment: ProjectEnvironment }) {
   const [data, setData] = useState<Monitoring | null>(null); const [error, setError] = useState(''); const [version, setVersion] = useState(0);
-  useEffect(() => { const controller = new AbortController(); void runtimeRequest<Monitoring>(projectId, '/monitor', environment, { signal: controller.signal }).then(value => { setData(value); setError(''); }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Monitoring unavailable.'); }); return () => controller.abort(); }, [projectId, environment, version]);
+  useEffect(() => { const controller = new AbortController(); void runtimeRequest<Monitoring>(projectId, '/monitor', environment, { signal: controller.signal }).then(value => { setData(value); setError(''); }).catch(safeCatch(controller.signal, setError, 'Monitoring unavailable.')); return () => controller.abort(); }, [projectId, environment, version]);
   const totals = data?.daily?.reduce((sum, day) => ({ requests: sum.requests + day.requests, errors: sum.errors + day.errors, duration: sum.duration + day.total_ms }), { requests: 0, errors: 0, duration: 0 });
   const envName = environment === 'development' ? 'test' : 'live';
   return <section className="settings-card"><h3><Activity size={17} />App activity</h3>

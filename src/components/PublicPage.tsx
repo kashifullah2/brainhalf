@@ -1,10 +1,10 @@
 import React from 'react';
 import { ArrowRight, ArrowUpRight, ChevronRight } from 'lucide-react';
 import SiteNavbar from './SiteNavbar';
-import LandingFooter from './LandingFooter';
-import ContactForm from './ContactForm';
+import LandingFooter from './landing/LandingFooter';
+import ContactForm from './landing/ContactForm';
 import { findPublicPage, formatContentDate, type PublicPage as PageContent } from '../seo/content';
-import './LandingPage.css';
+import './landing/LandingPage.css';
 import './PublicPage.css';
 
 const NAV_LINKS = [

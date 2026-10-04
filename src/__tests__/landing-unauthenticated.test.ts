@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import LandingPage from '../components/LandingPage';
+import LandingPage from '../components/landing/LandingPage';
 import LoginScreen from '../components/LoginScreen';
 
 describe('Unauthenticated Landing Page & Get Started flow', () => {

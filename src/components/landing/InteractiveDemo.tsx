@@ -10,7 +10,7 @@ import {
   Plus,
   Users,
 } from 'lucide-react';
-import { BUSINESS_APPS } from '../lib/business-apps';
+import { BUSINESS_APPS } from '../../lib/business-apps';
 import './InteractiveDemo.css';
 
 interface InteractiveDemoProps {

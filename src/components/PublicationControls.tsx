@@ -297,7 +297,7 @@ export function PublicationFailure({ projectId, job, canRepair }: { projectId: s
     const controller = new AbortController(); setDetails(null); setError('');
     void runtimeRequest<NonNullable<typeof details>>(projectId, `/logs?job=${encodeURIComponent(job.id)}`, job.environment, { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) setDetails(value); })
-      .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Build log unavailable.'); });
+      .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Build log unavailable'); });
     return () => controller.abort();
   }, [projectId, job.id, job.environment, attempt]);
   const logs = details?.logs?.filter(entry => entry.job === job.id).map(entry => entry.text).join('\n\n');

@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { ArrowUpRight, Copy, Loader2 } from 'lucide-react';
 import { authFetch, getToken } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
+import { safeCatch } from '../lib/safe-catch';
+import type { GalleryApp } from '../lib/gallery-types';
 import { findPublicPage, formatContentDate } from '../seo/content';
 import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
 import MobileNav from './MobileNav';
 import './GalleryPage.css';
-
-interface GalleryApp { id: string; name: string; description: string; remixCount: number; showcasedAt: number | null }
 
 const NAV_LINKS = [
   { href: '/', label: 'AI app builder' },
@@ -28,15 +29,14 @@ export default function GalleryPage() {
   useEffect(() => setMounted(true), []);
   useEffect(() => {
     const controller = new AbortController();
-    const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
-    fetch(`${origin}/api/gallery`, { signal: controller.signal })
+    fetch(`${apiOrigin()}/api/gallery`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error('The gallery could not be loaded.');
         const data = await response.json() as { apps?: unknown };
         if (!Array.isArray(data.apps)) throw new Error('The gallery could not be loaded.');
         setApps(data.apps as GalleryApp[]);
       })
-      .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'The gallery could not be loaded.'); });
+      .catch(safeCatch(controller.signal, setError, 'The gallery could not be loaded.'));
     return () => controller.abort();
   }, []);
   const remix = async (id: string) => {
@@ -44,8 +44,7 @@ export default function GalleryPage() {
     setRemixing(id);
     setRemixError(current => ({ ...current, [id]: '' }));
     try {
-      const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
-      const response = await authFetch(`${origin}/api/projects/${encodeURIComponent(id)}/remix`, { method: 'POST' });
+      const response = await authFetch(`${apiOrigin()}/api/projects/${encodeURIComponent(id)}/remix`, { method: 'POST' });
       const data = await response.json() as { projectId?: string; error?: string };
       if (!response.ok || !data.projectId) throw new Error(data.error || 'Remix could not be completed.');
       window.location.assign(`/?project=${encodeURIComponent(data.projectId)}`);

@@ -1,5 +1,5 @@
 import React from 'react';
-import BrainHalfLogo from './BrainHalfLogo';
+import BrainHalfLogo from '../BrainHalfLogo';
 
 const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
   {

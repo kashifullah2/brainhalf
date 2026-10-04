@@ -1,13 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { apiOrigin } from '../lib/api-origin';
+import { safeCatch } from '../lib/safe-catch';
+import type { GalleryApp } from '../lib/gallery-types';
 import './GalleryRow.css';
-
-interface GalleryApp {
-  id: string;
-  name: string;
-  description: string;
-  remixCount: number;
-}
 
 /** Deterministic, honest thumbnail: a gradient picked from the app id plus its initial. No stock imagery. */
 function thumbHue(id: string): number {
@@ -54,19 +50,14 @@ export const GalleryRow: React.FC = () => {
 
   useEffect(() => {
     const controller = new AbortController();
-    const origin = ['localhost', '127.0.0.1'].includes(window.location.hostname)
-      ? import.meta.env.VITE_BACKEND_HOST || ''
-      : '';
-    fetch(`${origin}/api/gallery`, { signal: controller.signal })
+    fetch(`${apiOrigin()}/api/gallery`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error('The gallery could not be loaded.');
         const data = (await response.json()) as { apps?: unknown };
         if (!Array.isArray(data.apps)) throw new Error('The gallery could not be loaded.');
         setApps(data.apps as GalleryApp[]);
       })
-      .catch(cause => {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'The gallery could not be loaded.');
-      });
+      .catch(safeCatch(controller.signal, setError, 'The gallery could not be loaded.'));
     return () => controller.abort();
   }, []);
 

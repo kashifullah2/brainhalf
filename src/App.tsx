@@ -1,7 +1,7 @@
 import './styles/studio-workspace.css';
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Bot, Code2, GripVertical, Monitor } from 'lucide-react';
-import LandingPage from './components/LandingPage';
+import LandingPage from './components/landing/LandingPage';
 import LoginScreen from './components/LoginScreen';
 import { ErrorBoundary, SectionErrorBoundary } from './components/ErrorBoundary';
 import { WORKSPACE_EXIT_TIMEOUT, WORKSPACE_EXIT_ATTEMPTS } from './lib/timeouts';

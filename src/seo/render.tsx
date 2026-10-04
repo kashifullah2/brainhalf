@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import LandingPage from '../components/LandingPage';
+import LandingPage from '../components/landing/LandingPage';
 import PublicPage from '../components/PublicPage';
 import GalleryPage from '../components/GalleryPage';
 import { ACCOUNT_PAGES, HOME_DESCRIPTION, PUBLIC_PAGES, contentModified, findPublicPage, SITE_URL, SOCIAL_IMAGE } from './content';

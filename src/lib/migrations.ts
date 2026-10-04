@@ -97,6 +97,12 @@ export const AGENT_MIGRATIONS: Migration[] = [
     )`,
     'CREATE INDEX IF NOT EXISTS generation_jobs_status ON generation_jobs(status, updated_at DESC)',
   ] },
+  { version: 12, name: 'idempotency_keys', statements: [
+    `CREATE TABLE IF NOT EXISTS idempotency_keys (
+      key TEXT PRIMARY KEY,
+      claimed_at INTEGER NOT NULL
+    )`,
+  ] },
 
 ];
 

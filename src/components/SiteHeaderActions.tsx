@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { ArrowRight, ChevronDown, LayoutDashboard, LogOut } from 'lucide-react';
 import { getToken, getUser, logout } from '../lib/auth-client';
 import ThemeToggle from './ThemeToggle';
-import './LandingPage.css';
+import './landing/LandingPage.css';
 
 export interface HeaderUser {
   id?: string;

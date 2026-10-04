@@ -1,7 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
+import { BASE_URL, ARTIFACT_DIR, collectConsoleErrors } from './fixtures/helpers';
 
 const CF_MODELS = [
   { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3 70B' },
@@ -10,13 +8,6 @@ const CF_MODELS = [
   { id: '@cf/zai-org/glm-5.3-flash', name: 'GLM 5.3 Flash' },
   { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code' },
 ];
-
-function collectConsoleErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
-  page.on('pageerror', err => errors.push(err.message));
-  return errors;
-}
 
 for (const model of CF_MODELS) {
   test.describe(`Model Stress: ${model.name}`, () => {

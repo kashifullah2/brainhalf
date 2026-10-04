@@ -3,6 +3,8 @@ import { X, Clock, FileCode2, Wrench, AlertCircle, CheckCircle2, Zap, Bug, Eye, 
 import { appEvents } from '../lib/events';
 import { getGenerationTimings, type GenerationTiming } from '../lib/generation-timing';
 import { authFetch } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
+import { safeCatch } from '../lib/safe-catch';
 import './AgentTracker.css';
 
 interface TrackEvent {
@@ -74,15 +76,14 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
   };
 
   const loadHistory = () => {
-    const origin = ['localhost', '127.0.0.1'].includes(location.hostname) ? (import.meta.env.VITE_BACKEND_HOST || '') : '';
     setGenError('');
-    void authFetch(`${origin}/agents/chat-agent/${encodeURIComponent(projectId)}/usage`)
+    void authFetch(`${apiOrigin()}/agents/chat-agent/${encodeURIComponent(projectId)}/usage`)
       .then(async response => {
         const data = await response.json();
         if (!response.ok || !Array.isArray(data.generations)) throw new Error('Generation history unavailable.');
         if (alive.current) setGenerations(data.generations as GenerationRow[]);
       })
-      .catch(cause => { if (alive.current) setGenError(cause instanceof Error ? cause.message : 'Failed to load history.'); });
+      .catch(cause => { if (alive.current) setGenError(cause instanceof Error ? cause.message : 'Failed to load history'); });
     setTimings(getGenerationTimings(projectId));
   };
 

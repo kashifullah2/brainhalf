@@ -10,11 +10,10 @@ import { isHostedLimitError } from '../lib/hosted-limit';
 import { stages, stageKeys, publishStageIndex, publishProgressView, PublicationFailure, HostedFullNotice } from './PublicationControls';
 import { sourceSnapshot } from '../runtime/source';
 import type { RuntimeJob, SourceFiles } from '../runtime/types';
+import { apiOrigin } from '../lib/api-origin';
 import './PublishPopover.css';
 
 type Visibility = 'private' | 'public';
-
-const apiOrigin = () => ['localhost', '127.0.0.1'].includes(location.hostname) ? import.meta.env.VITE_BACKEND_HOST || '' : '';
 
 /**
  * The small panel that opens under the header's "Go live" button. It keeps the

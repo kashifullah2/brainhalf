@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ProjectEnvironment, ProjectUpload } from '../runtime/types';
 import { runtimeBase, runtimeRequest } from '../lib/project-runtime-client';
 import { authFetch } from '../lib/auth-client';
+import { safeCatch } from '../lib/safe-catch';
 
 export default function ProjectFiles({ projectId, environment, onChanged }: { projectId: string; environment: ProjectEnvironment; onChanged: () => void }) {
   const [files, setFiles] = useState<ProjectUpload[]>([]);
@@ -13,7 +14,7 @@ export default function ProjectFiles({ projectId, environment, onChanged }: { pr
     const controller = new AbortController(); setLoading(true); setError(''); setFiles([]); setDeleting(null);
     void runtimeRequest<{ files: ProjectUpload[] }>(projectId, '/uploads', environment, { signal: controller.signal })
       .then(result => { if (!controller.signal.aborted) setFiles(result.files); })
-      .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Files could not be loaded.'); })
+      .catch(safeCatch(controller.signal, setError, 'Files could not be loaded.'))
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [projectId, environment, version]);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { submitEmailRequest } from '../lib/email-client';
-import './AccountPage.css';
+import { submitEmailRequest } from '../../lib/email-client';
+import '../AccountPage.css';
 
 export default function ContactForm() {
   const [busy, setBusy] = useState(false);

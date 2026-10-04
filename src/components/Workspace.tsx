@@ -2,6 +2,7 @@ import { useAutomaticBackend } from '../lib/automatic-backend';
 import { useAutomaticBuildFix } from '../lib/automatic-build-fix';
 import { useTheme } from '../lib/theme';
 import { authFetch } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Code2, Columns2, Monitor, Loader2,
@@ -696,8 +697,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const refreshUndoCheckpoint = useCallback(async () => {
     if (!activeProjectId || !isCurrent()) return;
     try {
-      const origin = ['localhost', '127.0.0.1'].includes(location.hostname)
-        ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+      const origin = apiOrigin();
       const base = `${origin}/agents/chat-agent/${encodeURIComponent(activeProjectId)}/checkpoints`;
       const resp = await authFetch(base, { signal: AbortSignal.timeout(8_000), headers: { 'Content-Type': 'application/json' } });
       const data = await resp.json() as { checkpoints?: Array<{ id: string; label: string }>; revision?: number };
@@ -712,8 +712,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     if (!undoCheckpoint || !activeProjectId) return;
     setUndoLoading(true);
     try {
-      const origin = ['localhost', '127.0.0.1'].includes(location.hostname)
-        ? import.meta.env.VITE_BACKEND_HOST || '' : '';
+      const origin = apiOrigin();
       const base = `${origin}/agents/chat-agent/${encodeURIComponent(activeProjectId)}/checkpoints`;
       const resp = await authFetch(`${base}/restore`, {
         method: 'POST',

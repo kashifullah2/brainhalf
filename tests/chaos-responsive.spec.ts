@@ -1,7 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
-
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
+import { test, expect } from '@playwright/test';
+import { BASE_URL, ARTIFACT_DIR, collectConsoleErrors } from './fixtures/helpers';
 
 const VIEWPORTS = [
   { name: 'mobile', width: 375, height: 812 },
@@ -9,13 +7,6 @@ const VIEWPORTS = [
   { name: 'laptop', width: 1366, height: 768 },
   { name: 'desktop', width: 1920, height: 1080 },
 ];
-
-function collectConsoleErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
-  page.on('pageerror', err => errors.push(err.message));
-  return errors;
-}
 
 for (const vp of VIEWPORTS) {
   test.describe(`Chaos Responsive: ${vp.name} (${vp.width}x${vp.height})`, () => {

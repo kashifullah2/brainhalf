@@ -1,16 +1,16 @@
 import React, { useState, useRef } from 'react';
-import SiteNavbar from './SiteNavbar';
+import SiteNavbar from '../SiteNavbar';
 import LandingFooter from './LandingFooter';
 import LandingHero from './LandingHero';
 import InteractiveDemo from './InteractiveDemo';
-import GalleryRow from './GalleryRow';
+import GalleryRow from '../GalleryRow';
 import HowItWorks from './HowItWorks';
 import BentoGrid from './BentoGrid';
 import TrustSection from './TrustSection';
 import FaqSection from './FaqSection';
 import FinalCta from './FinalCta';
 import './LandingPage.css';
-import './PublicPage.css';
+import '../PublicPage.css';
 
 interface LandingPageProps {
   onOpenProject: (projectId: string) => void;
