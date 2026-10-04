@@ -32,11 +32,11 @@ export interface WebContainerState {
   restart: () => void;
 }
 
-// Keyed by package.json content — skip npm install when unchanged across project switches.
-const installedPkgHashCache = new Map<string, boolean>();
+const installedDependencyCache = new WeakMap<WebContainer, string>();
 
-function getPkgHash(files: Record<string, string>): string {
-  return files['/package.json'] || files['package.json'] || '';
+function getDependencySignature(files: Record<string, string>): string {
+  return JSON.stringify(['package.json', '/package.json', 'package-lock.json', '/package-lock.json', '.npmrc', '/.npmrc']
+    .map(path => [path, files[path] ?? '']));
 }
 
 export function useWebContainer(
@@ -96,9 +96,8 @@ export function useWebContainer(
       mountedRef.current = true;
       prevFilesRef.current = { ...currentFiles };
 
-      // Skip npm install when package.json is unchanged from a prior install in this session.
-      const pkgHash = getPkgHash(currentFiles);
-      const alreadyInstalled = pkgHash && installedPkgHashCache.get(pkgHash);
+      const dependencySignature = getDependencySignature(currentFiles);
+      const alreadyInstalled = installedDependencyCache.get(container) === dependencySignature;
 
       if (!alreadyInstalled) {
         setStatus('installing');
@@ -113,7 +112,7 @@ export function useWebContainer(
           setStatus('error');
           return;
         }
-        if (pkgHash) installedPkgHashCache.set(pkgHash, true);
+        installedDependencyCache.set(container, dependencySignature);
         writeToTerminal('\x1b[1;32m✅ Dependencies installed\x1b[0m\r\n');
       } else {
         writeToTerminal('\x1b[1;32m✅ Dependencies up to date\x1b[0m\r\n');
@@ -171,12 +170,6 @@ export function useWebContainer(
     }
     if (Object.keys(changed).length === 0 && removed.length === 0) return;
     prevFilesRef.current = { ...files };
-
-    // If package.json changed, invalidate the install cache so next boot reinstalls.
-    if (changed['/package.json'] || changed['package.json']) {
-      const newHash = getPkgHash(files);
-      if (newHash) installedPkgHashCache.delete(newHash);
-    }
 
     syncDelta(containerRef.current, changed, removed).catch(() => {});
   }, [files]);

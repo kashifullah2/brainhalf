@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assertNodeVersion, deploymentTarget, projectRoot, runWrangler } from '../wrangler.mjs';
@@ -109,7 +109,8 @@ test('the pinned Wrangler parser reads actual environment-specific provider poli
 
 test('local Wrangler runs from its exact installed version without npx resolution', () => {
   const output = runWrangler(['--version'], true);
-  assert.match(output, /4\.135\.0/);
+  const expected = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).devDependencies.wrangler;
+  assert.ok(output.split(/\r?\n/).some(line => line.trim() === expected));
 });
 
 test('the Node floor supports native TypeScript imports and is enforced', () => {
