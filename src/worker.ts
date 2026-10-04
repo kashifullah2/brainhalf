@@ -247,7 +247,7 @@ export function shellSecurityHeaders(): Record<string, string> {
     `font-src 'self' data: https://fonts.gstatic.com`,
     `connect-src 'self' https://cloudflareinsights.com https://api.github.com https://cdn.jsdelivr.net https://esm.sh https://registry.npmjs.org https://*.webcontainer.io https://*.stackblitz.io https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://*.googlesyndication.com https://*.adtrafficquality.google https://csi.gstatic.com`,
     `worker-src 'self' blob:`,
-    `frame-src 'self' https://*.apps.brainhalf.com https://*.webcontainer.io https://*.stackblitz.io https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://securepubads.g.doubleclick.net https://*.adtrafficquality.google`,
+    `frame-src 'self' https://*.apps.brainhalf.com https://*.webcontainer.io https://*.stackblitz.io https://stackblitz.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://securepubads.g.doubleclick.net https://*.adtrafficquality.google`,
     `manifest-src 'self'`,
     `frame-ancestors 'none'`,
     `form-action 'self'`,
