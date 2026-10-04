@@ -487,27 +487,32 @@ export default function AdminPage() {
     });
   };
 
-  return <main className="admin-page">
-    <header className="admin-header">
-      <div className="admin-header-inner">
+  return <div className="admin-layout">
+    <aside className="admin-sidebar">
+      <div className="admin-sidebar-header">
         <a href="/" className="admin-brand" aria-label="BrainHalf home">
           <BrainHalfLogo size={30} />
           <strong>BrainHalf</strong>
           <span className="admin-operator-badge">Operator</span>
         </a>
-        <nav className="admin-nav" aria-label="Admin sections">
-          <a href="#overview">Overview</a>
-          <a href="#health">Product health</a>
-          <a href="#manage">Manage</a>
-        </nav>
-        <MobileNav links={[
-          { href: '#overview', label: 'Overview' },
-          { href: '#health', label: 'Product health' },
-          { href: '#manage', label: 'Manage' },
-        ]} />
-        <SiteHeaderActions />
       </div>
-    </header>
+      <nav className="admin-nav" aria-label="Admin sections">
+        <a href="#overview"><Activity size={16} /> Overview</a>
+        <a href="#health"><ShieldCheck size={16} /> Product health</a>
+        <a href="#manage"><FolderKanban size={16} /> Manage</a>
+      </nav>
+    </aside>
+    <main className="admin-main">
+      <header className="admin-header">
+        <div className="admin-header-inner">
+          <MobileNav links={[
+            { href: '#overview', label: 'Overview' },
+            { href: '#health', label: 'Product health' },
+            { href: '#manage', label: 'Manage' },
+          ]} />
+          <SiteHeaderActions />
+        </div>
+      </header>
     <div className="admin-body">
       <p className="studio-section-label">OPERATOR</p>
       <div className="admin-title-row">
@@ -901,5 +906,5 @@ export default function AdminPage() {
         </div>
       </div>}
     </div>
-  </main>;
+  </main></div>;
 }
