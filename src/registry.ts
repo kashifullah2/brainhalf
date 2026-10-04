@@ -369,7 +369,7 @@ export class AuthRegistry {
         const rows = this.sql
           .exec('SELECT COUNT(*) AS live FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', userId)
           .toArray() as Array<{ live: number }>;
-        return Response.json({ live: Number(rows[0]?.live ?? 0), limit: MAX_PROJECTS_PER_USER });
+        return Response.json({ live: Number(rows[0]?.live ?? 0), limit: (await this.isAdminUnlimited()) ? 999999 : MAX_PROJECTS_PER_USER });
       }
       if (path === '/projects/deletion-owner' && method === 'GET') {
         const row = this.sql.exec('SELECT user_id,deleted_at FROM project_owners WHERE project_id=?', url.searchParams.get('projectId') || '').toArray()[0];
@@ -961,7 +961,7 @@ export class AuthRegistry {
           return rows.length > 0 && adminEmails.includes(String(rows[0].email).toLowerCase());
         })();
         if (!isAdminUser) {
-          if (live >= MAX_PROJECTS_PER_USER) {
+          if (live >= MAX_PROJECTS_PER_USER && !(await this.isAdminUnlimited())) {
             return this.json(409, {
               error: `You have reached the ${MAX_PROJECTS_PER_USER}-project limit. Delete a project to create another.`,
             });
@@ -1100,7 +1100,7 @@ export class AuthRegistry {
         ).toArray() as Array<{ user_id: string; name: string; showcase: number }>;
         if (!source.length || source[0].showcase !== 1) return this.json(404, { error: 'This app is not listed in the gallery' });
         const live = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', body.userId).toArray()[0]?.total || 0);
-        if (live >= MAX_PROJECTS_PER_USER) return this.json(409, { error: 'You have reached the project limit. Delete a project to make room.' });
+        if (live >= MAX_PROJECTS_PER_USER && !(await this.isAdminUnlimited())) return this.json(409, { error: 'You have reached the project limit. Delete a project to make room.' });
         const total = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ?', body.userId).toArray()[0]?.total || 0);
         if (total >= MAX_PROJECT_ROWS_PER_USER) {
           return this.json(409, {

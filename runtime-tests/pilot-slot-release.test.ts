@@ -41,7 +41,7 @@ describe('RuntimeControl /unregister (hosted slot release)', () => {
     expect(getByName).toHaveBeenCalledWith('pilot');
     const expectedAlias = (await digest('proj-123')).slice(0, 32);
     expect(unregister).toHaveBeenCalledTimes(1);
-    expect(unregister).toHaveBeenCalledWith(expectedAlias, { projectId: 'proj-123', ownerId: 'owner-1' });
+    expect(unregister).toHaveBeenCalledWith(expectedAlias, { projectId: 'proj-123', ownerId: 'owner-1', unlimited: false });
   });
 
   it('uses the same alias formula as registration so the slot actually frees', async () => {
@@ -60,7 +60,7 @@ describe('RuntimeControl /unregister (hosted slot release)', () => {
     const env = slotEnv(unregister, 'my-app');
     const res = await control(env).fetch(unregisterRequest('proj-123', 'owner-1'));
     expect(res.status).toBe(200);
-    expect(unregister).toHaveBeenCalledWith('my-app', { projectId: 'proj-123', ownerId: 'owner-1' });
+    expect(unregister).toHaveBeenCalledWith('my-app', { projectId: 'proj-123', ownerId: 'owner-1', unlimited: false });
   });
 
   it('rejects a missing scope instead of unregistering anything', async () => {

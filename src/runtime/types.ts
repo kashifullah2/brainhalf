@@ -5,7 +5,7 @@ export type IntegrationProvider = 'resend' | 'google' | 'github';
 export type JobKind = 'build' | 'preview' | 'verify' | 'deploy' | 'migrate' | 'publish';
 export type JobStatus = 'queued' | 'running' | 'passed' | 'failed' | 'stopping' | 'stopped';
 export type SourceFiles = Record<string, string>;
-export interface ProjectScope { projectId: string; ownerId: string }
+export interface ProjectScope { projectId: string; ownerId: string; unlimited?: boolean }
 export interface SourceSnapshot { files: SourceFiles; revision: string }
 export interface RuntimeJob {
   id: string; kind: JobKind; environment: ProjectEnvironment; revision: string;

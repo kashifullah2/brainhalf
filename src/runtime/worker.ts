@@ -26,7 +26,7 @@ function runtimeError(error: unknown): Response {
 export class RuntimeControl extends WorkerEntrypoint<RuntimeEnv> {
   async fetch(request: Request): Promise<Response> {
     try {
-      const scope: ProjectScope = { projectId: request.headers.get('x-bh-project') || '', ownerId: request.headers.get('x-bh-owner') || '' };
+      const scope: ProjectScope = { projectId: request.headers.get('x-bh-project') || '', ownerId: request.headers.get('x-bh-owner') || '', unlimited: request.headers.get('x-bh-unlimited') === '1' };
       assertScope(scope);
       if (new URL(request.url).pathname === '/provisioning-check' && request.method === 'GET') {
         if (!this.env.PILOT_OWNER_IDS.split(',').map(id => id.trim()).includes(scope.ownerId)) throw new RuntimeError('Pilot access required.', 403);

@@ -635,6 +635,7 @@ export default {
       if (!env.RUNTIME) return withCors(jsonError('The full-stack runtime has not been deployed yet.', 503), origin);
       const target = new URL(request.url); target.pathname = runtimeMatch[2];
       const headers = new Headers({ 'Content-Type': 'application/json', 'x-bh-project': runtimeMatch[1], 'x-bh-owner': user.userId });
+      if (isOperator(env, user)) headers.set('x-bh-unlimited', '1');
       if (runtimeMatch[2] === '/email-test' && env.CONTACT_EMAIL) headers.set('x-bh-test-inbox', env.CONTACT_EMAIL);
       try {
         const response = await env.RUNTIME.fetch(new Request(target, { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body, redirect: 'manual' }));

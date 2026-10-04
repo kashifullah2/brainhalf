@@ -21,7 +21,7 @@ import { publicationTarget, assertProductionServices, productionHealthPath } fro
 import { digest, sourceSnapshot, projectManifest, migrationFiles, assertSafeMigration } from './source';
 import { openSecret, sealSecret, validateIntegration, redactSecrets } from './secrets';
 import { contactInput, token, cookie, secureCookie, embeddedPreviewCookie, readJson, readStreamJson } from './integrations';
-import { PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport } from './types';
+import { PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport, type RuntimeUsageKind } from './types';
 
 interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean; installRetried?: boolean }
 interface StoredIntegration { sealed: string; updatedAt: number }
@@ -100,12 +100,16 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
   private url(environment: ProjectEnvironment) { return `https://${runtimeHost(this.alias, environment, this.env.RUNTIME_DOMAIN)}`; }
   private pilot() { return this.env.PILOT.getByName('pilot'); }
   private ownerUsage() { return this.env.PILOT.getByName(`usage:${this.scope.ownerId}`); }
+  private async consumeUsage(kind: RuntimeUsageKind, jobId?: string): Promise<void> {
+    if (this.scope.unlimited) return;
+    requireAdmission(await this.ownerUsage().consumeUsage(kind, jobId));
+  }
   private services() {
     const store = new ManagedStore({
       storage: this.ctx.storage, env: this.env, scope: this.scope, origin: environment => this.url(environment), integration: environment => this.config(environment),
       createSession: (kind, environment, data, seconds) => this.createSession(kind, environment, data, seconds),
       session: (value, kind, environment, consume) => this.session(value, kind, environment, consume),
-      consumeEmail: async key => { requireAdmission(await this.ownerUsage().consumeUsage('emails', key)); },
+      consumeEmail: async key => { await this.consumeUsage('emails', key); },
       schedule: at => this.scheduleAlarm(at),
     });
     const mail = new ManagedMail(store);
@@ -539,7 +543,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         if (active(await this.ctx.storage.get<StoredJob>('current'))) throw new RuntimeError('A runtime job is already running. Stop it first.', 409);
         requireAdmission(await this.pilot().register(this.alias, this.scope));
         requireAdmission(await this.pilot().acquire(job.id, 'sandbox', this.scope.projectId));
-        try { requireAdmission(await this.ownerUsage().consumeUsage('jobs', job.id)); await this.env.ARTIFACTS.put(job.sourceKey, JSON.stringify(snapshot)); await this.saveJob(job); await this.scheduleAlarm(Date.now() + 100); }
+        try { await this.consumeUsage('jobs', job.id); await this.env.ARTIFACTS.put(job.sourceKey, JSON.stringify(snapshot)); await this.saveJob(job); await this.scheduleAlarm(Date.now() + 100); }
         catch (error) { await this.pilot().release(job.id); throw error; }
       });
       return Response.json({ job }, { status: 202 });
@@ -1005,7 +1009,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     if (await this.ctx.storage.get<boolean>('deleted')) throw new RuntimeError('App not found.', 404);
     // Removing the production release also disables hosted auth, mail and storage routes.
     if (environment === 'production' && !await this.ctx.storage.get('active:production')) throw new RuntimeError('No app release is available.', 404);
-    requireAdmission(await this.ownerUsage().consumeUsage('requests'));
+    await this.consumeUsage('requests');
     const url = new URL(request.url);
     if (url.pathname === '/__brainhalf/open' && request.method === 'GET' && environment === 'development') {
       const ticket = await this.session(url.searchParams.get('ticket') || undefined, 'ticket', environment, true);

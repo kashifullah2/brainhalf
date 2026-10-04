@@ -18,18 +18,25 @@ const repairBudget = new RepairBudget();
  */
 export function useAutomaticBuildFix(projectId: string, runtime: Runtime, isGenerating: boolean) {
   const processedJobs = useRef(new Set<string>());
+  const initialized = useRef(false);
 
   useEffect(() => {
-    // Ignore any jobs that already existed when we mounted/switched projects,
-    // so we don't auto-start the agent on a failure from a previous session.
-    processedJobs.current = new Set((runtime.status?.jobs ?? []).map(j => j.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    processedJobs.current.clear();
+    initialized.current = false;
   }, [projectId]);
 
   useEffect(() => {
-    if (isGenerating) return;
-    const jobs = runtime.status?.jobs ?? [];
-    const failedJob = jobs.find(
+    if (isGenerating || !runtime.status) return;
+
+    if (!initialized.current) {
+      // Ignore any jobs that already existed when we first loaded the project's status,
+      // so we don't auto-start the agent on a failure from a previous session.
+      for (const job of runtime.status.jobs) processedJobs.current.add(job.id);
+      initialized.current = true;
+      return;
+    }
+
+    const failedJob = runtime.status.jobs.find(
       job =>
         job.status === 'failed' &&
         (job.kind === 'build' || job.kind === 'preview' || job.kind === 'publish') &&

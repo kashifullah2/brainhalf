@@ -13,6 +13,7 @@ import { saveProjectMessages, setProjectAccount } from '../lib/project-store';
 function createMockAgent() {
   const agent: any = Object.create(ChatAgent.prototype);
   agent.writeEpoch = new WriteEpoch();
+  agent.idempotency = { has: () => false, setSql: () => {}, claim: () => true, release: () => {} };
   agent.currentAbortController = null;
   agent.connectionUserIds = new Map([['conn-1', 'user-1']]);
   agent.authCache = new Map();
