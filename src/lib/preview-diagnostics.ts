@@ -117,17 +117,18 @@ export function sanitizeErrorForDisplay(error: string): string {
  */
 export function plainPreviewError(diagnostic: PreviewDiagnostic, layer: 'backend' | 'frontend'): string {
   const where = layer === 'backend' ? "your app's backend" : 'your app';
+  const Where = where.charAt(0).toUpperCase() + where.slice(1);
   switch (diagnostic.category) {
     case 'react-render':
       return `Something went wrong showing ${where}. The builder can fix this — click "Ask the builder to fix".`;
     case 'reference':
-      return `${where} tried to use something that wasn't set up yet. The builder can fix this — click "Ask the builder to fix".`;
+      return `${Where} tried to use something that wasn't set up yet. The builder can fix this — click "Ask the builder to fix".`;
     case 'syntax':
       return `There's a typo in ${where}'s code. The builder can fix this — click "Ask the builder to fix".`;
     case 'network':
-      return `${where} couldn't reach something it needed. Check your connection, or ask the builder to fix it.`;
+      return `${Where} couldn't reach something it needed. Check your connection, or ask the builder to fix it.`;
     default:
-      return `${where} ran into a problem. The builder can try to fix it — click "Ask the builder to fix".`;
+      return `${Where} ran into a problem. The builder can try to fix it — click "Ask the builder to fix".`;
   }
 }
 

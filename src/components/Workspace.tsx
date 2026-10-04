@@ -1324,13 +1324,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   const isEditorTab = resolvedActiveTab === 'code';
 
-  const previewActionIssue: PreviewIssue | null = previewIssue ?? (previewLoadError
-    ? (() => {
-        const layer = detectLayerFromError(previewLoadError);
-        const file = extractFileFromError(previewLoadError);
-        return { error: previewLoadError, plainExplanation: plainPreviewError(diagnosePreviewError(previewLoadError), layer), file, layer };
-      })()
-    : null);
+  const previewActionIssue = useMemo<PreviewIssue | null>(() => {
+    return previewIssue ?? (previewLoadError
+      ? (() => {
+          const layer = detectLayerFromError(previewLoadError);
+          const file = extractFileFromError(previewLoadError);
+          return { error: previewLoadError, plainExplanation: plainPreviewError(diagnosePreviewError(previewLoadError), layer), file, layer };
+        })()
+      : null);
+  }, [previewIssue, previewLoadError]);
 
   // Single source of truth for the preview error overlay — used in both split
   // and single-panel layouts. Renders null when the error should not be shown.
