@@ -8,19 +8,28 @@ interface Step {
 }
 
 const BUILD_STEPS: Step[] = [
-  { label: 'Installing dependencies', sublabel: 'npm install', keywords: /install|depend/i },
-  { label: 'Building application',    sublabel: 'vite build + esbuild', keywords: /build|compil/i },
-  { label: 'Running tests',           sublabel: 'node --test', keywords: /test/i },
-  { label: 'Deploying app',           sublabel: 'Cloudflare Workers + D1', keywords: /deploy|collect|artifact|publish|service|migrat/i },
+  { label: 'Getting your project ready', sublabel: 'Fetching packages', keywords: /install|depend/i },
+  { label: 'Building your app',         sublabel: 'Compiling code',     keywords: /build|compil/i },
+  { label: 'Running checks',            sublabel: 'Verifying behavior', keywords: /test/i },
+  { label: 'Publishing online',         sublabel: 'Going live',         keywords: /deploy|collect|artifact|publish|service|migrat/i },
 ];
 
 function resolveStep(message: string): number {
   const lower = (message || '').toLowerCase();
-  // Walk backwards — the first step whose keywords match is the active one
   for (let i = BUILD_STEPS.length - 1; i >= 0; i--) {
     if (BUILD_STEPS[i].keywords.test(lower)) return i;
   }
   return 0;
+}
+
+function plainMessage(message: string): string {
+  const m = (message || '').toLowerCase().trim();
+  if (!m || m === 'queued' || m === 'pending' || m === 'starting') return 'Getting your app ready…';
+  if (m === 'running' || m === 'in progress') return 'Working on it…';
+  if (m === 'stopping' || m === 'stopping…') return 'Wrapping up…';
+  if (m === 'passed' || m === 'done' || m === 'success') return 'All done!';
+  if (m === 'failed' || m === 'error') return 'Something went wrong — try again.';
+  return message;
 }
 
 function ElapsedTime({ startedAt }: { startedAt: number }) {
@@ -76,7 +85,7 @@ export default function BackendBuildProgress({ message, startedAt }: { message: 
             Building your app
           </h3>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0', lineHeight: 1.5 }}>
-            {message || 'Starting the build pipeline…'}
+            {plainMessage(message)}
           </p>
         </div>
       </div>

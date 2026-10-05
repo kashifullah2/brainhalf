@@ -1613,16 +1613,20 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} autoFixing={autoFixing} />
                   </>
                 )}
-                {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <>
-                  <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>
-                  {showPublishNudge && (
-                    <div className="preview-health-strip" role="status" style={{ background: 'linear-gradient(90deg,rgba(34,197,94,0.08) 0%,rgba(54,89,217,0.06) 100%)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}>
-                      <span style={{ fontSize: '13px' }}>✓</span>
-                      <span style={{ flex: 1 }}><strong>Backend is live.</strong> Try your app, then hit <strong>Publish</strong> in the top-right when you're ready to go live.</span>
-                      <button onClick={() => setShowPublishNudge(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 4px', fontSize: '14px' }} aria-label="Dismiss">×</button>
-                    </div>
-                  )}
-                </>}
+                {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && status !== 'Error' && (
+                  <div className="preview-health-strip preview-health-strip--compact" role="status">
+                    <span className="preview-health-dot" aria-hidden="true" />
+                    <span className="preview-health-url" title={backend.liveUrl}>{backend.liveUrl.replace(/^https?:\/\//, '')}</span>
+                    {backend.canUpdate && (
+                      <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>
+                        <RotateCcw size={12} strokeWidth={2} />Update
+                      </button>
+                    )}
+                    <button onClick={() => void backend.open()}>
+                      Open <ArrowUpRight size={12} strokeWidth={1.75} />
+                    </button>
+                  </div>
+                )}
                 <PreviewCanvas mode={viewportMode}>
                   {wcEnabled ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
@@ -2011,7 +2015,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} autoFixing={autoFixing} />
                 </>
               )}
-              {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && (
+              {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && status !== 'Error' && (
                 <div className="preview-health-strip preview-health-strip--compact" role="status">
                   <span className="preview-health-dot" aria-hidden="true" />
                   <span className="preview-health-url" title={backend.liveUrl}>{backend.liveUrl.replace(/^https?:\/\//, '')}</span>
