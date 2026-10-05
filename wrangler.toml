@@ -6,7 +6,7 @@ compatibility_flags = [ "nodejs_compat" ]
 [vars]
 REQUIRED_MODEL_PROVIDERS = "cloudflare"
 REQUIRED_PUBLIC_SERVICES = "email,google"
-ADMIN_EMAILS = "kashifullah919@gmail.com"
+ADMIN_EMAILS = "kashifullah919@gmail.com,whyai4@gmail.com"
 # Set to "true" only in .dev.vars for local development; never in production.
 IS_DEV = "false"
 
