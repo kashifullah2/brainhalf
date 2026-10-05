@@ -1505,7 +1505,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {splitView ? (
           <div style={{ display: 'flex', width: '100%', height: '100%', minWidth: 0 }}>
-            {showFileExplorer && <FileExplorer
+            {showFileExplorer && hasGeneratedApp && <FileExplorer
               files={files}
               activeFile={activeFile}
               onSelectFile={setActiveFile}
@@ -1664,7 +1664,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           </div>
         ) : isEditorTab ? (
           <div style={{ display: 'flex', width: '100%', height: '100%', minWidth: 0 }}>
-            {showFileExplorer && <FileExplorer
+            {showFileExplorer && hasGeneratedApp && <FileExplorer
               files={files}
               activeFile={activeFile}
               onSelectFile={setActiveFile}
@@ -1889,48 +1889,27 @@ const Workspace: React.FC<WorkspaceProps> = ({
         ) : resolvedActiveTab === 'console' ? (
           <ProjectConsole key={activeProjectId} projectId={activeProjectId} files={files} onClose={() => selectTab('preview')} sectionRequest={consoleSectionRequest} />
         ) : resolvedActiveTab === 'logs' ? (
-          <div style={{
-            width: '100%', height: '100%', background: 'var(--bg-surface)', color: 'var(--text-primary)',
-            display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-mono)', fontSize: '12px', minWidth: 0
-          }}>
-            <div style={{
-              padding: '8px 14px', background: 'rgba(36, 60, 75, 0.02)',
-              borderBottom: '1px solid var(--border-subtle)', display: 'flex',
-              alignItems: 'center', justifyContent: 'space-between', flexShrink: 0
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ListFilter size={14} color="var(--accent-light)" />
-                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Activity</span>
+          <div className="activity-panel">
+            <div className="activity-panel-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <ListFilter size={13} style={{ color: 'var(--text-muted)' }} />
+                <span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-primary)' }}>Activity</span>
               </div>
-              <button
-                onClick={() => setBuildLogs([])}
-                className="hover-bright"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', borderRadius: '4px', padding: '6px 10px', minHeight: '32px', fontSize: '11px', cursor: 'pointer' }}
-              >
-                Clear
-              </button>
+              <button onClick={() => setBuildLogs([])} className="activity-panel-clear">Clear</button>
             </div>
-            <div style={{ flex: 1, minHeight: 0, padding: '14px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div className="activity-panel-body">
               {buildLogs.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', padding: '16px 0' }}>
-                  No activity recorded yet. Generations, file writes and errors will be listed here.
+                <div className="activity-panel-empty">
+                  <ListFilter size={20} style={{ opacity: 0.25, marginBottom: '6px' }} />
+                  <span>No events yet</span>
+                  <span style={{ fontSize: '11px', marginTop: '2px' }}>Generations and file writes will appear here</span>
                 </div>
               ) : (
                 buildLogs.map(item => (
-                  <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', lineHeight: 1.5 }}>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '11px', flexShrink: 0, minWidth: '62px' }}>
-                      [{item.time}]
-                    </span>
-                    <span style={{
-                      width: '6px', height: '6px', borderRadius: '50%', marginTop: '6px', flexShrink: 0,
-                      background: item.type === 'success' ? 'var(--color-success)' : item.type === 'error' ? 'var(--color-error)' : item.type === 'warn' ? 'var(--color-warning)' : 'var(--color-info)'
-                    }} />
-                    <span style={{
-                      color: item.type === 'error' ? 'var(--color-error)' : item.type === 'success' ? 'var(--color-success)' : item.type === 'warn' ? 'var(--color-warning)' : 'var(--text-primary)',
-                      wordBreak: 'break-word', minWidth: 0
-                    }}>
-                      {item.text}
-                    </span>
+                  <div key={item.id} className={`activity-log-row activity-log-row--${item.type}`}>
+                    <span className="activity-log-dot" aria-hidden="true" />
+                    <span className="activity-log-text">{item.text}</span>
+                    <time className="activity-log-time">{item.time}</time>
                   </div>
                 ))
               )}
@@ -1963,7 +1942,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 isGenerating={status === 'Generating'}
                 fileProgress={fileProgress}
                 files={Object.keys(files)}
-                previewReady={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState !== 'error')}
+                previewReady={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState === 'ready')}
                 isFirstGeneration={!hasGeneratedApp && generationEverAttempted}
               />
               {/* Keep fresh, building and failed projects distinct without showing a fake app. */}
@@ -2032,7 +2011,20 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} autoFixing={autoFixing} />
                 </>
               )}
-              {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
+              {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && (
+                <div className="preview-health-strip preview-health-strip--compact" role="status">
+                  <span className="preview-health-dot" aria-hidden="true" />
+                  <span className="preview-health-url" title={backend.liveUrl}>{backend.liveUrl.replace(/^https?:\/\//, '')}</span>
+                  {backend.canUpdate && (
+                    <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>
+                      <RotateCcw size={12} strokeWidth={2} />Update
+                    </button>
+                  )}
+                  <button onClick={() => void backend.open()}>
+                    Open <ArrowUpRight size={12} strokeWidth={1.75} />
+                  </button>
+                </div>
+              )}
               <PreviewCanvas mode={viewportMode}>
                   {wcEnabled ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />

@@ -26,4 +26,5 @@
 .studio-action-menu button:disabled { opacity: .4; cursor: default; }
 .studio-action-menu button.is-danger, .studio-action-menu button.is-danger svg { color: var(--color-error); }
 .studio-action-menu-divider { height: 1px; background: var(--border-subtle); margin: 3px 4px; }
+.studio-action-menu-header { display: flex; align-items: center; gap: 9px; padding: 8px 10px 6px; color: var(--text-muted); font-size: 12px; pointer-events: none; }
 @media (max-width: 768px) { .studio-action-menu button { min-height: 44px; } }

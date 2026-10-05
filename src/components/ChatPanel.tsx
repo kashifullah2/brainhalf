@@ -2229,30 +2229,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         </div>
       </header>
       {workspaceConflict && (
-        <div role="alert" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--color-warning-bg)', color: 'var(--text-primary)' }}>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-            <AlertTriangle size={20} style={{ color: 'var(--color-warning)', flexShrink: 0, marginTop: '1px' }} aria-hidden="true" />
-            <div style={{ minWidth: 0 }}>
-              <p style={{ margin: '0 0 4px', fontWeight: 650, fontSize: '14px' }}>Your app changed in two places</p>
-              <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.5 }}>
-                {workspaceConflict.length === 1
-                  ? 'One file was edited both here and on the server, and the two versions are different.'
-                  : `${workspaceConflict.length} files were edited both here and on the server, and the versions are different.`}{' '}
-                Choose which version to keep — the other one will be replaced.
-              </p>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => resolveWorkspaceConflictRef.current?.(true)}
-                  style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'var(--accent-primary)', color: 'var(--text-on-accent)', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
-                >Keep my changes</button>
-                <button
-                  type="button"
-                  onClick={() => resolveWorkspaceConflictRef.current?.(false)}
-                  title="Your edits here will be replaced by the server's version"
-                  style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border-strong)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontWeight: 500, fontSize: '13px', cursor: 'pointer' }}
-                >Use the server's version</button>
-              </div>
+        <div role="alert" className="conflict-banner">
+          <AlertTriangle size={14} className="conflict-banner-icon" aria-hidden="true" />
+          <div className="conflict-banner-body">
+            <p className="conflict-banner-title">
+              {workspaceConflict.length === 1 ? 'One file has conflicting edits' : `${workspaceConflict.length} files have conflicting edits`}
+            </p>
+            <p className="conflict-banner-desc">The same file was changed here and on the server. Choose which version to keep.</p>
+            <div className="conflict-banner-actions">
+              <button type="button" className="conflict-btn conflict-btn--primary" onClick={() => resolveWorkspaceConflictRef.current?.(true)}>Keep mine</button>
+              <button type="button" className="conflict-btn conflict-btn--secondary" onClick={() => resolveWorkspaceConflictRef.current?.(false)} title="Use the server's version">Use server's</button>
             </div>
           </div>
         </div>
@@ -2324,7 +2310,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 gap: '4px'
               }}>
                 <div className="studio-message-meta">
-                  <span className="studio-message-author">{isAi ? 'BrainHalf' : 'You'}</span>
+                  {!isAi && <span className="studio-message-author">You</span>}
                   {timeLabel && <time>{timeLabel}</time>}
                   <div className="studio-message-actions" aria-label="Message actions">
                     {!isEmptyAssistantResponse(msg.content) && <ActionMenu label="More message actions" className="studio-message-more" items={isAi ? [

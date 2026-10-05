@@ -9,6 +9,8 @@ export interface ActionMenuItem {
   disabled?: boolean;
   danger?: boolean;
   separator?: boolean;
+  /** Renders as a non-interactive info row at the top (e.g. user email) */
+  type?: 'header';
 }
 
 /** Shared keyboard and focus behavior for secondary workspace actions. */
@@ -121,8 +123,11 @@ export default function ActionMenu({ label, children, items, className = '' }: {
       }}>
       {items.map(item => <div key={item.label} role="none">
         {item.separator && <div role="separator" className="studio-action-menu-divider" />}
-        <button type="button" role="menuitem" className={item.danger ? 'is-danger' : ''} disabled={item.disabled}
-          onClick={() => { close(); item.onSelect(); }}>{item.icon}<span>{item.label}</span></button>
+        {item.type === 'header'
+          ? <div className="studio-action-menu-header">{item.icon}<span>{item.label}</span></div>
+          : <button type="button" role="menuitem" className={item.danger ? 'is-danger' : ''} disabled={item.disabled}
+              onClick={() => { close(); item.onSelect(); }}>{item.icon}<span>{item.label}</span></button>
+        }
       </div>)}
     </div>, document.body)}
   </>;

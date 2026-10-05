@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useId, useMemo } from 'react';
-import { Check, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, Tablet, Smartphone, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Download, GitBranch, HelpCircle, MousePointer2, Globe2, Copy } from 'lucide-react';
+import { Check, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, Pencil, Moon, Sun, Monitor, Tablet, Smartphone, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Download, GitBranch, HelpCircle, MousePointer2, Globe2, Copy } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import { setTheme, useTheme } from '../lib/theme';
@@ -297,20 +297,16 @@ const TopNav: React.FC<TopNavProps> = ({
       <div className="top-nav-right-cluster">
         {isWorkspaceMode && !isMobile && (
           <>
-            {/* Settings: all project actions + share consolidated here */}
+            {/* Project actions — no duplicates of tab/bottom-bar items */}
             <ActionMenu label="Project actions" className="studio-project-actions" items={[
-              { label: 'View code', icon: <Code2 size={14} />, onSelect: () => onSelectTab?.('code'), disabled: !hasFiles },
-              { label: 'Terminal / console', icon: <Terminal size={14} />, onSelect: () => onSelectTab?.('console'), separator: true },
               {
                 label: shareCopied ? 'Link copied!' : 'Copy project link',
                 icon: <Share2 size={14} />,
                 onSelect: () => onShare?.(),
-                separator: true,
               },
               { label: 'Download ZIP', icon: <Download size={14} />, onSelect: () => onExportZip?.(), disabled: !hasFiles },
               { label: 'Export to GitHub', icon: <GitBranch size={14} />, onSelect: () => onExportGithub?.(), disabled: !hasFiles, separator: true },
-              { label: 'Help & guides', icon: <HelpCircle size={14} />, onSelect: () => window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer') },
-              { label: 'Reset workspace', icon: <RotateCcw size={14} />, onSelect: () => onResetWorkspace?.(), danger: true, separator: true },
+              { label: 'Reset workspace', icon: <RotateCcw size={14} />, onSelect: () => onResetWorkspace?.(), danger: true },
             ]}>
               <Settings size={15} strokeWidth={1.75} />
             </ActionMenu>
@@ -342,10 +338,11 @@ const TopNav: React.FC<TopNavProps> = ({
         {!isWorkspaceMode && <ThemeToggle />}
 
         <ActionMenu label="User profile and menu" className="studio-account-trigger" items={[
-          ...(onOpenDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={15} />, onSelect: onOpenDashboard }] : []),
-          { label: 'Gallery', icon: <LayoutGrid size={15} />, onSelect: () => window.location.assign('/gallery') },
-          ...(onGoHome ? [{ label: 'Back to home', icon: <Home size={15} />, onSelect: onGoHome }] : []),
+          // User info header — shows who's logged in
+          ...(currentUser?.email || currentUser?.name ? [{ label: currentUser?.email || currentUser?.name || '', type: 'header' as const, onSelect: () => {} }] : []),
+          ...(onOpenDashboard ? [{ label: 'Dashboard', icon: <LayoutDashboard size={15} />, onSelect: onOpenDashboard, separator: !!(currentUser?.email || currentUser?.name) }] : []),
           { label: theme === 'light' ? 'Dark mode' : 'Light mode', icon: theme === 'light' ? <Moon size={15} /> : <Sun size={15} />, onSelect: () => setTheme(theme === 'light' ? 'dark' : 'light') },
+          { label: 'Help & guides', icon: <HelpCircle size={15} />, onSelect: () => window.open('/guides/build-an-app-with-ai', '_blank', 'noopener,noreferrer') },
           ...(onLogout ? [{ label: 'Sign out', icon: <LogOut size={15} />, onSelect: () => { void onLogout(); }, separator: true }] : []),
         ]}>
           <span className="studio-account-avatar">{userInitial}</span>

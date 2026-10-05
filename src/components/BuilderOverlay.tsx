@@ -206,18 +206,24 @@ export default function BuilderOverlay({
 
         {/* Phase list — sequential ordering enforced */}
         <div className="builder-overlay-phases">
-          {activatedPhases.filter(p => p.active).map(phase => {
-            const Icon = phase.icon;
-            return (
-              <div key={phase.id} className={`builder-phase${phase.done ? ' builder-phase--done' : ' builder-phase--active'}`}>
-                <span className="builder-phase-icon" aria-hidden="true">
-                  {phase.done ? <Check size={14} strokeWidth={2.5} /> : <Loader2 size={14} className="lucide-spin" />}
-                </span>
-                <Icon size={14} strokeWidth={1.5} aria-hidden="true" />
-                <span>{phase.label}</span>
-              </div>
-            );
-          })}
+          {(() => {
+            const activePhases = activatedPhases.filter(p => p.active);
+            return activePhases.map((phase, i) => {
+              // While still generating, the last active phase must stay spinning
+              // so we never reach the "all green + Building" confusing state.
+              const showDone = phase.done && (isDone || i < activePhases.length - 1);
+              const Icon = phase.icon;
+              return (
+                <div key={phase.id} className={`builder-phase${showDone ? ' builder-phase--done' : ' builder-phase--active'}`}>
+                  <span className="builder-phase-icon" aria-hidden="true">
+                    {showDone ? <Check size={14} strokeWidth={2.5} /> : <Loader2 size={14} className="lucide-spin" />}
+                  </span>
+                  <Icon size={14} strokeWidth={1.5} aria-hidden="true" />
+                  <span>{phase.label}</span>
+                </div>
+              );
+            });
+          })()}
           {activatedPhases.filter(p => p.active).length === 0 && (
             <div className="builder-phase builder-phase--active">
               <span className="builder-phase-icon" aria-hidden="true"><Loader2 size={14} className="lucide-spin" /></span>
