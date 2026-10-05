@@ -191,7 +191,7 @@ const TopNav: React.FC<TopNavProps> = ({
         {isWorkspaceMode && (
           <button type="button" className="top-nav-new-project-btn icon-btn"
             onClick={() => onNewProject ? onNewProject() : onGoHome?.()}
-            title="New project" aria-label="New project"
+            title="Create new project" aria-label="Create new project"
             disabled={creatingProject} aria-disabled={creatingProject}
           ><Plus size={15} strokeWidth={1.7} /></button>
         )}
@@ -208,8 +208,8 @@ const TopNav: React.FC<TopNavProps> = ({
             </button>
             <button role="tab" type="button" aria-selected={activeTab === 'code'}
               className={`bolt-tab${activeTab === 'code' ? ' active' : ''}`}
-              onClick={() => onSelectTab?.('code')} title="Code" aria-label="Code editor">
-              <Code2 size={13} strokeWidth={1.75} />
+              onClick={() => onSelectTab?.('code')} title="Switch to code editor" aria-label="Switch to code editor">
+              <Code2 size={13} strokeWidth={1.75} /><span>Code</span>
             </button>
           </div>
 

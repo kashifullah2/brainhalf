@@ -638,7 +638,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const pendingSendRef = useRef<((ws: WebSocket) => void) | null>(null);
   const pendingRequestRef = useRef<PendingChatRequest | null>(null);
   const generationClockRef = useRef<GenerationClock | null>(null);
-  useEffect(() => { generationClockRef.current = null; return appEvents.on('preview-state', event => { if (event.projectId === activeProjectId && event.state === 'ready' && generationTouchedFilesRef.current) generationClockRef.current?.mark('preview'); }); }, [activeProjectId]);
+  const [previewIsReady, setPreviewIsReady] = useState(false);
+  useEffect(() => {
+    generationClockRef.current = null;
+    return appEvents.on('preview-state', event => {
+      if (event.projectId === activeProjectId) {
+        if (event.state === 'ready') {
+          setPreviewIsReady(true);
+          if (generationTouchedFilesRef.current) generationClockRef.current?.mark('preview');
+        } else if (event.state === 'loading') {
+          setPreviewIsReady(false);
+        }
+      }
+    });
+  }, [activeProjectId]);
   const workspaceReadyRef = useRef(false);
   const workspaceWritePendingRef = useRef(false);
   const serverOwnsWorkspaceRef = useRef(false);
@@ -1820,7 +1833,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       const currentProj = allProjects.find(p => p.id === activeProjectId);
       if (!isSystemContinuation(userMessage) && currentProj && (/^Project \d+$/i.test(currentProj.name) || currentProj.name === 'Untitled Project' || /^chat-easy-\d+$/i.test(currentProj.name))) {
         const cleanedPrompt = userMessage.trim().replace(/\s+/g, ' ');
-        const newTitle = shortTitleFromPrompt(cleanedPrompt);
+        // Strip common leading action prefixes like "Build an app: ", "Create an app for " to get concise title like "Online Store"
+        const strippedPrompt = cleanedPrompt.replace(/^(?:build|create|make|develop|generate)\s+(?:me\s+)?(?:an?\s+)?(?:app|application|website|web app|tool)?\s*[:\-–—]?\s*/i, '').trim() || cleanedPrompt;
+        const newTitle = shortTitleFromPrompt(strippedPrompt).replace(/[\s:\-–—]+$/, '');
         updateProjectName(activeProjectId, newTitle);
         appEvents.emit('project-renamed', { id: activeProjectId, name: newTitle });
       }
@@ -1845,6 +1860,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       messagesRef.current = updated; setMessages(updated); saveProjectMessages(activeProjectId, updated);
     });
     setElapsedSeconds(0);
+    setPreviewIsReady(false);
     setIsGenerating(true);
     isGeneratingRef.current = true;
     lastNoticeMessageRef.current = null;
@@ -2277,12 +2293,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
                       if (segments.length === 0 || isEmptyAssistantResponse(msg.content)) {
                         return isCurrentGenerating || !historyLoaded ? (
-                          <div className="thinking-indicator-card">
+                          <div className="thinking-indicator-card" role="status" aria-live="polite">
                             <div className="thinking-indicator-icon">
                                <Sparkles size={14} color="white" />
                             </div>
                             <span className="thinking-indicator-text">
-                              {historyLoaded ? 'BrainHalf is thinking...' : 'Restoring your conversation…'}
+                              {historyLoaded
+                                ? (platformStatus.isBuilding ? 'BrainHalf is writing files…' : 'BrainHalf is thinking…')
+                                : 'Restoring your conversation…'}
                             </span>
                             <span className="thinking-indicator-time">
                               {elapsedSeconds}s
@@ -2355,18 +2373,21 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
                           {(() => {
                             const isFirstAiMessage = messages.findIndex(m => m.role === 'ai') === idx;
+                            const hasSubsequentPrompts = messages.slice(idx + 1).some(m => m.role === 'user');
                             
-                            // If this is the very first AI message, hide the raw code/text to make it magical.
-                            if (isFirstAiMessage) {
+                            // If this is the very first AI message and no subsequent prompts were sent yet,
+                            // show the summary card; only show 'App built successfully' when build AND preview are both complete.
+                            if (isFirstAiMessage && !hasSubsequentPrompts) {
+                              const isBuildDone = !isCurrentGenerating && previewIsReady;
                               return (
-                                <div className="first-generation-summary-card" style={{ padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
-                                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: isCurrentGenerating ? 'rgba(54, 89, 217, 0.1)' : 'rgba(34, 197, 94, 0.1)', color: isCurrentGenerating ? 'var(--accent-light)' : '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    {isCurrentGenerating ? <Sparkles size={20} className="lucide-pulse" /> : <Check size={20} />}
+                                <div className="first-generation-summary-card" role="status" aria-live="polite" style={{ padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: !isBuildDone ? 'rgba(54, 89, 217, 0.1)' : 'rgba(34, 197, 94, 0.1)', color: !isBuildDone ? 'var(--accent-light)' : '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    {!isBuildDone ? <Sparkles size={20} className="lucide-pulse" /> : <Check size={20} />}
                                   </div>
                                   <div>
-                                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{isCurrentGenerating ? 'Building your app…' : 'App built successfully'}</h4>
+                                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{!isBuildDone ? 'Building your app…' : 'App built successfully'}</h4>
                                     <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                      {isCurrentGenerating ? 'The builder is writing the initial code and setting up the environment.' : 'Initial scaffolding is complete. The app is running in the preview.'}
+                                      {!isBuildDone ? 'The builder is writing the initial code and setting up the environment.' : 'Initial scaffolding is complete. The app is running in the preview.'}
                                     </p>
                                   </div>
                                 </div>
@@ -2835,8 +2856,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               <button
                 ref={modelPickerButtonRef}
                 type="button"
+                disabled={isGenerating}
+                aria-disabled={isGenerating}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (isGenerating) return;
                   setShowModelPicker(prev => {
                     if (!prev) void refreshModelStatus();
                     return !prev;
@@ -2846,8 +2870,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 aria-expanded={showModelPicker}
                 aria-controls={modelPickerListId}
                 className="studio-composer-model"
-                title={integratedModelsOn ? 'Change AI model' : 'Built-in models are turned off by the administrator'}
-                aria-label={integratedModelsOn ? 'Change AI model' : 'Built-in models are turned off'}
+                title={isGenerating ? 'Model is locked while building' : integratedModelsOn ? 'Change AI model' : 'Built-in models are turned off by the administrator'}
+                aria-label={isGenerating ? 'Model is locked while building' : integratedModelsOn ? 'Change AI model' : 'Built-in models are turned off'}
                 data-testid="model-picker-btn"
               >
                 <span className="studio-model-caption">Model</span>

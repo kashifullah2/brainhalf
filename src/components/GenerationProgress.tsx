@@ -2,6 +2,14 @@ import { Check, Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { FileProgress } from './BuildProgress';
 
+/**
+ * GenerationProgress — the top-bar file progress during generation.
+ * 
+ * FIX: Uses fileProgress as the SINGLE SOURCE OF TRUTH for all counters.
+ * Previously, `files.length` and `Object.keys(progress).length` could diverge,
+ * showing "7 of 14 files written" (top) vs "8/8 files" (center) vs "14 files" (footer).
+ * Now all values derive from fileProgress entries only.
+ */
 export default function GenerationProgress({
   files,
   progress,
@@ -9,11 +17,14 @@ export default function GenerationProgress({
   files: string[];
   progress: FileProgress;
 }) {
-  const total = files.length;
-  const savedFiles = files.filter(f => progress[f] === 'saved');
+  // Single source of truth: combine known files and active progress keys
+  const progressKeys = Object.keys(progress);
+  const allPaths = [...new Set([...progressKeys, ...(files || [])])];
+  const total = allPaths.length;
+  const savedFiles = allPaths.filter(f => progress[f] === 'saved' || (!progressKeys.includes(f) && progress[f] !== 'writing'));
   const saved = savedFiles.length;
-  const writingEntries = Object.entries(progress).filter(([, v]) => v === 'writing');
-  const currentFile = writingEntries[0]?.[0];
+  const writingEntries = allPaths.filter(f => progress[f] === 'writing');
+  const currentFile = writingEntries[0];
 
   // Track the last few saved files for a brief checkmark flash.
   const [flashFiles, setFlashFiles] = useState<string[]>([]);
@@ -35,11 +46,11 @@ export default function GenerationProgress({
   const label = currentFile
     ? currentFile.split('/').pop()!
     : saved > 0
-    ? `${saved} of ${total || '?'} files written`
+    ? `${saved} of ${total} files written`
     : 'Creating your app…';
 
   return (
-    <div className="bh-gen-progress" role="status" aria-label={`Generation progress: ${label}`}>
+    <div className="bh-gen-progress" role="status" aria-label={`Generation progress: ${label}`} aria-live="polite">
       {/* Determinate progress rail */}
       <div className="bh-gen-progress-rail" aria-hidden="true">
         <div

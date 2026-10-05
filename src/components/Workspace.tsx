@@ -1997,7 +1997,16 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
       <footer className="studio-workspace-footer">
         <div className="studio-build-meta" aria-label="Build information">
-        <span><FolderCode size={12} />{Object.keys(files).length} files</span>
+        <span>
+          <FolderCode size={12} />
+          {(() => {
+            const progressKeys = Object.keys(fileProgress);
+            const allPaths = [...new Set([...progressKeys, ...Object.keys(files)])];
+            const total = allPaths.length;
+            const saved = allPaths.filter(p => fileProgress[p] === 'saved' || (!progressKeys.includes(p) && fileProgress[p] !== 'writing')).length;
+            return status === 'Generating' && total > 0 ? `${saved} of ${total} files written` : `${total} files`;
+          })()}
+        </span>
         {wcEnabled && <button type="button" onClick={() => selectTab('terminal')} aria-pressed={resolvedActiveTab === 'terminal'}><Terminal size={14} />Terminal</button>}
         <button type="button" onClick={() => selectTab('console')} aria-pressed={resolvedActiveTab === 'console'}><Settings size={14} />Console</button><button type="button" onClick={() => selectTab('logs')} aria-pressed={resolvedActiveTab === 'logs'}><ListFilter size={14} />Activity</button>
         </div>
