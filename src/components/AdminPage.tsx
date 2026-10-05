@@ -27,6 +27,11 @@ import {
   ExternalLink,
   Sparkles,
   ArrowLeft,
+  EyeOff,
+  Cpu,
+  Zap,
+  SlidersHorizontal,
+  Power,
 } from 'lucide-react';
 import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
@@ -98,6 +103,67 @@ interface ConfirmState {
   confirmLabel: string;
   onConfirm: () => Promise<void>;
 }
+
+const BUILTIN_MODEL_META: Record<string, { label: string; badge: string; colorClass: string; desc: string }> = {
+  '@cf/deepseek-ai/deepseek-v4-pro-0813': {
+    label: 'DeepSeek V4 Pro',
+    badge: 'Cloudflare',
+    colorClass: 'admin-provider-cloudflare',
+    desc: 'Flagship code & fullstack generation engine',
+  },
+  '@cf/openai/gpt-oss-120b': {
+    label: 'GPT-OSS 120B',
+    badge: 'Cloudflare',
+    colorClass: 'admin-provider-cloudflare',
+    desc: 'High-capacity reasoning & complex architectures',
+  },
+  '@cf/moonshotai/kimi-k2.7-code': {
+    label: 'Kimi K2.7 Code',
+    badge: 'Cloudflare',
+    colorClass: 'admin-provider-cloudflare',
+    desc: '200k extended context code generation model',
+  },
+  '@cf/qwen/qwen3.8-27b': {
+    label: 'Qwen 3.8 27B',
+    badge: 'Cloudflare',
+    colorClass: 'admin-provider-cloudflare',
+    desc: 'Fast instruction following and logic synthesis',
+  },
+  'claude-sonnet-6': {
+    label: 'Claude Sonnet 4.6',
+    badge: 'AWS Bedrock',
+    colorClass: 'admin-provider-aws',
+    desc: 'High-precision engineering and structural reasoning',
+  },
+  'kimi-k3': {
+    label: 'Kimi K3 v1',
+    badge: 'AWS Bedrock',
+    colorClass: 'admin-provider-aws',
+    desc: '1M ultra-long context comprehension engine',
+  },
+  'Atria-Dawn-Preview': {
+    label: 'Atria Dawn Preview',
+    badge: 'Atria ASI',
+    colorClass: 'admin-provider-atria',
+    desc: 'Next-generation experimental agent model',
+  },
+};
+
+const PRESET_PROVIDERS = [
+  { name: 'OpenAI', url: 'https://api.openai.com/v1', model: 'gpt-4o' },
+  { name: 'DeepSeek', url: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  { name: 'Groq', url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' },
+  { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', model: 'anthropic/claude-3.5-sonnet' },
+  { name: 'Ollama (Local)', url: 'http://localhost:11434/v1', model: 'llama3' },
+];
+
+const BENCHMARK_PROMPTS = [
+  { label: '⚡ Counter App', text: 'Build an interactive React counter component with increment, decrement, reset, and step size controls.' },
+  { label: '📝 Todo List', text: 'Build a fullstack Todo list with filter tabs (All, Active, Completed), local persistence, and badges.' },
+  { label: '🌐 REST API', text: 'Create an Express or Hono REST API handler with error handling, validation, and JSON responses.' },
+  { label: '🎨 Hero Banner', text: 'Design a high-converting landing page hero section with gradient badges and call-to-action buttons.' },
+];
+
 
 interface CodeViewState {
   project: AdminProject;
@@ -182,6 +248,9 @@ export default function AdminPage() {
   const [builtinTestOutput, setBuiltinTestOutput] = useState('');
   const [builtinTestRunning, setBuiltinTestRunning] = useState(false);
   const [disabledModels, setDisabledModels] = useState<string[]>([]);
+  const [modelSearch, setModelSearch] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [copiedModelUrl, setCopiedModelUrl] = useState<string | null>(null);
 
   const load = async (signal?: AbortSignal) => {
     setState('loading');
@@ -287,6 +356,71 @@ export default function AdminPage() {
       setDisabledModels(disabledModels);
     }
   };
+
+  const enableAllBuiltinModels = async () => {
+    setNotice(null);
+    setDisabledModels([]);
+    try {
+      const response = await authFetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disabledModels: [] }),
+      });
+      if (!response.ok) {
+        setNotice({ kind: 'error', text: 'Could not update model settings.' });
+        void loadIntegratedSetting();
+      } else {
+        setNotice({ kind: 'ok', text: 'All integrated models are enabled.' });
+      }
+    } catch {
+      setNotice({ kind: 'error', text: 'Could not update model settings.' });
+      void loadIntegratedSetting();
+    }
+  };
+
+  const disableAllBuiltinModels = async () => {
+    setNotice(null);
+    const allKeys = CLIENT_SELECTABLE_MODELS.map(m => `${m.provider}:${m.name}`);
+    setDisabledModels(allKeys);
+    try {
+      const response = await authFetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disabledModels: allKeys }),
+      });
+      if (!response.ok) {
+        setNotice({ kind: 'error', text: 'Could not update model settings.' });
+        void loadIntegratedSetting();
+      } else {
+        setNotice({ kind: 'ok', text: 'All individual built-in models paused.' });
+      }
+    } catch {
+      setNotice({ kind: 'error', text: 'Could not update model settings.' });
+      void loadIntegratedSetting();
+    }
+  };
+
+  const applyProviderPreset = (preset: typeof PRESET_PROVIDERS[number]) => {
+    setModelForm(prev => ({
+      ...prev,
+      baseUrl: preset.url,
+      modelId: prev.modelId || preset.model,
+      name: prev.name || `${preset.name} Model`,
+    }));
+  };
+
+  const filteredBuiltinModels = useMemo(() => {
+    if (!modelSearch.trim()) return CLIENT_SELECTABLE_MODELS;
+    const q = modelSearch.toLowerCase();
+    return CLIENT_SELECTABLE_MODELS.filter(m => {
+      const meta = BUILTIN_MODEL_META[m.name];
+      return (
+        m.name.toLowerCase().includes(q) ||
+        m.provider.toLowerCase().includes(q) ||
+        (meta && (meta.label.toLowerCase().includes(q) || meta.badge.toLowerCase().includes(q) || meta.desc.toLowerCase().includes(q)))
+      );
+    });
+  }, [modelSearch]);
 
   const testBuiltinModel = async () => {
     if (!builtinTestModel) {
@@ -1498,45 +1632,113 @@ export default function AdminPage() {
                         </div>
                       </div>
 
-                      <div className="admin-toggle-row admin-master-toggle">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={integratedEnabled}
-                          className={`admin-toggle ${integratedEnabled ? 'admin-toggle-on' : ''}`}
-                          onClick={toggleIntegrated}
-                          disabled={integratedToggling}
-                        >
-                          <span className="admin-toggle-knob" />
-                        </button>
-                        <span className="admin-toggle-label">
-                          All integrated models {integratedEnabled ? 'enabled' : 'disabled'}
-                        </span>
+                      {/* Hero Master Status Card */}
+                      <div className={`admin-master-card ${integratedEnabled ? 'is-active' : 'is-paused'}`}>
+                        <div className="admin-master-top">
+                          <span className={`admin-master-status ${integratedEnabled ? 'status-active' : 'status-paused'}`}>
+                            <span className="admin-status-dot" aria-hidden="true" />
+                            {integratedEnabled ? 'Platform Active' : 'Platform Paused'}
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={integratedEnabled}
+                            className={`admin-master-toggle-btn ${integratedEnabled ? 'btn-active' : 'btn-paused'}`}
+                            onClick={toggleIntegrated}
+                            disabled={integratedToggling}
+                          >
+                            <Power size={13} aria-hidden="true" />
+                            <span>
+                              {integratedToggling
+                                ? 'Updating…'
+                                : integratedEnabled
+                                  ? 'Turn off master switch'
+                                  : 'Turn on master switch'}
+                            </span>
+                          </button>
+                        </div>
+                        <p className="admin-master-desc">
+                          {integratedEnabled
+                            ? 'All allowed built-in models are accessible in Agent Studio. Turn off to pause all integrated AI generation platform-wide.'
+                            : 'Built-in model generations are paused platform-wide. Agent Studio users will see a friendly notice until turned on.'}
+                        </p>
                       </div>
 
-                      <div className="admin-model-list">
-                        {CLIENT_SELECTABLE_MODELS.map(m => {
+                      {/* Filter & Bulk Actions Bar */}
+                      <div className="admin-models-toolbar">
+                        <div className="admin-models-search">
+                          <Search size={13} className="admin-models-search-icon" aria-hidden="true" />
+                          <input
+                            type="text"
+                            value={modelSearch}
+                            onChange={e => setModelSearch(e.target.value)}
+                            placeholder="Filter models by name or provider…"
+                            aria-label="Filter models by name or provider"
+                          />
+                        </div>
+                        <div className="admin-bulk-actions">
+                          <button
+                            type="button"
+                            className="admin-bulk-btn"
+                            onClick={enableAllBuiltinModels}
+                            title="Turn on all individual models"
+                          >
+                            Enable all
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-bulk-btn"
+                            onClick={disableAllBuiltinModels}
+                            title="Pause all individual models"
+                          >
+                            Pause all
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Models List */}
+                      <div className="admin-model-list" role="list" aria-label="Integrated model list">
+                        {filteredBuiltinModels.map(m => {
                           const key = `${m.provider}:${m.name}`;
                           const isOff = disabledModels.includes(key);
+                          const meta = BUILTIN_MODEL_META[m.name] || {
+                            label: m.name,
+                            badge: m.provider,
+                            colorClass: `admin-provider-${m.provider}`,
+                            desc: `${m.provider} model endpoint`,
+                          };
+
                           return (
-                            <div key={key} className="admin-model-row">
+                            <div key={key} className={`admin-model-row ${isOff || !integratedEnabled ? 'is-disabled' : ''}`} role="listitem">
                               <div className="admin-model-meta">
-                                <span className="admin-model-name">{m.name}</span>
-                                <span className="admin-model-provider">({m.provider})</span>
+                                <div className="admin-model-title-line">
+                                  <span className="admin-model-name">{meta.label}</span>
+                                  <span className={`admin-provider-pill ${meta.colorClass}`}>
+                                    {meta.badge}
+                                  </span>
+                                </div>
+                                <span className="admin-model-desc-line">{meta.desc}</span>
+                                <span className="admin-model-id-mono">{m.name}</span>
                               </div>
                               <button
                                 type="button"
                                 role="switch"
                                 aria-checked={!isOff}
-                                aria-label={`Turn ${m.name} ${isOff ? 'on' : 'off'}`}
+                                aria-label={`Turn ${meta.label} ${isOff ? 'on' : 'off'}`}
                                 className={`admin-toggle admin-toggle-sm ${!isOff ? 'admin-toggle-on' : ''}`}
                                 onClick={() => toggleSingleModel(key)}
+                                title={isOff ? `Enable ${meta.label}` : `Pause ${meta.label}`}
                               >
                                 <span className="admin-toggle-knob" />
                               </button>
                             </div>
                           );
                         })}
+                        {filteredBuiltinModels.length === 0 && (
+                          <div className="admin-empty" style={{ padding: '24px 10px' }}>
+                            <p style={{ margin: 0, fontSize: '13px' }}>No models match "{modelSearch}".</p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1552,29 +1754,49 @@ export default function AdminPage() {
                         </div>
                       </div>
 
-                      <div className="admin-form-grid">
+                      <div className="admin-form-grid" style={{ margin: '14px 0 10px' }}>
                         <label>
                           Target model
                           <select
                             value={builtinTestModel}
                             onChange={e => setBuiltinTestModel(e.target.value)}
+                            aria-label="Target model"
                           >
                             <option value="">Select an integrated model…</option>
-                            {CLIENT_SELECTABLE_MODELS.map(m => (
-                              <option key={`${m.provider}:${m.name}`} value={m.name}>
-                                {m.name} ({m.provider})
-                              </option>
-                            ))}
+                            {CLIENT_SELECTABLE_MODELS.map(m => {
+                              const meta = BUILTIN_MODEL_META[m.name];
+                              const label = meta ? `${meta.label} (${meta.badge})` : `${m.name} (${m.provider})`;
+                              return (
+                                <option key={`${m.provider}:${m.name}`} value={m.name}>
+                                  {label}
+                                </option>
+                              );
+                            })}
                           </select>
                         </label>
                       </div>
 
+                      {/* Quick Prompt Chips */}
+                      <span className="admin-chips-label">Quick benchmark prompts:</span>
+                      <div className="admin-preset-chips">
+                        {BENCHMARK_PROMPTS.map(p => (
+                          <button
+                            key={p.label}
+                            type="button"
+                            className="admin-chip-btn"
+                            onClick={() => setBuiltinTestPrompt(p.text)}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+
                       <label className="admin-test-label">
-                        Test prompt
+                        Prompt
                         <textarea
                           value={builtinTestPrompt}
                           onChange={e => setBuiltinTestPrompt(e.target.value)}
-                          placeholder="Describe a component or logic to generate…"
+                          placeholder="Describe a component or logic to benchmark…"
                           rows={3}
                         />
                       </label>
@@ -1584,6 +1806,7 @@ export default function AdminPage() {
                         className="admin-btn admin-btn-primary"
                         onClick={testBuiltinModel}
                         disabled={builtinTestRunning || !integratedEnabled}
+                        style={{ alignSelf: 'flex-start' }}
                       >
                         {builtinTestRunning ? (
                           <Loader2 size={14} className="admin-spin" aria-hidden="true" />
@@ -1594,7 +1817,17 @@ export default function AdminPage() {
                       </button>
 
                       {!integratedEnabled && (
-                        <p className="admin-hint">Turn on integrated models to run playground tests.</p>
+                        <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', color: '#fbbf24', fontSize: '12.5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                          <span>Turn on integrated models to run playground tests.</span>
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn-primary"
+                            onClick={toggleIntegrated}
+                            style={{ padding: '4px 10px', fontSize: '11.5px' }}
+                          >
+                            Turn on
+                          </button>
+                        </div>
                       )}
 
                       {builtinTestOutput && (
@@ -1619,59 +1852,104 @@ export default function AdminPage() {
                         </div>
                       </div>
 
-                      <div className="admin-form-grid">
-                        <label>
-                          Display name
-                          <input
-                            type="text"
-                            value={modelForm.name}
-                            onChange={e => setModelForm(f => ({ ...f, name: e.target.value }))}
-                            placeholder="e.g. DeepSeek V3 (Local)"
-                          />
-                        </label>
-                        <label>
-                          Base URL
-                          <input
-                            type="url"
-                            value={modelForm.baseUrl}
-                            onChange={e => setModelForm(f => ({ ...f, baseUrl: e.target.value }))}
-                            placeholder="https://api.openai.com/v1"
-                          />
-                        </label>
-                        <label>
-                          Model ID
-                          <input
-                            type="text"
-                            value={modelForm.modelId}
-                            onChange={e => setModelForm(f => ({ ...f, modelId: e.target.value }))}
-                            placeholder="gpt-4o or custom identifier"
-                          />
-                        </label>
-                        <label>
-                          API key
-                          <input
-                            type="password"
-                            value={modelForm.apiKey}
-                            onChange={e => setModelForm(f => ({ ...f, apiKey: e.target.value }))}
-                            placeholder="sk-…"
-                            autoComplete="off"
-                          />
-                        </label>
+                      {/* Quick Presets */}
+                      <span className="admin-chips-label" style={{ marginTop: '10px' }}>Fill from provider preset:</span>
+                      <div className="admin-preset-chips">
+                        {PRESET_PROVIDERS.map(preset => (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            className="admin-chip-btn"
+                            onClick={() => applyProviderPreset(preset)}
+                          >
+                            <Zap size={11} aria-hidden="true" /> {preset.name}
+                          </button>
+                        ))}
                       </div>
 
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn-primary"
-                        onClick={saveModel}
-                        disabled={modelSaving}
+                      {/* Form with autofill prevention */}
+                      <form
+                        onSubmit={e => { e.preventDefault(); void saveModel(); }}
+                        autoComplete="off"
+                        style={{ display: 'contents' }}
                       >
-                        {modelSaving ? (
-                          <Loader2 size={14} className="admin-spin" aria-hidden="true" />
-                        ) : (
-                          <Plus size={14} aria-hidden="true" />
-                        )}
-                        <span>Save model configuration</span>
-                      </button>
+                        {/* Hidden dummy input to catch rogue browser autofill */}
+                        <input type="text" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
+                        <input type="password" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
+
+                        <div className="admin-form-grid">
+                          <label>
+                            Display name
+                            <input
+                              type="text"
+                              name="bh_custom_model_display_name"
+                              autoComplete="off"
+                              value={modelForm.name}
+                              onChange={e => setModelForm(f => ({ ...f, name: e.target.value }))}
+                              placeholder="e.g. DeepSeek V3 (Local)"
+                            />
+                          </label>
+                          <label>
+                            Base URL
+                            <input
+                              type="url"
+                              name="bh_custom_model_endpoint_url"
+                              autoComplete="off"
+                              value={modelForm.baseUrl}
+                              onChange={e => setModelForm(f => ({ ...f, baseUrl: e.target.value }))}
+                              placeholder="https://api.openai.com/v1"
+                            />
+                          </label>
+                          <label>
+                            Model ID
+                            <input
+                              type="text"
+                              name="bh_custom_model_ident_token"
+                              autoComplete="off"
+                              value={modelForm.modelId}
+                              onChange={e => setModelForm(f => ({ ...f, modelId: e.target.value }))}
+                              placeholder="gpt-4o or custom identifier"
+                            />
+                          </label>
+                          <label>
+                            API key
+                            <div className="admin-input-with-action">
+                              <input
+                                type={showApiKey ? 'text' : 'password'}
+                                name="bh_custom_model_secret_key"
+                                autoComplete="new-password"
+                                value={modelForm.apiKey}
+                                onChange={e => setModelForm(f => ({ ...f, apiKey: e.target.value }))}
+                                placeholder="sk-…"
+                              />
+                              <button
+                                type="button"
+                                className="admin-input-inline-btn"
+                                onClick={() => setShowApiKey(v => !v)}
+                                title={showApiKey ? 'Hide API key' : 'Show API key'}
+                                aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                              >
+                                {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
+                            </div>
+                          </label>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn-primary"
+                          onClick={saveModel}
+                          disabled={modelSaving}
+                          style={{ alignSelf: 'flex-start' }}
+                        >
+                          {modelSaving ? (
+                            <Loader2 size={14} className="admin-spin" aria-hidden="true" />
+                          ) : (
+                            <Plus size={14} aria-hidden="true" />
+                          )}
+                          <span>Save model configuration</span>
+                        </button>
+                      </form>
                     </div>
 
                     {/* Custom Models Table */}
@@ -1697,30 +1975,52 @@ export default function AdminPage() {
                             {models.map(m => (
                               <tr key={m.id} className="admin-table-row">
                                 <td>
-                                  <strong>{m.name}</strong>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <strong>{m.name}</strong>
+                                    <span className="admin-provider-pill admin-provider-custom">Custom</span>
+                                  </div>
                                 </td>
-                                <td className="admin-mono">{m.baseUrl}</td>
+                                <td>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span className="admin-mono">{m.baseUrl}</span>
+                                    <button
+                                      type="button"
+                                      className="admin-copy-btn"
+                                      onClick={() => {
+                                        void copyToClipboard(m.baseUrl);
+                                        setCopiedModelUrl(m.id);
+                                        setTimeout(() => setCopiedModelUrl(null), 2000);
+                                      }}
+                                      title={copiedModelUrl === m.id ? 'Copied URL!' : 'Copy base URL'}
+                                      aria-label={`Copy URL for ${m.name}`}
+                                    >
+                                      {copiedModelUrl === m.id ? <Check size={12} /> : <Copy size={12} />}
+                                    </button>
+                                  </div>
+                                </td>
                                 <td className="admin-mono">{m.modelId}</td>
                                 <td className="td-actions">
                                   <div className="admin-actions">
                                     <button
                                       type="button"
-                                      className="admin-row-action-btn"
+                                      className="admin-action-pill-btn test-btn"
                                       title={`Test ${m.name}`}
                                       aria-label={`Test ${m.name}`}
                                       onClick={() => { setTestModelId(m.id); setTestOutput(''); }}
                                     >
-                                      <Play size={14} aria-hidden="true" />
+                                      <Play size={12} aria-hidden="true" />
+                                      <span>Test</span>
                                     </button>
                                     <button
                                       type="button"
-                                      className="admin-row-action-btn danger"
+                                      className="admin-action-pill-btn danger-btn"
                                       title={`Remove ${m.name}`}
                                       aria-label={`Remove ${m.name}`}
                                       onClick={() => deleteModel(m.id)}
                                       disabled={working}
                                     >
-                                      <Trash2 size={14} aria-hidden="true" />
+                                      <Trash2 size={12} aria-hidden="true" />
+                                      <span>Remove</span>
                                     </button>
                                   </div>
                                 </td>
@@ -1729,7 +2029,7 @@ export default function AdminPage() {
                             {models.length === 0 && (
                               <tr>
                                 <td colSpan={4} className="admin-empty">
-                                  No custom models configured yet. Add one above.
+                                  No custom models configured yet. Connect one using the form above.
                                 </td>
                               </tr>
                             )}
@@ -1742,14 +2042,14 @@ export default function AdminPage() {
                     {testModelId && (() => {
                       const model = models.find(m => m.id === testModelId);
                       return model ? (
-                        <div className="admin-card" aria-label={`Test ${model.name}`}>
+                        <div className="admin-card" aria-label={`Test ${model.name}`} style={{ gridColumn: '1 / -1' }}>
                           <div className="admin-card-head">
                             <span className="admin-stat-icon icon-play">
                               <Play size={17} aria-hidden="true" />
                             </span>
                             <div>
                               <h2>Test {model.name}</h2>
-                              <p>Direct unthrottled streaming generation test.</p>
+                              <p>Direct unthrottled streaming generation test against custom endpoint.</p>
                             </div>
                           </div>
                           <label className="admin-test-label">
@@ -1761,19 +2061,29 @@ export default function AdminPage() {
                               rows={3}
                             />
                           </label>
-                          <button
-                            type="button"
-                            className="admin-btn admin-btn-primary"
-                            onClick={() => testModel(model.id)}
-                            disabled={testRunning}
-                          >
-                            {testRunning ? (
-                              <Loader2 size={14} className="admin-spin" aria-hidden="true" />
-                            ) : (
-                              <Play size={14} aria-hidden="true" />
-                            )}
-                            <span>{testRunning ? 'Generating response…' : 'Stream generation'}</span>
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button
+                              type="button"
+                              className="admin-btn admin-btn-primary"
+                              onClick={() => testModel(model.id)}
+                              disabled={testRunning}
+                            >
+                              {testRunning ? (
+                                <Loader2 size={14} className="admin-spin" aria-hidden="true" />
+                              ) : (
+                                <Play size={14} aria-hidden="true" />
+                              )}
+                              <span>{testRunning ? 'Generating response…' : 'Stream generation'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-btn"
+                              style={{ border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))', background: 'transparent', color: 'var(--text-secondary, #9da8be)' }}
+                              onClick={() => { setTestModelId(null); setTestOutput(''); }}
+                            >
+                              Close playground
+                            </button>
+                          </div>
                           {testOutput && (
                             <pre className="admin-test-output" aria-live="polite">
                               {testOutput}
@@ -1786,13 +2096,15 @@ export default function AdminPage() {
                 )}
 
                 {/* Warning note for destructive actions (keeps .admin-warning-box intact for test) */}
-                <div className="admin-hint admin-warning-box" role="note">
-                  <AlertTriangle size={15} className="admin-warning-icon" aria-hidden="true" />
-                  <span>
-                    Deleting a project erases it completely — app files, backend, backups, and the registry entry.
-                    Deleting an account removes the account and all of its projects. Neither can be undone.
-                  </span>
-                </div>
+                {(tab === 'accounts' || tab === 'projects') && (
+                  <div className="admin-hint admin-warning-box" role="note">
+                    <AlertTriangle size={15} className="admin-warning-icon" aria-hidden="true" />
+                    <span>
+                      Deleting a project erases it completely — app files, backend, backups, and the registry entry.
+                      Deleting an account removes the account and all of its projects. Neither can be undone.
+                    </span>
+                  </div>
+                )}
               </section>
             </>
           )}
