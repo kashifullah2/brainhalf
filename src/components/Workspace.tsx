@@ -1616,7 +1616,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && status !== 'Error' && (
                   <div className="preview-health-strip preview-health-strip--compact" role="status">
                     <span className="preview-health-dot" aria-hidden="true" />
-                    <span className="preview-health-url" title={backend.liveUrl}>{backend.liveUrl.replace(/^https?:\/\//, '')}</span>
+                    <span className="preview-health-url" title={backend.liveUrl}>{(() => { try { return new URL(backend.liveUrl).hostname; } catch { return backend.liveUrl.replace(/^https?:\/\//, '').split('/')[0]; } })()}</span>
                     {backend.canUpdate && (
                       <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>
                         <RotateCcw size={12} strokeWidth={2} />Update

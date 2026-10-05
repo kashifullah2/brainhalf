@@ -36,6 +36,14 @@ export function isSystemContinuation(content: string): boolean {
 const OPEN = /<(tool_calls?|function_calls?|invoke|agent-tools)\b[^>]*>|<\|tool_calls_section_begin\|>|<\|tool_call_begin\|>|```(?:tool_call|function_call)s?\s*\n|<(file|edit)\s+path=["'][^"']+["']>|```[^\n]*\n|<(\/?)[｜|]DSML[｜|]([a-z_]+)?(?:\s[^>]*)?>/gi;
 const PREFIXES = ['<tool_call', '<tool_calls', '<function_call', '<function_calls', '<invoke', '<agent-tools', '<|tool_calls_section_begin|>', '<|tool_call_begin|>', '<｜dsml｜', '</｜dsml｜', '<|dsml|', '</|dsml|', '<file ', '<edit ', '```'];
 
+// Some models emit self-closing XML tool calls like <read_file path="..." /> that
+// bypass the OPEN/PREFIXES filter (which handles open/close tag pairs). Strip and
+// convert them to canonical agent-tools summaries before the stream filter runs.
+const SELF_CLOSING_TOOL_RE = /<(read_files?|write_file|edit_file|delete_file|list_files?|search_files?|execute_command|run_command)\b[^>]*?\/\s*>/gi;
+export function stripSelfClosingTools(content: string): string {
+  return content.replace(SELF_CLOSING_TOOL_RE, (_, name: string) => toolSummaryMarkup([name]));
+}
+
 function pendingStart(text: string): number {
   const lower = text.toLowerCase();
   for (let index = Math.max(0, text.lastIndexOf('<')); index < text.length; index++) {
@@ -154,5 +162,5 @@ export class ToolTranscriptStream {
 }
 
 export function formatToolTranscript(content: string, done = true): string {
-  return new ToolTranscriptStream().push(content, done);
+  return new ToolTranscriptStream().push(stripSelfClosingTools(content), done);
 }

@@ -23,7 +23,7 @@ import { diffFileMaps, type FileChange } from '../lib/file-diff';
 import CommandBlock from './CommandBlock';
 import PlanBlock from './PlanBlock';
 import ToolSummary from './ToolSummary';
-import { formatToolTranscript, isSystemContinuation } from '../lib/chat-transcript';
+import { formatToolTranscript, isSystemContinuation, stripSelfClosingTools } from '../lib/chat-transcript';
 import ConfirmModal from './ConfirmModal';
 import { usePlatformStatus } from '../lib/status-store';
 import { classifyGenerationError } from '../lib/generation-errors';
@@ -308,7 +308,7 @@ export function dedupeSegmentsByPath<T extends { path: string }>(items: T[]): T[
  * memoised in the parser module and re-run only when the content actually moves.
  */
 function memoizedParse(content: string, includeStreaming: boolean): ParseResult {
-  return parseMessageSegmentsMemoized(content, includeStreaming);
+  return parseMessageSegmentsMemoized(stripSelfClosingTools(content), includeStreaming);
 }
 
 /** Matches the "Sep 18, 09:38 AM" shape the panel previously hard-coded. The
@@ -2730,12 +2730,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               <RotateCcw size={16} />
             </div>
             <div className="studio-resume-banner-text">
-              <strong>Your build stopped, but nothing was lost.</strong>
+              <strong>Build paused — nothing lost.</strong>
               <span>
                 {resumableJob.completedFiles > 0
-                  ? `${resumableJob.completedFiles} file${resumableJob.completedFiles === 1 ? '' : 's'} already saved — pick up right where it stopped.`
+                  ? `${resumableJob.completedFiles} file${resumableJob.completedFiles === 1 ? '' : 's'} already saved.`
                   : 'Pick up right where it stopped.'}
-                {resumableJob.error ? ` ${resumableJob.error}` : ''}
               </span>
             </div>
             <div className="studio-resume-banner-actions">
