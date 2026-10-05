@@ -40,7 +40,17 @@ export function embedPreviewErrorPage(message: string): Response {
   // Escape `<` so a message containing `</script>` cannot break out of the script block; JSON.parse revives \u003c.
   const payload = JSON.stringify({ type: 'preview-error', error: message }).replace(/</g, '\\u003c');
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preview unavailable</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f7fa;color:#142334;font:16px/1.5 system-ui,sans-serif;padding:24px}p{max-width:440px;text-align:center}</style></head><body><p>${safe}</p><script>try{window.parent.postMessage(${payload},'*')}catch(e){}</script></body></html>`;
-  return new Response(html, { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+  return new Response(html, {
+    status: 401,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Access-Control-Allow-Origin': '*',
+      'Content-Security-Policy': "frame-ancestors 'self' https://brainhalf.com https://*.brainhalf.com https://*.apps.brainhalf.com http://localhost:* http://127.0.0.1:*",
+    },
+  });
 }
 
 /** Pulls the actionable lines out of a failed job command's output so the job
@@ -1025,9 +1035,36 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       const cookieValue = embed
         ? embeddedPreviewCookie('__Host-bh_preview', session, 3600)
         : secureCookie('__Host-bh_preview', session, 3600);
-      return new Response(null, { status: 303, headers: { Location: next, 'Set-Cookie': cookieValue } });
+      let targetLocation = next;
+      if (embed) {
+        targetLocation += (targetLocation.includes('?') ? '&' : '?') + `bh_preview=${encodeURIComponent(session)}`;
+      }
+      return new Response(null, {
+        status: 303,
+        headers: {
+          Location: targetLocation,
+          'Set-Cookie': cookieValue,
+          'Cross-Origin-Resource-Policy': 'cross-origin',
+          'Access-Control-Allow-Origin': '*',
+          'Content-Security-Policy': "frame-ancestors 'self' https://brainhalf.com https://*.brainhalf.com https://*.apps.brainhalf.com http://localhost:* http://127.0.0.1:*",
+        },
+      });
     }
-    if (environment === 'development' && !await this.session(cookie(request, '__Host-bh_preview'), 'preview', environment)) throw new RuntimeError('Use Open running app in your BrainHalf workspace to access this private preview.', 401);
+    const previewSessionToken = cookie(request, '__Host-bh_preview') || url.searchParams.get('bh_preview');
+    let hasPreviewSession = Boolean(previewSessionToken && await this.session(previewSessionToken, 'preview', environment));
+    if (!hasPreviewSession && url.searchParams.get('ticket') && environment === 'development') {
+      const ticketSession = await this.session(url.searchParams.get('ticket') || undefined, 'ticket', environment, true);
+      if (ticketSession) {
+        hasPreviewSession = true;
+      }
+    }
+    if (environment === 'development' && !hasPreviewSession) {
+      const isEmbed = url.searchParams.get('embed') === '1' || request.headers.get('Sec-Fetch-Dest') === 'iframe';
+      if (isEmbed) {
+        return embedPreviewErrorPage('Use Open running app in your BrainHalf workspace to access this private preview.');
+      }
+      throw new RuntimeError('Use Open running app in your BrainHalf workspace to access this private preview.', 401);
+    }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.get('Origin') !== url.origin) throw new RuntimeError('Untrusted app request origin.', 403);
     await this.prepareServices(environment);
     if (url.pathname === '/__brainhalf/auth' && request.method === 'GET') return authPage(this.services().store.settings(environment).appName);
@@ -1053,7 +1090,13 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     if (typeof user?.id === 'string') headers.set('x-bh-user-id', user.id);
     if (user?.role === 'user' || user?.role === 'admin') headers.set('x-bh-user-role', user.role);
     const forwarded = new Request(request, { headers });
-    if (!release) throw new RuntimeError('No app release is available.', 404);
+    if (!release) {
+      const isEmbed = url.searchParams.get('embed') === '1' || request.headers.get('Sec-Fetch-Dest') === 'iframe';
+      if (isEmbed) {
+        return embedPreviewErrorPage('App is building — your live preview will appear shortly.');
+      }
+      throw new RuntimeError('No app release is available.', 404);
+    }
     if (url.pathname.startsWith('/api/')) {
       const response = await this.env.DISPATCHER.get(release.scriptName, {}, { limits: { cpuMs: 50, subRequests: 20 } }).fetch(forwarded);
       const safe = new Response(response.body, response); safe.headers.delete('Set-Cookie'); return safe;

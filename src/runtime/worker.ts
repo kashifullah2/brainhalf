@@ -5,8 +5,9 @@ import { assertScope, environmentFrom, RuntimeError, type ProjectScope } from '.
 import { runtimeAvailability, runtimeOwnerAllowed, unavailableRuntimeStatus } from './availability';
 import { provisioningCheck } from './provisioning';
 import { verifyServiceCapability } from './managed-capability';
+import { embedPreviewErrorPage } from './project';
 export { Sandbox } from '@cloudflare/sandbox';
-export { ProjectRuntime } from './project';
+export { ProjectRuntime, embedPreviewErrorPage } from './project';
 export { PilotCoordinator } from './pilot';
 
 export /** Best-effort read of a project's live slug alias. Falls back to null (the
@@ -19,8 +20,29 @@ async function projectAlias(env: Pick<RuntimeBindings, 'PROJECTS'>, projectId: s
   return null;
 }
 
-function runtimeError(error: unknown): Response {
-  return Response.json({ error: error instanceof RuntimeError ? error.message : 'The project runtime could not complete this request. Try again.' }, { status: error instanceof RuntimeError ? error.status : 503, headers: { 'Cache-Control': 'no-store' } });
+function runtimeError(error: unknown, request?: Request, environment?: 'development' | 'production'): Response {
+  const status = error instanceof RuntimeError ? error.status : 503;
+  const message = error instanceof RuntimeError ? error.message : 'The project runtime could not complete this request. Try again.';
+  const isEmbed = Boolean(request && (new URL(request.url).searchParams.get('embed') === '1' || request.headers.get('Sec-Fetch-Dest') === 'iframe'));
+
+  if (isEmbed) {
+    return embedPreviewErrorPage(message);
+  }
+
+  return Response.json(
+    { error: message },
+    {
+      status,
+      headers: {
+        'Cache-Control': 'no-store',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        'Access-Control-Allow-Origin': '*',
+        ...(environment === 'development' ? {
+          'Content-Security-Policy': "frame-ancestors 'self' https://brainhalf.com https://*.brainhalf.com https://*.apps.brainhalf.com http://localhost:* http://127.0.0.1:*",
+        } : {}),
+      },
+    }
+  );
 }
 // This entrypoint is reachable only through BrainHalf's authenticated service binding.
 export class RuntimeControl extends WorkerEntrypoint<RuntimeEnv> {
@@ -111,6 +133,7 @@ export class AppServicesAPI extends WorkerEntrypoint<RuntimeEnv> {
 
 export default {
   async fetch(request: Request, env: RuntimeEnv): Promise<Response> {
+    let environment: 'development' | 'production' = 'production';
     try {
       if (env.RUNTIME_ENABLED !== 'true') throw new RuntimeError('Runtime is temporarily unavailable.', 503);
       const url = new URL(request.url);
@@ -118,7 +141,6 @@ export default {
       const suffix = `.${env.RUNTIME_DOMAIN}`;
 
       let scope: ReturnType<typeof pilot.lookup> extends Promise<infer T> ? T : never;
-      let environment: 'development' | 'production' = 'production';
 
       if (url.hostname.endsWith(suffix)) {
         // *.apps.brainhalf.com — standard BrainHalf subdomain routing
@@ -138,8 +160,14 @@ export default {
       safe.headers.set('X-Content-Type-Options', 'nosniff');
       safe.headers.set('Referrer-Policy', 'no-referrer');
       safe.headers.set('Cache-Control', 'no-store');
-      if (environment === 'development') safe.headers.set('X-Robots-Tag', 'noindex, nofollow');
+      safe.headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
+      safe.headers.set('Access-Control-Allow-Origin', '*');
+      if (environment === 'development') {
+        safe.headers.set('X-Robots-Tag', 'noindex, nofollow');
+        safe.headers.set('Content-Security-Policy', "frame-ancestors 'self' https://brainhalf.com https://*.brainhalf.com https://*.apps.brainhalf.com http://localhost:* http://127.0.0.1:*");
+        safe.headers.delete('X-Frame-Options');
+      }
       return safe;
-    } catch (error) { return runtimeError(error); }
+    } catch (error) { return runtimeError(error, request, environment); }
   },
 } satisfies ExportedHandler<RuntimeEnv>;
