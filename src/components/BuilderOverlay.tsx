@@ -107,6 +107,14 @@ export default function BuilderOverlay({
     }
   }, [completedAt, previewReady]);
 
+  // Fallback: dismiss 15s after generation ends even if preview never confirms ready
+  // (handles cases where the iframe crashes on load or never sends preview-ready)
+  useEffect(() => {
+    if (!completedAt) return;
+    const timer = setTimeout(() => setDismissed(true), 15000);
+    return () => clearTimeout(timer);
+  }, [completedAt]);
+
   // Reset when starting a new generation — clears stale "success" when a new build starts
   useEffect(() => {
     if (latchedIsFirstGen && isGenerating) {

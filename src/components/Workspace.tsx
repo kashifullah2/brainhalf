@@ -1573,7 +1573,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   isGenerating={status === 'Generating'}
                   fileProgress={fileProgress}
                   files={Object.keys(files)}
-                  previewReady={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState !== 'error')}
+                  previewReady={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState === 'ready')}
                   isFirstGeneration={!hasGeneratedApp && generationEverAttempted}
                 />
                 {isWaitingForFirstApp && previewLoadState !== 'error' && (
