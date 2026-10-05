@@ -248,7 +248,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [files, setFiles] = useState<FileMap>(() => migrateStarter(getProjectFiles(activeProjectId) || baselineFiles()));
   const runtime = useProjectRuntime(activeProjectId, 'development', true);
   const prodRuntime = useProjectRuntime(activeProjectId, 'production', true);
-  const prodLiveUrl: string = prodRuntime.status?.productionUrl || '';
+  // Only show the live URL badge when there's an active production release —
+  // productionUrl is always a non-empty string in the type, so checking it
+  // alone would show the badge for unpublished projects.
+  const prodLiveUrl: string = (prodRuntime.status?.activeRelease && prodRuntime.status?.productionUrl) ? prodRuntime.status.productionUrl : '';
   // Header "Publish" opens the console's Publish section (the single publish
   // UI) instead of a duplicate dialog. The nonce re-triggers the navigation
   // even when the section value repeats.
@@ -304,6 +307,17 @@ const Workspace: React.FC<WorkspaceProps> = ({
     selectTab('console');
   }, [selectTab]);
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
+  // Load saved viewport mode when switching projects
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`bh_viewport_${activeProjectId}`);
+      setViewportMode((['desktop', 'tablet', 'mobile'] as const).includes(saved as ViewportMode) ? saved as ViewportMode : 'desktop');
+    } catch { setViewportMode('desktop'); }
+  }, [activeProjectId]);
+  const handleViewportMode = useCallback((mode: ViewportMode) => {
+    setViewportMode(mode);
+    try { localStorage.setItem(`bh_viewport_${activeProjectId}`, mode); } catch {}
+  }, [activeProjectId]);
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [previewSessionReady, setPreviewSessionReady] = useState(false);
   useEffect(() => { setPreviewSessionReady(false); }, [activeProjectId]);
@@ -1441,7 +1455,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         hasGeneratedApp={hasGeneratedApp && status !== 'Generating'}
         hasFiles={Object.keys(files).length > 0}
         viewportMode={viewportMode}
-        onViewportMode={setViewportMode}
+        onViewportMode={handleViewportMode}
         onRefreshPreview={() => setEdgeRefreshCounter(value => value + 1)}
         onOpenPreview={handlePopoutPreview}
         previewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}

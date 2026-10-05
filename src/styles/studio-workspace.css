@@ -32,6 +32,7 @@
 .bolt-icon-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-surface-hover); }
 .bolt-icon-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .bolt-icon-btn.active { color: var(--accent-primary); background: var(--bg-surface); }
+.bolt-icon-btn--labeled { display: flex; align-items: center; gap: 4px; width: auto; padding: 0 7px; font-size: 12px; font-weight: 500; font-family: var(--font-sans); }
 
 /* Right: settings icon + publish CTA + user menu */
 .studio-workspace .top-nav-right-cluster { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }

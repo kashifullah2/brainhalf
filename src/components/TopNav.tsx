@@ -269,10 +269,11 @@ const TopNav: React.FC<TopNavProps> = ({
                 </div>
               )}
               {onInspect && (
-                <button type="button" className={`bolt-icon-btn${inspectActive ? ' active' : ''}`}
-                  title={inspectActive ? 'Cancel element selection' : 'Inspect element'}
-                  aria-label="Inspect element" disabled={!previewReady} onClick={onInspect}>
+                <button type="button" className={`bolt-icon-btn bolt-icon-btn--labeled${inspectActive ? ' active' : ''}`}
+                  title={inspectActive ? 'Cancel — click outside to deselect' : 'Click any element in the preview to edit it'}
+                  aria-label={inspectActive ? 'Cancel element selection' : 'Select an element to edit'} disabled={!previewReady} onClick={onInspect}>
                   <MousePointer2 size={13} />
+                  <span>{inspectActive ? 'Cancel' : 'Select'}</span>
                 </button>
               )}
               <button type="button" className="bolt-icon-btn" title="Refresh preview"
