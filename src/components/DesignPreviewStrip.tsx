@@ -42,13 +42,15 @@ export function plainLanguageCause(message: string): string {
  * so the strip names the problem and offers a one-tap route to the app
  * spaces manager plus a retry.
  */
-export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenHostedSlots, projectId }: {
+export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenHostedSlots, projectId, autoFixing }: {
   backend: Backend;
   runtime: Runtime;
   status: string;
   filesRef: { current: Record<string, string> };
   onOpenHostedSlots?: () => void;
   projectId?: string;
+  /** True while useAutomaticBuildFix has triggered a repair — shows inline feedback. */
+  autoFixing?: boolean;
 }) {
   const failed = backend.failed;
   // A full account is a user-actionable state, not a build bug: name it and
@@ -104,36 +106,45 @@ export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenH
         </>
       ) : (<>
       {failed && (
-        <button
-          type="button"
-          disabled={status === 'Generating'}
-          onClick={async () => {
-            let errorText = backend.message || 'Backend failed to start';
-            if (projectId && backend.latestJobId) {
-              try {
-                const details = await runtimeRequest<{ logs: Array<{ job: string; text: string }> }>(
-                  projectId,
-                  `/logs?job=${encodeURIComponent(backend.latestJobId)}`,
-                  'development',
-                  { signal: AbortSignal.timeout(3000) }
-                );
-                const logLines = details?.logs
-                  ?.filter(entry => entry.job === backend.latestJobId)
-                  .map(entry => entry.text)
-                  .join('\n')
-                  .trim();
-                if (logLines) {
-                  errorText = `${errorText}\n\nRecent build logs:\n${logLines.slice(-3000)}`;
+        autoFixing ? (
+          // Auto-fix is in progress — show inline status instead of the manual button
+          // so users know the AI is already on it without any action required.
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', opacity: 0.85 }}>
+            <RotateCcw size={13} className="lucide-spin" />
+            Auto-fixing your app…
+          </span>
+        ) : (
+          <button
+            type="button"
+            disabled={status === 'Generating'}
+            onClick={async () => {
+              let errorText = backend.message || 'Backend failed to start';
+              if (projectId && backend.latestJobId) {
+                try {
+                  const details = await runtimeRequest<{ logs: Array<{ job: string; text: string }> }>(
+                    projectId,
+                    `/logs?job=${encodeURIComponent(backend.latestJobId)}`,
+                    'development',
+                    { signal: AbortSignal.timeout(3000) }
+                  );
+                  const logLines = details?.logs
+                    ?.filter(entry => entry.job === backend.latestJobId)
+                    .map(entry => entry.text)
+                    .join('\n')
+                    .trim();
+                  if (logLines) {
+                    errorText = `${errorText}\n\nRecent build logs:\n${logLines.slice(-3000)}`;
+                  }
+                } catch {
+                  // Keep original errorText if logs cannot be fetched
                 }
-              } catch {
-                // Keep original errorText if logs cannot be fetched
               }
-            }
-            appEvents.emit('auto-fix-error', { error: errorText, layer: 'backend', projectId });
-          }}
-        >
-          <RotateCcw size={14} style={{ marginRight: '6px' }} /> Ask the builder to fix
-        </button>
+              appEvents.emit('auto-fix-error', { error: errorText, layer: 'backend', projectId });
+            }}
+          >
+            <RotateCcw size={14} style={{ marginRight: '6px' }} /> Ask the builder to fix
+          </button>
+        )
       )}
       {!failed && backend.canStart && (
         <button type="button" disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>

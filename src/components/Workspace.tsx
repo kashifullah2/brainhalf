@@ -40,6 +40,7 @@ import { useWebContainer } from '../lib/use-webcontainer';
 import { webContainerSupported } from '../lib/webcontainer';
 import WebContainerPreview from './WebContainerPreview';
 import BuilderOverlay from './BuilderOverlay';
+import BackendBuildProgress from './BackendBuildProgress';
 const TerminalPanel = lazy(() => import('./Terminal'));
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
@@ -256,6 +257,22 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [publishOpen, setPublishOpen] = useState(false);
   const backend = useAutomaticBackend(activeProjectId, runtime);
   const startBackend = backend.start;
+
+  // Show a "ready to publish" nudge for 8 seconds the first time the backend
+  // goes live after a build. Resets on project change.
+  const [showPublishNudge, setShowPublishNudge] = useState(false);
+  const prevBackendReadyRef = useRef(false);
+  useEffect(() => { prevBackendReadyRef.current = false; setShowPublishNudge(false); }, [activeProjectId]);
+  useEffect(() => {
+    if (backend.ready && !prevBackendReadyRef.current) {
+      // Transition false → true: backend just became live for the first time.
+      setShowPublishNudge(true);
+      const timer = setTimeout(() => setShowPublishNudge(false), 8000);
+      prevBackendReadyRef.current = true;
+      return () => clearTimeout(timer);
+    }
+    if (!backend.ready) prevBackendReadyRef.current = false;
+  }, [backend.ready]);
   
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const selectTab = useCallback((tab: WorkspaceTab) => {
@@ -303,7 +320,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // The last build/connection error in the user's own words (e.g. the quota
   // message) — shown in the preview empty-state instead of a generic line.
   const [statusError, setStatusError] = useState('');
-  useAutomaticBuildFix(activeProjectId, runtime, status === 'Generating');
+  // Tracks whether useAutomaticBuildFix has triggered a repair so the
+  // DesignPreviewStrip can show "Auto-fixing your app…" instead of the static
+  // "Ask the builder to fix" button — cleared when the project or status changes.
+  const [autoFixing, setAutoFixing] = useState(false);
+  useEffect(() => { setAutoFixing(false); }, [activeProjectId]);
+  useEffect(() => {
+    if (status === 'Generating') setAutoFixing(false);
+  }, [status]);
+  useAutomaticBuildFix(activeProjectId, runtime, status === 'Generating', () => setAutoFixing(true));
 
   // Switched to Lovable-style Instant Preview by bypassing WebContainers
   const wcEnabled = false; // webContainerSupported();
@@ -346,7 +371,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
     onSelectMobileTab?.('chat');
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('[aria-label="Message to the app builder"]')?.focus());
   };
-  const [activeFile, setActiveFile] = useState(() => selectAppEntry(files) || Object.keys(files)[0] || '/src/App.tsx');
+  const [activeFile, setActiveFileRaw] = useState(() => selectAppEntry(files) || Object.keys(files)[0] || '/src/App.tsx');
+  // Wrap setActiveFile: record user intent during generation so the live-follow
+  // auto-switch stops once the user has manually chosen what they want to see.
+  const setActiveFile = useCallback((path: string | ((prev: string) => string)) => {
+    if (generationActiveRef.current) userPickedFileInGenRef.current = true;
+    setActiveFileRaw(path);
+  }, []);
   const [monacoReady, setMonacoReady] = useState(false);
 
   const [consoleLogs, setConsoleLogs] = useState<string[]>(['Preview ready.', 'Waiting for changes...']);
@@ -516,6 +547,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   const resolvedActiveTab: WorkspaceTab = mobileTab && mobileTab !== 'chat' ? mobileTab : activeTab;
 
+  // Live code follow: when the user is on the Code tab and hasn't manually
+  // chosen a file in this generation, auto-switch the editor to each new file
+  // as the AI starts writing it — gives the Lovable-style "live coding" effect.
+  const userPickedFileInGenRef = useRef(false);
+  const resolvedActiveTabRef = useRef(resolvedActiveTab);
+
   const addBuildLog = useCallback((text: string, type: BuildLogItem['type'] = 'info') => {
     setBuildLogs(prev => {
       const last = prev[prev.length - 1];
@@ -613,6 +650,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const github = useGithubSync({ activeProjectId, isCurrent, filesRef, commitFiles, addBuildLog });
 
   useEffect(() => { activeFileRef.current = activeFile; }, [activeFile]);
+  useEffect(() => { resolvedActiveTabRef.current = resolvedActiveTab; }, [resolvedActiveTab]);
+  // Reset the "user picked a file" flag on project change so each new project
+  // starts with live-follow enabled.
+  useEffect(() => { userPickedFileInGenRef.current = false; }, [activeProjectId]);
 
   useEffect(() => {
     syncedPreviewFilesRef.current = {};
@@ -803,6 +844,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         setStatusError('');
         if (!generationActiveRef.current) {
           generationTouchedRef.current = new Set();
+          userPickedFileInGenRef.current = false;
           setFileProgress({});
           try { sessionStorage.removeItem(fileProgressKey); sessionStorage.removeItem(touchedKey); sessionStorage.setItem(attemptedKey, '1'); } catch {}
         }
@@ -929,10 +971,31 @@ const Workspace: React.FC<WorkspaceProps> = ({
       // Streaming chunks arrive many times per file, so only the completed file
       // is persisted and synced; intermediate states just update the editor.
       const next = { ...filesRef.current, [cleanPath]: content };
+
+      // Live code follow: when the user is on the Code tab, auto-switch to each
+      // new file as the AI begins streaming it. This creates the "watching code
+      // being written" effect. Guards:
+      //   1. Only on first chunk of a brand-new file (not already in filesRef)
+      //   2. Only while generation is active
+      //   3. Only when user is on the code tab
+      //   4. Only if user hasn't manually chosen a different file this generation
+      if (
+        !isComplete &&
+        generationActiveRef.current &&
+        !userPickedFileInGenRef.current &&
+        resolvedActiveTabRef.current === 'code' &&
+        filesRef.current[cleanPath] === undefined
+      ) {
+        // Use the raw setter so this system switch doesn't itself count as a
+        // user pick and stop future auto-follows.
+        setActiveFileRaw(cleanPath);
+      }
+
       if (isComplete) {
         commitFiles(next, { sync: false });
         addBuildLog(`Compiled: ${cleanPath}`, 'success');
         addConsoleLog(`[transpiler] Compiled ${cleanPath}`);
+
       } else {
         filesRef.current = next;
         setFiles(next);
@@ -1306,7 +1369,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Single source of truth for the preview error overlay — used in both split
   // and single-panel layouts. Renders null when the error should not be shown.
-  const previewErrorOverlay = previewLoadState === 'error' && status !== 'Generating' && !backend.ready
+  // Suppress the error overlay while the backend is actively building — the
+  // edge preview for a full-stack app returns an auth gate (which looks like an
+  // error) when the backend hasn't deployed yet, but we show BackendBuildProgress
+  // instead. Showing both would confuse the user.
+  const suppressPreviewError = backend.isBuilding && isFullStackProject(filesRef.current);
+  const previewErrorOverlay = previewLoadState === 'error' && status !== 'Generating' && !backend.ready && !suppressPreviewError
     ? (
         <div className="studio-preview-empty has-error premium-error-overlay" role="alert" aria-live="polite">
           <div className="premium-error-icon-wrapper" aria-hidden="true">
@@ -1525,15 +1593,33 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     {backend.isBuilding && status !== 'Generating' && (
                       <div className="preview-building-pill preview-building-pill--backend" role="status"><Loader2 size={13} className="lucide-spin" /><span>{backend.message || 'Starting your backend — live preview on its way…'}</span></div>
                     )}
-                    <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} />
+                    <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} autoFixing={autoFixing} />
                   </>
                 )}
-                {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
+                {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <>
+                  <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>
+                  {showPublishNudge && (
+                    <div className="preview-health-strip" role="status" style={{ background: 'linear-gradient(90deg,rgba(34,197,94,0.08) 0%,rgba(54,89,217,0.06) 100%)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}>
+                      <span style={{ fontSize: '13px' }}>✓</span>
+                      <span style={{ flex: 1 }}><strong>Backend is live.</strong> Try your app, then hit <strong>Publish</strong> in the top-right when you're ready to go live.</span>
+                      <button onClick={() => setShowPublishNudge(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 4px', fontSize: '14px' }} aria-label="Dismiss">×</button>
+                    </div>
+                  )}
+                </>}
                 <PreviewCanvas mode={viewportMode}>
                   {wcEnabled ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
                   ) : backend.liveUrl ? (
                     <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
+                  ) : backend.isBuilding && isFullStackProject(filesRef.current) && status !== 'Generating' ? (
+                    // Show a rich build progress card instead of the auth-gated edge
+                    // preview while the backend pipeline is running (npm install → build
+                    // → deploy). The edge preview for full-stack apps just shows "Sign in
+                    // to your account" at this point — the card is far more useful.
+                    <BackendBuildProgress
+                      message={backend.message}
+                      startedAt={backend.buildStartedAt}
+                    />
                   ) : previewSessionReady ? <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
@@ -1926,7 +2012,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   {backend.isBuilding && status !== 'Generating' && (
                     <div className="preview-building-pill preview-building-pill--backend" role="status"><Loader2 size={13} className="lucide-spin" /><span>{backend.message || 'Starting your backend — live preview on its way…'}</span></div>
                   )}
-                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} />
+                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} autoFixing={autoFixing} />
                 </>
               )}
               {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
@@ -1935,6 +2021,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
                   ) : backend.liveUrl ? (
                     <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
+                  ) : backend.isBuilding && isFullStackProject(filesRef.current) && status !== 'Generating' ? (
+                    // Show a rich build progress card instead of the auth-gated edge
+                    // preview while the backend pipeline is running (npm install → build
+                    // → deploy). The edge preview for full-stack apps just shows "Sign in
+                    // to your account" at this point — the card is far more useful.
+                    <BackendBuildProgress
+                      message={backend.message}
+                      startedAt={backend.buildStartedAt}
+                    />
                   ) : previewSessionReady ? <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}

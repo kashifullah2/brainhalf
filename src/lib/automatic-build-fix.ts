@@ -15,8 +15,16 @@ const repairBudget = new RepairBudget();
  *
  * Guards: RepairBudget (max 3 repairs / project / 5 min, max 2 for identical error
  * pattern). Will not fire while a generation is already in progress.
+ *
+ * `onFiring` is called with the failed job's message just before the repair is
+ * emitted — callers can use it to update UI (e.g. "Auto-fixing your app…").
  */
-export function useAutomaticBuildFix(projectId: string, runtime: Runtime, isGenerating: boolean) {
+export function useAutomaticBuildFix(
+  projectId: string,
+  runtime: Runtime,
+  isGenerating: boolean,
+  onFiring?: (jobMessage: string) => void,
+) {
   const processedJobs = useRef(new Set<string>());
   const initialized = useRef(false);
 
@@ -66,6 +74,7 @@ export function useAutomaticBuildFix(projectId: string, runtime: Runtime, isGene
 
         if (!repairBudget.take(projectId, buildErrors)) return;
 
+        onFiring?.(failedJob.message);
         appEvents.emit('repair-project-request', {
           projectId,
           message: buildRepairMessage(failedJob.message, buildErrors),

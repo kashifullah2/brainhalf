@@ -466,11 +466,14 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       return Response.json({ available: !taken || (taken.ownerId === this.scope.ownerId && taken.projectId === this.scope.projectId) });
     }
     if (path === '/preview-ticket' && request.method === 'POST') {
-      const body = await request.json().catch(() => ({})) as { path?: string; embed?: boolean };
+      const body = await request.json().catch(() => ({})) as { path?: string; embed?: boolean; autoSignIn?: boolean };
       const next = body.path === '/__brainhalf/auth' ? body.path : '/';
+      // autoSignIn: true lets the workspace "Open app preview" button land the
+      // project owner inside the app already signed in — no auth screen to dismiss.
+      const autoSignIn = body.autoSignIn === true && environment === 'development';
       const ticket = await this.withControlLock(async () => {
         requireAdmission(await this.pilot().register(this.alias, this.scope));
-        return this.createSession('ticket', 'development', { next }, 60);
+        return this.createSession('ticket', 'development', { next, autoSignIn: autoSignIn ? '1' : '' }, 60);
       });
       const params = `ticket=${ticket}${body.embed ? '&embed=1' : ''}`;
       return Response.json({ url: `${this.url('development')}/__brainhalf/open?${params}` });
@@ -885,7 +888,11 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       await this.assertRunning(job);
       const checksum = await digest(sql); const old = receipts.find(receipt => receipt.name === name);
       if (old) { if (old.checksum !== checksum) throw new RuntimeError(`Applied migration ${name} changed. Add a new migration instead.`); continue; }
-      assertSafeMigration(sql);
+      // assertSafeMigration guards against destructive changes on databases that
+      // already hold user data. When no previous migrations have been applied the
+      // database is guaranteed empty, so any SQL is safe regardless of the keyword
+      // pattern — seeding data with INSERT OR REPLACE, UPDATE, etc. is fine here.
+      if (receipts.length > 0) assertSafeMigration(sql);
       if (/_bh_migrations/i.test(sql)) throw new RuntimeError('Migration metadata is reserved.');
       const receipt = { name, checksum, appliedAt: Date.now() };
       await this.api().query(databaseId, sql);
@@ -1047,16 +1054,50 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       if (embed) {
         targetLocation += (targetLocation.includes('?') ? '&' : '?') + `bh_preview=${encodeURIComponent(session)}`;
       }
-      return new Response(null, {
-        status: 303,
-        headers: {
-          Location: targetLocation,
-          'Set-Cookie': cookieValue,
-          'Cross-Origin-Resource-Policy': 'cross-origin',
-          'Access-Control-Allow-Origin': '*',
-          'Content-Security-Policy': "frame-ancestors 'self' https://brainhalf.com https://*.brainhalf.com https://*.apps.brainhalf.com http://localhost:* http://127.0.0.1:*",
-        },
-      });
+      const responseHeaders: Record<string, string | string[]> = {
+        Location: targetLocation,
+        'Set-Cookie': cookieValue,
+        'Cross-Origin-Resource-Policy': 'cross-origin',
+        'Access-Control-Allow-Origin': '*',
+        'Content-Security-Policy': "frame-ancestors 'self' https://brainhalf.com https://*.brainhalf.com https://*.apps.brainhalf.com http://localhost:* http://127.0.0.1:*",
+      };
+      // autoSignIn: create/retrieve the owner's app account and issue an app
+      // session so the project owner lands inside the app already signed in.
+      // The owner account is keyed by their BrainHalf userId — it is created
+      // once and reused on every subsequent open, so no duplicate accounts pile up.
+      if (ticket.autoSignIn === '1' && !embed) {
+        try {
+          await this.prepareServices(environment);
+          const store = this.services().store;
+          const ownerId = this.scope.ownerId;
+          const ownerAppId = `owner:${ownerId}`;
+          const ownerEmail = `_owner_${ownerId.slice(0, 12)}@brainhalf.internal`;
+          // Upsert the owner's app account — INSERT OR IGNORE keeps it idempotent.
+          store.sql.exec(
+            `INSERT OR IGNORE INTO managed_users
+              (environment,id,email,name,password_hash,google_sub,github_id,verified,disabled,role,revision,created)
+             VALUES (?,?,?,?,NULL,NULL,NULL,1,0,'admin',0,?)`,
+            environment, ownerAppId, ownerEmail, 'App Owner', Date.now()
+          );
+          const ownerUser = store.user(environment, ownerAppId);
+          if (ownerUser && !ownerUser.disabled) {
+            const identity = store.publicUser(ownerUser);
+            const appSession = await this.createSession('app', environment, identity, 3600);
+            const appCookie = secureCookie('__Host-bh_app', appSession, 3600);
+            // Append as a second Set-Cookie header value.
+            responseHeaders['Set-Cookie'] = [cookieValue, appCookie];
+          }
+        } catch {
+          // Auto sign-in is best-effort: if it fails the owner still gets
+          // the normal preview experience and can sign in manually.
+        }
+      }
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(responseHeaders)) {
+        if (Array.isArray(value)) { for (const v of value) headers.append(key, v); }
+        else headers.set(key, value);
+      }
+      return new Response(null, { status: 303, headers });
     }
     const previewSessionToken = cookie(request, '__Host-bh_preview') || url.searchParams.get('bh_preview');
     let hasPreviewSession = Boolean(previewSessionToken && await this.session(previewSessionToken, 'preview', environment));

@@ -116,6 +116,10 @@
 .studio-workspace .quick-template-card { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-card); color: var(--text-primary); padding: 15px 16px; text-align: left; transition: background 150ms, border-color 150ms; }
 .studio-workspace .quick-template-card:hover { background: var(--bg-surface); border-color: var(--border-medium); transform: none; }
 .studio-workspace .quick-template-card span { line-height: 1.7; }
+/* Visual starter cards — 2×2 grid with screenshot thumbnails */
+.studio-workspace .starter-visual-card { border-radius: 10px; overflow: hidden; transition: border-color 150ms, box-shadow 150ms, transform 150ms; }
+.studio-workspace .starter-visual-card:hover { border-color: var(--border-medium); box-shadow: 0 4px 16px rgba(0,0,0,0.12); transform: translateY(-2px); }
+.studio-workspace .starter-visual-card:hover .template-arrow { opacity: 1 !important; }
 .studio-composer-area { padding: 8px 14px 10px !important; }
 .studio-workspace .chat-input-wrapper { padding: 12px 13px 10px !important; border: 1px solid var(--border-medium) !important; border-radius: 12px !important; background: var(--bg-card) !important; box-shadow: 0 3px 12px #243c4b04 !important; transition: border-color 180ms ease, box-shadow 180ms ease; }
 .studio-workspace .chat-input-wrapper:focus-within { border-color: var(--accent-light) !important; box-shadow: 0 0 0 3px var(--focus-ring) !important; }

@@ -38,10 +38,30 @@ import { reconcileWorkspaceSnapshot } from '../lib/workspace-reconciliation';
 import { getReliabilityControls, pushUsageEvent, savePromptVersion, setOnboardingState } from '../lib/project-growth';
 
 const STARTER_PROMPTS = [
-  { title: 'Online Store', desc: 'A shop with products, a cart, and checkout' },
-  { title: 'Real-time Chat App', desc: 'Messages that arrive instantly, with online presence' },
-  { title: 'Business Dashboard', desc: 'Metrics at a glance, with sign-in' },
-  { title: 'Kanban Board', desc: 'Drag-and-drop tasks with columns and tags' },
+  {
+    title: 'Inventory Tracker',
+    desc: 'Products, stock levels, and low-stock alerts',
+    image: '/images/landing/demo-inventory-owner.webp',
+    prompt: 'Build an inventory tracker for a small business. Save products with SKU, quantity and reorder level in a database. Let me add products, adjust stock and see low-stock alerts. Require sign-in and keep each business\'s records private.',
+  },
+  {
+    title: 'Simple CRM',
+    desc: 'Contacts, notes, and follow-up reminders',
+    image: '/images/landing/demo-crm-owner.webp',
+    prompt: 'Build a simple CRM for a small business. Track contacts with name, company, email and phone. Let me add notes and set follow-up reminders. Require sign-in and keep each user\'s contacts private.',
+  },
+  {
+    title: 'Task Manager',
+    desc: 'To-dos, priorities, and deadlines',
+    image: '/images/landing/demo-tasks-owner.webp',
+    prompt: 'Build a task manager app. Create tasks with title, priority and due date. Mark tasks done, filter by status and priority. Require sign-in and keep each user\'s tasks private.',
+  },
+  {
+    title: 'Booking App',
+    desc: 'Appointments, availability, and confirmations',
+    image: null,
+    prompt: 'Build a booking app for a small service business. Let customers book appointments by choosing a date and time from available slots. Show the business owner a calendar of upcoming bookings. Require sign-in.',
+  },
 ];
 
 interface ModelDef {
@@ -2173,7 +2193,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           scrollBehavior: 'smooth'
         }}>
         {!messages.some(message => message.role === 'user') && (
-          <div className="studio-agent-welcome"><span className="studio-eyebrow-label">A NEW BEGINNING</span><h2>What are we making?</h2><p>Start with an idea. We’ll work through the details together.</p></div>
+          <div className="studio-agent-welcome"><span className="studio-eyebrow-label">BUILD SOMETHING REAL</span><h2>What should we build?</h2><p>Describe your app in plain words. Or pick one of the ideas below — every button already works.</p></div>
         )}
         {messages.map((msg, idx) => {
           if (msg.internal || isSystemContinuation(msg.content)) return null;
@@ -2479,20 +2499,50 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.06em' }}>
               A place to start
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+            {/* 2×2 visual card grid — each card shows a screenshot thumbnail */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               {STARTER_PROMPTS.map((sp, sIdx) => (
                 <button
                   type="button"
                   key={sIdx}
-                  onClick={() => handleSendMessage(`Build an app: ${sp.title} - ${sp.desc}`)}
-                  className="quick-template-card"
+                  onClick={() => handleSendMessage(sp.prompt)}
+                  className="quick-template-card starter-visual-card"
+                  style={{ padding: 0, flexDirection: 'column', alignItems: 'stretch', width: '100%' }}
                 >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{sp.title}</span>
-                      <ArrowRight size={13} strokeWidth={2} className="template-arrow" style={{ color: 'var(--text-secondary)', opacity: 0.8, transition: 'transform 0.15s ease' }} />
+                  {/* Thumbnail */}
+                  <div style={{
+                    width: '100%',
+                    aspectRatio: '16/9',
+                    borderRadius: '8px 8px 0 0',
+                    overflow: 'hidden',
+                    background: sp.image ? 'var(--bg-surface)' : 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+                    flexShrink: 0,
+                    position: 'relative',
+                  }}>
+                    {sp.image ? (
+                      <img
+                        src={sp.image}
+                        alt={sp.title}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top', display: 'block' }}
+                        loading="lazy"
+                      />
+                    ) : (
+                      /* Placeholder for cards without screenshots */
+                      <div style={{
+                        width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '28px', opacity: 0.4,
+                      }}>
+                        📅
+                      </div>
+                    )}
+                  </div>
+                  {/* Text */}
+                  <div style={{ padding: '10px 11px 11px', display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>{sp.title}</span>
+                      <ArrowRight size={11} strokeWidth={2} className="template-arrow" style={{ color: 'var(--text-secondary)', opacity: 0, transition: 'opacity 0.15s ease', marginLeft: 'auto', flexShrink: 0 }} />
                     </div>
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{sp.desc}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{sp.desc}</span>
                   </div>
                 </button>
               ))}

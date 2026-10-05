@@ -127,7 +127,10 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
     if (!tab) { setOpenError('Allow popups to open your app preview.'); return; }
     tab.opener = null;
     try {
-      const result = await runtimeRequest<{ url: string }>(projectId, '/preview-ticket', 'development', { method: 'POST', body: '{}' });
+      // autoSignIn: true tells the runtime to create/get the owner's app
+      // account and issue an app session on the same redirect, so the owner
+      // lands already signed in — no "Sign in to your account" screen.
+      const result = await runtimeRequest<{ url: string }>(projectId, '/preview-ticket', 'development', { method: 'POST', body: JSON.stringify({ autoSignIn: true }) });
       if (current !== epoch.current) { tab.close(); return; }
       tab.location.href = result.url;
     } catch (cause) { tab.close(); if (current === epoch.current) setOpenError(cause instanceof Error ? cause.message : 'Could not open the app preview.'); }
@@ -206,5 +209,7 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
     canStart: Boolean(available && !busy && !activeJob && !ready),
     canUpdate: Boolean(available && !busy && ready && (!activeJob || (latestJob?.kind === 'preview' && latestJob.previewReady && latestJob.status === 'running'))),
     latestJobId: latestJob?.id,
+    // Build start time — used by BackendBuildProgress to show elapsed time.
+    buildStartedAt: latestJob?.startedAt ?? latestJob?.createdAt,
   };
 }

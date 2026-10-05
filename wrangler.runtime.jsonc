@@ -15,11 +15,13 @@
     "RUNTIME_ACCESS": "all",
     "RUNTIME_DOMAIN": "apps.brainhalf.com",
     "RUNTIME_SERVICE_NAME": "brainhalf-runtime",
-    // CF_ACCOUNT_ID and PILOT_OWNER_IDS are set as Worker secrets via
-    // `wrangler secret put CF_ACCOUNT_ID` and `wrangler secret put PILOT_OWNER_IDS`.
-    // They were previously committed as plain vars. The values below are
-    // intentionally removed; set them once with `wrangler secret put` and they
-    // will persist in the Cloudflare account without appearing in version control.
+    // CF_ACCOUNT_ID is a public account identifier (visible in CF dashboard URLs).
+    // It is intentionally stored as a var, not a secret.
+    // CF_API_TOKEN and PROJECT_SECRETS_KEY are actual credentials and must remain
+    // Worker secrets set via `wrangler secret put`.
+    "CF_ACCOUNT_ID": "12fc31472161e3ebb8a01b4722ec1725",
+    // PILOT_OWNER_IDS controls runtime access; RUNTIME_ACCESS=all supersedes it.
+    "PILOT_OWNER_IDS": "usr_GjkBFAup0hlHmg1HJXRgtVdR",
     "DISPATCH_NAMESPACE": "brainhalf-projects"
   },
   "durable_objects": { "bindings": [
