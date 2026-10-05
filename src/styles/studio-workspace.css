@@ -851,3 +851,13 @@
   font-size: 13px;
   color: var(--text-muted);
 }
+
+.follow-up-chip:hover {
+  background: rgba(54, 89, 217, 0.08) !important;
+  color: var(--accent-primary, #3659D9) !important;
+  border-color: rgba(54, 89, 217, 0.3) !important;
+}
+.follow-up-chip:focus-visible {
+  outline: 2px solid var(--accent-primary, #3659D9);
+  outline-offset: 2px;
+}

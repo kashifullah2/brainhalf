@@ -320,6 +320,31 @@ export function formatMessageTime(timestamp?: number): string | null {
   }
 }
 
+/**
+ * Derive 3 contextual follow-up suggestions from the generated files.
+ * Runs purely on file content — no AI call, no latency.
+ */
+function computeFollowUpSuggestions(files: Record<string, string>): string[] {
+  const content = Object.values(files).join('\n');
+  const paths = Object.keys(files);
+  const suggestions: string[] = [];
+
+  const hasAuth = /sign.?in|log.?in|password|authenticate|session.*cookie|jwt|bearer/i.test(content);
+  const hasDatabase = /database|localStorage|indexeddb|sql\b|d1\b|supabase|prisma|drizzle/i.test(content)
+    || paths.some(p => /migrations\//.test(p));
+  const hasMobile = /@media.*(?:max|min)-width|responsive|sm:|md:|xl:|flex-wrap|grid-template/i.test(content);
+  const hasTests = paths.some(p => /\.(test|spec)\.[jt]sx?$/.test(p));
+  const hasErrorHandling = /try\s*\{[\s\S]*catch|\.catch\(|error.*boundary|ErrorBoundary/i.test(content);
+
+  if (!hasAuth) suggestions.push('Add user accounts and sign-in');
+  if (!hasDatabase) suggestions.push('Save data to a database so nothing is lost on refresh');
+  if (!hasMobile) suggestions.push('Make it look great on mobile phones');
+  if (!hasErrorHandling) suggestions.push('Add error handling and loading states');
+  if (!hasTests) suggestions.push('Write automated tests for the core features');
+
+  return suggestions.slice(0, 3);
+}
+
 interface ChatPanelProps {
   activeProjectId?: string;
   width?: number;
@@ -649,6 +674,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const currentGenIdRef = useRef(0);
   const generationModelIdRef = useRef<string | null>(null);
   const generationTouchedFilesRef = useRef(false);
+  const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
   // File map captured when a generation starts, so completion can show the
   // real per-file diff of what the builder changed.
   const generationBaseRef = useRef<Record<string, string> | null>(null);
@@ -682,6 +708,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     currentFilesRef.current = getProjectFiles(activeProjectId) || {};
     generationBaseRef.current = null;
     generationDiffContentsRef.current.clear();
+    setFollowUpSuggestions([]);
   }, [activeProjectId]);
 
   // RAF throttle: pending token queue to avoid calling setMessages on every token
@@ -1180,6 +1207,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               appEvents.emit('generation-status', completion.failed
                 ? { status: 'Error', error: EMPTY_RESPONSE_MESSAGE, projectId: activeProjectId }
                 : { status: 'Ready', detail: generationTouchedFilesRef.current ? 'Your changes are ready to try in the preview.' : 'Response received', projectId: activeProjectId });
+              // Suggest next steps when the AI actually wrote/changed files.
+              if (!completion.failed && generationTouchedFilesRef.current) {
+                const builtFiles = getProjectFiles(activeProjectId) || {};
+                setFollowUpSuggestions(computeFollowUpSuggestions(builtFiles));
+              }
               if (generationModelIdRef.current) {
                 const hasResult = !completion.failed;
                 const outcome = hasResult ? 'success' : 'failure';
@@ -1918,6 +1950,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             const reliability = getReliabilityControls(activeProjectId);
             generationModelIdRef.current = modelObj?.id || selectedModelId;
             generationTouchedFilesRef.current = false;
+            setFollowUpSuggestions([]);
             if (historyBeforeEdit) ws.send(JSON.stringify({ type: 'rewrite_history', messages: historyBeforeEdit }));
             ws.send(JSON.stringify({
               prompt: userMessage,
@@ -2492,6 +2525,38 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             </div>
           );
         })}
+
+        {/* Follow-up suggestion chips after generation completes */}
+        {!isGenerating && followUpSuggestions.length > 0 && messages.some(m => m.role === 'ai') && (
+          <div style={{ padding: '8px 0 4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+              Suggested next steps
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {followUpSuggestions.map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => { setFollowUpSuggestions([]); void handleSendMessage(suggestion); }}
+                  style={{
+                    font: 'inherit', fontSize: '12px',
+                    color: 'var(--text-secondary)',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '20px',
+                    padding: '6px 13px',
+                    cursor: 'pointer',
+                    transition: 'background 0.12s, color 0.12s, border-color 0.12s',
+                    whiteSpace: 'nowrap',
+                  }}
+                  className="follow-up-chip"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Starter suggestions when conversation is fresh */}
         {!messages.some(m => m.role === 'user') && (
