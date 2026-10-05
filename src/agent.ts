@@ -1358,6 +1358,64 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           }
           depth++;
         }
+        // Scan completed files for unresolved local imports so the model knows
+        // exactly what pending files to generate next instead of hanging or guessing.
+        const pendingFiles: string[] = [];
+        try {
+          const existingPathRows = this.runSql<{ path: string }>`SELECT path FROM project_files`;
+          const existingSet = new Set(existingPathRows.map(r => r.path));
+          for (const cPath of cumulative) {
+            existingSet.add(cPath);
+          }
+
+          const fileExts = ['.tsx', '.ts', '.jsx', '.js', '.css'];
+          for (const p of cumulative) {
+            if (!p.endsWith('.tsx') && !p.endsWith('.ts') && !p.endsWith('.jsx') && !p.endsWith('.js')) continue;
+            const content = this.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = ${p}`[0]?.content;
+            if (!content) continue;
+
+            const importRegex = /(?:import|export)\s+(?:(?:[\w*\s{},]*)\s+from\s+)?['"](\.[^'"]+)['"]/g;
+            let match: RegExpExecArray | null;
+            const dir = p.substring(0, p.lastIndexOf('/')) || '/';
+            while ((match = importRegex.exec(content)) !== null) {
+              const rel = match[1];
+              const parts = (dir + '/' + rel).split('/').filter(Boolean);
+              const stack: string[] = [];
+              for (const seg of parts) {
+                if (seg === '.') continue;
+                if (seg === '..') {
+                  if (stack.length > 0) stack.pop();
+                } else {
+                  stack.push(seg);
+                }
+              }
+              const resolvedBase = '/' + stack.join('/');
+              const candidates = [
+                resolvedBase,
+                ...fileExts.map(ext => resolvedBase + ext),
+                ...fileExts.map(ext => resolvedBase + '/index' + ext),
+              ];
+              const found = candidates.some(cand => existingSet.has(cand));
+              if (!found) {
+                const targetPath = (resolvedBase.startsWith('/src/components') || p.endsWith('.tsx'))
+                  ? resolvedBase + '.tsx'
+                  : resolvedBase + '.ts';
+                if (!pendingFiles.includes(targetPath)) {
+                  pendingFiles.push(targetPath);
+                }
+              }
+            }
+          }
+        } catch (scanErr) {
+          console.warn('Failed scanning pending imports on resume:', scanErr);
+        }
+
+        const pendingList = pendingFiles.length > 0
+          ? `\nCRITICAL MISSING FILES (These are imported by completed files but not yet written):\n` +
+            pendingFiles.slice(0, 30).map(p => `- ${p}`).join('\n') +
+            `\nYou MUST write these missing files first so the project compiles and runs cleanly.\n\n`
+          : '';
+
         // The completed files are already durable in project_files; list them
         // so the model writes only what is missing. Cap the list so the
         // continuation prompt stays bounded.
@@ -1367,6 +1425,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           `[AUTO-CONTINUE] Continue building the app requested here: "${rootPrompt.slice(0, 2000)}".\n\n` +
           `The previous build was interrupted after saving ${cumulative.length} file(s). ` +
           `These files are already complete and saved — DO NOT rewrite them:\n${doneList}${doneNote}\n\n` +
+          pendingList +
           `Write ONLY the remaining files needed to finish the app. Do not modify the completed files ` +
           `unless one of them is broken and blocks the app from working.`;
         resumeChain = { parentJobId: job.id, resumeCount: job.resumeCount + 1, initialFiles: cumulative };
@@ -1493,6 +1552,59 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             this.prepareManagedApp(connection, actualPrompt, executionTarget, epoch);
           }
           const contextLimits = generationContextLimits(generationControls(data).fastMode);
+
+          // State awareness: determine whether this is an incremental edit to an existing project
+          const existingAppRow = this.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = '/src/App.tsx' OR path = '/src/App.jsx' LIMIT 1`[0];
+          const isIncrementalEdit = Boolean(
+            existingAppRow &&
+            !isStarterApp(existingAppRow.content) &&
+            existingAppRow.content.length > 200 &&
+            !actualPrompt.startsWith('[AUTO-CONTINUE]')
+          );
+
+          // Persistent memory summary of active components and backend endpoints
+          let projectMemory = '';
+          try {
+            const allFiles = this.runSql<{ path: string }>`SELECT path FROM project_files`;
+            if (allFiles.length > 0) {
+              const components = allFiles
+                .filter(f => f.path.startsWith('/src/components/'))
+                .map(f => f.path.replace('/src/components/', ''));
+              const backendFiles = allFiles
+                .filter(f => f.path.startsWith('/worker/') || f.path.startsWith('/migrations/'))
+                .map(f => f.path);
+              const memoryParts: string[] = [];
+              if (components.length > 0) memoryParts.push(`- Existing UI Components: ${components.join(', ')}`);
+              if (backendFiles.length > 0) memoryParts.push(`- Existing Backend Files: ${backendFiles.join(', ')}`);
+
+              const workerContent = this.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = '/worker/index.ts'`[0]?.content;
+              if (workerContent) {
+                const routeMatches = [...workerContent.matchAll(/(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)['"`]/gi)];
+                if (routeMatches.length > 0) {
+                  const routes = Array.from(new Set(routeMatches.map(m => `${m[1].toUpperCase()} ${m[2]}`))).slice(0, 15);
+                  memoryParts.push(`- Known Backend API Endpoints: ${routes.join(', ')}`);
+                }
+              }
+              if (memoryParts.length > 0) {
+                projectMemory = `Active Project Architecture & Components:\n${memoryParts.join('\n')}`;
+              }
+            }
+          } catch (e) {
+            console.warn('Could not construct project memory summary:', e);
+          }
+
+          // Model handoff continuity notice if model was changed
+          let modelHandoff = '';
+          try {
+            const currentModel = String(data.model || DEFAULT_MODEL_ID);
+            const prevModelRow = this.runSql<{ model: string }>`SELECT model FROM generation_usage WHERE model IS NOT NULL AND model != '' ORDER BY started_at DESC LIMIT 1`[0];
+            if (prevModelRow && prevModelRow.model && prevModelRow.model !== currentModel) {
+              modelHandoff = `You are continuing a project that was previously generated with model "${prevModelRow.model}". Now generating with "${currentModel}". Maintain full continuity with existing components, styles, APIs, and conventions. Do NOT rewrite or discard existing working files.`;
+            }
+          } catch (e) {
+            console.warn('Could not check model handoff:', e);
+          }
+
           const systemPrompt = this.buildSystemPrompt({
             filesContext: this.buildFilesContext({
               pinned: new Set(['/src/App.tsx', '/src/App.jsx', '/package.json', '/worker/index.ts', '/brainhalf.verify.json']),
@@ -1501,6 +1613,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             }),
             plannerMode, executionTarget,
             questionMode, destructiveMode, ambiguousMode,
+            isIncrementalEdit, projectMemory, modelHandoff,
           });
           generationStarted = true;
           return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode });
@@ -1537,7 +1650,17 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * They are now one function, and the differences that are real — how much
    * file context to include — are handled by the caller's `filesContext`.
    */
-  private buildSystemPrompt(opts: { filesContext: string; plannerMode: boolean; executionTarget?: 'managed' | 'export'; questionMode?: boolean; destructiveMode?: boolean; ambiguousMode?: boolean }): string {
+  private buildSystemPrompt(opts: {
+    filesContext: string;
+    plannerMode: boolean;
+    executionTarget?: 'managed' | 'export';
+    questionMode?: boolean;
+    destructiveMode?: boolean;
+    ambiguousMode?: boolean;
+    isIncrementalEdit?: boolean;
+    projectMemory?: string;
+    modelHandoff?: string;
+  }): string {
     return buildSystemPromptModule(opts);
   }
 

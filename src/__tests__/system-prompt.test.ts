@@ -104,4 +104,34 @@ describe('7.3 extracted system prompt', () => {
     const normal = buildSystemPrompt({ filesContext: '', plannerMode: false });
     expect(normal).not.toContain('DESTRUCTIVE REQUEST MODE ACTIVE');
   });
+
+  it('teaches anti-hallucination, persistent memory, and anti-rewrite rules in Section 23', () => {
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    expect(prompt).toContain('WORKSPACE STATE AWARENESS, PERSISTENT MEMORY & ZERO HALLUCINATIONS');
+    expect(prompt).toContain('ZERO REWRITES ON FOLLOW-UP REQUESTS');
+    expect(prompt).toContain('ANTI-HALLUCINATION INVARIANTS');
+    expect(prompt).toContain('Backend API parity');
+  });
+
+  it('appends INCREMENTAL EDIT MODE block when isIncrementalEdit is true', () => {
+    const prompt = buildSystemPrompt({ filesContext: 'FILES', plannerMode: false, isIncrementalEdit: true });
+    expect(prompt).toContain('INCREMENTAL EDIT MODE ACTIVE');
+    expect(prompt).toContain('DO NOT rewrite /src/App.tsx or existing components');
+    const normal = buildSystemPrompt({ filesContext: 'FILES', plannerMode: false });
+    expect(normal).not.toContain('INCREMENTAL EDIT MODE ACTIVE');
+  });
+
+  it('injects projectMemory and modelHandoff notices when provided', () => {
+    const prompt = buildSystemPrompt({
+      filesContext: 'FILES',
+      plannerMode: false,
+      projectMemory: 'Components: Header, Sidebar, Dashboard; Routes: GET /api/stats',
+      modelHandoff: 'Switched from Claude-3.5-Sonnet to GPT-4o. Maintain full continuity.',
+    });
+    expect(prompt).toContain('PROJECT ARCHITECTURE & WORKSPACE MEMORY:');
+    expect(prompt).toContain('Components: Header, Sidebar, Dashboard; Routes: GET /api/stats');
+    expect(prompt).toContain('MODEL HANDOFF & CONTINUITY NOTICE:');
+    expect(prompt).toContain('Switched from Claude-3.5-Sonnet to GPT-4o');
+  });
 });
+
