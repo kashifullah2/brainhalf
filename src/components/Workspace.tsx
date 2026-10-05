@@ -1208,10 +1208,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
   }, [addBuildLog, markPreviewState, selectTab]);
 
   const handlePopoutPreview = useCallback(() => {
-    if (isFullStackProject(filesRef.current)) {
-      if (backend.ready) void backend.open();
+    if (isFullStackProject(filesRef.current) && backend.ready) {
+      // Live backend is running — open the actual dev server URL.
+      void backend.open();
       return;
     }
+    // For static apps, or full-stack apps whose backend hasn't started yet,
+    // always fall through to the edge preview so the button is never a no-op.
     appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
     window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
   }, [activeProjectId, backend.ready, backend.open]);
@@ -1372,7 +1375,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         onRefreshPreview={() => setEdgeRefreshCounter(value => value + 1)}
         onOpenPreview={handlePopoutPreview}
         previewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
-        openPreviewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
+        openPreviewReady={hasGeneratedApp && status !== 'Generating'}
         shareCopied={shareCopied}
         onShare={async () => {
           const shareUrl = `${window.location.origin}${window.location.pathname}?project=${activeProjectId}`;

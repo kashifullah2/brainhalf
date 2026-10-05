@@ -1,2 +1,5 @@
 FROM docker.io/cloudflare/sandbox:0.13.0-next.769.1
+# Install pnpm — the build runner (src/runtime/project.ts) uses pnpm for
+# install/build/test. The base sandbox image ships Node/npm but not pnpm.
+RUN npm install -g pnpm@10
 EXPOSE 3000
