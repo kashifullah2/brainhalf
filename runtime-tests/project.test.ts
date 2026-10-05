@@ -591,7 +591,7 @@ describe('Project runtime with real SQLite state', () => {
     const { job } = await response.json() as { job: { revision: string } };
     for (let i = 0; i < 6; i++) await p.object.alarm();
     expect(p.map.get('current')).toMatchObject({ status: 'passed', revision: job.revision });
-    expect(sandbox.exec.mock.calls.map(call => call[0].slice(0, 2))).toEqual([['pnpm', 'install'], ['pnpm', 'run'], ['pnpm', 'test'], ['node', '-e']]);
+    expect(sandbox.exec.mock.calls.map(call => call[0].slice(0, 2))).toEqual([['npm', 'install'], ['npm', 'run'], ['npm', 'test'], ['node', '-e']]);
     expect([...objects.keys()].some(key => key.includes('/artifacts/'))).toBe(true);
     expect(sandbox.exec.mock.calls.every(call => !JSON.stringify(call).includes('platform-only'))).toBe(true);
   });
@@ -611,7 +611,7 @@ describe('Project runtime with real SQLite state', () => {
     const current = p.map.get('current');
     expect(current.status).toBe('passed');
     expect(current.installRetried).toBe(true);
-    expect(sandbox.exec.mock.calls.filter(call => call[0][0] === 'pnpm' && call[0][1] === 'install')).toHaveLength(2);
+    expect(sandbox.exec.mock.calls.filter(call => call[0][0] === 'npm' && call[0][1] === 'install')).toHaveLength(2);
     expect(sandbox.exec.mock.calls.some(call => call[0][1] === 'ci')).toBe(false);
   });
   it('retries an ERESOLVE peer conflict with --legacy-peer-deps', async () => {
@@ -627,7 +627,7 @@ describe('Project runtime with real SQLite state', () => {
     const current = p.map.get('current');
     expect(current.status).toBe('passed');
     expect(current.installRetried).toBe(true);
-    const installs = sandbox.exec.mock.calls.filter(call => call[0][0] === 'pnpm' && call[0][1] === 'install');
+    const installs = sandbox.exec.mock.calls.filter(call => call[0][0] === 'npm' && call[0][1] === 'install');
     expect(installs).toHaveLength(2);
   });
   it('names the npm cause when dependency installation fails on the retry too', async () => {
@@ -642,7 +642,7 @@ describe('Project runtime with real SQLite state', () => {
     expect(current.status).toBe('failed');
     expect(current.message).toContain('Installing dependencies failed (exit 1)');
     expect(current.message).toContain('No matching version found for fake-dep@^9.9.9');
-    expect(sandbox.exec.mock.calls.filter(call => call[0][0] === 'pnpm' && call[0][1] === 'install')).toHaveLength(2);
+    expect(sandbox.exec.mock.calls.filter(call => call[0][0] === 'npm' && call[0][1] === 'install')).toHaveLength(2);
   });
   it('marks a Node preview ready only after BOTH servers accept connections, retrying slow boots', async () => {
     // Regression: readiness used to probe only the frontend port with a 1s

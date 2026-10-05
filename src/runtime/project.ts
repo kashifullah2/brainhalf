@@ -717,7 +717,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       await Promise.all(entries.map(([path, content]) => box.writeFile(`/workspace/project/${path}`, content)));
       job.status = 'running'; job.startedAt = Date.now();
       // Lockfiles are stripped by sourceSnapshot(), so npm ci is never reachable.
-      await this.startProcess(job, ['pnpm', 'install']);
+      await this.startProcess(job, ['npm', 'install']);
       job.step = 1; job.message = 'Installing dependencies'; await this.saveJob(job); return;
     }
     if (job.step <= 4) {
@@ -765,27 +765,25 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
           job.installRetried = true;
           // Model-authored manifests can mix versions whose declared peer ranges
           // disagree (e.g. a plugin built for an older Vite next to the current
-          // one) even though the combination runs fine. Detect ERESOLVE/strict-peer
-          // errors and retry with --no-strict-peer-dependencies so pnpm applies
-          // the same lenient resolution that npm's --legacy-peer-deps offers.
-          const peerConflict = /\bERESOLVE\b/i.test(`${output.stdout}\n${output.stderr}`)
-            || /strict-peer-dep|peer dep conflict/i.test(`${output.stdout}\n${output.stderr}`);
+          // one) even though the combination runs fine. ERESOLVE is npm being
+          // strict — retry with --legacy-peer-deps so the package resolves.
+          const peerConflict = /\bERESOLVE\b/i.test(`${output.stdout}\n${output.stderr}`);
           await this.startProcess(job, peerConflict
-            ? ['pnpm', 'install', '--no-strict-peer-dependencies']
-            : ['pnpm', 'install']);
+            ? ['npm', 'install', '--legacy-peer-deps']
+            : ['npm', 'install']);
           job.message = 'Installing dependencies'; await this.saveJob(job); return;
         }
         throw new RuntimeError(`${job.message} failed (exit ${output.exitCode}).${commandFailureSummary(output.stdout, output.stderr)}`);
       }
-      if (job.step === 1) { await this.startProcess(job, ['pnpm', 'run', 'build']); job.step = 2; job.message = 'Building application'; await this.saveJob(job); return; }
-      if (job.step === 2 && job.kind !== 'preview' && projectManifest(snapshot.files).scripts.test) { await this.startProcess(job, ['pnpm', 'test']); job.step = 3; job.message = 'Running project tests'; await this.saveJob(job); return; }
+      if (job.step === 1) { await this.startProcess(job, ['npm', 'run', 'build']); job.step = 2; job.message = 'Building application'; await this.saveJob(job); return; }
+      if (job.step === 2 && job.kind !== 'preview' && projectManifest(snapshot.files).scripts.test) { await this.startProcess(job, ['npm', 'test']); job.step = 3; job.message = 'Running project tests'; await this.saveJob(job); return; }
       if (job.node) {
         if (job.step === 4) throw new RuntimeError('Node preview server exited. Start a new preview job.');
         if (job.kind === 'preview') {
           const scripts = projectManifest(snapshot.files).scripts;
           if (!scripts.server || !scripts.dev) throw new RuntimeError('Node preview needs a server script honoring PORT and a Vite dev script proxying /api to port 3001.');
-          await this.startProcess(job, ['pnpm', 'run', 'server'], { PORT: '3001', APP_ORIGIN: this.url('development') });
-          await this.startProcess(job, ['pnpm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '3000', '--strictPort'], { __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: new URL(this.url('development')).hostname });
+          await this.startProcess(job, ['npm', 'run', 'server'], { PORT: '3001', APP_ORIGIN: this.url('development') });
+          await this.startProcess(job, ['npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '3000', '--strictPort'], { __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: new URL(this.url('development')).hostname });
           job.step = 4; job.message = 'Starting Node API and frontend'; await this.saveJob(job); return;
         }
         await this.finish(job, 'Build passed'); return;
