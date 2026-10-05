@@ -1,7 +1,13 @@
 import { RuntimeError, type IntegrationConfig, type IntegrationProvider } from './types';
 
 const encoder = new TextEncoder();
-const toBase64 = (value: Uint8Array) => btoa(String.fromCharCode(...value));
+// Spread onto the call stack (String.fromCharCode(...bytes)) would throw
+// RangeError for large ciphertexts; iterate explicitly instead.
+const toBase64 = (value: Uint8Array): string => {
+  let binary = '';
+  for (let i = 0; i < value.length; i++) binary += String.fromCharCode(value[i]);
+  return btoa(binary);
+};
 const fromBase64 = (value: string) => Uint8Array.from(atob(value), character => character.charCodeAt(0));
 
 async function encryptionKey(secret: string): Promise<CryptoKey> {

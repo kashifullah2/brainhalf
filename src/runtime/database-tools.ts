@@ -175,14 +175,17 @@ export type DatabaseTableSchema = {
 /** Schema overview for every application table, with row counts. */
 export async function readDatabaseSchema(api: CloudflareAPI, databaseId: string): Promise<{ tables: DatabaseTableSchema[] }> {
   const tableRows = await api.query(databaseId, "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '_cf_*' AND name NOT GLOB '_bh_*' ORDER BY name LIMIT 100");
-  const tables: DatabaseTableSchema[] = [];
-  for (const row of tableRows) {
+  // Fetch all three per-table queries in parallel to avoid N×3 sequential
+  // round-trips (each with a 30s timeout) that could exceed the DO time limit.
+  const results = await Promise.all(tableRows.map(async row => {
     const tableName = String(row.name);
     const identifier = databaseIdentifier(tableName);
-    const info = await api.query(databaseId, `PRAGMA table_info(${identifier})`);
-    const countRows = await api.query(databaseId, `SELECT COUNT(*) AS count FROM ${identifier}`);
-    const indexRows = await api.query(databaseId, `PRAGMA index_list(${identifier})`);
-    tables.push({
+    const [info, countRows, indexRows] = await Promise.all([
+      api.query(databaseId, `PRAGMA table_info(${identifier})`),
+      api.query(databaseId, `SELECT COUNT(*) AS count FROM ${identifier}`),
+      api.query(databaseId, `PRAGMA index_list(${identifier})`),
+    ]);
+    return {
       name: tableName,
       rowCount: Number(countRows[0]?.count ?? 0),
       indexes: indexRows
@@ -195,7 +198,7 @@ export async function readDatabaseSchema(api: CloudflareAPI, databaseId: string)
         primaryKey: Number(column.pk) > 0,
         defaultValue: column.dflt_value === null || column.dflt_value === undefined ? null : String(column.dflt_value),
       })),
-    });
-  }
-  return { tables };
+    } satisfies DatabaseTableSchema;
+  }));
+  return { tables: results };
 }

@@ -2,7 +2,7 @@ import { test, expect, Page } from '@playwright/test';
 import * as crypto from 'crypto';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
-const ARTIFACT_DIR = '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
 
 // Model A: Llama 3.3 70B
 const MODEL_A = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';

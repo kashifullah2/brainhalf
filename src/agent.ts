@@ -12,7 +12,7 @@ import { parseEditPairs, parseMessageSegments } from './lib/message-parser';
 import { formatToolTranscript, isSystemContinuation, ToolTranscriptStream, toolSummaryMarkup } from './lib/chat-transcript';
 import { applyExactEdits } from './lib/exact-edits';
 import { BACKEND_NOT_RUNNING, usesSimulatedApi } from './lib/preview-mode';
-import { createTypeScriptStarter, ensureEntryPoint, ensureScaffold } from './lib/project-starters';
+import { createTypeScriptStarter } from './lib/project-starters';
 import { prepareModuleSource, buildTranspileErrorModule, findDanglingImports } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';

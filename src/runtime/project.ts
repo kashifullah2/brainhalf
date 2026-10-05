@@ -298,7 +298,6 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         await this.pilot().unregisterCustomHostname(customDomain.hostname, this.scope).catch(() => {});
       }
       await this.uploads().removeAll();
-      await this.uploads().removeAll();
       for (const env of ['development', 'production']) {
         const releases = await this.ctx.storage.list<ProjectRelease>({ prefix: `release:${env}:` });
         for (const release of releases.values()) await this.api().remove(`/workers/dispatch/namespaces/${encodeURIComponent(this.env.DISPATCH_NAMESPACE)}/scripts/${release.scriptName}`);
@@ -766,10 +765,14 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
           job.installRetried = true;
           // Model-authored manifests can mix versions whose declared peer ranges
           // disagree (e.g. a plugin built for an older Vite next to the current
-          // one) even though the combination runs fine. ERESOLVE is npm being
-          // strict, not a real failure — retry those with --legacy-peer-deps.
-          const peerConflict = /\bERESOLVE\b/i.test(`${output.stdout}\n${output.stderr}`);
-          await this.startProcess(job, ['pnpm', 'install']);
+          // one) even though the combination runs fine. Detect ERESOLVE/strict-peer
+          // errors and retry with --no-strict-peer-dependencies so pnpm applies
+          // the same lenient resolution that npm's --legacy-peer-deps offers.
+          const peerConflict = /\bERESOLVE\b/i.test(`${output.stdout}\n${output.stderr}`)
+            || /strict-peer-dep|peer dep conflict/i.test(`${output.stdout}\n${output.stderr}`);
+          await this.startProcess(job, peerConflict
+            ? ['pnpm', 'install', '--no-strict-peer-dependencies']
+            : ['pnpm', 'install']);
           job.message = 'Installing dependencies'; await this.saveJob(job); return;
         }
         throw new RuntimeError(`${job.message} failed (exit ${output.exitCode}).${commandFailureSummary(output.stdout, output.stderr)}`);

@@ -20,6 +20,21 @@ jobs:
       # test imports would still pass CI.
       - run: npm run verify
       - run: npm run verify:release
+      # E2E smoke: run the local browser suite against the built dev server.
+      # This catches UI regressions (stale selectors, broken routes, dead
+      # buttons) that the unit suite cannot see. Failures are non-blocking for
+      # now (continue-on-error: true) until the full suite is green in CI.
+      - name: Start dev server
+        run: npm run dev &
+        env:
+          NODE_ENV: development
+      - name: Wait for dev server
+        run: npx wait-on http://localhost:5173 --timeout 60000
+      - name: E2E smoke (local browser suite)
+        run: npx playwright test --project=chromium
+        continue-on-error: true
+        env:
+          CI: true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

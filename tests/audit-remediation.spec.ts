@@ -470,7 +470,7 @@ test('landing controls expose labels, visible focus and keyboard project activat
 
 test('enabled Publish text meets normal-text contrast', async ({ page }) => {
   await setup(page);
-  const publish = page.getByRole('button', { name: 'Put your app on the web', exact: true });
+  const publish = page.getByRole('button', { name: 'Publish app', exact: true });
   await expect(publish).toBeEnabled();
   const ratio = await publish.evaluate(button => {
     const style = getComputedStyle(button);
@@ -585,7 +585,7 @@ test('Publish app starts publication and it can be cancelled before going live',
   state.connections[0].send(JSON.stringify({ type: 'file_updated', path: '/package.json', content: '{"scripts":{"build":"vite build"}}' }));
   await expect.poll(async () => (await readProjectFiles(page, 'dev-user-1', projectId))?.['/package.json']).toBeTruthy();
   expect(publishing.submitted).toEqual([]);
-  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish app', exact: true }).click();
   const publication = page.getByRole('dialog', { name: 'Project publication' });
   await publication.getByRole('button', { name: 'Publish app', exact: true }).click();
   const slugPicker = page.getByRole('region', { name: 'Choose app name' });
@@ -602,7 +602,7 @@ test('publication ownership failures preserve the session without exposing a pub
   const publishing = await setupPublication(page, true);
   state.connections[0].send(JSON.stringify({ type: 'file_updated', path: '/package.json', content: '{"scripts":{"build":"vite build"}}' }));
   await expect.poll(async () => (await readProjectFiles(page, 'dev-user-1', projectId))?.['/package.json']).toBeTruthy();
-  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish app', exact: true }).click();
   const publication = page.getByRole('dialog', { name: 'Project publication' });
   await publication.getByRole('button', { name: 'Publish app', exact: true }).click();
   const slugPicker = page.getByRole('region', { name: 'Choose app name' });

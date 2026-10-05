@@ -33,7 +33,6 @@ interface TopNavProps {
   onOpenPreview?: () => void;
   previewReady?: boolean;
   openPreviewReady?: boolean;
-  previewUrl?: string;
   shareCopied?: boolean;
   onShare?: () => void;
   publishOpen?: boolean;
@@ -68,7 +67,6 @@ const TopNav: React.FC<TopNavProps> = ({
   onOpenPreview,
   previewReady = false,
   openPreviewReady = false,
-  previewUrl,
   shareCopied = false,
   onShare,
   publishOpen = false,

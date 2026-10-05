@@ -13,7 +13,7 @@ test('failed publishing shows its own build error and verification evidence on m
     logs: [{ job: 'publication-job', text: 'src/App.tsx: Cannot resolve ./missing-component\n' + 'long-path/'.repeat(90) }, { job: 'other-job', text: 'Other job output must stay hidden' }],
     verification: { jobId: 'publication-job', checks: [{ name: 'App renders', passed: false, detail: 'Expected the dashboard heading' }] },
   } }));
-  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish app', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Project publication' });
   await dialog.getByRole('button', { name: 'Publish app', exact: true }).click();
   const slugPicker = page.getByRole('region', { name: 'Choose app name' });
@@ -42,7 +42,7 @@ test('Publish deploys one saved frontend/backend version and exposes its URL onl
   for (const [path, content] of Object.entries({ '/package.json': JSON.stringify({ scripts: { build: 'vite build', test: 'node --test' }, brainhalf: { runtime: 'workers' } }), '/worker/index.ts': 'export default { fetch() { return new Response("ok"); } };' })) state.sockets[0].socket.send(JSON.stringify({ type: 'file_updated', path, content }));
   await expect.poll(async () => (await readProjectFiles(page, accountId, lifecycleProjects[0].id))?.['/worker/index.ts']).toBeTruthy();
   expect(publishing.submitted).toEqual([]);
-  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish app', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Project publication' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Publish app', exact: true }).click();
@@ -56,7 +56,7 @@ test('Publish deploys one saved frontend/backend version and exposes its URL onl
   await expect(dialog.getByText('You can close this — publishing keeps running in the background.', { exact: false })).toBeVisible();
   await page.keyboard.press('Escape');
   publishing.complete();
-  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish app', exact: true }).click();
   await expect(dialog.getByRole('link')).toHaveAttribute('href', 'https://published.apps.example.test');
   await expect(dialog.getByRole('button', { name: 'Up to date' })).toBeDisabled();
   expect(publishing.submitted).toHaveLength(1);
@@ -80,7 +80,7 @@ test('a live app can be taken offline independently of publishing', async ({ pag
   state.sockets[0].socket.send(JSON.stringify({ type: 'file_updated', path: '/package.json', content: JSON.stringify({ scripts: { build: 'vite build' } }) }));
   await expect.poll(async () => (await readProjectFiles(page, accountId, lifecycleProjects[0].id))?.['/package.json']).toBeTruthy();
   // Publish to create a live release
-  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish app', exact: true }).click();
   const publication = page.getByRole('dialog', { name: 'Project publication' });
   await publication.getByRole('button', { name: 'Publish app', exact: true }).click();
   const slugPicker = page.getByRole('region', { name: 'Choose app name' });
@@ -89,7 +89,7 @@ test('a live app can be taken offline independently of publishing', async ({ pag
   publishing.complete();
   // Close and reopen to refresh the status and see the live release
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Put your app on the web', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish app', exact: true }).click();
   const livePublication = page.getByRole('dialog', { name: 'Project publication' });
   await expect(livePublication.getByText('Your app is live', { exact: true })).toBeVisible();
   // Take the app offline without going through the publish flow

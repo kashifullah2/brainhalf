@@ -13,6 +13,13 @@
  * used as a model for production auth.
  */
 
+// Hard guard: this module must never execute in a production context. Any
+// code path that somehow imports it in production would grant any Bearer
+// token access to all accounts, which is a critical auth bypass.
+if (typeof process !== 'undefined' && process.env.NODE_ENV === 'production') {
+  throw new Error('dev-auth-mock must not be imported in a production build. This is a fatal misconfiguration.');
+}
+
 export interface DevAuthResult {
   status: number;
   body: unknown;

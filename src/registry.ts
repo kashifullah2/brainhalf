@@ -545,9 +545,11 @@ export class AuthRegistry {
         } catch {
           return this.json(400, { error: 'Base URL must be a valid URL.' });
         }
-        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined
-          || (this.env as Record<string, unknown>).SESSION_SECRET as string | undefined;
-        if (!secret) return this.json(500, { error: 'Model encryption is not configured.' });
+        // MODEL_KEY_SECRET must be a separate secret dedicated to encrypting
+        // custom model API keys; reusing SESSION_SECRET would let a single
+        // compromised value expose both session forgery and key decryption.
+        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined;
+        if (!secret) return this.json(500, { error: 'MODEL_KEY_SECRET is not configured. Set it as a Worker secret to enable custom model storage.' });
         const { encryptValue } = await import('./lib/crypto');
         const id = `cm_${randomId('', 12)}`;
         const now = Date.now();
@@ -572,9 +574,8 @@ export class AuthRegistry {
           'SELECT base_url, model_id, api_key_encrypted FROM custom_models WHERE id = ?', id
         ).toArray() as Array<{ base_url: string; model_id: string; api_key_encrypted: string }>;
         if (!rows.length) return this.json(404, { error: 'Model not found' });
-        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined
-          || (this.env as Record<string, unknown>).SESSION_SECRET as string | undefined;
-        if (!secret) return this.json(500, { error: 'Model encryption is not configured.' });
+        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined;
+        if (!secret) return this.json(500, { error: 'MODEL_KEY_SECRET is not configured. Set it as a Worker secret to enable custom model storage.' });
         const { decryptValue } = await import('./lib/crypto');
         const apiKey = await decryptValue(secret, rows[0].api_key_encrypted);
         if (!apiKey) return this.json(500, { error: 'Could not decrypt the API key.' });
@@ -656,9 +657,8 @@ export class AuthRegistry {
           'SELECT base_url, model_id, api_key_encrypted FROM custom_models WHERE id = ?', id
         ).toArray() as Array<{ base_url: string; model_id: string; api_key_encrypted: string }>;
         if (!rows.length) return this.json(404, { error: 'Model not found' });
-        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined
-          || (this.env as Record<string, unknown>).SESSION_SECRET as string | undefined;
-        if (!secret) return this.json(500, { error: 'Model encryption is not configured.' });
+        const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined;
+        if (!secret) return this.json(500, { error: 'MODEL_KEY_SECRET is not configured. Set it as a Worker secret to enable custom model storage.' });
         const { decryptValue } = await import('./lib/crypto');
         const apiKey = await decryptValue(secret, rows[0].api_key_encrypted);
         if (!apiKey) return this.json(500, { error: 'Could not decrypt the API key.' });

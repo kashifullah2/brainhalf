@@ -298,13 +298,10 @@ export async function removeProject(projectId: string): Promise<Project[]> {
 export async function purgeEmptyDrafts(): Promise<void> {
   if (!getProjectStorageScope().accountId || !getToken()) return;
   const drafts = getProjects().filter(isEmptyDraftProject);
-  for (const draft of drafts) {
-    try {
-      await removeProject(draft.id);
-    } catch {
-      // Keep the local draft; the next creation attempt retries the purge.
-    }
-  }
+  if (!drafts.length) return;
+  // Delete in parallel: each call has a 20s timeout and sequential deletion of
+  // 50 drafts would block new project creation for up to 1000 seconds.
+  await Promise.allSettled(drafts.map(draft => removeProject(draft.id)));
 }
 
 export async function projectPublication(projectId: string, signal: AbortSignal, published?: boolean): Promise<boolean> {
@@ -378,6 +375,10 @@ let prefetchedTicket: Promise<string | null> | null = null;
 
 export function prefetchWsTicket(): void {
   if (!getToken()) return;
-  prefetchedTicket = fetchWsTicket();
-  prefetchedTicket.catch(() => { prefetchedTicket = null; });
+  const p = fetchWsTicket();
+  prefetchedTicket = p;
+  // Capture the promise reference before the .catch handler fires so that if
+  // prefetchWsTicket() is called again before this promise settles, a failure
+  // from the first call does not clear the (now-valid) second prefetch.
+  p.catch(() => { if (prefetchedTicket === p) prefetchedTicket = null; });
 }

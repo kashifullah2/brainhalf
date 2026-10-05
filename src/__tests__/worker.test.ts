@@ -508,7 +508,8 @@ describe('P1 Worker auth gate (fail-closed)', () => {
   });
 
   it('answers a preflight OPTIONS request without authentication', async () => {
-    const env = envWith(mockRegistry(), { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    // IS_DEV enables localhost origins (simulates wrangler dev environment).
+    const env = envWith(mockRegistry(), { ChatAgent: { idFromName: vi.fn(), get: vi.fn() }, IS_DEV: 'true' });
     const req = new Request('https://brainhalf.com/api/auth/login', {
       method: 'OPTIONS',
       headers: { origin: 'http://localhost:5173' },

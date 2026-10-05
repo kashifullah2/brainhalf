@@ -77,6 +77,6 @@ test('verify hero card is vertically centered based on available preview panel h
 
   // Capture verification screenshot
   await page.screenshot({
-    path: '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475/hero-centering-verified.png'
+    path: (process.env.ARTIFACT_DIR || 'test-results') + '/hero-centering-verified.png',
   });
 });

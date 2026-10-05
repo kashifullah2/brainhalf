@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const APP1_URL = 'https://brainhalf.com/preview/app-1789199724002-ky89a/';
 const APP2_URL = 'https://brainhalf.com/preview/app-1789199796075-yo79s/';
-const ARTIFACT_DIR = '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
 
 test.describe('BrainHalf Live Edge Previews E2E', () => {
   test('1. App 1 (FocusHub Pomodoro & Tasks) mounts and runs without errors', async ({ page }) => {

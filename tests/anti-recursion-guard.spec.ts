@@ -101,6 +101,6 @@ export default function AnalyticsDashboard() {
     const nestedIframe = frame!.locator('iframe');
     await expect(nestedIframe).not.toBeVisible();
 
-    await page.screenshot({ path: '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475/anti_recursion_verified.png' });
+    await page.screenshot({ path: (process.env.ARTIFACT_DIR || 'test-results') + '/anti_recursion_verified.png' });
   });
 });

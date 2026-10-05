@@ -170,11 +170,18 @@ describe('P1 Auth — trusted user-id header', () => {
 });
 
 describe('P1 Auth — origin allowlist', () => {
-  it('allows the production and local dev origins', () => {
+  it('always allows production origins', () => {
     expect(isAllowedOrigin('https://brainhalf.com')).toBe(true);
     expect(isAllowedOrigin('https://www.brainhalf.com')).toBe(true);
-    expect(isAllowedOrigin('http://localhost:5173')).toBe(true);
-    expect(isAllowedOrigin('http://127.0.0.1:8788')).toBe(true);
+  });
+
+  it('allows localhost origins only when IS_DEV is set', () => {
+    // Without IS_DEV: localhost is rejected in production
+    expect(isAllowedOrigin('http://localhost:5173')).toBe(false);
+    expect(isAllowedOrigin('http://127.0.0.1:8788')).toBe(false);
+    // With IS_DEV: localhost is allowed for local wrangler dev
+    expect(isAllowedOrigin('http://localhost:5173', { IS_DEV: 'true' })).toBe(true);
+    expect(isAllowedOrigin('http://127.0.0.1:8788', { IS_DEV: 'true' })).toBe(true);
   });
 
   it('rejects null, empty and foreign origins', () => {

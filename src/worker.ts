@@ -48,8 +48,14 @@ export interface PlatformEnv {
   AI: Ai;
   CONTACT_EMAIL?: string;
   PRODUCT_METRICS_OWNER_IDS?: string;
+  /** Set to "true" in .dev.vars / wrangler dev to enable localhost CORS origins. */
+  IS_DEV?: string;
   [key: string]: unknown;
 }
+
+// Cloudflare Workers execute one request at a time per isolate, so this
+// module-level variable is safe as a per-request context for the CORS helper.
+let _isDev = false;
 
 const AUTH_ROUTES = new Set([
   '/api/auth/signup',
@@ -154,8 +160,9 @@ function clientKey(request: Request): string {
 }
 
 function corsHeaders(origin: string | null): Record<string, string> {
-  // Reflect only an allowlisted origin; never `*`.
-  const allowed = origin && isAllowedOrigin(origin) ? origin : 'https://brainhalf.com';
+  // Reflect only an allowlisted origin; never `*`. Localhost origins are only
+  // allowed when _isDev is true (set from env.IS_DEV at the top of fetch).
+  const allowed = origin && isAllowedOrigin(origin, { IS_DEV: _isDev }) ? origin : 'https://brainhalf.com';
   return {
     'Access-Control-Allow-Origin': allowed,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
@@ -282,6 +289,9 @@ function withShellSecurity(response: Response, privateSearch = false): Response 
 
 export default {
   async fetch(request: Request, env: PlatformEnv, _ctx: ExecutionContext) {
+    // Set per-request dev flag for the CORS helper (module-level, safe because
+    // Workers are single-threaded within an isolate).
+    _isDev = Boolean(env.IS_DEV);
     const url = new URL(request.url);
     // Canonical host consolidation: Google indexed www.brainhalf.com as a
     // duplicate of the apex (splitting ranking signals across hosts), so the
@@ -298,7 +308,7 @@ export default {
     }
     const privateSearch = isPrivateSearch(url.search);
     const origin = request.headers.get('origin');
-    const untrustedOrigin = (origin !== null && !isAllowedOrigin(origin)) || request.headers.get('sec-fetch-site') === 'cross-site';
+    const untrustedOrigin = (origin !== null && !isAllowedOrigin(origin, { IS_DEV: _isDev })) || request.headers.get('sec-fetch-site') === 'cross-site';
     const googleCallback = url.pathname === '/api/auth/google/callback' && request.method === 'GET';
     const managedGoogleStart = url.pathname === '/api/apps/google/start' && request.method === 'GET';
     if ((url.pathname.startsWith('/api/') || url.pathname.startsWith('/agents/')) && untrustedOrigin && !googleCallback && !managedGoogleStart) {
@@ -634,7 +644,15 @@ export default {
       if (!await isProjectOwner(env, runtimeMatch[1], user.userId)) return withCors(forbidden('You do not own this project'), origin);
       if (!env.RUNTIME) return withCors(jsonError('The full-stack runtime has not been deployed yet.', 503), origin);
       const target = new URL(request.url); target.pathname = runtimeMatch[2];
-      const headers = new Headers({ 'Content-Type': 'application/json', 'x-bh-project': runtimeMatch[1], 'x-bh-owner': user.userId });
+      // Forward the original Content-Type so file uploads and multipart requests
+      // reach the runtime with the correct media type; fall back to JSON for
+      // requests that carry no body (GET/HEAD) or that the caller did not type.
+      const headers = new Headers({ 'x-bh-project': runtimeMatch[1], 'x-bh-owner': user.userId });
+      const incomingCt = request.headers.get('content-type');
+      headers.set('Content-Type', incomingCt || 'application/json');
+      for (const h of ['x-file-name', 'content-disposition']) {
+        const v = request.headers.get(h); if (v) headers.set(h, v);
+      }
       if (isOperator(env, user)) headers.set('x-bh-unlimited', '1');
       if (runtimeMatch[2] === '/email-test' && env.CONTACT_EMAIL) headers.set('x-bh-test-inbox', env.CONTACT_EMAIL);
       try {

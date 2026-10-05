@@ -214,12 +214,14 @@ describe('P2 /api/test/* endpoint hardening', () => {
     expect(res.headers.get('Vary')).toBe('Origin');
   });
 
-  it('reflects an allowlisted origin on a preflight', async () => {
+  it('reflects a production allowlisted origin on a preflight', async () => {
+    // localhost origins are only reflected when IS_DEV is set (handled by the
+    // worker layer, not model-tester); use the production origin here.
     const res = await handleModelTest(
-      new Request('https://brainhalf.com/api/test/simple', { method: 'OPTIONS', headers: { origin: 'http://localhost:5173' } }),
+      new Request('https://brainhalf.com/api/test/simple', { method: 'OPTIONS', headers: { origin: 'https://brainhalf.com' } }),
       { AI: { run: async () => '' } },
       'simple'
     );
-    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://brainhalf.com');
   });
 });

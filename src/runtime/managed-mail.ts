@@ -128,7 +128,12 @@ export class ManagedMail {
       if (attempt > 5 || row.created < Date.now() - 23 * 3_600_000) {
         this.store.sql.exec("UPDATE managed_emails SET status='failed',next_at=NULL,error='Automatic retry limit reached.' WHERE id=?", row.id); continue;
       }
-      this.store.sql.exec("UPDATE managed_emails SET status='sending',attempts=?,next_at=?,updated=? WHERE id=?", attempt, Date.now() + 30_000, Date.now(), row.id);
+      // Mark as 'sending' but do NOT increment attempts yet. The attempt count
+      // is incremented only after a confirmed send attempt (success or caught
+      // error). This prevents crash-recovery from counting a crash as two
+      // attempts: if the Worker dies after this status update, the alarm retries
+      // and finds status='sending' with attempts still at row.attempts.
+      this.store.sql.exec("UPDATE managed_emails SET status='sending',next_at=?,updated=? WHERE id=?", Date.now() + 30_000, Date.now(), row.id);
       await this.store.deps.schedule(Date.now() + 30_000);
       try {
         await this.store.deps.consumeEmail(row.id);
@@ -137,11 +142,11 @@ export class ManagedMail {
         if (!this.store.settings(row.environment).emailEnabled) throw new RuntimeError('Email is disabled.', 403);
         const result = mail.custom ? await sendResend(mail.custom.apiKey, `${mail.appName.replace(/[<>"\\\r\n]/g, '')} <${mail.custom.from}>`, mail.payload, row.id)
           : await this.store.platform<{ id: string }>('/email', row.environment, { payload: mail.payload, key: row.id, appName: mail.appName });
-        this.store.sql.exec("UPDATE managed_emails SET status='sent',provider_id=?,next_at=?,updated=?,error=NULL WHERE id=?", result.id, Date.now() + 60_000, Date.now(), row.id);
+        this.store.sql.exec("UPDATE managed_emails SET status='sent',attempts=?,provider_id=?,next_at=?,updated=?,error=NULL WHERE id=?", attempt, result.id, Date.now() + 60_000, Date.now(), row.id);
       } catch (error) {
         const retryable = error instanceof MailProviderError ? error.retryable : error instanceof RuntimeError ? error.status >= 500 && (error as RuntimeError & { retryable?: boolean }).retryable !== false : true;
         const again = retryable && attempt < 5;
-        this.store.sql.exec('UPDATE managed_emails SET status=?,next_at=?,updated=?,error=? WHERE id=?', again ? 'queued' : 'failed', again ? Date.now() + 30_000 * 2 ** attempt : null, Date.now(), error instanceof MailProviderError ? error.message : error instanceof RuntimeError && error.status === 429 ? 'Account email limit reached.' : 'Email could not be sent. Check sending configuration.', row.id);
+        this.store.sql.exec('UPDATE managed_emails SET status=?,attempts=?,next_at=?,updated=?,error=? WHERE id=?', again ? 'queued' : 'failed', attempt, again ? Date.now() + 30_000 * 2 ** attempt : null, Date.now(), error instanceof MailProviderError ? error.message : error instanceof RuntimeError && error.status === 429 ? 'Account email limit reached.' : 'Email could not be sent. Check sending configuration.', row.id);
       }
     }
     // Retain bounded operational history. Active work is never pruned.

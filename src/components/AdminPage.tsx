@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Users,
   BadgeCheck,
@@ -561,7 +561,8 @@ export default function AdminPage() {
     }
   };
 
-  const weekAgo = useMemo(() => Date.now() - 7 * 86_400_000, []);
+  const weekAgoRef = useRef(Date.now() - 7 * 86_400_000);
+  const weekAgo = weekAgoRef.current;
 
   // Filtered & Sorted Users
   const filteredUsers = useMemo(() => {

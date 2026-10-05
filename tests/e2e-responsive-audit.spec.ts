@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 const BASE_URL = 'https://brainhalf.com';
-const ARTIFACT_DIR = '/home/kashifullah/.gemini/antigravity-ide/brain/bdade561-eefd-4bc6-bb08-2adeffc71475';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'test-results';
 
 const VIEWPORTS = [
   // Mobile

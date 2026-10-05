@@ -392,8 +392,9 @@ export async function deleteProjectDurably(id: string): Promise<Project[]> {
   const marker = projectStorageKey(`deleted:project:${id}`);
   const legacyMarker = projectStorageKey(`deleted:${id}`);
   const remaining = deleteProject(id);
+  // deleteProject() already writes the deletion marker to localStorage; only
+  // remove the data keys here (the marker write would be a no-op duplicate).
   try {
-    localStorage.setItem(projectStorageKey(`deleted:project:${id}`), 'true');
     localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${id}`));
     localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${id}`));
   } catch {

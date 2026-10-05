@@ -29,7 +29,6 @@ import { useProjectRuntime } from '../lib/project-runtime-client';
 import PreviewCanvas from './PreviewCanvas';
 import LivePreviewFrame from './LivePreviewFrame';
 import { DesignPreviewStrip } from './DesignPreviewStrip';
-import ActionMenu from './ActionMenu';
 import FileExplorer from './FileExplorer';
 import ConfirmModal from './ConfirmModal';
 import BuildProgress, { type FileProgress } from './BuildProgress';
@@ -94,6 +93,11 @@ function configureMonacoWorkerFallback() {
     monacoFallbackWorkerUrl = URL.createObjectURL(new Blob([
       'self.onmessage = () => { /* Monaco worker fallback: no-op */ };',
     ], { type: 'text/javascript' }));
+    // Revoke on page unload so the blob URL does not leak memory for the
+    // lifetime of the tab (it is only needed for the first Monaco init).
+    window.addEventListener('pagehide', () => {
+      if (monacoFallbackWorkerUrl) { URL.revokeObjectURL(monacoFallbackWorkerUrl); monacoFallbackWorkerUrl = null; }
+    }, { once: true });
   }
   (window as any).MonacoEnvironment = {
     getWorker() {
@@ -289,8 +293,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
   const viewportWidth = useViewportWidth();
   const compactToolbar = viewportWidth < 1100;
-  const [fileExplorerOverride, setFileExplorerOverride] = useState<boolean | null>(null);
-  const showFileExplorer = fileExplorerOverride ?? viewportWidth > 768;
+  const showFileExplorer = viewportWidth > 768;
 
   // FIX: the initialiser used to run the starter migration and call
   // saveProjectFiles() as a side effect. A useState initialiser can run more
@@ -364,7 +367,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // On project switch, clear undo state (GitHub state resets inside useGithubSync)
   useEffect(() => { setUndoCheckpoint(null); }, [activeProjectId]);
 
-  const [splitView, setSplitView] = useState(false);
+  const splitView = false;
 
   const theme = useTheme();
   const [readOnlyProjectId, setReadOnlyProjectId] = useState<string | null>(null);
@@ -743,43 +746,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
       setUndoLoading(false);
     }
   }, [undoCheckpoint, activeProjectId, addBuildLog, setUndoCheckpoint, setUndoLoading]);
-
-  const runReadinessAudit = useCallback(() => {
-    const files = filesRef.current;
-    const issues: Array<{ level: BuildLogItem['type']; text: string }> = [];
-
-    const serverPaths = Object.keys(files).filter(isServerPath);
-    const hasServer = serverPaths.length > 0;
-    if (hasServer) issues.push({ level: 'warn', text: 'Backend execution, database migrations and authentication must be tested in the configured runtime. Browser preview is not backend validation.' });
-
-    const appSource = files['/src/App.jsx'] || files['/src/App.tsx'] || '';
-    if (appSource && !/loading|error|empty/i.test(appSource)) {
-      issues.push({ level: 'warn', text: 'App likely missing explicit loading/error/empty UI states.' });
-    }
-
-    for (const [path, content] of Object.entries(files)) {
-      if (/cdn\.tailwindcss\.com/i.test(content)) {
-        issues.push({ level: 'warn', text: `${path} uses Tailwind CDN script; prefer bundled Tailwind for production.` });
-      }
-      if (/TODO|FIXME|lorem ipsum/i.test(content)) {
-        issues.push({ level: 'warn', text: `${path} still contains placeholder markers (TODO/FIXME/Lorem).` });
-      }
-      if (content.length > 200_000) {
-        issues.push({ level: 'warn', text: `${path} is large (${Math.round(content.length / 1024)}KB); consider splitting.` });
-      }
-    }
-
-    addBuildLog('Quick review started. These advisory checks don’t run the full test suite or look at your saved data.', 'info');
-    if (issues.length === 0) {
-      addBuildLog('No issues found in this quick review. Full checks run before publishing.', 'info');
-    } else {
-      const errorCount = issues.filter((i) => i.level === 'error').length;
-      const warnCount = issues.filter((i) => i.level === 'warn').length;
-      addBuildLog(`Quick review found ${errorCount} problem(s) and ${warnCount} caution(s).`, errorCount > 0 ? 'error' : 'warn');
-      for (const issue of issues) addBuildLog(issue.text, issue.level);
-    }
-    selectTab('logs');
-  }, [addBuildLog, selectTab]);
 
   /* ---------------- Project lifecycle ---------------- */
   useEffect(() => {
@@ -1407,7 +1373,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
         onOpenPreview={handlePopoutPreview}
         previewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
         openPreviewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
-        previewUrl={backend.liveUrl || (typeof window !== 'undefined' ? `${window.location.origin}/preview/${activeProjectId}/index.html` : `/preview/${activeProjectId}/index.html`)}
         shareCopied={shareCopied}
         onShare={async () => {
           const shareUrl = `${window.location.origin}${window.location.pathname}?project=${activeProjectId}`;
@@ -1561,7 +1526,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   </>
                 )}
                 {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
-                <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={wcEnabled ? wc.restart : () => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!wcEnabled && !backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
+                <PreviewCanvas mode={viewportMode}>
                   {wcEnabled ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
                   ) : backend.liveUrl ? (
@@ -1962,7 +1927,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 </>
               )}
               {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
-              <PreviewCanvas mode={viewportMode} onModeChange={setViewportMode} onRefresh={wcEnabled ? wc.restart : () => setEdgeRefreshCounter(value => value + 1)} onOpen={handlePopoutPreview} ready={hasGeneratedApp && (wcEnabled ? wc.status === 'ready' : backend.liveUrl ? true : previewLoadState !== 'error')} openReady={isFullStackProject(files) ? hasGeneratedApp && backend.ready : undefined} onInspect={!wcEnabled && !backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined} inspectActive={inspectModeActive}>
+              <PreviewCanvas mode={viewportMode}>
                   {wcEnabled ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
                   ) : backend.liveUrl ? (

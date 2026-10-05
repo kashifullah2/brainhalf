@@ -21,6 +21,7 @@ export const LOCAL_BROWSER_SPECS = [
   '**/ui-scrollbars.spec.ts',
   '**/landing-hero.spec.ts',
   '**/landing-sections.spec.ts',
+  '**/e2e/dead-ui-audit.spec.ts',
 ];
 
 export function requireLiveTestOptIn(environment: Record<string, string | undefined>) {

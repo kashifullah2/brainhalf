@@ -194,7 +194,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.screenshot({ path: `audit-artifacts/2026-09-22/workspace-clarity/${theme}-mobile-chat.png` });
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
     await expect(page.getByLabel('Build information').getByRole('button', { name: 'Activity' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Mobile view (375px)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Mobile', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `audit-artifacts/2026-09-22/workspace-clarity/${theme}-mobile-preview.png` });
   });
@@ -202,20 +202,27 @@ for (const theme of ['light', 'dark'] as const) {
   test(`${theme} workspace controls have clear hierarchy, target-theme icons and accessible contrast`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await setupLifecycle(page, true);
-    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.getByRole('button', { name: `Switch to ${theme} mode` }).click();
-    const toggle = page.getByRole('button', { name: `Switch to ${theme === 'light' ? 'dark' : 'light'} mode` });
-    await expect(toggle.locator(theme === 'light' ? '.lucide-moon' : '.lucide-sun')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Desktop view', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await page.getByRole('button', { name: 'Tablet view (768px)' }).click();
-    await expect(page.getByRole('button', { name: 'Tablet view (768px)' })).toHaveAttribute('aria-pressed', 'true');
-    await page.getByRole('button', { name: 'Desktop view', exact: true }).click();
+    // In workspace mode the theme toggle moved into the user ActionMenu (TopNav redesign).
+    if (await page.locator('html').getAttribute('data-theme') !== theme) {
+      await page.getByRole('button', { name: 'User profile and menu' }).click();
+      await page.getByRole('menuitem', { name: theme === 'light' ? 'Light mode' : 'Dark mode', exact: true }).click();
+    }
+    // Verify the resulting theme attribute instead of checking the old standalone toggle button.
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    // Viewport pills now use plain 'Desktop'/'Tablet'/'Mobile' labels (no units suffix).
+    await expect(page.getByRole('button', { name: 'Desktop', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Tablet', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Tablet', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Desktop', exact: true }).click();
     const styles = await page.evaluate(() => {
       const luminance = (color: string) => color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => { const c = value / 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; }).reduce((sum, value, i) => sum + value * [.2126, .7152, .0722][i], 0);
       const ratio = (a: string, b: string) => { const x = luminance(a); const y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
-      const targets = ['.studio-message-actions button', '.viewport-pill-btn.active', '.studio-theme-toggle'];
+      // '.studio-theme-toggle' was removed from workspace; only check message actions + active viewport pill.
+      const targets = ['.studio-message-actions button', '.viewport-pill-btn.active'];
       const contrasts = targets.flatMap(selector => [...document.querySelectorAll(selector)].map(element => { const style = getComputedStyle(element); return { selector, color: style.color, background: style.backgroundColor, ratio: ratio(style.color, style.backgroundColor) }; }));
-      const primary = getComputedStyle(document.querySelector('.studio-publish-button')!);
-      const secondary = getComputedStyle(document.querySelector('.studio-share-button')!);
+      // Publish button is now '.bolt-publish-btn'; compare with the settings (project-actions) trigger.
+      const primary = getComputedStyle(document.querySelector('.bolt-publish-btn')!);
+      const secondary = getComputedStyle(document.querySelector('.studio-project-actions')!);
       const device = document.querySelector('.viewport-pill-btn svg')!.getBoundingClientRect();
       return { contrasts, primary: primary.backgroundColor, secondary: secondary.backgroundColor, deviceWidth: device.width, overflow: document.documentElement.scrollWidth > innerWidth };
     });
@@ -279,14 +286,14 @@ test('drafting during generation is preserved and composing Enter does not send 
 test('device zoom fits the available canvas and resets when the device changes', async ({ page }) => {
   await setupLifecycle(page);
   await page.setViewportSize({ width: 1024, height: 700 });
-  await page.getByRole('button', { name: 'Mobile view (375px)' }).click();
+  await page.getByRole('button', { name: 'Mobile', exact: true }).click();
   const zoom = page.getByRole('combobox', { name: 'Preview zoom' });
   await expect(zoom).toHaveValue('fit');
   await expect.poll(async () => page.locator('.preview-canvas-scroll').evaluate(element => element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight)).toBe(true);
   expect(await page.locator('.preview-device-mobile iframe').evaluate(element => element.clientWidth)).toBe(375);
   await zoom.selectOption('1');
   await expect(page.locator('.preview-device-mobile')).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
-  await page.getByRole('button', { name: 'Tablet view (768px)' }).click();
+  await page.getByRole('button', { name: 'Tablet', exact: true }).click();
   await expect(zoom).toHaveValue('fit');
   expect(await page.locator('.preview-device-tablet iframe').evaluate(element => element.clientWidth)).toBe(768);
   await expect.poll(async () => page.locator('.preview-canvas-scroll').evaluate(element => element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight)).toBe(true);
@@ -305,17 +312,28 @@ test('share feedback is visible and clipboard failure provides a copyable link',
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => {} } });
   });
-  const share = page.getByRole('button', { name: 'Copy project link' });
+  // 'Copy project link' moved from a standalone button to a menuitem inside
+  // the 'Project actions' ActionMenu (TopNav redesign).
+  const openShareMenu = async () => {
+    await page.getByRole('button', { name: 'Project actions', exact: true }).click();
+  };
+  await openShareMenu();
+  const share = page.getByRole('menuitem', { name: 'Copy project link', exact: true });
   await share.click();
-  await expect(share).toHaveText('Copied!');
+  // After clicking, the label changes to 'Link copied!' transiently; re-open to check.
+  await openShareMenu();
+  await expect(page.getByRole('menuitem', { name: 'Link copied!', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('Denied'); } } });
     document.execCommand = () => false;
   });
-  await share.click();
+  await openShareMenu();
+  await page.getByRole('menuitem', { name: /Copy project link|Link copied!/ }).click();
   await expect(page.getByRole('dialog')).toContainText('?project=lifecycle-alpha');
   await page.getByRole('button', { name: 'Done', exact: true }).click();
-  await expect(share).toBeFocused();
+  // After dialog close, focus returns to the Project actions trigger (the ActionMenu button).
+  await expect(page.getByRole('button', { name: 'Project actions', exact: true })).toBeFocused();
 });
 
 test('returning from a small screen preserves the chosen desktop chat width', async ({ page }) => {

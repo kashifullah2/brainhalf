@@ -4,15 +4,8 @@ import './PreviewCanvas.css';
 
 type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 
-export default function PreviewCanvas({ mode, onModeChange, onRefresh, onOpen, ready, openReady = ready, onInspect, inspectActive = false, children }: {
+export default function PreviewCanvas({ mode, children }: {
   mode: ViewportMode;
-  onModeChange: (mode: ViewportMode) => void;
-  onRefresh: () => void;
-  onOpen: () => void;
-  ready: boolean;
-  openReady?: boolean;
-  onInspect?: () => void;
-  inspectActive?: boolean;
   children: ReactNode;
 }) {
   const canvas = useRef<HTMLDivElement>(null);

@@ -6,7 +6,6 @@ import LoginScreen from './components/LoginScreen';
 import { ErrorBoundary, SectionErrorBoundary } from './components/ErrorBoundary';
 import { WORKSPACE_EXIT_TIMEOUT, WORKSPACE_EXIT_ATTEMPTS } from './lib/timeouts';
 
-const TopNav = lazy(() => import('./components/TopNav'));
 const ChatPanel = lazy(() => import('./components/ChatPanel'));
 const Workspace = lazy(() => import('./components/Workspace'));
 const DashboardPage = lazy(() => import('./components/DashboardPage'));

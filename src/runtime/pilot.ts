@@ -122,10 +122,15 @@ export class PilotCoordinator extends DurableObject<RuntimeEnv> {
   async listOwnerProjects(ownerId: string): Promise<Array<{ alias: string; projectId: string }>> {
     const prefix = `owner-project:${encodeURIComponent(ownerId)}:`;
     const rows = await this.ctx.storage.list({ prefix });
+    // Batch all scope reads into one storage.get() call instead of N sequential
+    // round-trips (DO storage.get supports an array of keys).
+    const aliases = [...rows.keys()].map(key => key.slice(prefix.length));
+    if (!aliases.length) return [];
+    const scopeKeys = aliases.map(alias => `project:${alias}`);
+    const scopeMap = await this.ctx.storage.get<ProjectScope>(scopeKeys);
     const hosted: Array<{ alias: string; projectId: string }> = [];
-    for (const [key] of rows) {
-      const alias = key.slice(prefix.length);
-      const scope = await this.ctx.storage.get<ProjectScope>(`project:${alias}`);
+    for (const alias of aliases) {
+      const scope = scopeMap.get(`project:${alias}`);
       if (scope?.ownerId === ownerId) hosted.push({ alias, projectId: scope.projectId });
     }
     return hosted.sort((a, b) => a.projectId.localeCompare(b.projectId));
