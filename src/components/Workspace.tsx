@@ -247,6 +247,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const { isCurrent, getProjectFiles, getProjectFilesAsync, saveProjectFiles, saveProjectFilesDebounced, flushProjectFileWrites, forkProject, setActiveProjectId } = useMemo(bindProjectStore, []);
   const [files, setFiles] = useState<FileMap>(() => migrateStarter(getProjectFiles(activeProjectId) || baselineFiles()));
   const runtime = useProjectRuntime(activeProjectId, 'development', true);
+  const prodRuntime = useProjectRuntime(activeProjectId, 'production', true);
+  const prodLiveUrl: string = prodRuntime.status?.productionUrl || '';
   // Header "Publish" opens the console's Publish section (the single publish
   // UI) instead of a duplicate dialog. The nonce re-triggers the navigation
   // even when the section value repeats.
@@ -1465,6 +1467,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         onResetWorkspace={() => setShowResetConfirm(true)}
         inspectActive={inspectModeActive}
         onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined}
+        liveUrl={prodLiveUrl || undefined}
         publishPopoverSlot={publishOpen && hasGeneratedApp ? (
           <PublishPopover
             projectId={activeProjectId}

@@ -38,6 +38,14 @@
 .bolt-publish-btn { display: flex; align-items: center; gap: 5px; padding: 5px 12px; border: 1px solid var(--border-medium); border-radius: 7px; background: var(--bg-surface); color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: not-allowed; opacity: 0.8; white-space: nowrap; }
 .bolt-publish-btn.ready { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--text-on-accent); cursor: pointer; opacity: 1; box-shadow: 0 1px 6px var(--focus-ring); transition: box-shadow 120ms; }
 .bolt-publish-btn.ready:hover { box-shadow: 0 3px 10px var(--focus-ring); }
+/* Live URL badge — shown in topbar when app is published */
+.live-url-badge { display: flex; align-items: center; gap: 1px; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.25); border-radius: 7px; overflow: hidden; max-width: 220px; }
+.live-url-badge-link { display: flex; align-items: center; gap: 5px; padding: 5px 8px 5px 9px; color: #22c55e; font-size: 11.5px; font-weight: 500; text-decoration: none; white-space: nowrap; overflow: hidden; min-width: 0; transition: background 0.12s; }
+.live-url-badge-link:hover { background: rgba(34,197,94,0.12); }
+.live-url-badge-link span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.live-url-badge-arrow { flex-shrink: 0; opacity: 0.7; }
+.live-url-badge-copy { display: flex; align-items: center; justify-content: center; width: 28px; height: 100%; border: none; border-left: 1px solid rgba(34,197,94,0.2); background: transparent; color: #22c55e; cursor: pointer; padding: 0; transition: background 0.12s; flex-shrink: 0; }
+.live-url-badge-copy:hover { background: rgba(34,197,94,0.12); }
 
 /* Workspace: compact account trigger */
 .top-nav-workspace .studio-account-trigger { min-height: 30px !important; padding: 3px 7px !important; background: transparent !important; border-color: var(--border-subtle) !important; }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useId, useMemo } from 'react';
-import { Check, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, Tablet, Smartphone, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Download, GitBranch, HelpCircle, MousePointer2 } from 'lucide-react';
+import { Check, Code2, Plus, LogOut, ChevronDown, Home, LayoutDashboard, LayoutGrid, Pencil, Moon, Sun, Monitor, Tablet, Smartphone, RotateCcw, ArrowUpRight, Share2, Cloud, Settings, Terminal, Download, GitBranch, HelpCircle, MousePointer2, Globe2, Copy } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { getProjects, updateProjectName } from '../lib/project-store';
 import { setTheme, useTheme } from '../lib/theme';
@@ -44,7 +44,43 @@ interface TopNavProps {
   hasFiles?: boolean;
   inspectActive?: boolean;
   onInspect?: () => void;
+  liveUrl?: string;
   publishPopoverSlot?: React.ReactNode;
+}
+
+/** Compact badge shown in the topbar when the app has a live production URL. */
+function LiveUrlBadge({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const display = url.replace(/^https?:\/\//, '');
+  const short = display.length > 30 ? display.slice(0, 27) + '…' : display;
+  return (
+    <div className="live-url-badge" title={url}>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="live-url-badge-link"
+        aria-label={`Open live app: ${display}`}
+      >
+        <Globe2 size={12} strokeWidth={1.75} />
+        <span>{short}</span>
+        <ArrowUpRight size={11} strokeWidth={1.75} className="live-url-badge-arrow" />
+      </a>
+      <button
+        type="button"
+        className="live-url-badge-copy"
+        aria-label="Copy live app URL"
+        title="Copy live URL"
+        onClick={async e => {
+          e.stopPropagation();
+          try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+          catch { /* clipboard unavailable */ }
+        }}
+      >
+        {copied ? <Check size={11} strokeWidth={2} /> : <Copy size={11} strokeWidth={1.75} />}
+      </button>
+    </div>
+  );
 }
 
 const TopNav: React.FC<TopNavProps> = ({
@@ -78,6 +114,7 @@ const TopNav: React.FC<TopNavProps> = ({
   hasFiles = false,
   inspectActive = false,
   onInspect,
+  liveUrl,
   publishPopoverSlot,
 }) => {
   const isWorkspaceMode = !!onSelectTab;
@@ -273,6 +310,11 @@ const TopNav: React.FC<TopNavProps> = ({
               <Settings size={15} strokeWidth={1.75} />
             </ActionMenu>
 
+            {/* Live URL badge — shown when the app is published */}
+            {liveUrl && (
+              <LiveUrlBadge url={liveUrl} />
+            )}
+
             {/* Publish — primary CTA, always visible */}
             <div style={{ position: 'relative' }}>
               <button type="button"
@@ -285,7 +327,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 aria-label={publishBlockedReason || (hasGeneratedApp ? 'Publish app' : 'Generate an app first')}
               >
                 <Cloud size={13} strokeWidth={2} />
-                <span>Publish</span>
+                <span>{liveUrl ? 'Update' : 'Publish'}</span>
               </button>
               {publishPopoverSlot}
             </div>
