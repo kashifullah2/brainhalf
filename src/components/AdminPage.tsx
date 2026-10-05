@@ -242,7 +242,7 @@ export default function AdminPage() {
     } catch { /* non-fatal */ }
   };
 
-  useEffect(() => { if (state === 'ready') void loadIntegratedSetting(); }, [state]);
+  useEffect(() => { if (state === 'ready') void loadIntegratedSetting(); }, [state, tab]);
 
   const toggleIntegrated = async () => {
     setIntegratedToggling(true);
@@ -744,6 +744,26 @@ export default function AdminPage() {
                 aria-label="Dismiss notice"
               >
                 <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {state === 'ready' && !integratedEnabled && (
+            <div className="admin-notice admin-notice-warning" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+              <div>
+                <strong style={{ display: 'block', fontSize: '14px', marginBottom: '3px', color: '#f59e0b' }}>⚠️ Built-in models are currently turned off platform-wide</strong>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary, #94a3b8)' }}>
+                  Generations in Agent Studio using integrated models are currently blocked. Turn them on to allow users to build apps.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="admin-btn admin-btn-primary"
+                onClick={toggleIntegrated}
+                disabled={integratedToggling}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {integratedToggling ? 'Turning on…' : 'Turn on integrated models'}
               </button>
             </div>
           )}

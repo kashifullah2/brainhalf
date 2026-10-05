@@ -1236,7 +1236,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   ? `⏳ ${errMsg}\n\nWait a moment, then send your message again.`
                   : isProviderBusy
                     ? `⏳ ${errMsg}\n\nThis is usually temporary — wait a few seconds and send your message again.`
-                    : `⚠️ ${errMsg}`;
+                    : errMsg.includes('turned off by the administrator')
+                      ? `⚠️ ${errMsg}\n\nTo re-enable built-in models, go to the [Admin Dashboard](/admin) → Models tab and switch **All integrated models** to enabled.`
+                      : `⚠️ ${errMsg}`;
             const current = [...messagesRef.current];
             if (wasGenerating && current[current.length - 1]?.role === 'ai') {
               const partialContent = aiMessageRef.current.trim();
@@ -2715,15 +2717,29 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
               {!integratedModelsOn && (
                 <div style={{
-                  padding: '6px 8px',
+                  padding: '7px 9px',
                   borderRadius: '6px',
                   background: 'rgba(245, 158, 11, 0.12)',
                   border: '1px solid rgba(245, 158, 11, 0.25)',
                   color: 'var(--color-warning, #f59e0b)',
                   fontSize: '11px',
                   lineHeight: 1.4,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
                 }}>
-                  Built-in models are disabled by the administrator.
+                  <span>Built-in models are disabled by the administrator.</span>
+                  <a
+                    href="/admin"
+                    style={{
+                      color: 'var(--studio-blue, #5873df)',
+                      textDecoration: 'underline',
+                      fontWeight: 600,
+                      fontSize: '11px',
+                    }}
+                  >
+                    Open Admin Settings to turn on →
+                  </a>
                 </div>
               )}
 
