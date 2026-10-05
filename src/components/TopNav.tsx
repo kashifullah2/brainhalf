@@ -193,7 +193,7 @@ const TopNav: React.FC<TopNavProps> = ({
             {!isWorkspaceMode && <span>BrainHalf</span>}
           </button>
         )}
-        {isWorkspaceMode && <span className="studio-nav-divider" aria-hidden="true">/</span>}
+        {isWorkspaceMode && <span className="studio-nav-divider" aria-hidden="true" />}
         <div className="top-nav-project-tab">
           {isEditing ? (
             <div className="studio-project-rename">
@@ -248,33 +248,37 @@ const TopNav: React.FC<TopNavProps> = ({
             </button>
           </div>
 
-          {/* Refresh + open — only when Preview is active */}
+          {/* Unified preview tools pill — only when Preview is active */}
           {activeTab === 'preview' && (
             <div className="bolt-preview-icon-group">
-              {/* Viewport size — moved to top bar for one-click access */}
+              {/* Viewport size buttons — inline in the pill */}
               {onViewportMode && previewReady && (
-                <div className="viewport-segmented-control topbar-viewport" role="group" aria-label="Preview screen size">
+                <>
                   {([
                     ['desktop', 'Desktop', Monitor],
                     ['tablet', 'Tablet', Tablet],
                     ['mobile', 'Mobile', Smartphone],
                   ] as const).map(([value, label, Icon]) => (
                     <button type="button" key={value}
-                      className={`viewport-pill-btn${viewportMode === value ? ' active' : ''}`}
+                      className={`bolt-icon-btn viewport-pill-btn${viewportMode === value ? ' active' : ''}`}
                       aria-label={label} title={label} aria-pressed={viewportMode === value}
                       onClick={() => onViewportMode(value)}>
                       <Icon size={14} strokeWidth={1.7} />
                     </button>
                   ))}
-                </div>
+                  <span className="bolt-tools-sep" aria-hidden="true" />
+                </>
               )}
               {onInspect && (
-                <button type="button" className={`bolt-icon-btn bolt-icon-btn--labeled${inspectActive ? ' active' : ''}`}
-                  title={inspectActive ? 'Cancel — click outside to deselect' : 'Click any element in the preview to edit it'}
-                  aria-label={inspectActive ? 'Cancel element selection' : 'Select an element to edit'} disabled={!previewReady} onClick={onInspect}>
-                  <MousePointer2 size={13} />
-                  <span>{inspectActive ? 'Cancel' : 'Select'}</span>
-                </button>
+                <>
+                  <button type="button" className={`bolt-icon-btn bolt-icon-btn--labeled${inspectActive ? ' active' : ''}`}
+                    title={inspectActive ? 'Cancel — click outside to deselect' : 'Click any element in the preview to edit it'}
+                    aria-label={inspectActive ? 'Cancel element selection' : 'Select an element to edit'} disabled={!previewReady} onClick={onInspect}>
+                    <MousePointer2 size={13} />
+                    <span>{inspectActive ? 'Cancel' : 'Select'}</span>
+                  </button>
+                  <span className="bolt-tools-sep" aria-hidden="true" />
+                </>
               )}
               <button type="button" className="bolt-icon-btn" title="Refresh preview"
                 aria-label="Refresh preview" disabled={!previewReady} onClick={onRefreshPreview}>
