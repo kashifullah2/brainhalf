@@ -1,5 +1,6 @@
 import { useAutomaticBackend } from '../lib/automatic-backend';
 import { useAutomaticBuildFix } from '../lib/automatic-build-fix';
+import { useAutomaticPreviewFix } from '../lib/automatic-preview-fix';
 import { useTheme } from '../lib/theme';
 import { authFetch } from '../lib/auth-client';
 import { apiOrigin } from '../lib/api-origin';
@@ -29,12 +30,12 @@ import { useProjectRuntime } from '../lib/project-runtime-client';
 import PreviewCanvas from './PreviewCanvas';
 import LivePreviewFrame from './LivePreviewFrame';
 import { DesignPreviewStrip } from './DesignPreviewStrip';
-import FileExplorer from './FileExplorer';
 import ConfirmModal from './ConfirmModal';
 import BuildProgress, { type FileProgress } from './BuildProgress';
 import GenerationProgress from './GenerationProgress';
-import ProjectConsole from './ProjectConsole';
-import PublishPopover from './PublishPopover';
+const FileExplorer = lazy(() => import('./FileExplorer'));
+const ProjectConsole = lazy(() => import('./ProjectConsole'));
+const PublishPopover = lazy(() => import('./PublishPopover'));
 import TopNav from './TopNav';
 import { useWebContainer } from '../lib/use-webcontainer';
 import { webContainerSupported } from '../lib/webcontainer';
@@ -544,6 +545,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     }
   }, [activeProjectId]);
   const [previewFixRequest, setPreviewFixRequest] = useState<{ projectId: string; error: string; file: string; layer: string } | null>(null);
+  useAutomaticPreviewFix(activeProjectId, previewIssue, status === 'Generating', previewLoadState, () => setAutoFixing(true));
   const [inspectModeActive, setInspectModeActive] = useState(false);
   useEffect(() => setInspectModeActive(false), [activeProjectId]);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -680,6 +682,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // Debounced during generation to avoid spamming the preview with every
   // streaming chunk — only the final complete files reach the iframe.
   const previewSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamFlushRef = useRef<number | null>(null);
   useEffect(() => {
     filesRef.current = files;
     const syncToPreview = () => {
@@ -711,6 +714,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
       if (previewSyncTimerRef.current) {
         clearTimeout(previewSyncTimerRef.current);
         previewSyncTimerRef.current = null;
+      }
+      if (streamFlushRef.current) {
+        cancelAnimationFrame(streamFlushRef.current);
+        streamFlushRef.current = null;
       }
     };
   }, [activeProjectId, files]);
@@ -1013,8 +1020,16 @@ const Workspace: React.FC<WorkspaceProps> = ({
         addConsoleLog(`[transpiler] Compiled ${cleanPath}`);
 
       } else {
+        // Streaming chunks arrive many times per second per file. Update the ref
+        // immediately (so the next chunk reads fresh state) but coalesce React
+        // renders to one per animation frame to avoid layout thrashing.
         filesRef.current = next;
-        setFiles(next);
+        if (!streamFlushRef.current) {
+          streamFlushRef.current = requestAnimationFrame(() => {
+            streamFlushRef.current = null;
+            setFiles({ ...filesRef.current });
+          });
+        }
       }
     };
 
@@ -1395,18 +1410,23 @@ const Workspace: React.FC<WorkspaceProps> = ({
         <div className="studio-preview-empty has-error premium-error-overlay" role="alert" aria-live="polite">
           <div className="premium-error-icon-wrapper" aria-hidden="true">
             <div className="premium-error-icon-bg"></div>
-            <AlertCircle size={36} strokeWidth={1.5} />
+            {autoFixing ? <Loader2 size={36} strokeWidth={1.5} className="lucide-spin" /> : <AlertCircle size={36} strokeWidth={1.5} />}
           </div>
-          <span className="studio-eyebrow-label premium-eyebrow">PREVIEW ERROR</span>
-          <h2 className="premium-error-title">Your preview ran into a problem.</h2>
-          <p className="premium-error-desc">{previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.'}</p>
+          <span className="studio-eyebrow-label premium-eyebrow">{autoFixing ? 'AUTO-FIXING' : 'PREVIEW ERROR'}</span>
+          <h2 className="premium-error-title">{autoFixing ? 'Fixing your app automatically…' : 'Your preview ran into a problem.'}</h2>
+          <p className="premium-error-desc">{autoFixing ? 'The builder detected the error and is working on a fix. This usually takes a few seconds.' : (previewActionIssue?.plainExplanation || 'The preview could not be shown yet. The builder can try to fix this.')}</p>
           <div className="premium-error-actions">
-            {previewActionIssue
+            {autoFixing ? null : previewActionIssue
               ? <button type="button" className="studio-empty-action premium-action-btn" onClick={() => appEvents.emit('auto-fix-error', { ...previewActionIssue, projectId: activeProjectId })}><RotateCcw size={16} />Ask the builder to fix</button>
               : <button type="button" className="studio-empty-action premium-action-btn secondary" onClick={openChat}><MessageSquare size={16} />Open chat</button>
             }
+            {!autoFixing && undoCheckpoint && (
+              <button type="button" className="studio-empty-action premium-action-btn secondary" disabled={undoLoading} onClick={quickUndo}>
+                {undoLoading ? <><Loader2 size={16} className="lucide-spin" />Reverting…</> : <><RotateCcw size={16} />Revert to working version</>}
+              </button>
+            )}
           </div>
-          {previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{sanitizeErrorForDisplay(previewActionIssue.error)}</pre></details>}
+          {!autoFixing && previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{sanitizeErrorForDisplay(previewActionIssue.error)}</pre></details>}
         </div>
       )
     : null;
@@ -1483,6 +1503,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         onInspect={!backend.liveUrl && hasGeneratedApp ? handleInspectToggle : undefined}
         liveUrl={prodLiveUrl || undefined}
         publishPopoverSlot={publishOpen && hasGeneratedApp ? (
+          <Suspense fallback={null}>
           <PublishPopover
             projectId={activeProjectId}
             files={files}
@@ -1498,6 +1519,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               selectTab('console');
             }}
           />
+          </Suspense>
         ) : undefined}
       />
 
@@ -1505,7 +1527,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       <div style={{ flex: 1, position: 'relative', display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {splitView ? (
           <div style={{ display: 'flex', width: '100%', height: '100%', minWidth: 0 }}>
-            {showFileExplorer && hasGeneratedApp && <FileExplorer
+            {showFileExplorer && hasGeneratedApp && <Suspense fallback={null}><FileExplorer
               files={files}
               activeFile={activeFile}
               onSelectFile={setActiveFile}
@@ -1514,7 +1536,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               onRenameFile={!isReadOnlyProject ? handleRenameFile : undefined}
               onDeleteFile={!isReadOnlyProject ? handleDeleteFile : undefined}
               readOnly={isReadOnlyProject}
-            />}
+            /></Suspense>}
             <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden', borderRight: '1px solid var(--border-subtle)' }}>
               <div className="studio-file-tabs" style={{
                 minHeight: '36px', background: 'var(--bg-surface)',
@@ -1661,14 +1683,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
                 </PreviewCanvas>
-                {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+                {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status">{autoFixing ? <Loader2 size={15} className="lucide-spin" /> : <AlertCircle size={15} />}<span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{autoFixing ? 'Auto-fixing…' : previewIssue.plainExplanation}</span>{!autoFixing && <button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Fix</button>}{!autoFixing && undoCheckpoint && <button disabled={undoLoading} onClick={quickUndo}>{undoLoading ? 'Reverting…' : 'Revert'}</button>}</div>}
                 {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it's ready.</span></div>}
               </div>
             </div>
           </div>
         ) : isEditorTab ? (
           <div style={{ display: 'flex', width: '100%', height: '100%', minWidth: 0 }}>
-            {showFileExplorer && hasGeneratedApp && <FileExplorer
+            {showFileExplorer && hasGeneratedApp && <Suspense fallback={null}><FileExplorer
               files={files}
               activeFile={activeFile}
               onSelectFile={setActiveFile}
@@ -1677,7 +1699,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               onRenameFile={!isReadOnlyProject ? handleRenameFile : undefined}
               onDeleteFile={!isReadOnlyProject ? handleDeleteFile : undefined}
               readOnly={isReadOnlyProject}
-            />}
+            /></Suspense>}
 
             <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-code-editor)', overflow: 'hidden' }}>
               {/* File tabs */}
@@ -1891,7 +1913,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             </div>
           </div>
         ) : resolvedActiveTab === 'console' ? (
-          <ProjectConsole key={activeProjectId} projectId={activeProjectId} files={files} onClose={() => selectTab('preview')} sectionRequest={consoleSectionRequest} />
+          <Suspense fallback={<div style={{ display: 'grid', placeItems: 'center', width: '100%', height: '100%', color: 'var(--text-muted)' }}>Loading console…</div>}><ProjectConsole key={activeProjectId} projectId={activeProjectId} files={files} onClose={() => selectTab('preview')} sectionRequest={consoleSectionRequest} /></Suspense>
         ) : resolvedActiveTab === 'logs' ? (
           <div className="activity-panel">
             <div className="activity-panel-header">
@@ -2063,7 +2085,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
               </PreviewCanvas>
-              {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status"><AlertCircle size={15} /><span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{previewIssue.plainExplanation}</span><button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Ask the builder to fix</button></div>}
+              {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status">{autoFixing ? <Loader2 size={15} className="lucide-spin" /> : <AlertCircle size={15} />}<span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{autoFixing ? 'Auto-fixing…' : previewIssue.plainExplanation}</span>{!autoFixing && <button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Fix</button>}{!autoFixing && undoCheckpoint && <button disabled={undoLoading} onClick={quickUndo}>{undoLoading ? 'Reverting…' : 'Revert'}</button>}</div>}
               {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it’s ready.</span></div>}
 
             </div>
