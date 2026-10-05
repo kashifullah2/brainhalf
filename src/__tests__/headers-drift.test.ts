@@ -85,7 +85,6 @@ describe('deploy config drift (public/_headers vs worker)', () => {
       'X-Content-Type-Options',
       'Referrer-Policy',
       'Cross-Origin-Resource-Policy',
-      'Cross-Origin-Embedder-Policy',
       'Cross-Origin-Opener-Policy',
       'Permissions-Policy',
     ]) {

@@ -1036,6 +1036,9 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     if (environment === 'production' && !await this.ctx.storage.get('active:production')) throw new RuntimeError('No app release is available.', 404);
     await this.consumeUsage('requests');
     const url = new URL(request.url);
+    if (url.pathname === '/__brainhalf/open' && request.method === 'HEAD' && environment === 'development') {
+      return new Response(null, { status: 200, headers: { 'Cross-Origin-Resource-Policy': 'cross-origin', 'Access-Control-Allow-Origin': '*' } });
+    }
     if (url.pathname === '/__brainhalf/open' && request.method === 'GET' && environment === 'development') {
       const ticket = await this.session(url.searchParams.get('ticket') || undefined, 'ticket', environment, true);
       const embed = url.searchParams.get('embed') === '1';
@@ -1101,7 +1104,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     }
     const previewSessionToken = cookie(request, '__Host-bh_preview') || url.searchParams.get('bh_preview');
     let hasPreviewSession = Boolean(previewSessionToken && await this.session(previewSessionToken, 'preview', environment));
-    if (!hasPreviewSession && url.searchParams.get('ticket') && environment === 'development') {
+    if (!hasPreviewSession && url.searchParams.get('ticket') && environment === 'development' && request.method !== 'HEAD') {
       const ticketSession = await this.session(url.searchParams.get('ticket') || undefined, 'ticket', environment, true);
       if (ticketSession) {
         hasPreviewSession = true;

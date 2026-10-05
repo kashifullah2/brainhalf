@@ -266,7 +266,6 @@ export function shellSecurityHeaders(): Record<string, string> {
     'X-Frame-Options': 'deny',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
-    'Cross-Origin-Embedder-Policy': 'credentialless',
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     // The shell is an authenticated app; never let a shared cache hold it.
