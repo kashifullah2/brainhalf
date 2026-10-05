@@ -59,24 +59,27 @@ const CF_MODELS: AllowedModel[] = [
   { name: DEFAULT_MODEL_ID, provider: 'cloudflare', id: DEFAULT_MODEL_ID, maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
-  // Capped at 32k: model truncates JSX mid-token at larger ceilings, producing invalid output.
   { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: 32768 },
-  // Official Workers types identify this variant as GLM 5.3 Flash.
+  { name: '@cf/meta/llama-4-scout-17b-16e-instruct', provider: 'cloudflare', id: '@cf/meta/llama-4-scout-17b-16e-instruct', maxTokens: CF_DEFAULT_MAX },
+  { name: '@cf/meta/llama-4-maverick-17b-128e-instruct', provider: 'cloudflare', id: '@cf/meta/llama-4-maverick-17b-128e-instruct', maxTokens: CF_DEFAULT_MAX },
+  { name: '@cf/google/gemma-3-27b-it', provider: 'cloudflare', id: '@cf/google/gemma-3-27b-it', maxTokens: 32768 },
+  { name: '@cf/mistralai/mistral-small-3.1-24b-instruct', provider: 'cloudflare', id: '@cf/mistralai/mistral-small-3.1-24b-instruct', maxTokens: 32768 },
+  { name: '@cf/qwen/qwen2.5-coder-32b-instruct', provider: 'cloudflare', id: '@cf/qwen/qwen2.5-coder-32b-instruct', maxTokens: 32768 },
+  { name: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', maxTokens: CF_DEFAULT_MAX },
   // Disabled: times out on all generation levels; removed from picker until stable.
   { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: 8192, clientSelectable: false },
 ];
 
 const ANTHROPIC_MODELS: AllowedModel[] = [
-  // Same client-visible identity as the Bedrock entry below. Not shown in the
-  // picker: the agent selects this transport only when ANTHROPIC_API_KEY is
-  // configured and no Bedrock credential is available (see agent.ts).
   { name: 'claude-sonnet-6', provider: 'anthropic', id: 'claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-opus-6', provider: 'anthropic', id: 'claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
 ];
 
 const BEDROCK_MODELS: AllowedModel[] = [
-  // Preserve this historical client key for saved sessions; the UI displays the actual Sonnet 4.6 identity.
   { name: 'claude-sonnet-6', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX },
+  { name: 'claude-opus-6', provider: 'aws', id: 'us.anthropic.claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX },
   { name: 'kimi-k3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX },
+  { name: 'minimax-m2.5', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX },
 ];
 
 const ATRIA_MODELS: AllowedModel[] = [
@@ -166,5 +169,12 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, label: str
 
 /** Models whose image inputs are verified against their provider interface. */
 export function acceptsImageInput(model: string): boolean {
-  return ['@cf/moonshotai/kimi-k2.7-code', 'claude-sonnet-6'].includes(model);
+  return [
+    '@cf/moonshotai/kimi-k2.7-code',
+    '@cf/meta/llama-4-scout-17b-16e-instruct',
+    '@cf/meta/llama-4-maverick-17b-128e-instruct',
+    '@cf/google/gemma-3-27b-it',
+    'claude-sonnet-6',
+    'claude-opus-6',
+  ].includes(model);
 }

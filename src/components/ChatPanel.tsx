@@ -128,12 +128,20 @@ export function resolveAvailableModels(
  */
 const MODEL_DISPLAY: Record<string, Omit<ModelDef, 'id' | 'provider'>> = {
   [DEFAULT_MODEL_ID]: { name: 'DeepSeek V4 Pro', category: 'recommended', badge: 'Cloudflare' },
-  '@cf/openai/gpt-oss-120b': { name: 'GPT-OSS 120B (High-Capacity)', category: 'reasoning', badge: 'Heavyweight' },
-  '@cf/moonshotai/kimi-k2.7-code': { name: 'Kimi K2.7 Code (200k Context)', category: 'coding', badge: '200k' },
-  '@cf/qwen/qwen3.8-27b': { name: 'Qwen 3.8 27B', category: 'coding', badge: 'Qwen 3.8' },
+  '@cf/openai/gpt-oss-120b': { name: 'GPT-OSS 120B', category: 'reasoning', badge: 'Heavyweight' },
+  '@cf/moonshotai/kimi-k2.7-code': { name: 'Kimi K2.7 Code', category: 'coding', badge: '200k' },
+  '@cf/qwen/qwen3.8-27b': { name: 'Qwen 3.8 27B', category: 'fast', badge: 'Fast' },
+  '@cf/meta/llama-4-scout-17b-16e-instruct': { name: 'Llama 4 Scout', category: 'coding', badge: 'Meta' },
+  '@cf/meta/llama-4-maverick-17b-128e-instruct': { name: 'Llama 4 Maverick', category: 'reasoning', badge: 'Meta' },
+  '@cf/google/gemma-3-27b-it': { name: 'Gemma 3 27B', category: 'fast', badge: 'Google' },
+  '@cf/mistralai/mistral-small-3.1-24b-instruct': { name: 'Mistral Small 3.1', category: 'fast', badge: 'Mistral' },
+  '@cf/qwen/qwen2.5-coder-32b-instruct': { name: 'Qwen 2.5 Coder 32B', category: 'coding', badge: 'Coder' },
+  '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b': { name: 'DeepSeek R1 32B', category: 'reasoning', badge: 'Reasoning' },
   '@cf/zai-org/glm-5.3-flash': { name: 'GLM 5.3 Flash', category: 'coding', badge: 'Cloudflare' },
-  'claude-sonnet-6': { name: 'Claude Sonnet 4.6', category: 'coding', badge: 'Sonnet' },
-  'kimi-k3': { name: 'Kimi K3 v1 (1M Context)', category: 'reasoning', badge: '1M Context' },
+  'claude-sonnet-6': { name: 'Claude Sonnet 4.6', category: 'coding', badge: 'Anthropic' },
+  'claude-opus-6': { name: 'Claude Opus 4.6', category: 'reasoning', badge: 'Anthropic' },
+  'kimi-k3': { name: 'Kimi K3 v1', category: 'reasoning', badge: '1M Context' },
+  'minimax-m2.5': { name: 'MiniMax M2.5', category: 'coding', badge: 'MiniMax' },
   'Atria-Dawn-Preview': { name: 'Atria Dawn Preview', category: 'reasoning', badge: 'Atria ASI' },
 };
 
