@@ -869,3 +869,12 @@
   outline: 2px solid var(--accent-primary, #3659D9);
   outline-offset: 2px;
 }
+.recent-prompt-btn:hover {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-medium) !important;
+}
+.recent-prompt-btn:focus-visible {
+  outline: 2px solid var(--accent-primary, #3659D9);
+  outline-offset: 2px;
+}

@@ -345,6 +345,29 @@ function computeFollowUpSuggestions(files: Record<string, string>): string[] {
   return suggestions.slice(0, 3);
 }
 
+/**
+ * Pull the first user message from each recent project (excluding the current
+ * one) as quick-start suggestions for a fresh project. Reads from the
+ * in-memory/localStorage cache — fast enough for synchronous use.
+ */
+function getRecentPrompts(excludeProjectId: string, max = 3): string[] {
+  try {
+    const { getProjects, getProjectMessages } = bindProjectStore();
+    const results: string[] = [];
+    for (const project of getProjects()) {
+      if (project.id === excludeProjectId || results.length >= max) continue;
+      const msgs = getProjectMessages(project.id);
+      if (!msgs) continue;
+      const first = msgs.find((m: { role: string; content: unknown }) => m.role === 'user' && typeof m.content === 'string');
+      if (!first) continue;
+      const text = String(first.content).trim();
+      if (text.length < 12 || /^What kind of application/i.test(text)) continue;
+      results.push(text);
+    }
+    return results;
+  } catch { return []; }
+}
+
 interface ChatPanelProps {
   activeProjectId?: string;
   width?: number;
@@ -676,6 +699,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const generationModelIdRef = useRef<string | null>(null);
   const generationTouchedFilesRef = useRef(false);
   const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
+  // Recent prompts from other projects — computed once per project switch.
+  const recentPrompts = React.useMemo(() => getRecentPrompts(activeProjectId), [activeProjectId]);;
   // File map captured when a generation starts, so completion can show the
   // real per-file diff of what the builder changed.
   const generationBaseRef = useRef<Record<string, string> | null>(null);
@@ -2613,6 +2638,42 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 </button>
               ))}
             </div>
+
+            {/* Recent prompts from other projects — one-tap restart for returning users */}
+            {recentPrompts.length > 0 && (
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+                  From your past projects
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {recentPrompts.map((prompt, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setInput(prompt)}
+                      style={{
+                        font: 'inherit', fontSize: '12px', textAlign: 'left',
+                        color: 'var(--text-secondary)',
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: '8px',
+                        padding: '7px 11px',
+                        cursor: 'pointer',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        width: '100%',
+                        transition: 'background 0.12s, color 0.12s',
+                      }}
+                      className="recent-prompt-btn"
+                      title={prompt}
+                    >
+                      {prompt.length > 72 ? prompt.slice(0, 70) + '…' : prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
