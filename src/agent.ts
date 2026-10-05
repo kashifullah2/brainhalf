@@ -1616,7 +1616,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             isIncrementalEdit, projectMemory, modelHandoff,
           });
           generationStarted = true;
-          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode });
+          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode, isIncrementalEdit });
         }, GENERATION_LOCK_TIMEOUT_MS);
       } catch (genErr) {
         // runGeneration's finally releases when !completed. If we never reached
@@ -1706,7 +1706,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     epoch: number,
     plannerMode: boolean,
     resumeChain?: { parentJobId: string; resumeCount: number; initialFiles: string[] } | null,
-    modes?: { destructiveMode?: boolean; questionMode?: boolean; ambiguousMode?: boolean }
+    modes?: { destructiveMode?: boolean; questionMode?: boolean; ambiguousMode?: boolean; isIncrementalEdit?: boolean }
   ): Promise<void> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
@@ -1796,6 +1796,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     const budget = new AiBudget(this.env, this.connectionUserIds.get(connection.id) || '', abortController.signal);
     try {
       connection.send(JSON.stringify({ type: 'generation_notice', message: 'Preparing your app request…', stage: 'accepted', requestId: data.idempotencyKey }));
+      if (modes?.isIncrementalEdit) {
+        try { connection.send(JSON.stringify({ type: 'generation_mode', mode: 'incremental' })); } catch {}
+      }
       const maxReserveTokens = Math.min(controls.maxTokens * (maxSteps + 1), 65536);
       let rawHistory: Array<{ role: string; content: string }> = [];
       await Promise.all([
@@ -2036,7 +2039,19 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               write_file: tool({
                 description: 'Create a new file with complete contents. For an intentional whole-file rewrite, first read the complete existing file. Use edit_file for localized changes.',
                 inputSchema: z.object({ path: z.string(), content: z.string() }),
-                execute: async ({ path, content }: { path: string; content: string }) => saveToolFile(path, content),
+                execute: async ({ path, content }: { path: string; content: string }) => {
+                  if (modes?.isIncrementalEdit) {
+                    const cleanPath = normalizePath(path);
+                    const existingRow = this.runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`[0];
+                    if (existingRow && typeof existingRow.content === 'string') {
+                      const lines = existingRow.content.split('\n').length;
+                      if (lines > 200) {
+                        return { success: false, error: `This file has ${lines} lines. In incremental edit mode, use edit_file with targeted search/replace pairs instead of rewriting the entire file. Call read_file first, then edit_file.` };
+                      }
+                    }
+                  }
+                  return saveToolFile(path, content);
+                },
               }),
               edit_file: tool({
                 description: 'Apply small exact replacements to an inspected file. Each search must match exactly once. The entire edit is rejected on a stale read, ambiguous match or syntax error.',

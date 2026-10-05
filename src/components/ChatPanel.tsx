@@ -1293,6 +1293,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               resumableJobRef.current = null;
               setResumableJob(null);
             }
+          } else if (data.type === 'generation_mode') {
+            if (data.mode === 'incremental' || data.mode === 'full') {
+              appEvents.emit('generation-mode', { mode: data.mode });
+            }
           } else if (data.type === 'error') {
             if (writeInFlight) {
               writeInFlight = false;
@@ -2151,6 +2155,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       }
     };
     
+    const handleScreenshotFix = (payload: { projectId: string }) => {
+      if (payload.projectId !== activeProjectId) return;
+      setInput('Fix the visual issues shown in my screenshot');
+      setTimeout(() => {
+        fileInputRef.current?.click();
+        textareaRef.current?.focus();
+      }, 80);
+    };
     const unsubFix = appEvents.on('auto-fix-error', handleAutoFix);
     const unsubReply = appEvents.on('trigger-auto-reply', handleAutoReply);
     const unsubRepair = appEvents.on('repair-project-request', payload => {
@@ -2158,10 +2170,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       void handleSendMessage(payload.message);
       payload.onAccepted();
     });
+    const unsubScreenshot = appEvents.on('screenshot-fix-request', handleScreenshotFix);
     return () => {
       unsubFix();
       unsubReply();
       unsubRepair();
+      unsubScreenshot();
     };
   }, [handleSendMessage, activeProjectId]);
 

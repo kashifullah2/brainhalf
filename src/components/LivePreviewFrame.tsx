@@ -1,15 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, RefreshCw, ServerOff } from 'lucide-react';
 
 /**
- * The live (backend-served) app preview iframe.
- *
- * Full-stack app backends can refuse connections if the deploy pipeline failed
- * or the Worker crashed. The browser's "refused to connect" error page fires
- * onLoad just like a real app, so we cannot rely on onLoad alone to know if
- * the preview is working. We probe reachability with fetch (no-cors) before
- * showing the iframe — a refused connection throws TypeError even with no-cors,
- * while any running server returns an opaque response.
+ * Recycled live preview iframe — keeps the iframe DOM node alive across
+ * reloads to preserve WebSocket connections, service workers, and in-memory
+ * state when possible. On retry or URL change the iframe reloads in-place
+ * via location.replace() instead of being destroyed and recreated.
  */
 export default function LivePreviewFrame({ projectId, liveUrl }: { projectId: string; liveUrl: string }) {
   const [probeState, setProbeState] = useState<'checking' | 'reachable' | 'unreachable'>('checking');
@@ -21,8 +17,8 @@ export default function LivePreviewFrame({ projectId, liveUrl }: { projectId: st
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const failedRef = useRef(false);
+  const mountedUrlRef = useRef<string | null>(null);
 
-  // Probe before loading the iframe — connection refused throws even with no-cors
   useEffect(() => {
     let cancelled = false;
     setProbeState('checking');
@@ -41,8 +37,15 @@ export default function LivePreviewFrame({ projectId, liveUrl }: { projectId: st
     setFailed(false);
     setFailureMessage('');
     failedRef.current = false;
+    setSlow(false);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setSlow(true), 25000);
+    // Recycle: if the iframe is already mounted, reload in-place
+    if (mountedUrlRef.current && frameRef.current) {
+      try { frameRef.current.contentWindow?.location.replace(liveUrl); }
+      catch { frameRef.current.src = liveUrl; }
+    }
+    mountedUrlRef.current = liveUrl;
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frameRef.current?.contentWindow) return;
       if (!event.data || event.data.type !== 'preview-error') return;
@@ -55,18 +58,23 @@ export default function LivePreviewFrame({ projectId, liveUrl }: { projectId: st
     return () => { clearTimeout(timer.current); window.removeEventListener('message', onMessage); };
   }, [liveUrl, attempt, probeState]);
 
-  const retry = () => { setProbeState('checking'); setAttempt(v => v + 1); };
+  // Reset on project change
+  useEffect(() => { mountedUrlRef.current = null; }, [projectId]);
+
+  const retry = useCallback(() => { setProbeState('checking'); setAttempt(v => v + 1); }, []);
+
+  const showIframe = probeState === 'reachable' || mountedUrlRef.current;
 
   return (
     <div className="live-preview-frame">
-      {probeState === 'reachable' && (
+      {showIframe && (
         <iframe
-          key={`live-preview-${projectId}-${liveUrl}-${attempt}`}
           ref={frameRef}
           src={liveUrl}
           sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-modals allow-downloads"
           onLoad={() => { clearTimeout(timer.current); if (!failedRef.current) setLoaded(true); }}
           onError={() => { clearTimeout(timer.current); setFailed(true); }}
+          style={probeState !== 'reachable' ? { visibility: 'hidden', position: 'absolute' } : undefined}
           title="Live App Preview"
         />
       )}

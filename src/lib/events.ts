@@ -15,6 +15,7 @@ type AppEventMap = {
   'file-deleted': { path: string; projectId?: string };
   'file-generated': { path: string; content: string; isComplete?: boolean; projectId?: string };
   'files-refreshed': FileMap;
+  'generation-mode': { mode: 'full' | 'incremental' };
   'generation-status': GenerationStatusPayload;
   'stop-generation-request': { projectId: string };
   'repair-project-request': { projectId: string; message: string; onAccepted: () => void };
@@ -33,6 +34,7 @@ type AppEventMap = {
   'project-renamed': { id: string; name: string };
   'project-switched': { projectId: string };
   'insert-prompt-draft': { prompt: string } | undefined;
+  'screenshot-fix-request': { projectId: string };
   'request-export': { projectName?: string };
   'request-workspace-context': { requestId: string };
   'sync-files': { files: FileMap; replaceAll?: boolean };

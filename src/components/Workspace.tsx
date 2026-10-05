@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspens
 import {
   Code2, Columns2, Monitor, Loader2,
   Terminal, Copy, Check, FolderCode, Download,
-  WrapText, ListFilter,
+  WrapText, ListFilter, Camera,
   Server, Eye, Settings, RotateCcw,
   Share2, Cloud, GitBranch, HelpCircle, ArrowUpRight, PanelLeft, AlertCircle, MessageSquare
 } from 'lucide-react';
@@ -319,9 +319,23 @@ const Workspace: React.FC<WorkspaceProps> = ({
     setViewportMode(mode);
     try { localStorage.setItem(`bh_viewport_${activeProjectId}`, mode); } catch {}
   }, [activeProjectId]);
-  const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const [previewSessionReady, setPreviewSessionReady] = useState(false);
   useEffect(() => { setPreviewSessionReady(false); }, [activeProjectId]);
+  const edgeRefreshCounterRef = useRef(0);
+  const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
+  const reloadPreview = useCallback(() => {
+    edgeRefreshCounterRef.current++;
+    if (iframeRef.current) {
+      try {
+        const src = `/preview/${activeProjectId}/index.html`;
+        iframeRef.current.contentWindow?.location.replace(src);
+      } catch {
+        setEdgeRefreshCounter(c => c + 1);
+      }
+    } else {
+      setEdgeRefreshCounter(c => c + 1);
+    }
+  }, [activeProjectId]);
   const previewTargetOrigin = useMemo(() => previewMessageTargetOrigin(), []);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
@@ -544,6 +558,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       previewLoadTimerRef.current = null;
     }
   }, [activeProjectId]);
+  const [generationMode, setGenerationMode] = useState<'full' | 'incremental'>('full');
   const [previewFixRequest, setPreviewFixRequest] = useState<{ projectId: string; error: string; file: string; layer: string } | null>(null);
   useAutomaticPreviewFix(activeProjectId, previewIssue, status === 'Generating', previewLoadState, () => setAutoFixing(true));
   const [inspectModeActive, setInspectModeActive] = useState(false);
@@ -635,10 +650,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
     if (!prevHasGeneratedRef.current && hasGeneratedApp) {
       setStatus(current => (current === 'Generating' ? 'Connecting' : current));
       markPreviewState('loading');
-      setEdgeRefreshCounter(current => current + 1);
+      reloadPreview();
     }
     prevHasGeneratedRef.current = hasGeneratedApp;
-  }, [hasGeneratedApp, markPreviewState]);
+  }, [hasGeneratedApp, markPreviewState, reloadPreview]);
 
   /**
    * The single mutation point for the file map.
@@ -866,6 +881,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         setUndoCheckpoint(null);
         setStatusError('');
         if (!generationActiveRef.current) {
+          setGenerationMode('full');
           generationTouchedRef.current = new Set();
           userPickedFileInGenRef.current = false;
           setFileProgress({});
@@ -943,7 +959,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           // result is authoritative instead of depending on a file sync that
           // already happened and cannot repeat.
           markPreviewState('loading');
-          if (completedGeneration) setEdgeRefreshCounter(current => current + 1);
+          if (completedGeneration) reloadPreview();
         }
         if (completedGeneration) startBackend(filesRef.current);
         addBuildLog(
@@ -1090,7 +1106,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         setPreviewLoadState('idle');
         setPreviewLoadError('');
       }
-      setEdgeRefreshCounter(current => current + 1);
+      reloadPreview();
       // Auto-start the backend when opening an existing full-stack project so
       // the live preview is always available without a manual "Start" click.
       if (generated && isFullStackProject(newFiles)) startBackend(newFiles);
@@ -1108,6 +1124,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       appEvents.on('workspace-session-ready', ({ projectId }: { projectId: string }) => {
         if (projectId === activeProjectId) setPreviewSessionReady(true);
       }),
+      appEvents.on('generation-mode', ({ mode }: { mode: 'full' | 'incremental' }) => setGenerationMode(mode)),
       appEvents.on('generation-status', handleGenerationStatus),
       appEvents.on('file-generated', handleFileGenerated),
       appEvents.on('file-deleted', handleFileDeleted),
@@ -1268,7 +1285,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         // The sandboxed iframe (opaque origin) asked the parent to reload it.
         // Doing the navigation from here keeps sec-fetch-site:same-origin so
         // the bh_session cookie is sent and the worker accepts the request.
-        setEdgeRefreshCounter(c => c + 1);
+        reloadPreview();
       }
     };
 
@@ -1297,9 +1314,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
       setStatus('Connecting');
       markPreviewState('loading');
     }
-    setEdgeRefreshCounter(c => c + 1);
+    reloadPreview();
     addBuildLog('Reloading Cloudflare Edge preview', 'info');
-  }, [addBuildLog, markPreviewState, selectTab]);
+  }, [addBuildLog, markPreviewState, selectTab, reloadPreview]);
 
   const handlePopoutPreview = useCallback(() => {
     if (isFullStackProject(filesRef.current) && backend.ready) {
@@ -1425,6 +1442,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 {undoLoading ? <><Loader2 size={16} className="lucide-spin" />Reverting…</> : <><RotateCcw size={16} />Revert to working version</>}
               </button>
             )}
+            {!autoFixing && (
+              <button type="button" className="studio-empty-action premium-action-btn secondary" onClick={() => { openChat(); appEvents.emit('screenshot-fix-request', { projectId: activeProjectId }); }}>
+                <Camera size={16} />Fix with screenshot
+              </button>
+            )}
           </div>
           {!autoFixing && previewActionIssue && <details style={{ marginTop: 16, maxWidth: 420, textAlign: 'left', color: 'var(--text-muted)', fontSize: 12 }}><summary style={{ cursor: 'pointer' }}>Technical details</summary><pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 8 }}>{sanitizeErrorForDisplay(previewActionIssue.error)}</pre></details>}
         </div>
@@ -1476,7 +1498,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         hasFiles={Object.keys(files).length > 0}
         viewportMode={viewportMode}
         onViewportMode={handleViewportMode}
-        onRefreshPreview={() => setEdgeRefreshCounter(value => value + 1)}
+        onRefreshPreview={reloadPreview}
         onOpenPreview={handlePopoutPreview}
         previewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
         openPreviewReady={hasGeneratedApp && status !== 'Generating'}
@@ -1683,8 +1705,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
                 </PreviewCanvas>
-                {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status">{autoFixing ? <Loader2 size={15} className="lucide-spin" /> : <AlertCircle size={15} />}<span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{autoFixing ? 'Auto-fixing…' : previewIssue.plainExplanation}</span>{!autoFixing && <button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Fix</button>}{!autoFixing && undoCheckpoint && <button disabled={undoLoading} onClick={quickUndo}>{undoLoading ? 'Reverting…' : 'Revert'}</button>}</div>}
-                {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it's ready.</span></div>}
+                {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status">{autoFixing ? <Loader2 size={15} className="lucide-spin" /> : <AlertCircle size={15} />}<span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{autoFixing ? 'Auto-fixing…' : previewIssue.plainExplanation}</span>{!autoFixing && <button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Fix</button>}{!autoFixing && undoCheckpoint && <button disabled={undoLoading} onClick={quickUndo}>{undoLoading ? 'Reverting…' : 'Revert'}</button>}{!autoFixing && <button onClick={() => { openChat(); appEvents.emit('screenshot-fix-request', { projectId: activeProjectId }); }} title="Fix with screenshot"><Camera size={13} /></button>}</div>}
+                {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>{generationMode === 'incremental' ? 'Editing your app — targeted changes in progress.' : 'Building your app — the preview refreshes when it\'s ready.'}</span></div>}
               </div>
             </div>
           </div>
@@ -2085,8 +2107,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     title="Application Preview"
                   /> : <div className="studio-session-loading" role="status">Connecting your preview…</div>}
               </PreviewCanvas>
-              {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status">{autoFixing ? <Loader2 size={15} className="lucide-spin" /> : <AlertCircle size={15} />}<span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{autoFixing ? 'Auto-fixing…' : previewIssue.plainExplanation}</span>{!autoFixing && <button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Fix</button>}{!autoFixing && undoCheckpoint && <button disabled={undoLoading} onClick={quickUndo}>{undoLoading ? 'Reverting…' : 'Revert'}</button>}</div>}
-              {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>Building your app — the preview refreshes when it’s ready.</span></div>}
+              {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status">{autoFixing ? <Loader2 size={15} className="lucide-spin" /> : <AlertCircle size={15} />}<span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{autoFixing ? 'Auto-fixing…' : previewIssue.plainExplanation}</span>{!autoFixing && <button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Fix</button>}{!autoFixing && undoCheckpoint && <button disabled={undoLoading} onClick={quickUndo}>{undoLoading ? 'Reverting…' : 'Revert'}</button>}{!autoFixing && <button onClick={() => { openChat(); appEvents.emit('screenshot-fix-request', { projectId: activeProjectId }); }} title="Fix with screenshot"><Camera size={13} /></button>}</div>}
+              {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>{generationMode === 'incremental' ? 'Editing your app — targeted changes in progress.' : 'Building your app — the preview refreshes when it\'s ready.'}</span></div>}
 
             </div>
           </div>

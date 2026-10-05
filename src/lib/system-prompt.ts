@@ -281,11 +281,20 @@ Emit ZERO <file>, <edit>, and <delete> blocks this turn.`;
   const editModeBlock = `
 
 INCREMENTAL EDIT MODE ACTIVE:
-This is a follow-up edit to an EXISTING, working project.
-- DO NOT rewrite /src/App.tsx or existing components from scratch using <file> tags.
-- Use <edit path="..."> blocks with exact <search> and <replace> lines to make minimal, targeted updates.
-- Use <file path="..."> ONLY for brand new components or files that do not exist yet.
-- Preserve all existing state, styling, working features, and file structures.`;
+This is a follow-up edit to an EXISTING, working project. You MUST use surgical edits.
+
+STRATEGY — follow this decision tree for every file you need to change:
+1. Does the file exist? → YES: use edit_file tool or <edit> block. NEVER use write_file/<file> on it.
+2. Does the file exist? → NO: use write_file/<file> to create it.
+3. Is the change < 10 lines? → Use a single <edit> block with one search/replace pair.
+4. Is the change spread across multiple functions? → Use multiple search/replace pairs in one <edit>.
+5. NEVER regenerate the entire file. Even for "major redesigns", identify the specific functions, JSX blocks, or CSS rules that change and edit only those.
+
+ENFORCEMENT: write_file calls on existing files that are larger than 200 lines will be REJECTED by the system. Always use edit_file for existing files.
+
+BEFORE editing: call read_file on the target to get the current content. Every search string must be an exact verbatim copy from the file.
+- Preserve all existing state, styling, working features, and file structures.
+- If you need to move code between files, create the new file first, then edit the old file to remove the moved code.`;
 
   const memoryBlock = opts.projectMemory ? `
 
