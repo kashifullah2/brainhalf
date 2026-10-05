@@ -547,6 +547,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelPickerRef = useRef<HTMLDivElement>(null);
+  const [composerDragOver, setComposerDragOver] = useState(false);
   const modelPickerButtonRef = useRef<HTMLButtonElement>(null);
   const modelPickerListId = `chat-model-picker-${activeProjectId}`;
   const getReliabilityScope = useCallback(() => getUser()?.id || 'guest', []);
@@ -2741,18 +2742,36 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         )}
 
         {/* Input Card Container */}
-        <div 
-          className="chat-input-wrapper"
+        <div
+          className={`chat-input-wrapper${composerDragOver ? ' drag-over' : ''}`}
           style={{
             display: 'flex',
             flexDirection: 'column',
             background: 'var(--bg-card)',
-            border: '1px solid rgba(36, 60, 75, 0.1)',
+            border: composerDragOver ? '1.5px dashed var(--accent-primary, #3659D9)' : '1px solid rgba(36, 60, 75, 0.1)',
             borderRadius: '10px',
             padding: '12px 14px 10px 14px',
             position: 'relative',
             zIndex: showModelPicker ? 40 : 1,
-            boxShadow: 'none'
+            boxShadow: composerDragOver ? '0 0 0 3px rgba(54,89,217,0.10)' : 'none',
+            transition: 'border-color 0.12s, box-shadow 0.12s',
+          }}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes('Files')) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              setComposerDragOver(true);
+            }
+          }}
+          onDragLeave={(e) => {
+            // Only clear drag-over when leaving the wrapper itself, not its children
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) setComposerDragOver(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setComposerDragOver(false);
+            const files = Array.from(e.dataTransfer.files);
+            if (files.length > 0) void uploadFiles(files);
           }}
         >
           {editingMessageIndex !== null && (
@@ -2763,6 +2782,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 setInput(draftBeforeEditRef.current);
                 textareaRef.current?.focus();
               }}>Cancel edit</button>
+            </div>
+          )}
+          {composerDragOver && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', borderRadius: '10px', background: 'rgba(54,89,217,0.06)', zIndex: 10 }}>
+              <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--accent-primary, #3659D9)', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <Upload size={15} />Drop to attach
+              </span>
             </div>
           )}
           {attachments.length > 0 && <div className="composer-attachments">{attachments.map(file => <div className="composer-attachment" key={file.id} title={file.note || file.name}><span>{file.name}</span><button type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => setAttachments(current => current.filter(item => item.id !== file.id))}><X size={14} /></button></div>)}</div>}
@@ -2790,6 +2816,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
                 handleSendMessage();
+              }
+            }}
+            onPaste={(e) => {
+              // Intercept image pastes (screenshots, copied images) and upload
+              // them as attachments. Text pastes fall through to default behavior.
+              const imageFiles = Array.from(e.clipboardData.items)
+                .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+                .map(item => item.getAsFile())
+                .filter((f): f is File => f !== null);
+              if (imageFiles.length > 0) {
+                e.preventDefault();
+                void uploadFiles(imageFiles);
               }
             }}
             placeholder={isGenerating ? "Draft your next change while I work…" : messages.some(message => message.role === 'user') ? "Ask for a change, a fix, or a new feature…" : "Describe the app you want to make…"}
