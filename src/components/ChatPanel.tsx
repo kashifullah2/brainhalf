@@ -529,7 +529,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
 
   useEffect(() => {
     if (!showModelPicker) return;
-    const handleOutsideClick = (event: MouseEvent) => {
+    const handleOutsideClick = (event: MouseEvent | PointerEvent) => {
       const target = event.target as Node;
       if (modelPickerRef.current?.contains(target) || modelPickerButtonRef.current?.contains(target)) return;
       setShowModelPicker(false);
@@ -559,14 +559,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       options[nextIndex]?.focus();
     };
     const dismissPicker = () => setShowModelPicker(false);
-    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('pointerdown', handleOutsideClick);
     document.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('blur', dismissPicker);
     window.addEventListener('resize', dismissPicker);
     return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('pointerdown', handleOutsideClick);
       document.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('blur', dismissPicker);
       window.removeEventListener('resize', dismissPicker);
     };
   }, [showModelPicker]);
@@ -2615,6 +2613,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             borderRadius: '10px',
             padding: '12px 14px 10px 14px',
             position: 'relative',
+            zIndex: showModelPicker ? 40 : 1,
             boxShadow: 'none'
           }}
         >
@@ -2687,21 +2686,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               role="dialog"
               aria-label="Choose a model"
               style={{
-              position: 'absolute',
-              bottom: 'calc(100% + 8px)',
-              left: '12px',
-              width: '280px',
-              background: 'var(--bg-card)',
-              border: '1px solid rgba(36, 60, 75, 0.12)',
-              borderRadius: '10px',
-              boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)',
-              padding: '8px',
-              zIndex: 100,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid rgba(36, 60, 75, 0.06)' }}>
+                position: 'absolute',
+                bottom: 'calc(100% + 8px)',
+                left: '12px',
+                width: 'min(310px, calc(100% - 24px))',
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-medium)',
+                borderRadius: '10px',
+                boxShadow: '0 16px 36px rgba(0, 0, 0, 0.65)',
+                padding: '8px',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border-subtle)' }}>
                 <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Choose a model</span>
                 <button
                   type="button"
@@ -2712,7 +2712,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   <X size={13} />
                 </button>
               </div>
-              <div role="listbox" aria-label="Available models" style={{ maxHeight: '220px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+
+              {!integratedModelsOn && (
+                <div style={{
+                  padding: '6px 8px',
+                  borderRadius: '6px',
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.25)',
+                  color: 'var(--color-warning, #f59e0b)',
+                  fontSize: '11px',
+                  lineHeight: 1.4,
+                }}>
+                  Built-in models are disabled by the administrator.
+                </div>
+              )}
+
+              <div role="listbox" aria-label="Available models" style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 {models.map(m => (
                   <button
                     type="button"
@@ -2767,6 +2782,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                     {selectedModelId === m.id && <Check size={13} color="var(--accent-light)" style={{ flexShrink: 0, marginLeft: 6 }} />}
                   </button>
                 ))}
+                {models.length === 0 && (
+                  <div style={{ padding: '16px 8px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    No models currently available.
+                  </div>
+                )}
               </div>
               <p className="studio-model-picker-note">Applies to your next message.</p>
               {modelStatusStale && (
@@ -2799,7 +2819,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               <button
                 ref={modelPickerButtonRef}
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setShowModelPicker(prev => {
                     if (!prev) void refreshModelStatus();
                     return !prev;
@@ -2812,7 +2833,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 title={integratedModelsOn ? 'Change AI model' : 'Built-in models are turned off by the administrator'}
                 aria-label={integratedModelsOn ? 'Change AI model' : 'Built-in models are turned off'}
                 data-testid="model-picker-btn"
-                disabled={!integratedModelsOn}
               >
                 <span className="studio-model-caption">Model</span>
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
