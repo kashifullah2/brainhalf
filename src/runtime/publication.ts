@@ -2,6 +2,13 @@ import { projectManifest } from './source';
 import { RuntimeError, type SourceFiles } from './types';
 import type { ManagedSettings, ProviderReadiness } from './managed-types';
 
+export function hasWorkerEntry(files: SourceFiles): boolean {
+  return Object.keys(files).some(path => {
+    const clean = path.replace(/^\//, '');
+    return clean === 'worker/index.ts' || clean === 'worker/index.js' || clean === 'worker/index.mjs' || clean === 'src/worker.ts';
+  });
+}
+
 /** Fail closed instead of publishing only the frontend of an unsupported server. */
 export function publicationTarget(files: SourceFiles): 'workers' | 'static' {
   const normalized = Object.fromEntries(Object.entries(files).map(([path, value]) => [path.replace(/^\//, ''), value]));

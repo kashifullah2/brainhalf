@@ -17,7 +17,7 @@ import { serviceCapability } from './managed-capability';
 import { databaseIdentifier, prepareAddColumn, prepareCreateIndex, prepareCreateTable, prepareDropColumn, prepareDropTable, prepareRowDelete, prepareRowImport, prepareRowUpdate, readDatabaseSchema, readDatabaseTable } from './database-tools';
 import { REQUEST_MONITOR_SCHEMA, recordAppRequest } from './request-monitor';
 import { COLLECT_ARTIFACT, COLLECT_STATIC_ARTIFACT, validateArtifact, type BuildArtifact } from './artifact';
-import { publicationTarget, assertProductionServices, productionHealthPath } from './publication';
+import { publicationTarget, assertProductionServices, productionHealthPath, hasWorkerEntry } from './publication';
 import { digest, sourceSnapshot, projectManifest, migrationFiles, assertSafeMigration } from './source';
 import { openSecret, sealSecret, validateIntegration, redactSecrets } from './secrets';
 import { contactInput, token, cookie, secureCookie, embeddedPreviewCookie, readJson, readStreamJson } from './integrations';
@@ -534,8 +534,12 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         if (!report?.passed || report.revision !== snapshot.revision) throw new RuntimeError('Verify this exact revision in development before publishing production.', 409);
       }
       const manifest = projectManifest(snapshot.files);
+      const isWorkers = manifest.brainhalf?.runtime === 'workers';
+      if (hasWorkerEntry(snapshot.files) && !isWorkers) {
+        throw new RuntimeError('Set package.json "brainhalf": { "runtime": "workers" } for Cloudflare Workers full-stack apps.');
+      }
       const staticApp = body.kind === 'publish' && publicationTarget(snapshot.files) === 'static';
-      const node = !staticApp && manifest.brainhalf?.runtime !== 'workers';
+      const node = !staticApp && !isWorkers;
       if (node && !['build', 'preview'].includes(body.kind)) throw new RuntimeError('This Node project supports Sandbox builds and development preview. Use the Workers starter for D1 and production releases.');
       if (!manifest.scripts.build) throw new RuntimeError('Add a build script to package.json.');
       if ((body.kind === 'verify' || (body.kind === 'publish' && !staticApp)) && !manifest.scripts.test) throw new RuntimeError('Verification requires a test script.');
@@ -687,7 +691,10 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       if (!latest || latest.id !== job.id || !active(latest)) return;
       if (latest.status === 'stopping') return;
       this.log(job.id, error instanceof Error ? error.message : 'Runtime failed');
-      job.status = 'stopping'; job.message = error instanceof RuntimeError ? error.message : 'Runtime failed. Check the build logs.';
+      job.status = 'stopping';
+      job.message = (error && typeof (error as any).message === 'string' && (error as any).message.trim())
+        ? (error as any).message.trim()
+        : 'Runtime failed. Check the build logs.';
       await this.saveJob(job);
       try { await this.cleanup(job); job.status = 'failed'; job.finishedAt = Date.now(); await this.saveJob(job); } catch { /* alarm retries termination */ }
     }

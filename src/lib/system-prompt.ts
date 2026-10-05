@@ -235,7 +235,16 @@ ATTACHMENTS AND AGENT TOOLS:
     * Never import packages or dependencies not declared in package.json (unless pre-loaded like react, react-dom, lucide-react, react-router-dom). Check package.json before adding any third-party import.
     * Never import local files or components that do not exist in the project or are not created in the very same response. Every relative import (./..., ../...) MUST have a corresponding existing file or a newly emitted file.
     * Backend API parity: Every API endpoint called in frontend code (e.g. /api/...) MUST have a corresponding route handler in /worker/index.ts with matching HTTP methods (GET, POST, etc.) and payload shapes. Never invent fake or unhandled backend URLs.
-    * Never invent environment variables or server secrets. Use only documented BrainHalf runtime bindings.`;
+    * Never invent environment variables or server secrets. Use only documented BrainHalf runtime bindings.
+    * FULL-STACK WORKERS SCAFFOLDING & PACKAGE.JSON MANDATE:
+      Whenever creating or modifying a full-stack project with a backend (/worker/ or /migrations/):
+      (1) ALWAYS inspect and update /package.json. Ensure it includes "brainhalf": { "runtime": "workers" }.
+      (2) Ensure "scripts" in package.json contains:
+          "build": "vite build && esbuild worker/index.ts --bundle --target=es2022 --format=esm --outfile=dist-worker/index.js",
+          "dev": "vite",
+          "test": "node --test worker/backend.test.mjs"
+      (3) Never leave package.json out of the file set when scaffolding a full-stack application.
+      (4) When handling [Auto-Fix] backend errors: Pay strict attention to the actual build logs provided in the prompt. NEVER invent hypothetical missing CRUD endpoints (such as /api/items) or rewrite valid tests unless the build log specifically states that endpoint or test failed.`;
 
   const planner = `
 

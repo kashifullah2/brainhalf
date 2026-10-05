@@ -1557,7 +1557,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     {backend.isBuilding && status !== 'Generating' && (
                       <div className="preview-building-pill preview-building-pill--backend" role="status"><Loader2 size={13} className="lucide-spin" /><span>{backend.message || 'Starting your backend — live preview on its way…'}</span></div>
                     )}
-                    <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} />
+                    <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} />
                   </>
                 )}
                 {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}
@@ -1958,7 +1958,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   {backend.isBuilding && status !== 'Generating' && (
                     <div className="preview-building-pill preview-building-pill--backend" role="status"><Loader2 size={13} className="lucide-spin" /><span>{backend.message || 'Starting your backend — live preview on its way…'}</span></div>
                   )}
-                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} />
+                  <DesignPreviewStrip backend={backend} runtime={runtime} status={status} filesRef={filesRef} onOpenHostedSlots={openHostedSlots} projectId={activeProjectId} />
                 </>
               )}
               {isFullStackProject(files) && !isWaitingForFirstApp && backend.liveUrl && <div className="preview-health-strip" role="status"><Server size={15} /><span><strong>Live app preview</strong> · Your running app is shown below.<br />{backend.message || 'App preview is running.'}</span>{backend.canUpdate && <button disabled={status === 'Generating'} onClick={() => backend.start(filesRef.current, true)}>Update app</button>}<button onClick={() => void backend.open()}>Open app preview <ArrowUpRight size={13} /></button></div>}

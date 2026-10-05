@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowUpRight, Server, RotateCcw } from 'lucide-react';
 import { useAutomaticBackend } from '../lib/automatic-backend';
-import { useProjectRuntime } from '../lib/project-runtime-client';
+import { useProjectRuntime, runtimeRequest } from '../lib/project-runtime-client';
 import { HOSTED_APP_LIMIT, isHostedLimitError } from '../lib/hosted-limit';
 import { appEvents } from '../lib/events';
 
@@ -18,6 +18,8 @@ const PLAIN_LANGUAGE_CAUSES: { pattern: RegExp; cause: string }[] = [
   { pattern: /network|fetch failed|request to|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i, cause: 'The internet hiccupped while fetching the app\u2019s building blocks.' },
   { pattern: /error TS\d+|Type error|Failed to resolve import|Transform failed|is not exported by|RollupError/i, cause: 'The app has a small code hiccup.' },
   { pattern: /out of memory|heap out of memory|JavaScript heap/i, cause: 'The app ran out of space while being put together.' },
+  { pattern: /Node preview needs a server script|server script honoring PORT/i, cause: 'The backend server configuration is missing.' },
+  { pattern: /failed \(exit \d+\)|command failed/i, cause: 'The app encountered an error during its build step.' },
 ];
 
 export function plainLanguageCause(message: string): string {
@@ -40,12 +42,13 @@ export function plainLanguageCause(message: string): string {
  * so the strip names the problem and offers a one-tap route to the app
  * spaces manager plus a retry.
  */
-export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenHostedSlots }: {
+export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenHostedSlots, projectId }: {
   backend: Backend;
   runtime: Runtime;
   status: string;
   filesRef: { current: Record<string, string> };
   onOpenHostedSlots?: () => void;
+  projectId?: string;
 }) {
   const failed = backend.failed;
   // A full account is a user-actionable state, not a build bug: name it and
@@ -101,7 +104,34 @@ export function DesignPreviewStrip({ backend, runtime, status, filesRef, onOpenH
         </>
       ) : (<>
       {failed && (
-        <button type="button" disabled={status === 'Generating'} onClick={() => appEvents.emit('auto-fix-error', { error: backend.message || 'Backend failed to start', layer: 'backend' })}>
+        <button
+          type="button"
+          disabled={status === 'Generating'}
+          onClick={async () => {
+            let errorText = backend.message || 'Backend failed to start';
+            if (projectId && backend.latestJobId) {
+              try {
+                const details = await runtimeRequest<{ logs: Array<{ job: string; text: string }> }>(
+                  projectId,
+                  `/logs?job=${encodeURIComponent(backend.latestJobId)}`,
+                  'development',
+                  { signal: AbortSignal.timeout(3000) }
+                );
+                const logLines = details?.logs
+                  ?.filter(entry => entry.job === backend.latestJobId)
+                  .map(entry => entry.text)
+                  .join('\n')
+                  .trim();
+                if (logLines) {
+                  errorText = `${errorText}\n\nRecent build logs:\n${logLines.slice(-3000)}`;
+                }
+              } catch {
+                // Keep original errorText if logs cannot be fetched
+              }
+            }
+            appEvents.emit('auto-fix-error', { error: errorText, layer: 'backend', projectId });
+          }}
+        >
           <RotateCcw size={14} style={{ marginRight: '6px' }} /> Ask the builder to fix
         </button>
       )}

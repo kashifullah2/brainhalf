@@ -205,5 +205,6 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   return { start, open, message, ready, fault, failed, liveUrl, isBuilding,
     canStart: Boolean(available && !busy && !activeJob && !ready),
     canUpdate: Boolean(available && !busy && ready && (!activeJob || (latestJob?.kind === 'preview' && latestJob.previewReady && latestJob.status === 'running'))),
+    latestJobId: latestJob?.id,
   };
 }
