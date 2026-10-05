@@ -10,7 +10,7 @@ import { RepairBudget } from '../lib/repair-budget';
 import AssistantMarkdown from './AssistantMarkdown';
 import ActionMenu from './ActionMenu';
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, ArrowDown, Plus, Copy, Check, ArrowUp, AlertCircle, AlertTriangle, RotateCcw, ChevronDown, MoreHorizontal, Upload, FileUp, Server, Activity, Loader2, Play } from 'lucide-react';
+import { Trash2, X, CheckCircle2, ArrowRight, Square, Pencil, Undo2, Sparkles, ArrowDown, Plus, Copy, Check, ArrowUp, AlertCircle, AlertTriangle, RotateCcw, ChevronDown, MoreHorizontal, Upload, FileUp, Server, Activity, Loader2, Play, Wand2, Smartphone } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import { parseMessageSegments, parseMessageSegmentsMemoized, type ParseResult } from '../lib/message-parser';
 import { normalizePath } from '../lib/utils';
@@ -63,6 +63,16 @@ const STARTER_PROMPTS = [
     prompt: 'Build a booking app for a small service business. Let customers book appointments by choosing a date and time from available slots. Show the business owner a calendar of upcoming bookings. Require sign-in.',
   },
 ];
+
+const SLASH_COMMANDS = [
+  { id: 'fix',     label: 'Fix errors',            desc: 'Debug and resolve current runtime issues',    Icon: AlertCircle,  prompt: 'Look at the current errors in the app and fix them. Check the console output and any visible error messages.' },
+  { id: 'improve', label: 'Improve the design',    desc: 'Polish UI, spacing, and visual styling',      Icon: Wand2,        prompt: 'Improve the overall visual design of this app. Focus on spacing, typography, color, and making it look more polished and professional.' },
+  { id: 'feature', label: 'Add a new feature',     desc: 'Extend the app with new functionality',       Icon: Plus,         prompt: 'Add a new useful feature to this app. Pick something that complements what\'s already here and would delight the user.' },
+  { id: 'mobile',  label: 'Make it responsive',    desc: 'Adapt layout for all screen sizes',           Icon: Smartphone,   prompt: 'Make this app fully responsive for mobile. Fix the layout so it works well on small screens — adjust font sizes, spacing, and any components that break at narrow widths.' },
+  { id: 'explain', label: 'Explain this app',      desc: 'Summarize how the code works',                Icon: Sparkles,     prompt: 'Explain how this app works. Describe the main components, the data flow, and how the key features are implemented.' },
+  { id: 'clean',   label: 'Clean up the code',     desc: 'Refactor and improve code quality',           Icon: CheckCircle2, prompt: 'Refactor this app\'s code to improve clarity and maintainability. Remove duplication, improve naming, and simplify any complex logic without changing how the app behaves.' },
+] as const;
+type SlashCommand = (typeof SLASH_COMMANDS)[number];
 
 interface ModelDef {
   id: string;
@@ -699,6 +709,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const generationModelIdRef = useRef<string | null>(null);
   const generationTouchedFilesRef = useRef(false);
   const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
+  const [slashMenuIndex, setSlashMenuIndex] = useState(0);
+  // Reset slash menu selection when input changes (new filter = start from top).
+  useEffect(() => { setSlashMenuIndex(0); }, [input]);
   // Recent prompts from other projects — computed once per project switch.
   const recentPrompts = React.useMemo(() => getRecentPrompts(activeProjectId), [activeProjectId]);;
   // File map captured when a generation starts, so completion can show the
@@ -2157,6 +2170,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   // here; the picker now just sets the id, and the switch takes effect on the
   // next prompt.
 
+  // Slash-command quick menu: triggered when input starts with '/' and has no space yet.
+  const slashQuery = (input.startsWith('/') && !input.includes(' ')) ? input.slice(1).toLowerCase() : null;
+  const visibleSlashCmds: readonly SlashCommand[] = slashQuery === null ? [] : slashQuery === ''
+    ? SLASH_COMMANDS
+    : SLASH_COMMANDS.filter(c => c.id.startsWith(slashQuery) || c.label.toLowerCase().includes(slashQuery));
+  const showSlashMenu = visibleSlashCmds.length > 0 && !isGenerating;
 
   return (
     <div className="chat-panel-container" style={{ width: width ? `${width}px` : '100%', minWidth: width ? Math.min(360, width) : 0, display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-chat-panel)', position: 'relative' }}>
@@ -2835,6 +2854,29 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             if (files.length > 0) void uploadFiles(files);
           }}
         >
+          {/* Slash-command quick menu */}
+          {showSlashMenu && (
+            <div className="slash-cmd-menu" role="listbox" aria-label="Quick commands">
+              {visibleSlashCmds.map((cmd, i) => (
+                <button
+                  key={cmd.id}
+                  type="button"
+                  role="option"
+                  aria-selected={i === slashMenuIndex}
+                  className={`slash-cmd-item${i === slashMenuIndex ? ' active' : ''}`}
+                  onMouseEnter={() => setSlashMenuIndex(i)}
+                  onClick={() => { setInput(cmd.prompt); setSlashMenuIndex(0); setTimeout(() => textareaRef.current?.focus(), 0); }}
+                >
+                  <span className="slash-cmd-icon"><cmd.Icon size={14} strokeWidth={1.75} /></span>
+                  <span className="slash-cmd-text">
+                    <span className="slash-cmd-label">/{cmd.id}</span>
+                    <span className="slash-cmd-desc">{cmd.desc}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {editingMessageIndex !== null && (
             <div className="chat-edit-notice" role="status">
               <span>Editing message. Sending replaces this message and all later replies.</span>
@@ -2874,6 +2916,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               }
             }}
             onKeyDown={(e) => {
+              if (showSlashMenu) {
+                if (e.key === 'ArrowDown') { e.preventDefault(); setSlashMenuIndex(i => (i + 1) % visibleSlashCmds.length); return; }
+                if (e.key === 'ArrowUp') { e.preventDefault(); setSlashMenuIndex(i => (i - 1 + visibleSlashCmds.length) % visibleSlashCmds.length); return; }
+                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); const cmd = visibleSlashCmds[slashMenuIndex]; if (cmd) { setInput(cmd.prompt); setSlashMenuIndex(0); } return; }
+                if (e.key === 'Escape') { e.preventDefault(); setInput(''); return; }
+              }
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
                 handleSendMessage();
