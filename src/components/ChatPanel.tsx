@@ -2663,10 +2663,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                         loading="lazy"
                       />
                     ) : (
-                      /* Placeholder for cards without screenshots */
                       <div style={{
                         width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '28px', opacity: 0.4,
+                        fontSize: '32px', opacity: 0.55, color: 'var(--text-muted)',
+                        background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent-primary) 12%, transparent), color-mix(in srgb, var(--accent-primary) 4%, transparent))',
                       }}>
                         📅
                       </div>
@@ -2922,7 +2922,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           {attachments.length > 0 && <div className="composer-attachments">{attachments.map(file => <div className="composer-attachment" key={file.id} title={file.note || file.name}><span>{file.name}</span><button type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => setAttachments(current => current.filter(item => item.id !== file.id))}><X size={14} /></button></div>)}</div>}
           {attachments.some(file => file.mime.startsWith('image/')) && !acceptsImageInput(selectedModelId) && <div className="composer-upload-status">To analyze an image, choose Kimi K2.7 Code or Claude Sonnet 4.6 from the model picker. Your current model can still add the image to your app.</div>}
           {uploading && <div className="composer-upload-status" role="status">Reading and uploading files…</div>}
-          {uploadError && <div className="composer-upload-status" role="alert">{uploadError}</div>}
+          {uploadError && <div className="composer-upload-status composer-upload-error" role="alert"><AlertTriangle size={13} style={{ flexShrink: 0 }} />{uploadError}</div>}
           {targetNotice && <div className="composer-upload-status" role="status">{targetNotice}<button type="button" disabled={isGenerating} onClick={() => { exportOnly.current = false; setTargetNotice(''); }}>Check hosting again on the next message</button></div>}
           {attachments.some(file => file.note) && <div className="composer-upload-status">{attachments.filter(file => file.note).map(file => `${file.name}: ${file.note}`).join(' ')}</div>}
 
@@ -2964,7 +2964,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                 void uploadFiles(imageFiles);
               }
             }}
-            placeholder={isGenerating ? "Draft your next change while I work…" : messages.some(message => message.role === 'user') ? "Ask for a change, a fix, or a new feature…" : "Describe the app you want to make…"}
+            placeholder={isGenerating ? "Draft your next change while I work…" : messages.some(message => message.role === 'user') ? "Ask for a change, a fix, or a new feature… (type / for commands)" : "Describe the app you want to make…"}
             rows={1}
             style={{
               width: '100%',
