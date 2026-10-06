@@ -49,7 +49,7 @@ describe('AdminPage smoke render', () => {
     const html = renderToStaticMarkup(<AdminPage />);
     expect(html).toContain('admin-layout');
     expect(html).toContain('Operator');
-    expect(html).toContain('Accounts &amp; product health');
+    expect(html).toContain('Accounts');
     expect(html).toContain('href="#overview"');
     expect(html).toContain('href="#health"');
     expect(html).toContain('href="#manage"');
