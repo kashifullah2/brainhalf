@@ -67,7 +67,7 @@ import {
   buildHarnessModuleSrc,
   buildMissingComponentStub,
 } from './lib/preview-templates';
-import { isStepCount, streamText, tool } from 'ai';
+import { isStepCount, streamText, tool, type SystemModelMessage } from 'ai';
 import { z } from 'zod';
 
 /**
@@ -2316,7 +2316,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 
                 const streamOptions: Parameters<typeof streamText>[0] = {
                   model: meteredModel(activeAiModel, () => { accounting.providerCalls++; }),
-                  system: stageSystemPrompt,
+                  // Anthropic and Bedrock support prompt caching. The system prompt is
+                  // static per project and often >6k tokens, so caching it saves ~90%
+                  // of those tokens on cache hits (follow-up edits, multi-stage retries,
+                  // retries after timeout). TTL is 5 minutes. Other providers use a
+                  // plain string.
+                  system: model.provider === 'anthropic'
+                    ? ({ role: 'system', content: stageSystemPrompt, providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } } satisfies SystemModelMessage)
+                    : model.provider === 'aws'
+                    ? ({ role: 'system', content: stageSystemPrompt, providerOptions: { bedrock: { cachePoint: { type: 'default' } } } } satisfies SystemModelMessage)
+                    : stageSystemPrompt,
                   messages: currentNativeMessages,
                   // B4/B5: destructive and question modes are tool-less — the model
                   // answers in text only; zero file operations are possible.
