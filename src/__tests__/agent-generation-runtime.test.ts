@@ -632,6 +632,29 @@ describe('Project tool parity and recovery from prose-only builds', () => {
     expect(events.filter(event => event.type === 'error')).toEqual([]);
   });
 
+  it('fires prose-recovery retry when model returns backtick code with no resolvable path', async () => {
+    // The old sawCodeLikeOutput regex matched triple-backtick fences, so a markdown
+    // response with zero <file> tags (and no path the last-resort parser could infer)
+    // would set sawCodeLikeOutput=true, skip shouldRecover, and silently produce an
+    // empty project. After the fix, backticks are not counted — only <file>/<edit>/
+    // <delete> tags satisfy sawCodeLikeOutput — so the recovery retry fires correctly.
+    const { agent, database, events, run } = createAgent();
+    // A "helpful explanation" response: backtick block but no tsx/jsx/ts path that
+    // parseMessageSegments can infer, so writtenCount stays 0 after extraction.
+    const markdownResponse = "I cannot generate the app directly. Here is a concept:\n\n```pseudocode\ncomponent App { render() { return 'hello'; } }\n```\n\nPlease clarify what you need.";
+    const fixedResponse = "<file path=\"/src/App.tsx\">export default function App() { return <div>Done</div>; }</file>";
+    let calls = 0;
+    agent.env = { REGISTRY: budgetRegistry(), REQUIRED_MODEL_PROVIDERS: 'cloudflare', AI: { run: async () => calls++ === 0 ? { response: markdownResponse } : stream(fixedResponse) } };
+    await run({ model: undefined }, prompt);
+    const retry = events.find(event => event.type === 'trigger-auto-reply');
+    expect(retry?.message).toContain('[AUTO-RETRY-FULL-APP]');
+    expect(retry?.message).toContain('NO <file> blocks');
+    expect(retry?.message).toContain('discarded');
+    await run({ model: undefined }, retry.message);
+    expect(database.prepare("SELECT content FROM project_files WHERE path='/src/App.tsx'").get()?.content).toContain('Done');
+    expect(events.filter(event => event.type === 'error')).toEqual([]);
+  });
+
   it('also disables native SDK tools on the bounded file-output retry', async () => {
     const { events, run, database } = createAgent();
     providerState.model = new MockLanguageModelV4({ doStream: [response(protocol), response(files)] });

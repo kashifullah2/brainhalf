@@ -89,8 +89,10 @@ ATTACHMENTS AND AGENT TOOLS:
    - Update existing files ONLY where necessary to import and render the new component.
    - To remove an obsolete file: <delete path="/src/obsolete.jsx" />
 
-4. EXACT TAGS & NO MARKDOWN CODE FENCES:
-   Do NOT wrap <file> or <edit> tags in markdown code fences.
+4. EXACT TAGS — NEVER MARKDOWN CODE FENCES:
+   ALL code output MUST use <file path="/...">FULL CONTENT</file> tags. NEVER use markdown code fences (triple backtick blocks).
+   A response that uses code fences instead of <file> tags writes ZERO files — the user sees an empty project.
+   Do not put prose before or after the file blocks. Write the tags directly.
 
 5. NEVER SPLIT CODE & NEVER USE PLACEHOLDERS:
    Provide the complete implementation. Never write '// ... rest of code remains the same'.

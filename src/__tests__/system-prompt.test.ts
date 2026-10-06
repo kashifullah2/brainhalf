@@ -18,7 +18,7 @@ describe('7.3 extracted system prompt', () => {
     expect(prompt).toContain('<delete path="/src/obsolete.jsx" />');
     // The parser is exact about this; a fence-wrapped <file> block is skipped
     // and the generated app comes out empty.
-    expect(prompt).toContain('Do NOT wrap <file> or <edit> tags in markdown code fences');
+    expect(prompt).toContain('NEVER use markdown code fences (triple backtick blocks)');
   });
 
   it('requires standalone routing without nesting routers in the preview', () => {
