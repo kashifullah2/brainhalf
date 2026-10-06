@@ -106,14 +106,14 @@ describe('Agent generation against the installed AI SDK', () => {
     const { run, events, database } = createAgent();
     providerState.model = new MockLanguageModelV4({ doStream: async () => { throw new APICallError({ message: 'Provider unavailable', url: 'https://provider.example', requestBodyValues: {}, statusCode: 503, isRetryable: true }); } });
     await run();
-    // 1 initial attempt + 2 automatic retries. The SDK stays at maxRetries: 0,
+    // 1 initial attempt + 3 automatic retries. The SDK stays at maxRetries: 0,
     // so every attempt is explicit and announced via generation_notice.
-    expect(providerState.model.doStreamCalls).toHaveLength(3);
+    expect(providerState.model.doStreamCalls).toHaveLength(4);
     const failure = events.find(event => event.type === 'error');
     expect(failure?.error).toBe('The AI model provider is temporarily overloaded.');
     expect(failure?.code).toBe('provider_busy');
-    expect(events.filter(event => event.type === 'generation_notice' && /Retrying…/.test(String(event.message ?? '')))).toHaveLength(2);
-    expect(database.prepare('SELECT provider_calls, first_response_at, status FROM generation_usage').get()).toEqual({ provider_calls: 3, first_response_at: null, status: 'failed' });
+    expect(events.filter(event => event.type === 'generation_notice' && /Retrying…/.test(String(event.message ?? '')))).toHaveLength(3);
+    expect(database.prepare('SELECT provider_calls, first_response_at, status FROM generation_usage').get()).toEqual({ provider_calls: 4, first_response_at: null, status: 'failed' });
   });
 
   it('reports a non-transient native failure promptly without retry calls', async () => {

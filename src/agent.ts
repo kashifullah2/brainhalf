@@ -44,7 +44,7 @@ import { GenerationUserError, classifyGenerationError, errorMessage } from './li
 
 // Transient provider failures (rate limits, overload, dropped connections)
 // get this many automatic retries per pipeline stage before we give up.
-const GENERATION_TRANSIENT_RETRIES = 2;
+const GENERATION_TRANSIENT_RETRIES = 3;
 
 // A failed WebSocket send used to vanish into an empty catch block, so a client
 // that missed `done`, `error` or `file_updated` looked like a model bug. Count
@@ -2449,11 +2449,25 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     continue;
                   }
                   // Transient provider failures (rate limit, overload, dropped
-                  // connection, timeout) get automatic retries — but only when
-                  // nothing was shown to the user yet, so a retry can never
-                  // duplicate streamed output in the chat.
-                  if (classification.retryable && !displayContent && !abortController.signal.aborted && transientRetries < GENERATION_TRANSIENT_RETRIES) {
+                  // connection, timeout) get automatic retries. When partial
+                  // output was streamed, a stream_clear resets the client first.
+                  if (classification.retryable && !abortController.signal.aborted && transientRetries < GENERATION_TRANSIENT_RETRIES) {
                     transientRetries += 1;
+                    if (displayContent) {
+                      // Text was already streamed to the client — tell it to
+                      // discard the partial output so the retry starts clean.
+                      const clearMsg = JSON.stringify({ type: 'stream_clear', requestId: data.idempotencyKey });
+                      try { connection.send(clearMsg); } catch (e) { noteSendFailure(e); }
+                      try { this.broadcast(clearMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+                      displayContent = '';
+                      streamedText = '';
+                      // Reset the reconnect buffer so a late-joining client
+                      // doesn't see stale partial text from the failed attempt.
+                      if (this.activeGeneration && this.activeGeneration.epoch === epoch) {
+                        this.activeGeneration.response = '';
+                        this.activeGeneration.truncated = false;
+                      }
+                    }
                     console.warn(`Transient provider error for ${model.name} (${classification.category}: ${errMessage}); retrying stage "${stage.stageId}" (attempt ${transientRetries + 1})`);
                     try { connection.send(JSON.stringify({ type: 'generation_notice', message: `${classification.userMessage} Retrying…`, stage: stage.stageId, requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }
                     // Tests cannot wait out real exponential backoff.

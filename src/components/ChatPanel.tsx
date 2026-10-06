@@ -1279,6 +1279,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             }
             
             scheduleAutoScroll('auto');
+          } else if (data.type === 'stream_clear') {
+            // Server is retrying a stage after partial output — discard the
+            // streamed text so the retry starts with a clean slate.
+            if (rafHandleRef.current !== null) {
+              cancelAnimationFrame(rafHandleRef.current);
+              rafHandleRef.current = null;
+            }
+            pendingTokensRef.current = '';
+            bufferRef.current = '';
+            aiMessageRef.current = '';
+            const cleared = [...messagesRef.current];
+            if (cleared.length && cleared[cleared.length - 1]?.role === 'ai') {
+              cleared.pop();
+            }
+            messagesRef.current = cleared;
+            setMessages(cleared);
           } else if (data.type === 'stopped') {
             if (isGeneratingRef.current) {
               handleStopGenerationRef.current();
