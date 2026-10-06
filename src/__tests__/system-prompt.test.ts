@@ -116,7 +116,7 @@ describe('7.3 extracted system prompt', () => {
   it('appends INCREMENTAL EDIT MODE block when isIncrementalEdit is true', () => {
     const prompt = buildSystemPrompt({ filesContext: 'FILES', plannerMode: false, isIncrementalEdit: true });
     expect(prompt).toContain('INCREMENTAL EDIT MODE ACTIVE');
-    expect(prompt).toContain('DO NOT rewrite /src/App.tsx or existing components');
+    expect(prompt).toContain('NEVER rewrite /src/App.tsx or existing component files from scratch');
     const normal = buildSystemPrompt({ filesContext: 'FILES', plannerMode: false });
     expect(normal).not.toContain('INCREMENTAL EDIT MODE ACTIVE');
   });

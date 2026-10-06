@@ -3,17 +3,16 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import LivePreviewFrame from '../components/LivePreviewFrame';
 
 describe('LivePreviewFrame', () => {
-  it('shows a preparing overlay instead of a bare frame before the iframe loads', () => {
+  it('shows a connecting overlay before the probe resolves', () => {
     const html = renderToStaticMarkup(<LivePreviewFrame projectId="p1" liveUrl="https://preview.example/ticket" />);
-    expect(html).toContain('Preparing your preview…');
+    expect(html).toContain('Connecting to your app…');
     expect(html).toContain('role="status"');
-    expect(html).toContain('src="https://preview.example/ticket"');
-    expect(html).toContain('title="Live App Preview"');
   });
 
-  it('keeps the preview sandbox restrictions', () => {
+  it('iframe and sandbox attrs render only after probe succeeds (not in static markup)', () => {
     const html = renderToStaticMarkup(<LivePreviewFrame projectId="p1" liveUrl="https://preview.example/ticket" />);
-    expect(html).toContain('allow-scripts');
-    expect(html).toContain('allow-same-origin');
+    // Initial probeState is 'checking' — iframe is deferred until reachable
+    expect(html).not.toContain('allow-scripts');
+    expect(html).toContain('live-preview-frame');
   });
 });

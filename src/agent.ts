@@ -1854,13 +1854,18 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             resolved = allowlisted;
           }
 
-          // Admin kill-switch for the built-in models. Custom models added
-          // via the admin page are unaffected.
-          if (!customModel) {
-            try {
-              const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
-              if (statusRes.ok) {
-                const statusBody = await statusRes.json() as { integratedModelsEnabled?: boolean; disabledModels?: string[] };
+          // Admin kill-switch: applies to both built-in models and custom models.
+          try {
+            const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
+            if (statusRes.ok) {
+              const statusBody = await statusRes.json() as { integratedModelsEnabled?: boolean; disabledModels?: string[] };
+              if (customModel) {
+                // Custom models use their cm_xxx ID as the disable key.
+                if (Array.isArray(statusBody.disabledModels) && statusBody.disabledModels.includes(requestedModel)) {
+                  sendError(`Model "${customModel.name}" is currently turned off by the administrator.`);
+                  return;
+                }
+              } else {
                 if (statusBody.integratedModelsEnabled === false) {
                   sendError('The built-in models are currently turned off by the administrator.');
                   return;
@@ -1871,9 +1876,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   return;
                 }
               }
-            } catch {
-              // Fail open: a registry blip must not kill generation.
             }
+          } catch {
+            // Fail open: a registry blip must not kill generation.
           }
 
           const assetPaths = new Set<string>();

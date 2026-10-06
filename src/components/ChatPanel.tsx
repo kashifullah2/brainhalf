@@ -103,13 +103,15 @@ export function resolveAvailableModels(
 ): { models: ModelDef[]; selectedModelId: string } {
   const enabled = body.integratedModelsEnabled !== false;
   const disabled = new Set(Array.isArray(body.disabledModels) ? body.disabledModels : []);
-  const custom: ModelDef[] = Array.isArray(body.customModels) ? body.customModels.map(cm => ({
-    id: cm.id,
-    name: sanitizeCustomModelName(cm.name, cm.id),
-    provider: 'custom' as const,
-    category: 'fast' as const,
-    badge: 'Custom',
-  })) : [];
+  const custom: ModelDef[] = Array.isArray(body.customModels) ? body.customModels
+    .filter(cm => !disabled.has(cm.id))
+    .map(cm => ({
+      id: cm.id,
+      name: sanitizeCustomModelName(cm.name, cm.id),
+      provider: 'custom' as const,
+      category: 'fast' as const,
+      badge: 'Custom',
+    })) : [];
   const builtin = enabled
     ? catalog.filter(m => !disabled.has(`${m.provider}:${m.id}`))
     : [];
@@ -3079,28 +3081,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                       textAlign: 'left'
                     }}
                   >
-                    <span style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
-                        <span style={{ overflowWrap: 'break-word', minWidth: 0 }}>{m.name}</span>
-                        {m.badge && (
-                          <span style={{
-                            fontSize: '9px',
-                            fontWeight: 600,
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            background: m.provider === 'custom' ? 'var(--accent-primary)' : 'rgba(148, 163, 184, 0.2)',
-                            color: m.provider === 'custom' ? 'var(--text-on-accent)' : 'var(--text-secondary)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>
-                            {m.badge}
-                          </span>
-                        )}
-                      </span>
-                      <span style={{ fontSize: '10px', color: 'rgba(148, 163, 184, 0.9)' }}>
-                        {formatModelReliability(m.id, getReliabilityScope())}
-                      </span>
-                    </span>
+                    <span style={{ flex: 1, minWidth: 0, overflowWrap: 'break-word' }}>{m.name}</span>
                     {selectedModelId === m.id && <Check size={13} color="var(--accent-light)" style={{ flexShrink: 0, marginLeft: 6 }} />}
                   </button>
                 ))}

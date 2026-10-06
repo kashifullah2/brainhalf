@@ -301,7 +301,7 @@ export default function AdminPage() {
   const [codeLoading, setCodeLoading] = useState(false);
   const [previewProject, setPreviewProject] = useState<AdminProject | null>(null);
   const [models, setModels] = useState<CustomModel[]>([]);
-  const [modelForm, setModelForm] = useState({ name: '', baseUrl: '', modelId: '', apiKey: '' });
+  const [modelForm, setModelForm] = useState({ baseUrl: '', apiKey: '', entries: [{ name: '', modelId: '' }] });
   const [modelSaving, setModelSaving] = useState(false);
   const [testModelId, setTestModelId] = useState<string | null>(null);
   const [testPrompt, setTestPrompt] = useState('');
@@ -470,8 +470,10 @@ export default function AdminPage() {
     setModelForm(prev => ({
       ...prev,
       baseUrl: preset.url,
-      modelId: prev.modelId || preset.model,
-      name: prev.name || `${preset.name} Model`,
+      entries: prev.entries.map((e, i) => i === 0
+        ? { name: e.name || `${preset.name} Model`, modelId: e.modelId || preset.model }
+        : e
+      ),
     }));
   };
 
@@ -519,24 +521,33 @@ export default function AdminPage() {
   };
 
   const saveModel = async () => {
-    if (!modelForm.name.trim() || !modelForm.baseUrl.trim() || !modelForm.modelId.trim() || !modelForm.apiKey.trim()) {
-      setNotice({ kind: 'error', text: 'Fill in all fields: name, base URL, model ID, and API key.' });
+    if (!modelForm.baseUrl.trim() || !modelForm.apiKey.trim()) {
+      setNotice({ kind: 'error', text: 'Base URL and API key are required.' });
+      return;
+    }
+    const validEntries = modelForm.entries.filter(e => e.name.trim() && e.modelId.trim());
+    if (validEntries.length === 0) {
+      setNotice({ kind: 'error', text: 'Add at least one model with a display name and model ID.' });
       return;
     }
     setModelSaving(true);
     setNotice(null);
     try {
-      const response = await authFetch('/api/admin/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(modelForm),
-      });
-      const body = await response.json() as { error?: string };
-      if (!response.ok) {
-        setNotice({ kind: 'error', text: body.error || 'Could not add the model.' });
+      const errors: string[] = [];
+      for (const entry of validEntries) {
+        const response = await authFetch('/api/admin/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: entry.name.trim(), baseUrl: modelForm.baseUrl.trim(), modelId: entry.modelId.trim(), apiKey: modelForm.apiKey.trim() }),
+        });
+        const body = await response.json() as { error?: string };
+        if (!response.ok) errors.push(body.error || `Failed to add "${entry.name}"`);
+      }
+      if (errors.length) {
+        setNotice({ kind: 'error', text: errors.join(' · ') });
       } else {
-        setNotice({ kind: 'ok', text: 'Model added.' });
-        setModelForm({ name: '', baseUrl: '', modelId: '', apiKey: '' });
+        setNotice({ kind: 'ok', text: validEntries.length === 1 ? 'Model added.' : `${validEntries.length} models added.` });
+        setModelForm({ baseUrl: '', apiKey: '', entries: [{ name: '', modelId: '' }] });
         await loadModels();
       }
     } catch {
@@ -1853,17 +1864,6 @@ export default function AdminPage() {
                       >
                         <div className="admin-form-grid">
                           <label>
-                            Display name
-                            <input
-                              type="text"
-                              name="bh_custom_model_display_name"
-                              autoComplete="off"
-                              value={modelForm.name}
-                              onChange={e => setModelForm(f => ({ ...f, name: e.target.value }))}
-                              placeholder="e.g. DeepSeek V3 (Local)"
-                            />
-                          </label>
-                          <label>
                             Base URL
                             <input
                               type="url"
@@ -1872,17 +1872,6 @@ export default function AdminPage() {
                               value={modelForm.baseUrl}
                               onChange={e => setModelForm(f => ({ ...f, baseUrl: e.target.value }))}
                               placeholder="https://api.openai.com/v1"
-                            />
-                          </label>
-                          <label>
-                            Model ID
-                            <input
-                              type="text"
-                              name="bh_custom_model_ident_token"
-                              autoComplete="off"
-                              value={modelForm.modelId}
-                              onChange={e => setModelForm(f => ({ ...f, modelId: e.target.value }))}
-                              placeholder="gpt-4o or custom identifier"
                             />
                           </label>
                           <label>
@@ -1907,6 +1896,49 @@ export default function AdminPage() {
                               </button>
                             </div>
                           </label>
+                        </div>
+
+                        {/* Per-model entries: multiple models can share one base URL + API key */}
+                        <div className="admin-model-entries">
+                          <p className="admin-model-entries-label">Models on this endpoint</p>
+                          {modelForm.entries.map((entry, idx) => (
+                            <div key={idx} className="admin-model-entry-row">
+                              <input
+                                type="text"
+                                name={`bh_model_name_${idx}`}
+                                autoComplete="off"
+                                value={entry.name}
+                                onChange={e => setModelForm(f => ({ ...f, entries: f.entries.map((en, i) => i === idx ? { ...en, name: e.target.value } : en) }))}
+                                placeholder="Display name (e.g. GPT-4o)"
+                              />
+                              <input
+                                type="text"
+                                name={`bh_model_id_${idx}`}
+                                autoComplete="off"
+                                value={entry.modelId}
+                                onChange={e => setModelForm(f => ({ ...f, entries: f.entries.map((en, i) => i === idx ? { ...en, modelId: e.target.value } : en) }))}
+                                placeholder="Model ID (e.g. gpt-4o)"
+                              />
+                              {modelForm.entries.length > 1 && (
+                                <button
+                                  type="button"
+                                  className="admin-input-inline-btn"
+                                  onClick={() => setModelForm(f => ({ ...f, entries: f.entries.filter((_, i) => i !== idx) }))}
+                                  title="Remove this model"
+                                  aria-label="Remove model entry"
+                                >
+                                  <X size={13} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            className="admin-btn-ghost"
+                            onClick={() => setModelForm(f => ({ ...f, entries: [...f.entries, { name: '', modelId: '' }] }))}
+                          >
+                            <Plus size={13} aria-hidden="true" /> Add another model
+                          </button>
                         </div>
 
                         <button
@@ -1974,6 +2006,16 @@ export default function AdminPage() {
                                 <td className="admin-mono">{m.modelId}</td>
                                 <td className="td-actions">
                                   <div className="admin-actions">
+                                    <button
+                                      type="button"
+                                      className={`admin-action-pill-btn ${disabledModels.includes(m.id) ? '' : 'active-btn'}`}
+                                      title={disabledModels.includes(m.id) ? `Enable ${m.name}` : `Disable ${m.name}`}
+                                      aria-label={disabledModels.includes(m.id) ? `Enable ${m.name}` : `Disable ${m.name}`}
+                                      onClick={() => void toggleSingleModel(m.id)}
+                                    >
+                                      <Power size={12} aria-hidden="true" />
+                                      <span>{disabledModels.includes(m.id) ? 'Off' : 'On'}</span>
+                                    </button>
                                     <button
                                       type="button"
                                       className="admin-action-pill-btn test-btn"
@@ -2156,11 +2198,11 @@ export default function AdminPage() {
                   </div>
                   <div className="modal-head-actions">
                     <a
-                      href={`/api/admin/projects/${encodeURIComponent(previewProject.id)}/preview/`}
+                      href={`https://${previewProject.id}.apps.brainhalf.com`}
                       target="_blank"
                       rel="noreferrer"
                       className="admin-icon-btn"
-                      title="Open in new window"
+                      title="Open live app in new window"
                     >
                       <ExternalLink size={15} />
                     </a>
