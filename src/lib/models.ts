@@ -57,6 +57,7 @@ const CF_DEFAULT_MAX = 65536;
 
 const CF_MODELS: AllowedModel[] = [
   { name: DEFAULT_MODEL_ID, provider: 'cloudflare', id: DEFAULT_MODEL_ID, maxTokens: CF_DEFAULT_MAX },
+  { name: '@cf/deepseek-ai/deepseek-v4-flash-0731', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-v4-flash-0731', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: 32768 },
