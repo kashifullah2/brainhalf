@@ -73,7 +73,12 @@ export class ManagedAuth {
       this.store.sql.exec('UPDATE managed_users SET google_sub=?,verified=1,password_hash=?,name=? WHERE environment=? AND id=?', profile.sub, user.verified ? user.password_hash : null, profile.name, environment, user.id);
       return this.store.user(environment, user.id)!;
     }
-    return this.addUser(environment, profile.email, profile.name, null, profile.sub);
+    const newUser = this.addUser(environment, profile.email, profile.name, null, profile.sub);
+    if (this.store.settings(environment).welcomeEnabled) {
+      try { await this.mail.enqueue(environment, 'welcome', newUser.email, { name: newUser.name || newUser.email }, 'welcome:' + newUser.id); }
+      catch { /* Optional welcome must not block sign-in. */ }
+    }
+    return newUser;
   }
   private async githubUser(environment: ProjectEnvironment, profile: GithubProfile) {
     let user = this.store.sql.exec<StoredUser>('SELECT * FROM managed_users WHERE environment=? AND github_id=?', environment, profile.id).toArray()[0];
