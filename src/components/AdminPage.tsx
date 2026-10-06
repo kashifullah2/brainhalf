@@ -25,12 +25,9 @@ import {
   Copy,
   Check,
   ExternalLink,
-  Sparkles,
   ArrowLeft,
   EyeOff,
-  Cpu,
   Zap,
-  SlidersHorizontal,
   Power,
 } from 'lucide-react';
 import BrainHalfLogo from './BrainHalfLogo';
@@ -243,6 +240,27 @@ function duration(ms: number | null): string {
   const hours = minutes / 60;
   if (hours < 24) return `${hours.toFixed(1)} h`;
   return `${Math.round(hours / 24)} d`;
+}
+
+function SortHeader<T extends string>({ label, field, currentField, direction, onToggle }: {
+  label: string;
+  field: T;
+  currentField: T;
+  direction: SortDirection;
+  onToggle: (field: T) => void;
+}) {
+  return (
+    <th onClick={() => onToggle(field)} className="sortable-th">
+      <div className="th-content">
+        <span>{label}</span>
+        {currentField === field ? (
+          direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+        ) : (
+          <ArrowUpDown size={12} className="th-sort-icon" />
+        )}
+      </div>
+    </th>
+  );
 }
 
 export default function AdminPage() {
@@ -900,20 +918,15 @@ export default function AdminPage() {
         </header>
 
         <div className="admin-body">
-          {/* Header Title Row */}
           <div className="admin-title-row">
-            <div>
-              <div className="admin-badge-row">
-                <span className="studio-section-label">OPERATOR PLATFORM</span>
-                <span className="admin-telemetry-badge">
-                  <Sparkles size={11} aria-hidden="true" /> Live Telemetry
-                </span>
-              </div>
-              <h1>Accounts &amp; product health</h1>
-              <p className="admin-subtitle">
-                Real-time insights across account growth, generation outcomes, and system administration.
-              </p>
-            </div>
+            <h1>{tab === 'accounts' ? 'Accounts' : tab === 'projects' ? 'Projects' : 'Models'}</h1>
+            <p className="admin-subtitle">
+              {tab === 'accounts'
+                ? `${stats.total} registered accounts, ${stats.activeWeek} active this week`
+                : tab === 'projects'
+                  ? `${stats.liveProjects} live projects, ${stats.totalProjects} total`
+                  : `${CLIENT_SELECTABLE_MODELS.length} built-in models, ${models.length} custom`}
+            </p>
           </div>
 
           {/* Notices */}
@@ -932,11 +945,11 @@ export default function AdminPage() {
           )}
 
           {state === 'ready' && !integratedEnabled && (
-            <div className="admin-notice admin-notice-warning" role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+            <div className="admin-notice admin-notice-warning admin-notice-warning-content" role="alert">
               <div>
-                <strong style={{ display: 'block', fontSize: '14px', marginBottom: '3px', color: '#f59e0b' }}>⚠️ Built-in models are currently turned off platform-wide</strong>
-                <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary, #94a3b8)' }}>
-                  Generations in Agent Studio using integrated models are currently blocked. Turn them on to allow users to build apps.
+                <strong className="admin-notice-warning-title">Built-in models are turned off</strong>
+                <p className="admin-notice-warning-text">
+                  Generations using integrated models are blocked. Turn them on to allow users to build apps.
                 </p>
               </div>
               <button
@@ -944,7 +957,6 @@ export default function AdminPage() {
                 className="admin-btn admin-btn-primary"
                 onClick={toggleIntegrated}
                 disabled={integratedToggling}
-                style={{ whiteSpace: 'nowrap' }}
               >
                 {integratedToggling ? 'Turning on…' : 'Turn on integrated models'}
               </button>
@@ -1239,56 +1251,11 @@ export default function AdminPage() {
                       <table className="admin-table">
                         <thead>
                           <tr>
-                            <th onClick={() => toggleUserSort('email')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Account</span>
-                                {userSortField === 'email' ? (
-                                  userSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
-                            <th onClick={() => toggleUserSort('createdAt')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Signed Up</span>
-                                {userSortField === 'createdAt' ? (
-                                  userSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
-                            <th onClick={() => toggleUserSort('lastLoginAt')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Last Active</span>
-                                {userSortField === 'lastLoginAt' ? (
-                                  userSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
-                            <th onClick={() => toggleUserSort('projects')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Projects</span>
-                                {userSortField === 'projects' ? (
-                                  userSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
-                            <th onClick={() => toggleUserSort('verified')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Status</span>
-                                {userSortField === 'verified' ? (
-                                  userSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
+                            <SortHeader label="Account" field="email" currentField={userSortField} direction={userSortDir} onToggle={toggleUserSort} />
+                            <SortHeader label="Signed Up" field="createdAt" currentField={userSortField} direction={userSortDir} onToggle={toggleUserSort} />
+                            <SortHeader label="Last Active" field="lastLoginAt" currentField={userSortField} direction={userSortDir} onToggle={toggleUserSort} />
+                            <SortHeader label="Projects" field="projects" currentField={userSortField} direction={userSortDir} onToggle={toggleUserSort} />
+                            <SortHeader label="Status" field="verified" currentField={userSortField} direction={userSortDir} onToggle={toggleUserSort} />
                             <th className="th-actions">
                               <span className="admin-sr">Actions</span>
                             </th>
@@ -1484,46 +1451,10 @@ export default function AdminPage() {
                       <table className="admin-table">
                         <thead>
                           <tr>
-                            <th onClick={() => toggleProjectSort('name')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Project</span>
-                                {projectSortField === 'name' ? (
-                                  projectSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
-                            <th onClick={() => toggleProjectSort('ownerEmail')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Owner</span>
-                                {projectSortField === 'ownerEmail' ? (
-                                  projectSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
-                            <th onClick={() => toggleProjectSort('updatedAt')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Last Updated</span>
-                                {projectSortField === 'updatedAt' ? (
-                                  projectSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
-                            <th onClick={() => toggleProjectSort('status')} className="sortable-th">
-                              <div className="th-content">
-                                <span>Status</span>
-                                {projectSortField === 'status' ? (
-                                  projectSortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-                                ) : (
-                                  <ArrowUpDown size={12} className="th-sort-icon" />
-                                )}
-                              </div>
-                            </th>
+                            <SortHeader label="Project" field="name" currentField={projectSortField} direction={projectSortDir} onToggle={toggleProjectSort} />
+                            <SortHeader label="Owner" field="ownerEmail" currentField={projectSortField} direction={projectSortDir} onToggle={toggleProjectSort} />
+                            <SortHeader label="Last Updated" field="updatedAt" currentField={projectSortField} direction={projectSortDir} onToggle={toggleProjectSort} />
+                            <SortHeader label="Status" field="status" currentField={projectSortField} direction={projectSortDir} onToggle={toggleProjectSort} />
                             <th className="th-actions">
                               <span className="admin-sr">Actions</span>
                             </th>
@@ -1803,7 +1734,7 @@ export default function AdminPage() {
                         </div>
                       </div>
 
-                      <div className="admin-form-grid" style={{ margin: '14px 0 10px' }}>
+                      <div className="admin-form-grid admin-form-grid-top">
                         <label>
                           Target model
                           <select
@@ -1852,10 +1783,9 @@ export default function AdminPage() {
 
                       <button
                         type="button"
-                        className="admin-btn admin-btn-primary"
+                        className="admin-btn admin-btn-primary admin-btn-start"
                         onClick={testBuiltinModel}
                         disabled={builtinTestRunning || !integratedEnabled}
-                        style={{ alignSelf: 'flex-start' }}
                       >
                         {builtinTestRunning ? (
                           <Loader2 size={14} className="admin-spin" aria-hidden="true" />
@@ -1866,13 +1796,12 @@ export default function AdminPage() {
                       </button>
 
                       {!integratedEnabled && (
-                        <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.25)', color: '#fbbf24', fontSize: '12.5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <div className="admin-playground-disabled">
                           <span>Turn on integrated models to run playground tests.</span>
                           <button
                             type="button"
-                            className="admin-btn admin-btn-primary"
+                            className="admin-btn admin-btn-primary admin-btn-sm"
                             onClick={toggleIntegrated}
-                            style={{ padding: '4px 10px', fontSize: '11.5px' }}
                           >
                             Turn on
                           </button>
@@ -1902,7 +1831,7 @@ export default function AdminPage() {
                       </div>
 
                       {/* Quick Presets */}
-                      <span className="admin-chips-label" style={{ marginTop: '10px' }}>Fill from provider preset:</span>
+                      <span className="admin-chips-label admin-chips-label-spaced">Fill from provider preset:</span>
                       <div className="admin-preset-chips">
                         {PRESET_PROVIDERS.map(preset => (
                           <button
@@ -1922,10 +1851,6 @@ export default function AdminPage() {
                         autoComplete="off"
                         style={{ display: 'contents' }}
                       >
-                        {/* Hidden dummy input to catch rogue browser autofill */}
-                        <input type="text" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
-                        <input type="password" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
-
                         <div className="admin-form-grid">
                           <label>
                             Display name
@@ -1986,10 +1911,9 @@ export default function AdminPage() {
 
                         <button
                           type="button"
-                          className="admin-btn admin-btn-primary"
+                          className="admin-btn admin-btn-primary admin-btn-start"
                           onClick={saveModel}
                           disabled={modelSaving}
-                          style={{ alignSelf: 'flex-start' }}
                         >
                           {modelSaving ? (
                             <Loader2 size={14} className="admin-spin" aria-hidden="true" />
@@ -2024,13 +1948,13 @@ export default function AdminPage() {
                             {models.map(m => (
                               <tr key={m.id} className="admin-table-row">
                                 <td>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div className="admin-model-cell-name">
                                     <strong>{m.name}</strong>
                                     <span className="admin-provider-pill admin-provider-custom">Custom</span>
                                   </div>
                                 </td>
                                 <td>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <div className="admin-model-cell-url">
                                     <span className="admin-mono">{m.baseUrl}</span>
                                     <button
                                       type="button"
@@ -2091,7 +2015,7 @@ export default function AdminPage() {
                     {testModelId && (() => {
                       const model = models.find(m => m.id === testModelId);
                       return model ? (
-                        <div className="admin-card" aria-label={`Test ${model.name}`} style={{ gridColumn: '1 / -1' }}>
+                        <div className="admin-card admin-card-full" aria-label={`Test ${model.name}`}>
                           <div className="admin-card-head">
                             <span className="admin-stat-icon icon-play">
                               <Play size={17} aria-hidden="true" />
@@ -2110,7 +2034,7 @@ export default function AdminPage() {
                               rows={3}
                             />
                           </label>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div className="admin-playground-actions">
                             <button
                               type="button"
                               className="admin-btn admin-btn-primary"
@@ -2126,8 +2050,7 @@ export default function AdminPage() {
                             </button>
                             <button
                               type="button"
-                              className="admin-btn"
-                              style={{ border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))', background: 'transparent', color: 'var(--text-secondary, #9da8be)' }}
+                              className="admin-btn admin-btn-ghost"
                               onClick={() => { setTestModelId(null); setTestOutput(''); }}
                             >
                               Close playground
