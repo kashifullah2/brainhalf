@@ -9,9 +9,9 @@ export interface ReliabilityControls {
 
 export const DEFAULT_RELIABILITY: Readonly<ReliabilityControls> = {
   fastMode: true,
-  // 32k gives a full multi-file app room in one response. The previous 16k
-  // default truncated larger apps, forcing the truncation-retry loop.
-  maxTokens: 32768,
+  // 64k matches the CF model's actual maximum and gives complex multi-file
+  // apps the full token budget. The previous 32k cap truncated larger apps.
+  maxTokens: 65536,
   maxSteps: 10,
   timeoutMs: AI_TIMEOUT_MS,
 };

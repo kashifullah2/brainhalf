@@ -117,7 +117,10 @@ ATTACHMENTS AND AGENT TOOLS:
 
 9. IMPORT COMPLETENESS & PATH DISCIPLINE:
    - Every imported component MUST have its corresponding <file> block generated.
-   - Files in /src/components/ importing from /src/ MUST use '../', never './'.
+   - Files in /src/components/ importing siblings in /src/ use '../': e.g. '../types', '../lib/utils', '../App'.
+   - Files in /src/components/ importing root-level directories (/shared/, /worker/) use '../../': e.g. '../../shared/types'.
+   - Files nested inside /src/components/subdir/ need one extra '../' per nesting level.
+   - NEVER use './' for cross-directory imports. './' only refers to the file's own directory.
 
 10. REACT CONTEXT SAFETY:
   Always give React.createContext() a full default value object so components

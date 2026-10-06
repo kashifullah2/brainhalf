@@ -164,7 +164,7 @@ export function selectForwardableHeaders(headers: Headers, store?: InMemoryDataS
 // Token capacity ladder for Cloudflare Workers AI. Starts high so a full
 // multi-file full-stack generation is not truncated, and steps down only when
 // the provider rejects the request for a token/context reason.
-const TOKEN_LADDER = [32768, 16384, 8192, 4096];
+const TOKEN_LADDER = [65536, 32768, 16384, 8192, 4096];
 const MAX_CF_ATTEMPTS = 6; // Retry token-limit errors only, on the user's selected model.
 const AUTO_RETRY_FULL_APP_MARKER = '[AUTO-RETRY-FULL-APP]';
 const MIN_FULL_APP_RESPONSE_CHARS = 260;
@@ -2762,7 +2762,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       });
       if (Object.keys(capabilities).length) {
         try {
-          const answer = await runCapabilityLoop(input => runAI(cfModel, { ...input, max_tokens: requestedMaxTokens || 8192 }, { signal: abortController.signal }), messages, capabilities, abortController.signal, usage => { toolInputTokens += usage.prompt_tokens ?? usage.input_tokens ?? 0; toolOutputTokens += usage.completion_tokens ?? usage.output_tokens ?? 0; this.captureUsage(toolInputTokens, toolOutputTokens); }, name => {
+          const answer = await runCapabilityLoop(input => runAI(cfModel, { ...input, max_tokens: requestedMaxTokens || 32768 }, { signal: abortController.signal }), messages, capabilities, abortController.signal, usage => { toolInputTokens += usage.prompt_tokens ?? usage.input_tokens ?? 0; toolOutputTokens += usage.completion_tokens ?? usage.output_tokens ?? 0; this.captureUsage(toolInputTokens, toolOutputTokens); }, name => {
             if (accounting && accounting.firstResponseAt === null) accounting.firstResponseAt = Date.now();
             flushFrame();
             const event = JSON.stringify({ type: 'tool_call', tool: name });
@@ -3073,9 +3073,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     } catch { }
 
     const autoRetryMessage =
-      `${AUTO_RETRY_FULL_APP_MARKER} Continue the same task and output only complete file blocks.\n` +
-      `Rules: tool use is disabled. Use the existing project context; do not emit DSML or function-call markup. Respond strictly with <file path="/...">FULL FILE CONTENT</file> and optional <edit>/<delete> tags; no markdown prose.\n` +
-      `Generate a complete runnable app, not a short snippet.`;
+      `${AUTO_RETRY_FULL_APP_MARKER} Your previous response contained NO <file> blocks — only markdown prose or code fences. That response is being discarded. Start over.\n\n` +
+      `You MUST output ONLY complete <file path="/...">FULL FILE CONTENT</file> blocks. No markdown, no explanation, no code fences, no prose of any kind before or after the file blocks.\n` +
+      `Tool use is disabled for this response. Do not emit DSML, function-call markup, or any XML other than <file>, <edit>, and <delete> tags.\n` +
+      `Generate EVERY file needed for a complete, runnable application. Do not truncate any file. Do not write partial implementations or placeholders.`;
 
     const publishRetry = () => {
       try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: autoRetryMessage })); } catch (e) { noteSendFailure(e); }
@@ -3198,7 +3199,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
     if (!text) return summary;
 
-    summary.sawCodeLikeOutput = /<file\s+path=|<edit\s+path=|<delete\s+path=|```|File:\s*\/[a-zA-Z0-9._/-]+/i.test(text);
+    summary.sawCodeLikeOutput = /<file\s+path=|<edit\s+path=|<delete\s+path=/i.test(text);
 
     // The single write entry point checks the epoch itself so both the streaming
     // path and the Workers AI path are covered. A generation the user has since
