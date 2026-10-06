@@ -62,7 +62,7 @@ export default function BuilderOverlay({
   const [dismissed, setDismissed] = useState(false);
   const [completedAt, setCompletedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const startTimeRef = useRef(Date.now());
+  const startTimeRef = useRef(0);
   const [latchedIsFirstGen, setLatchedIsFirstGen] = useState(isFirstGeneration);
 
   // Latch the first generation flag to true if we ever saw it true during generation

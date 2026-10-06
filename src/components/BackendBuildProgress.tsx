@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 
 interface Step {
@@ -33,7 +33,7 @@ function plainMessage(message: string): string {
 }
 
 function ElapsedTime({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(Math.floor((Date.now() - startedAt) / 1000));
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - startedAt) / 1000));
   useEffect(() => {
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     return () => clearInterval(id);
@@ -50,9 +50,9 @@ function ElapsedTime({ startedAt }: { startedAt: number }) {
  */
 export default function BackendBuildProgress({ message, startedAt }: { message: string; startedAt?: number }) {
   const activeIdx = resolveStep(message);
-  const mountedAt = React.useRef(startedAt ?? Date.now());
   // Freeze the start time on mount so ticks don't reset when message changes
-  const effectiveStart = startedAt ?? mountedAt.current;
+  const [mountedAtTime] = useState(() => startedAt ?? Date.now());
+  const effectiveStart = startedAt ?? mountedAtTime;
 
   return (
     <div style={{

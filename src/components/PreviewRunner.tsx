@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import * as ReactDOM from 'react-dom/client';
 import * as ReactDOMBase from 'react-dom';
 import * as JSXRuntime from 'react/jsx-runtime';
@@ -199,11 +199,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   }, [buildError]);
 
   const activeError = buildError || runtimeError;
-  // Capture time at render start into a ref so the streaming window check is
-  // stable within a single render pass (React strict-mode renders twice).
-  const renderNowRef = useRef(0);
-  renderNowRef.current = Date.now();
-  const filesStreaming = renderNowRef.current - lastFileSyncAtRef.current < TRANSIENT_STREAM_WINDOW_MS;
+  const filesStreaming = Date.now() - lastFileSyncAtRef.current < TRANSIENT_STREAM_WINDOW_MS;
   const transientStreamError = !!activeError && filesStreaming && isTransientResolutionError(activeError);
 
   useEffect(() => {
