@@ -2662,6 +2662,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     fastMode = true
   ): Promise<boolean> {
     let cfTimeout: ReturnType<typeof setTimeout> | undefined;
+    let cfFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const abortController = this.currentAbortController ?? new AbortController();
     const ownsController = !this.currentAbortController;
     try {
@@ -2716,13 +2717,22 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       let outputContent = '';
       let displayContent = '';
       const transcript = new ToolTranscriptStream();
+      let pendingFrame = '';
+      const flushFrame = () => {
+        if (cfFlushTimer !== null) { clearTimeout(cfFlushTimer); cfFlushTimer = null; }
+        if (!pendingFrame) return;
+        const frame = pendingFrame;
+        pendingFrame = '';
+        const msg = JSON.stringify({ type: 'stream', chunk: { response: frame, done: false } });
+        try { connection.send(msg); } catch (e) { noteSendFailure(e); }
+        try { this.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
+      };
       const emitDisplay = (token: string) => {
         if (!token) return;
         displayContent += token;
         this.rememberGenerationText(token, epoch);
-        const msg = JSON.stringify({ type: 'stream', chunk: { response: token, done: false } });
-        try { connection.send(msg); } catch (e) { noteSendFailure(e); }
-        try { this.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
+        pendingFrame += token;
+        if (cfFlushTimer === null) cfFlushTimer = setTimeout(flushFrame, 50);
       };
       const emit = (token: string) => {
         outputContent += token;
@@ -2740,6 +2750,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         try {
           const answer = await runCapabilityLoop(input => runAI(cfModel, { ...input, max_tokens: requestedMaxTokens || 8192 }, { signal: abortController.signal }), messages, capabilities, abortController.signal, usage => { toolInputTokens += usage.prompt_tokens ?? usage.input_tokens ?? 0; toolOutputTokens += usage.completion_tokens ?? usage.output_tokens ?? 0; this.captureUsage(toolInputTokens, toolOutputTokens); }, name => {
             if (accounting && accounting.firstResponseAt === null) accounting.firstResponseAt = Date.now();
+            flushFrame();
             const event = JSON.stringify({ type: 'tool_call', tool: name });
             try { connection.send(event); this.broadcast(event, [connection.id]); } catch (e) { noteSendFailure(e); }
           }, emit, { maxSteps });
@@ -2898,6 +2909,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
       if (!outputContent.trim() && (!expectFiles || isConversationalPrompt(actualPrompt)) && assetPaths.size === 0) throw new Error('The model returned no response. Please retry.');
       emitDisplay(transcript.push('', true));
+      flushFrame();
       // expectFiles is false exactly for tool-less turns (planner, question,
       // destructive, ambiguous): scan the reply for diagnostics, never write.
       const extraction = this.extractAndSaveFiles(outputContent, connection, epoch, !expectFiles, deferTerminal);
@@ -2926,6 +2938,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       console.error('Cloudflare Workers AI execution failed:', e);
       throw e;
     } finally {
+      if (cfFlushTimer !== null) clearTimeout(cfFlushTimer);
       if (cfTimeout) clearTimeout(cfTimeout);
       if (ownsController && this.currentAbortController === abortController) this.currentAbortController = null;
     }
