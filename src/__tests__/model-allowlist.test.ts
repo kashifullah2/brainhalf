@@ -42,7 +42,7 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
     expect(m).not.toBeNull();
     expect(m!.provider).toBe('atria');
     expect(m!.id).toBe('Atria-Dawn-Preview');
-    expect(m!.maxTokens).toBe(64000);
+    expect(m!.maxTokens).toBe(16384);
   });
 
   it('resolves GLM 5.3 Flash server-side but does not offer it in the picker', () => {

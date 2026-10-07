@@ -23,7 +23,7 @@ describe('LandingHero redesign', () => {
   it('renders the headline with the gradient phrase and both CTAs', () => {
     const html = renderHero();
     expect(html).toContain('id="hero-heading"');
-    expect(html).toContain('hero-gradient');
+    expect(html).toContain('hero-underline');
     expect(html).toContain('working software.');
     expect(html).toContain('Start building');
     expect(html).toContain('See examples');
