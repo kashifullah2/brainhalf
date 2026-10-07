@@ -62,8 +62,10 @@ const CF_MODELS: AllowedModel[] = [
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: 32768 },
   { name: '@cf/meta/llama-4-scout-17b-16e-instruct', provider: 'cloudflare', id: '@cf/meta/llama-4-scout-17b-16e-instruct', maxTokens: CF_DEFAULT_MAX },
-  { name: '@cf/meta/llama-4-maverick-17b-128e-instruct', provider: 'cloudflare', id: '@cf/meta/llama-4-maverick-17b-128e-instruct', maxTokens: CF_DEFAULT_MAX },
-  { name: '@cf/google/gemma-3-27b-it', provider: 'cloudflare', id: '@cf/google/gemma-3-27b-it', maxTokens: 32768 },
+  // Disabled: returns empty response on CF Workers AI; re-enable when model becomes available.
+  { name: '@cf/meta/llama-4-maverick-17b-128e-instruct', provider: 'cloudflare', id: '@cf/meta/llama-4-maverick-17b-128e-instruct', maxTokens: CF_DEFAULT_MAX, clientSelectable: false },
+  // Disabled: returns empty response on CF Workers AI; re-enable when model becomes available.
+  { name: '@cf/google/gemma-3-27b-it', provider: 'cloudflare', id: '@cf/google/gemma-3-27b-it', maxTokens: 32768, clientSelectable: false },
   { name: '@cf/mistralai/mistral-small-3.1-24b-instruct', provider: 'cloudflare', id: '@cf/mistralai/mistral-small-3.1-24b-instruct', maxTokens: 32768 },
   { name: '@cf/qwen/qwen2.5-coder-32b-instruct', provider: 'cloudflare', id: '@cf/qwen/qwen2.5-coder-32b-instruct', maxTokens: 32768 },
   { name: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', maxTokens: CF_DEFAULT_MAX },

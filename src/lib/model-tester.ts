@@ -348,6 +348,14 @@ export async function handleModelTest(
         throw new Error('Cloudflare Workers AI binding env.AI is not available');
       }
 
+      // Only send enable_thinking: false to models that actually support thinking.
+      // Other CF models silently drop the response when this param is unrecognised.
+      const cfSupportsThinking = [
+        '@cf/deepseek-ai/deepseek-v4-pro-0813',
+        '@cf/deepseek-ai/deepseek-v4-flash-0731',
+        '@cf/zai-org/glm-5.3-flash',
+      ].includes(resolved.id);
+
       let aiResponse: ModelTestStreamResponse | null = null;
       const testLadder = [32768, 16384, 8192, 4096];
       for (const tokenLimit of testLadder) {
@@ -361,7 +369,7 @@ export async function handleModelTest(
               stream: true,
               max_tokens: tokenLimit,
               max_completion_tokens: tokenLimit,
-              chat_template_kwargs: { enable_thinking: false }
+              ...(cfSupportsThinking ? { chat_template_kwargs: { enable_thinking: false } } : {}),
             }),
             MODEL_TEST_TIMEOUT_MS,
             `Model test (${resolved.id})`
@@ -575,9 +583,12 @@ export async function handleModelTest(
         compatibility: 'compatible',
         fetch: atriaFetch,
       } as any);
+      // Atria generates at ~10 t/s; cap at 600 tokens so the test completes
+      // in ~60s instead of timing out at full 16k budget.
       const stream = streamText({
         model: meteredModel(atria.chat(resolved.id)),
         messages: [{ role: 'user', content: prompt }],
+        maxOutputTokens: 600,
         abortSignal: AbortSignal.timeout(MODEL_TEST_TIMEOUT_MS),
         onError: ({ error }) => { errorMsg = error instanceof Error ? error.message : String(error); },
       });
