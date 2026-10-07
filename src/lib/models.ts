@@ -52,7 +52,7 @@ export const DEFAULT_MODEL_ID = '@cf/deepseek-ai/deepseek-v4-pro-0813';
 // truncated every multi-file app mid-file, driving the truncation-retry loop
 // and the bracket-guessing repair path.
 const BEDROCK_DEFAULT_MAX = 64000;
-const ATRIA_DEFAULT_MAX = 16384;
+const ATRIA_DEFAULT_MAX = 65536;
 const CF_DEFAULT_MAX = 65536;
 
 const CF_MODELS: AllowedModel[] = [

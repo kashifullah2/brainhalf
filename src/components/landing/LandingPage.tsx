@@ -9,6 +9,7 @@ import BentoGrid from './BentoGrid';
 import TrustSection from './TrustSection';
 import FaqSection from './FaqSection';
 import FinalCta from './FinalCta';
+import { useScrollReveal } from '../../hooks/useScrollReveal';
 import './LandingPage.css';
 import '../PublicPage.css';
 
@@ -41,6 +42,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [promptText, setPromptText] = useState('');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useScrollReveal();
 
   const handlePromptSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -102,19 +105,33 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           onFocusComposer={focusComposer}
         />
 
-        <InteractiveDemo onUseIdea={handleExamplePrompt} />
+        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <InteractiveDemo onUseIdea={handleExamplePrompt} />
+        </div>
 
-        <GalleryRow onUseIdea={handleExamplePrompt} />
+        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <GalleryRow onUseIdea={handleExamplePrompt} />
+        </div>
 
-        <HowItWorks />
+        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <HowItWorks />
+        </div>
 
-        <BentoGrid />
+        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <BentoGrid />
+        </div>
 
-        <TrustSection />
+        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <TrustSection />
+        </div>
 
-        <FaqSection />
+        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <FaqSection />
+        </div>
 
-        <FinalCta onStartBuilding={focusComposer} />
+        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <FinalCta onStartBuilding={focusComposer} />
+        </div>
       </main>
 
       <LandingFooter />

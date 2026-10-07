@@ -148,10 +148,15 @@ export const BentoGrid: React.FC = () => {
         <p className="landing-section-lede">The whole journey lives in one place — nothing to stitch together, nothing to install.</p>
       </div>
       <div className="bento-grid">
-        {TILES.map(tile => {
+        {TILES.map((tile, i) => {
           const Icon = tile.icon;
           return (
-            <article key={tile.id} className={`bento-tile ${tile.span}`} onMouseMove={spotlight}>
+            <article
+              key={tile.id}
+              className={`bento-tile ${tile.span}`}
+              onMouseMove={spotlight}
+              style={{ ['--tile-i' as string]: i }}
+            >
               <div className="bento-tile-top">
                 <span className="bento-kicker">{tile.kicker}</span>
                 <Icon size={16} aria-hidden="true" className="bento-icon" />

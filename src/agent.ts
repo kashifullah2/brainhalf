@@ -167,6 +167,14 @@ export function selectForwardableHeaders(headers: Headers, store?: InMemoryDataS
 const TOKEN_LADDER = [65536, 32768, 16384, 8192, 4096];
 const MAX_CF_ATTEMPTS = 6; // Retry token-limit errors only, on the user's selected model.
 const AUTO_RETRY_FULL_APP_MARKER = '[AUTO-RETRY-FULL-APP]';
+/**
+ * Prefix of the [AUTO-FIX] prompt verifyFinalCompleteness sends when imports
+ * dangle after the final stage. Stored so the repair turn can be recognized
+ * when it comes back (P0-4: the parent turn resolves only on this turn).
+ */
+const COMPLETENESS_REPAIR_MARKER = '[AUTO-FIX] The build finished but these files are imported by the app and were never written:';
+/** Prefix of the [AUTO-FIX] prompt for syntax-discarded files. */
+const SYNTAX_REPAIR_MARKER = '[AUTO-FIX] These files were discarded because of syntax errors';
 const MIN_FULL_APP_RESPONSE_CHARS = 260;
 const MIN_FULL_APP_RESPONSE_LINES = 5;
 
@@ -233,6 +241,10 @@ type ExtractionSummary = {
   hadSyntaxDrops: boolean;
   sawCodeLikeOutput: boolean;
   wasTruncated: boolean;
+  /** P0-4: set when this extraction queued a trigger-auto-reply repair turn. */
+  triggerQueued: boolean;
+  /** Marker prefix of the queued repair prompt, for parent-turn resolution. */
+  triggerMarker: string | null;
 };
 
 // A files_snapshot page is bounded in both rows and total bytes so no single
@@ -395,6 +407,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * between batches; this is the last line of defense before the user sees the app.
    */
   private finalCompletenessRepairAttempts = 0;
+  /**
+   * P0-4: when a repair/retry turn is queued at the end of a generation, the
+   * parent turn must not be recorded as completed. This holds the parent job
+   * id plus the repair prompt's marker prefix; the repair turn resolves the
+   * parent (completing or failing it) when it finishes, via
+   * resolveCompletenessRepair(). Instance state is best-effort across
+   * hibernation — a lost entry degrades to the stale-running sweeper, which is
+   * still strictly more honest than "completed" on a broken build.
+   */
+  private pendingCompletenessRepair: { parentJobId: string; marker: string } | null = null;
   /**
    * Epoch of the generation whose turn was last persisted via
    * saveGenerationTurn. Lets the failure handler preserve the user's prompt
@@ -1051,6 +1073,26 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   }
 
   /**
+   * Guess the intended path for each dangling import (P0-3). The old heuristic
+   * (`components/` → `.tsx`, everything else → `.ts`) generated TypeScript
+   * files for CSS imports and `.tsx` files in `.jsx` projects. An explicit
+   * extension in the specifier always wins; otherwise mirror the importing
+   * file's own extension, which is the project's actual convention. Shared by
+   * the per-batch check in extractAndSaveFiles and the final check below.
+   */
+  private missingFileCandidates(missing: Array<{ importer: string; specifier: string; resolvedPath: string }>): string[] {
+    const JS_EXTS = ['.jsx', '.tsx', '.js', '.ts', '.mjs', '.cjs', '.mts', '.cts'];
+    const out = new Set<string>();
+    for (const d of missing) {
+      const specExt = d.specifier.match(/\.[A-Za-z0-9]+$/)?.[0]?.toLowerCase();
+      if (specExt) { out.add(d.resolvedPath + specExt); continue; }
+      const importerExt = d.importer.match(/\.[A-Za-z0-9]+$/)?.[0]?.toLowerCase();
+      out.add(d.resolvedPath + (importerExt && JS_EXTS.includes(importerExt) ? importerExt : '.tsx'));
+    }
+    return [...out];
+  }
+
+  /**
    * Post-generation completeness check. The per-batch dangling-import check in
    * extractAndSaveFiles can miss files when generation cuts off between batches
    * (e.g. App.tsx written in batch 1, AuthPage.tsx never written because the
@@ -1058,26 +1100,30 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * ALL project files for unresolvable imports. Missing files trigger one bounded
    * [AUTO-FIX] repair; if that was already used, the user gets a clear warning
    * listing exactly what's missing instead of a silent broken preview.
+   *
+   * Returns true when a repair turn was queued (P0-4): the caller must then
+   * hold the completed status until the repair turn resolves.
    */
-  private verifyFinalCompleteness(connection: Connection, defer: (event: () => void) => void = event => event()): void {
+  private verifyFinalCompleteness(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
     try {
       const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
       const allFiles = new Map<string, string>();
       for (const r of rows || []) allFiles.set(r.path, r.content || '');
-      if (allFiles.size === 0) return;
+      if (allFiles.size === 0) return false;
       const missing = findDanglingImports(allFiles, new Set<string>());
-      if (missing.length === 0) return;
-      const candidates = [...new Set(missing.map(d => /components\//.test(d.resolvedPath) ? `${d.resolvedPath}.tsx` : `${d.resolvedPath}.ts`))];
+      if (missing.length === 0) return false;
+      const candidates = [...new Set(this.missingFileCandidates(missing))];
       console.warn(`Final completeness check: ${candidates.length} imported file(s) never written: ${candidates.join(', ')}`);
       if (this.finalCompletenessRepairAttempts < 1) {
         this.finalCompletenessRepairAttempts++;
         const list = candidates.slice(0, 8).map(p => `- ${p}`).join('\n');
         const repairPrompt =
-          `[AUTO-FIX] The build finished but these files are imported by the app and were never written:\n${list}\n\n` +
+          `${COMPLETENESS_REPAIR_MARKER}\n${list}\n\n` +
           `Generate ONLY these missing files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
           `Match the existing app's architecture, imports, and styling. Do not modify any other file.`;
         try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The build was missing ${candidates.length} file(s). Generating them now…` })); } catch (e) { noteSendFailure(e); }
         defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch (e) { noteSendFailure(e); } });
+        return true;
       } else {
         try {
           connection.send(JSON.stringify({
@@ -1089,6 +1135,50 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     } catch (err) {
       console.warn('Final completeness check failed:', err instanceof Error ? err.message : String(err));
     }
+    return false;
+  }
+
+  /**
+   * P0-4: record that a turn queued a repair/retry turn. First marker wins per
+   * turn (the client honors a single trigger-auto-reply per response). If this
+   * turn IS itself a pending repair that queued a follow-up, the original
+   * parent transfers to the new repair instead of nesting. Returns true when
+   * this call recorded the turn's repair.
+   */
+  private noteRepairQueued(jobId: string, actualPrompt: string, marker: string | null): boolean {
+    if (!marker) return false;
+    const pending = this.pendingCompletenessRepair;
+    if (pending && pending.parentJobId === jobId) return true;
+    if (pending && actualPrompt.startsWith(pending.marker)) {
+      this.pendingCompletenessRepair = { parentJobId: pending.parentJobId, marker };
+    } else {
+      this.pendingCompletenessRepair = { parentJobId: jobId, marker };
+    }
+    return true;
+  }
+
+  /**
+   * P0-4: resolves the parent turn's bookkeeping when a queued repair turn
+   * finishes. The parent was left 'running' with its usage row open (never
+   * marked completed before the repair outcome was known). Only the turn whose
+   * prompt carries the queued repair's marker can resolve it.
+   */
+  private resolveCompletenessRepair(actualPrompt: string, accountingId: string, completed: boolean, jobOutcome: { kind: 'failed' | 'interrupted'; error: string } | null, aborted: boolean): void {
+    const pending = this.pendingCompletenessRepair;
+    if (!pending || pending.parentJobId === accountingId || !actualPrompt.startsWith(pending.marker)) return;
+    this.pendingCompletenessRepair = null;
+    try {
+      const jobs = this.generationJobs();
+      if (completed) {
+        jobs.complete(pending.parentJobId);
+        this.runSql`UPDATE generation_usage SET finished_at=${Date.now()}, status='completed' WHERE id=${pending.parentJobId}`;
+      } else {
+        const status = aborted ? 'stopped' : 'failed';
+        if (jobOutcome?.kind === 'failed') jobs.fail(pending.parentJobId, jobOutcome.error);
+        else jobs.interrupt(pending.parentJobId, jobOutcome?.error ?? 'The repair turn did not finish.');
+        this.runSql`UPDATE generation_usage SET finished_at=${Date.now()}, status=${status} WHERE id=${pending.parentJobId}`;
+      }
+    } catch { /* parent bookkeeping is auxiliary; the files themselves are saved */ }
   }
 
   private pendingAuth = new Map<string, Promise<boolean>>();
@@ -1240,6 +1330,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       }
 
       if (data.type === 'sync_files' && data.files && typeof data.files === 'object') {
+        // P0-1: never let an editor sync interleave with an active generation's
+        // file writes — the stale tree would overwrite just-generated files and
+        // the build would still report success. The client refreshes and retries
+        // after the build, same as a revision conflict.
+        if (this.generationLock?.isHeld) {
+          try { connection.send(JSON.stringify({ type: 'files_sync_conflict', revision: this.getFilesRevision(), reason: 'generation_in_progress' })); } catch { }
+          return;
+        }
         if (data.expected_revision !== undefined && data.expected_revision !== this.getFilesRevision()) {
           connection.send(JSON.stringify({ type: 'files_sync_conflict', revision: this.getFilesRevision() }));
           return;
@@ -1288,6 +1386,17 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
       if (this.writeEpoch.value !== requestEpoch) return;
       if (data.workspaceFiles && typeof data.workspaceFiles === 'object') {
+        // P0-1/P0-2: the auto-sync path previously ignored expected_revision
+        // and ran during active generations, letting a stale editor tree
+        // clobber just-generated files. Same protection as explicit sync_files.
+        if (this.generationLock?.isHeld) {
+          try { connection.send(JSON.stringify({ type: 'files_sync_conflict', revision: this.getFilesRevision(), reason: 'generation_in_progress' })); } catch { }
+          return;
+        }
+        if (data.expected_revision !== undefined && data.expected_revision !== this.getFilesRevision()) {
+          try { connection.send(JSON.stringify({ type: 'files_sync_conflict', revision: this.getFilesRevision() })); } catch { }
+          return;
+        }
         // Bounded the same way as an explicit sync: an editor that posts its
         // whole tree on every keystroke burst would otherwise rewrite the
         // workspace without limit.
@@ -1745,6 +1854,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       this.activeJobId = accounting.id;
     } catch { console.warn('Generation resume checkpoint unavailable'); }
     let completed = false;
+    // P0-4: set when this turn queued a repair/retry turn (staged or Workers
+    // AI path). While set, the turn is not terminal: the usage row and the
+    // durable job stay open until the repair turn resolves the parent.
+    let repairQueuedThisTurn = false;
     // Terminal resume bookkeeping, decided in the catch branches and applied
     // in the finally: 'failed' = hard failure, never resume (quota, auth,
     // bad model); 'interrupted' = the build can continue from its saved files
@@ -1855,27 +1968,23 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           }
 
           // Admin kill-switch: applies to both built-in models and custom models.
-          // Captured for tool-level checks (call_cloudflare_model).
-          let disabledModels: string[] = [];
-          let integratedModelsOff = false;
           try {
             const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
             if (statusRes.ok) {
               const statusBody = await statusRes.json() as { integratedModelsEnabled?: boolean; disabledModels?: string[] };
-              if (Array.isArray(statusBody.disabledModels)) disabledModels = statusBody.disabledModels;
-              if (statusBody.integratedModelsEnabled === false) integratedModelsOff = true;
               if (customModel) {
-                if (disabledModels.includes(requestedModel)) {
+                // Custom models use their cm_xxx ID as the disable key.
+                if (Array.isArray(statusBody.disabledModels) && statusBody.disabledModels.includes(requestedModel)) {
                   sendError(`Model "${customModel.name}" is currently turned off by the administrator.`);
                   return;
                 }
               } else {
-                if (integratedModelsOff) {
+                if (statusBody.integratedModelsEnabled === false) {
                   sendError('The built-in models are currently turned off by the administrator.');
                   return;
                 }
                 const modelKey = `${resolved!.provider}:${resolved!.name}`;
-                if (disabledModels.includes(modelKey)) {
+                if (Array.isArray(statusBody.disabledModels) && statusBody.disabledModels.includes(modelKey)) {
                   sendError(`Model "${resolved!.name}" is currently turned off by the administrator.`);
                   return;
                 }
@@ -2088,9 +2197,6 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     if (!cfEntry) {
                       return { success: false, error: `Model "${subModel}" is not in the model allowlist` };
                     }
-                    if (integratedModelsOff || disabledModels.includes(`${cfEntry.provider}:${cfEntry.name}`)) {
-                      return { success: false, error: `Model "${subModel}" is currently turned off by the administrator` };
-                    }
                     if (env?.AI) {
                       if (abortController.signal.aborted || !this.writeEpoch.accepts(epoch)) return { success: false, error: 'Generation stopped' };
                       // Budget was reserved once at generation start; no per-call reserve needed.
@@ -2183,7 +2289,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             // turn demands files, so a prose-only reply must be treated as an
             // incomplete generation and surface an error.
             const expectFiles = !plannerMode && !modes?.questionMode && !modes?.destructiveMode && !modes?.ambiguousMode;
-            const success = await this.runCloudflareWorkersAI(
+            const cfResult = await this.runCloudflareWorkersAI(
               resolved.id,
               systemPrompt,
               inputMessages,
@@ -2194,9 +2300,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               expectFiles,
               toolLess ? {} : { ...extensions.capabilities, ...await capabilitiesFromTools(Object.fromEntries(Object.entries(agentTools).filter(([name]) => ['read_file', 'list_files', 'check_syntax', 'write_file', 'edit_file'].includes(name))), abortController.signal) }, extensions.attachments, assetPaths, deferTerminal, maxSteps, controls.fastMode
             );
-            completed = success;
+            // P0-4: a queued repair turn means the build is not done — hold the
+            // completed status (and the durable job) until the repair turn
+            // resolves it via resolveCompletenessRepair().
+            if (cfResult.repairMarker && this.noteRepairQueued(accounting.id, actualPrompt, cfResult.repairMarker)) repairQueuedThisTurn = true;
+            completed = cfResult.ok && !repairQueuedThisTurn;
             if (abortController.signal.aborted) throw abortController.signal.reason;
-            if (!success && this.writeEpoch.accepts(epoch) && !this.currentAbortController?.signal.aborted) {
+            if (!cfResult.ok && this.writeEpoch.accepts(epoch) && !this.currentAbortController?.signal.aborted) {
               sendError(`Generation with "${resolved.name}" failed. Try again, or pick a different model.`);
             }
             return;
@@ -2330,7 +2440,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   // plain string.
                   system: model.provider === 'anthropic'
                     ? ({ role: 'system', content: stageSystemPrompt, providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } } satisfies SystemModelMessage)
-                    : model.provider === 'aws' && model.id.includes('anthropic')
+                    : model.provider === 'aws'
                     ? ({ role: 'system', content: stageSystemPrompt, providerOptions: { bedrock: { cachePoint: { type: 'default' } } } } satisfies SystemModelMessage)
                     : stageSystemPrompt,
                   messages: currentNativeMessages,
@@ -2417,16 +2527,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     try { connection.send(changed); } catch (e) { noteSendFailure(e); }
                     try { this.broadcast(changed, [connection.id]); } catch (e) { noteSendFailure(e); }
                   }
-                  this.handleIncompleteAppGeneration({ actualPrompt, responseText: text, extraction, connection, expectFiles: !plannerMode && isLastStage, epoch, deferTerminal });
-                  
+                  // P0-4: track whether this turn queued a repair/retry turn so the
+                  // completed status is held until the repair turn resolves.
+                  if (extraction.triggerQueued && this.noteRepairQueued(accounting.id, actualPrompt, extraction.triggerMarker)) repairQueuedThisTurn = true;
+                  const retryQueued = this.handleIncompleteAppGeneration({ actualPrompt, responseText: text, extraction, connection, expectFiles: !plannerMode && isLastStage, epoch, deferTerminal });
+                  if (retryQueued && this.noteRepairQueued(accounting.id, actualPrompt, AUTO_RETRY_FULL_APP_MARKER)) repairQueuedThisTurn = true;
+
                   if (isLastStage) {
                     const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
-                    deferTerminal(() => {
-                      flushFrame();
-                      try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
-                      try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
-                    });
-                    completed = true;
                     // QA B11: ensure the production build entry point exists.
                     // The model cannot write harness entries; the platform creates it.
                     // Skip in question/destructive/ambiguous modes (no app generated).
@@ -2437,8 +2545,24 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       // Only when this generation wrote files — a greeting or text
                       // reply must never trigger a hidden file-repair turn.
                       if (extraction.writtenCount > 0) {
-                        try { this.verifyFinalCompleteness(connection, deferTerminal); } catch (e) { console.warn('Final completeness check threw:', e); }
+                        try {
+                          if (this.verifyFinalCompleteness(connection, deferTerminal)
+                            && this.noteRepairQueued(accounting.id, actualPrompt, COMPLETENESS_REPAIR_MARKER)) repairQueuedThisTurn = true;
+                        } catch (e) { console.warn('Final completeness check threw:', e); }
                       }
+                    }
+                    if (repairQueuedThisTurn) {
+                      // P0-4: a repair/retry turn was queued — the build is not
+                      // done. Hold the done marker and the completed status
+                      // until the repair turn resolves (see the finally block
+                      // and resolveCompletenessRepair).
+                    } else {
+                      deferTerminal(() => {
+                        flushFrame();
+                        try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
+                        try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+                      });
+                      completed = true;
                     }
                   } else {
                     currentNativeMessages.push({ role: 'assistant', content: text });
@@ -2458,12 +2582,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     continue;
                   }
                   const classification = classifyGenerationError(effectiveErr);
-                  // A custom endpoint rejecting the tool payload is not a transient
-                  // failure — drop tools and retry with plain text output. Catches both
-                  // 400s (explicit rejection) and 500s (Groq and others 500 on bad tool
-                  // schemas instead of returning a proper 4xx).
+                  // A custom endpoint rejecting the tool payload (400s naming
+                  // tools/functions/schema) is not a transient failure — drop
+                  // the tools and retry the stage once with plain text output.
                   if (customModel && !customToolsDisabled && !displayContent && !abortController.signal.aborted
-                    && /\btools?\b|\bfunctions?\b|schema|400|500|bad request|invalid (?:param|argument|request)|internal (?:server )?error/i.test(errMessage)) {
+                    && /\btools?\b|\bfunctions?\b|schema|400|bad request|invalid (?:param|argument|request)/i.test(errMessage)) {
                     customToolsDisabled = true;
                     console.warn(`Custom model ${customModel.name} rejected tool calling; retrying stage "${stage.stageId}" without tools`);
                     try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'This model does not support tool calls — switching to direct file output…', stage: stage.stageId, requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }
@@ -2612,9 +2735,20 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       // Stop may arrive while the lease or source revision is being finalized.
       // Record the terminal outcome only after those asynchronous operations.
       completed = completed && this.writeEpoch.accepts(epoch) && !abortController.signal.aborted;
-      try { this.runSql`UPDATE generation_usage SET finished_at=${Date.now()},status=${completed ? 'completed' : abortController.signal.aborted ? 'stopped' : 'failed'},input_tokens=${accounting.inputTokens},output_tokens=${accounting.outputTokens} WHERE id=${accounting.id}`; } catch { /* Inference results remain available if metering storage fails. */ }
+      // P0-4: a queued repair turn means this turn is not terminal. Keep the
+      // usage row open ('running') and the durable job open — the repair turn
+      // resolves both via resolveCompletenessRepair(). Only metering is
+      // recorded here; no 'completed'/'failed' verdict is written yet. An
+      // explicit stop or a superseded epoch wins: the queued repair's trigger
+      // is never flushed, so normal terminal handling applies.
+      const repairPending = repairQueuedThisTurn && this.writeEpoch.accepts(epoch) && !abortController.signal.aborted;
+      if (repairPending) {
+        try { this.runSql`UPDATE generation_usage SET input_tokens=${accounting.inputTokens},output_tokens=${accounting.outputTokens} WHERE id=${accounting.id}`; } catch { /* Inference results remain available if metering storage fails. */ }
+      } else {
+        try { this.runSql`UPDATE generation_usage SET finished_at=${Date.now()},status=${completed ? 'completed' : abortController.signal.aborted ? 'stopped' : 'failed'},input_tokens=${accounting.inputTokens},output_tokens=${accounting.outputTokens} WHERE id=${accounting.id}`; } catch { /* Inference results remain available if metering storage fails. */ }
+      }
       try { this.runSql`UPDATE generation_usage SET first_response_at=${accounting.firstResponseAt},provider_calls=${accounting.providerCalls} WHERE id=${accounting.id}`; } catch { console.warn('Generation latency could not be saved.'); }
-      if (measureGeneration) await this.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });
+      if (measureGeneration && !repairPending) await this.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });
       if (this.activeAccounting === accounting) this.activeAccounting = null;
       if (this.activeGeneration?.epoch === epoch) this.activeGeneration = null;
       if (this.currentAbortController === abortController) this.currentAbortController = null;
@@ -2626,6 +2760,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         const jobs = this.generationJobs();
         if (completed) {
           jobs.complete(accounting.id);
+        } else if (repairPending) {
+          // P0-4: leave the job 'running' — the repair turn resolves it. It
+          // must NOT fall through to the defensive interrupt below, which
+          // would falsely tell the client the build stopped.
         } else if (jobOutcome) {
           if (jobOutcome.kind === 'failed') jobs.fail(accounting.id, jobOutcome.error);
           else jobs.interrupt(accounting.id, jobOutcome.error);
@@ -2660,6 +2798,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           jobs.interrupt(accounting.id, 'The build stopped before finishing. Your saved files are safe — you can resume.');
         }
       } catch { /* resume state is auxiliary; the files themselves are saved */ }
+      // P0-4: if this turn was a queued repair, resolve the parent turn's
+      // bookkeeping now that the repair outcome is known.
+      this.resolveCompletenessRepair(actualPrompt, accounting.id, completed, jobOutcome, abortController.signal.aborted);
       if (this.activeJobId === accounting.id) this.activeJobId = null;
       // No asynchronous cleanup remains after completion/retry is visible.
       // A client may immediately send its next turn after receiving these events.
@@ -2682,14 +2823,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     deferTerminal: (event: () => void) => void = event => event(),
     maxSteps = 6,
     fastMode = true
-  ): Promise<boolean> {
+  ): Promise<{ ok: boolean; repairMarker: string | null }> {
     let cfTimeout: ReturnType<typeof setTimeout> | undefined;
     let cfFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const abortController = this.currentAbortController ?? new AbortController();
     const ownsController = !this.currentAbortController;
     try {
       const env = this.env;
-      if (!env || !env.AI) return false;
+      if (!env || !env.AI) return { ok: false, repairMarker: null };
       const accounting = this.activeAccounting;
       // Budget was already reserved once at the start of runGeneration.
       // The previous per-call reserve() was a sequential registry hop on every
@@ -2701,7 +2842,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         connection.send(JSON.stringify({ type: 'generation_notice', message: 'The app builder is working…', stage: 'model', requestId: this.activeGeneration?.id }));
         // These models document reasoning as enabled by default. Apply the
         // user's fast-mode choice to tool turns as well as the final answer.
-        const supportsThinking = ['@cf/deepseek-ai/deepseek-v4-pro-0813', '@cf/deepseek-ai/deepseek-v4-flash-0731', '@cf/zai-org/glm-5.3-flash'].includes(model);
+        const supportsThinking = ['@cf/deepseek-ai/deepseek-v4-pro-0813', '@cf/zai-org/glm-5.3-flash'].includes(model);
         const request = supportsThinking ? { ...input, chat_template_kwargs: { enable_thinking: !fastMode } } : input;
         return env.AI.run(model, request, options);
       };
@@ -2718,7 +2859,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const cfEntry = resolveModel(modelName, 'cloudflare');
       if (!cfEntry) {
         console.error(`Refusing to invoke non-allowlisted Workers AI model: ${modelName}`);
-        return false;
+        return { ok: false, repairMarker: null };
       }
       const cfModel = cfEntry.id;
 
@@ -2791,7 +2932,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       for (const tokenLimit of ladder) {
         if (aiResponse) break;
         if (attempts >= MAX_CF_ATTEMPTS) break;
-        if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) return false;
+        if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) return { ok: false, repairMarker: null };
         attempts++;
         try {
           console.log(`Running Workers AI ${cfModel} (max_tokens=${tokenLimit}, attempt ${attempts})`);
@@ -2880,7 +3021,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         const rawChunk = next.value;
         if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) {
           console.log('Workers AI generation stopped by user or timeout');
-          return false;
+          return { ok: false, repairMarker: null };
         }
 
         const directText = extractToken(rawChunk);
@@ -2926,7 +3067,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       }
 
       if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) {
-        return false;
+        return { ok: false, repairMarker: null };
       }
 
       if (!outputContent.trim() && (!expectFiles || isConversationalPrompt(actualPrompt)) && assetPaths.size === 0) throw new Error('The model returned no response. Please retry.');
@@ -2938,7 +3079,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...assetPaths])];
       extraction.writtenCount = extraction.writtenPaths.length;
       this.saveGenerationTurn(actualPrompt, displayContent || (assetPaths.size ? `Updated ${[...assetPaths].join(', ')}.` : ''), epoch);
-      this.handleIncompleteAppGeneration({
+      const cfRetryQueued = this.handleIncompleteAppGeneration({
         actualPrompt,
         responseText: outputContent,
         extraction,
@@ -2947,15 +3088,22 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         epoch,
         deferTerminal,
       });
-      const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
-      deferTerminal(() => {
-        try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
-        try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
-      });
-      return true;
+      // P0-4: a queued repair/retry means the build is not done — hold the done
+      // marker and report the marker so the caller holds the completed status
+      // until the repair turn resolves.
+      const cfRepairMarker = extraction.triggerQueued && extraction.triggerMarker ? extraction.triggerMarker
+        : cfRetryQueued ? AUTO_RETRY_FULL_APP_MARKER : null;
+      if (!cfRepairMarker) {
+        const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
+        deferTerminal(() => {
+          try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
+          try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+        });
+      }
+      return { ok: true, repairMarker: cfRepairMarker };
     } catch (e) {
       if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) {
-        return false;
+        return { ok: false, repairMarker: null };
       }
       console.error('Cloudflare Workers AI execution failed:', e);
       throw e;
@@ -3039,6 +3187,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     return buildIntent;
   }
 
+  /**
+   * Returns true when it queued a full-app auto-retry turn (P0-4): the caller
+   * must then hold the completed status until the retry turn resolves.
+   */
   private handleIncompleteAppGeneration(opts: {
     actualPrompt: string;
     responseText: string;
@@ -3047,24 +3199,24 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     expectFiles?: boolean;
     epoch?: number;
     deferTerminal?: (event: () => void) => void;
-  }) {
+  }): boolean {
     const { actualPrompt, responseText, extraction, connection, expectFiles = true, epoch } = opts;
 
     if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) {
-      return;
+      return false;
     }
     // B4/B5: a correct text-only answer (question reply, deletion
     // confirmation request, or clarifying questions) is complete — never
     // "recover" it into files.
-    if (!expectFiles || isConversationalPrompt(actualPrompt) || isQuestionPrompt(actualPrompt) || isDestructivePrompt(actualPrompt) || isAmbiguousPrompt(actualPrompt)) return;
+    if (!expectFiles || isConversationalPrompt(actualPrompt) || isQuestionPrompt(actualPrompt) || isDestructivePrompt(actualPrompt) || isAmbiguousPrompt(actualPrompt)) return false;
     if (extraction.writtenCount > 0 || extraction.deletedCount > 0 || extraction.wasTruncated) {
-      return;
+      return false;
     }
 
     const shouldRecover =
       !extraction.sawCodeLikeOutput ||
       this.isLikelyShortNonAppReply(actualPrompt, responseText);
-    if (!shouldRecover) return;
+    if (!shouldRecover) return false;
 
     const alreadyRetried = actualPrompt.includes(AUTO_RETRY_FULL_APP_MARKER);
     if (alreadyRetried) {
@@ -3090,6 +3242,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: autoRetryMessage })); } catch (e) { noteSendFailure(e); }
     };
     if (opts.deferTerminal) opts.deferTerminal(publishRetry); else publishRetry();
+    return true;
   }
 
   /**
@@ -3190,15 +3343,21 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       hadSyntaxDrops: false,
       sawCodeLikeOutput: false,
       wasTruncated: false,
+      triggerQueued: false,
+      triggerMarker: null,
     };
 
     // The client honors a single trigger-auto-reply per response. Truncation
     // retries and syntax repairs can both fire on the same response; without
     // this guard the second frame is silently dropped and its repair lost.
     let triggerSent = false;
-    const sendTriggerOnce = (message: string) => {
+    const sendTriggerOnce = (message: string, marker: string) => {
       if (triggerSent) return;
       triggerSent = true;
+      // P0-4: record the queued repair so the caller can hold the completed
+      // status until the repair turn resolves.
+      summary.triggerQueued = true;
+      summary.triggerMarker = marker;
       // Published only after the generation lock is released (see terminalEvents).
       // Sent immediately, the client's repair turn raced the still-held lock and
       // was rejected as busy, so the repair silently never ran.
@@ -3321,7 +3480,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         } catch { }
       } else {
         this.truncationRetries = retriesSoFar + 1;
-        sendTriggerOnce(TRUNCATION_RETRY_MESSAGE);
+        sendTriggerOnce(TRUNCATION_RETRY_MESSAGE, TRUNCATION_RETRY_MESSAGE);
       }
     }
     if (pendingWrites.size === 0 && pendingDeletes.size === 0) return summary;
@@ -3377,9 +3536,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const existingRows = this.runSql<{ path: string }>`SELECT path FROM project_files`;
       const existingPaths = new Set((existingRows || []).map(r => r.path));
       const dangling = findDanglingImports(pendingWrites, existingPaths);
-      for (const { importer, specifier, resolvedPath } of dangling) {
-        // Guess the intended file: prefer .tsx for components, .ts otherwise.
-        const candidate = /components\//.test(resolvedPath) ? `${resolvedPath}.tsx` : `${resolvedPath}.ts`;
+      for (const danglingImport of dangling) {
+        const { importer, specifier, resolvedPath } = danglingImport;
+        // P0-3: derive the intended extension from the specifier/importer via
+        // missingFileCandidates — never the old components/→.tsx regex, which
+        // generated .ts files for CSS imports and .tsx files in .jsx projects.
+        const candidate = this.missingFileCandidates([danglingImport])[0] ?? `${resolvedPath}.tsx`;
         if (!brokenFiles.some(f => f.path === candidate)) {
           console.warn(`Dangling import in ${importer}: '${specifier}' resolves to ${resolvedPath} which was never written; queueing ${candidate} for repair.`);
           brokenFiles.push({ path: candidate, error: `Imported by ${importer} via '${specifier}' but the file was never written` });
@@ -3400,11 +3562,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         this.syntaxRepairAttempts = repairsSoFar + 1;
         const list = brokenFiles.slice(0, 8).map(f => `- ${f.path}: ${f.error.slice(0, 300)}`).join('\n');
         const repairPrompt =
-          `[AUTO-FIX] These files were discarded because of syntax errors and were not saved:\n${list}\n\n` +
+          `${SYNTAX_REPAIR_MARKER} and were not saved:\n${list}\n\n` +
           `Regenerate ONLY these files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
           `Do not modify any other file. Check that every bracket, brace, parenthesis and JSX tag is closed before finishing.`;
         try { connection.send(JSON.stringify({ type: 'generation_notice', message: `A file didn't pass the syntax check. Repairing it now…` })); } catch (e) { noteSendFailure(e); }
-        sendTriggerOnce(repairPrompt);
+        sendTriggerOnce(repairPrompt, SYNTAX_REPAIR_MARKER);
       } else {
         const warn = JSON.stringify({
           type: 'error',
@@ -3533,6 +3695,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     if (this.erasing) return Response.json({ error: 'Project deleted' }, { status: 410 });
 
     if (url.pathname === '/internal/stop' && request.method === 'POST') {
+      // P0-5: defense in depth — the worker already gates this route, but the
+      // DO verifies ownership itself, fail-closed like /internal/erase. The
+      // worker's stop call carries no x-bh-project header, so fall back to
+      // this object's own name (the project id).
+      const stopProjectId = request.headers.get('x-bh-project') || this.name;
+      const stopUserId = getRequestUserId(request);
+      if (!stopProjectId || (this.name && this.name !== stopProjectId)) return Response.json({ error: 'Invalid stop scope' }, { status: 403 });
+      if (!stopUserId || !(await isProjectOwner(this.env, stopProjectId, stopUserId))) return Response.json({ error: 'Not the project owner' }, { status: 403 });
       this.abortGeneration();
       const deadline = Date.now() + 5_000;
       while (this.generationLock.isHeld && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
@@ -3657,6 +3827,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     }
     const builderPath = url.pathname.match(/^\/agents\/chat-agent\/[^/]+\/builder(\/.*)$/)?.[1];
     if (builderPath) {
+      // P0-5: builder mutations run against this project's storage — verify
+      // ownership inside the DO (fail closed like /internal/remix-import),
+      // not only at the worker gate.
+      const builderUserId = getRequestUserId(request);
+      const builderProjectId = url.pathname.match(/^\/agents\/chat-agent\/([^/]+)/)?.[1];
+      if (!builderUserId || !builderProjectId || builderProjectId !== this.name || !(await isProjectOwner(this.env, builderProjectId, builderUserId))) {
+        return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
+      }
       const bucket = request.method === 'POST' && (builderPath === '/servers' ? 'builderDiscovery' : builderPath === '/attachments' ? 'builderUpload' : '');
       if (bucket) {
         const rate = GENERATION_LIMITER.check(bucket, getRequestUserId(request)!);
@@ -3670,6 +3848,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     }
     if (/^\/agents\/chat-agent\/[^/]+\/usage$/.test(url.pathname) && request.method === 'GET') {
       this.ensureSchema();
+      // P0-5: usage rows are per-project metering — verify ownership inside
+      // the DO, not only at the worker gate.
+      const usageUserId = getRequestUserId(request);
+      const usageProjectId = url.pathname.match(/^\/agents\/chat-agent\/([^/]+)/)?.[1];
+      if (!usageUserId || !usageProjectId || usageProjectId !== this.name || !(await isProjectOwner(this.env, usageProjectId, usageUserId))) {
+        return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
+      }
       return Response.json({ generations: this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls FROM generation_usage ORDER BY started_at DESC LIMIT 50` }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
     }
 
@@ -3677,6 +3862,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // never through a public preview's /api namespace.
     if (/^\/agents\/chat-agent\/[^/]+\/checkpoints(?:\/|$)/.test(url.pathname)) {
       this.ensureSchema();
+      // P0-5: checkpoint restore deletes every project file — verify ownership
+      // inside the DO (fail closed), not only at the worker gate.
+      const checkpointUserId = getRequestUserId(request);
+      const checkpointProjectId = url.pathname.match(/^\/agents\/chat-agent\/([^/]+)/)?.[1];
+      if (!checkpointUserId || !checkpointProjectId || checkpointProjectId !== this.name || !(await isProjectOwner(this.env, checkpointProjectId, checkpointUserId))) {
+        return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
+      }
       try {
         const history = this.sourceHistory(); const id = url.searchParams.get('id');
         if (request.method === 'GET') return Response.json(id
@@ -3999,3 +4191,4 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     return buildTranspileErrorModule(path, errMsg);
   }
 }
+

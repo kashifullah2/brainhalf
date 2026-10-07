@@ -58,9 +58,9 @@
 }
 
 .gallery-row-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-4px) scale(1.01);
   border-color: var(--brand-solid);
-  box-shadow: var(--shadow-overlay);
+  box-shadow: var(--shadow-overlay), 0 0 0 3px color-mix(in srgb, var(--brand-solid) 12%, transparent);
 }
 
 .gallery-row-thumb {
@@ -69,6 +69,43 @@
   align-items: center;
   justify-content: center;
   height: 150px;
+}
+
+/* Live preview: wraps the gradient fallback and the lazy iframe */
+.gallery-row-preview {
+  overflow: hidden;
+  display: block;
+  height: 160px;
+}
+
+.gallery-row-preview-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 0;
+}
+
+/* Scale a 900×600 iframe down to fit the 280px card width */
+.gallery-row-preview-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 900px;
+  height: 600px;
+  transform: scale(0.311);
+  transform-origin: 0 0;
+  border: none;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  z-index: 1;
+  background: transparent;
+}
+
+.gallery-row-preview-frame.is-ready {
+  opacity: 1;
 }
 
 .gallery-row-thumb-initial {

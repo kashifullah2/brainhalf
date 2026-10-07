@@ -1,5 +1,63 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, ArrowUpRight, CalendarCheck, Check, ClipboardList, Package, Users } from 'lucide-react';
+
+// Deterministic hue from id for gradient fallback
+function thumbHueRow(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
+  return h;
+}
+
+// Lazy iframe preview: loads only when the card scrolls into view.
+// Falls back to gradient if the app fails or takes too long.
+function RowPreview({ appId, appName }: { appId: string; appName: string }) {
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+  const hue = thumbHueRow(appId);
+  const initial = (appName.trim().charAt(0) || 'A').toUpperCase();
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setPhase('loading'); io.disconnect(); } },
+      { rootMargin: '200px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // 12 s timeout: if the tenant worker is offline, fall back to gradient
+  useEffect(() => {
+    if (phase !== 'loading') return;
+    const t = setTimeout(() => setPhase('failed'), 12_000);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  const gradient = `linear-gradient(135deg, hsl(${hue} 45% 52%), hsl(${(hue + 40) % 360} 55% 38%))`;
+
+  return (
+    <span ref={wrapRef} className="gallery-row-thumb gallery-row-preview" aria-hidden="true">
+      {/* Gradient fallback — visible while loading and on failure */}
+      <span className="gallery-row-preview-bg" style={{ background: gradient }}>
+        <span className="gallery-row-thumb-initial">{initial}</span>
+        <span className="gallery-row-thumb-dots"><i /><i /><i /></span>
+      </span>
+      {/* Live iframe — fades in when loaded */}
+      {(phase === 'loading' || phase === 'ready') && (
+        <iframe
+          src={`/p/${encodeURIComponent(appId)}/`}
+          className={`gallery-row-preview-frame${phase === 'ready' ? ' is-ready' : ''}`}
+          sandbox="allow-scripts allow-same-origin allow-forms"
+          onLoad={() => setPhase('ready')}
+          onError={() => setPhase('failed')}
+          tabIndex={-1}
+          title=""
+        />
+      )}
+    </span>
+  );
+}
 import { apiOrigin } from '../lib/api-origin';
 import { safeCatch } from '../lib/safe-catch';
 import type { GalleryApp } from '../lib/gallery-types';
@@ -50,16 +108,7 @@ function ExamplePreview({ id }: { id: (typeof EXAMPLE_IDS)[number] }) {
   );
 }
 
-/** Deterministic, honest thumbnail: a gradient picked from the app id plus its initial. No stock imagery. */
-function thumbHue(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) % 360;
-  return hash;
-}
-
 function GalleryCard({ app }: { app: GalleryApp }) {
-  const hue = thumbHue(app.id);
-  const initial = (app.name.trim().charAt(0) || 'A').toUpperCase();
   return (
     <a
       className="gallery-row-card"
@@ -68,14 +117,7 @@ function GalleryCard({ app }: { app: GalleryApp }) {
       rel="noopener noreferrer"
       aria-label={`Open ${app.name} in a new tab`}
     >
-      <span
-        className="gallery-row-thumb"
-        aria-hidden="true"
-        style={{ background: `linear-gradient(135deg, hsl(${hue} 45% 52%), hsl(${(hue + 40) % 360} 55% 38%))` }}
-      >
-        <span className="gallery-row-thumb-initial">{initial}</span>
-        <span className="gallery-row-thumb-dots"><i /><i /><i /></span>
-      </span>
+      <RowPreview appId={app.id} appName={app.name} />
       <span className="gallery-row-card-body">
         <strong>{app.name || 'Untitled app'}</strong>
         {app.description ? <small>{app.description}</small> : null}
