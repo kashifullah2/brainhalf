@@ -1,0 +1,22 @@
+const { chromium } = require('@playwright/test');
+(async () => {
+  const browser = await chromium.launch({ channel: 'chrome', args: ['--no-sandbox'] });
+  const page = await browser.newPage();
+  page.on('response', async r => { if (r.url().includes('/api/')) console.log('API', r.status(), r.url(), (await r.text().catch(()=>'')).slice(0,200)); });
+  page.on('pageerror', e => console.log('[pageerror]', String(e).slice(0,300)));
+  await page.goto('http://localhost:5173/', { waitUntil: 'networkidle', timeout: 60000 });
+  await page.click('button:has-text("Sign in")');
+  const dialog = page.locator('[role=dialog]').first();
+  await dialog.locator('button:has-text("Sign up")').click();
+  await dialog.locator('input[type=email]').fill('dev@brainhalf.local');
+  await dialog.locator('input[type=password]').fill('brainhalf-dev');
+  await dialog.locator('button[type=submit]').click({ timeout: 10000 });
+  await page.waitForTimeout(5000);
+  console.log('url:', page.url());
+  console.log('modal still open?', await page.$('[role=dialog]') ? 'yes' : 'no');
+  const errEl = await page.$('[role=alert], .error, .form-error');
+  if (errEl) console.log('error text:', await errEl.textContent());
+  console.log('localStorage token?', await page.evaluate(() => Object.keys(localStorage)));
+  await page.screenshot({ path: '.audit/post-signup.png', fullPage: false });
+  await browser.close();
+})().catch(e => { console.error('PROBE ERROR', String(e).slice(0,400)); process.exit(1); });
