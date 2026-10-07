@@ -1197,10 +1197,10 @@ export class AuthRegistry {
           .exec('SELECT user_id, deleted_at FROM project_owners WHERE project_id = ?', projectId as string)
           .toArray() as Array<{ user_id: string; deleted_at: number | null }>;
         if (rows.length && rows[0].user_id !== userId) return this.json(403, { error: 'Not the project owner' });
-        // L11: a never-claimed id has no owner, so there is nothing to delete.
-        // Creating a tombstone here would let any verified user permanently
-        // reserve an arbitrary unclaimed id via DELETE.
-        if (!rows.length) return this.json(404, { error: 'Project not found' });
+        // L11: a never-claimed id has no owner — nothing to delete on the server.
+        // Return 200 (no tombstone created) so the client can clean up localStorage
+        // without a console error. Idempotent: deleting a ghost project is a no-op.
+        if (!rows.length) return this.json(200, { ok: true });
         const cleanup = this.cleanup();
         await this.state.storage.setAlarm(Date.now() + 100);
         // Persist the retry intent and the access tombstone as one transaction.
