@@ -1855,23 +1855,27 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           }
 
           // Admin kill-switch: applies to both built-in models and custom models.
+          // Captured for tool-level checks (call_cloudflare_model).
+          let disabledModels: string[] = [];
+          let integratedModelsOff = false;
           try {
             const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
             if (statusRes.ok) {
               const statusBody = await statusRes.json() as { integratedModelsEnabled?: boolean; disabledModels?: string[] };
+              if (Array.isArray(statusBody.disabledModels)) disabledModels = statusBody.disabledModels;
+              if (statusBody.integratedModelsEnabled === false) integratedModelsOff = true;
               if (customModel) {
-                // Custom models use their cm_xxx ID as the disable key.
-                if (Array.isArray(statusBody.disabledModels) && statusBody.disabledModels.includes(requestedModel)) {
+                if (disabledModels.includes(requestedModel)) {
                   sendError(`Model "${customModel.name}" is currently turned off by the administrator.`);
                   return;
                 }
               } else {
-                if (statusBody.integratedModelsEnabled === false) {
+                if (integratedModelsOff) {
                   sendError('The built-in models are currently turned off by the administrator.');
                   return;
                 }
                 const modelKey = `${resolved!.provider}:${resolved!.name}`;
-                if (Array.isArray(statusBody.disabledModels) && statusBody.disabledModels.includes(modelKey)) {
+                if (disabledModels.includes(modelKey)) {
                   sendError(`Model "${resolved!.name}" is currently turned off by the administrator.`);
                   return;
                 }
@@ -2083,6 +2087,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     const cfEntry = resolveModel(subModel, 'cloudflare');
                     if (!cfEntry) {
                       return { success: false, error: `Model "${subModel}" is not in the model allowlist` };
+                    }
+                    if (integratedModelsOff || disabledModels.includes(`${cfEntry.provider}:${cfEntry.name}`)) {
+                      return { success: false, error: `Model "${subModel}" is currently turned off by the administrator` };
                     }
                     if (env?.AI) {
                       if (abortController.signal.aborted || !this.writeEpoch.accepts(epoch)) return { success: false, error: 'Generation stopped' };

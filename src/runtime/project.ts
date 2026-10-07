@@ -888,11 +888,9 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       await this.assertRunning(job);
       const checksum = await digest(sql); const old = receipts.find(receipt => receipt.name === name);
       if (old) { if (old.checksum !== checksum) throw new RuntimeError(`Applied migration ${name} changed. Add a new migration instead.`); continue; }
-      // assertSafeMigration guards against destructive changes on databases that
-      // already hold user data. When no previous migrations have been applied the
-      // database is guaranteed empty, so any SQL is safe regardless of the keyword
-      // pattern — seeding data with INSERT OR REPLACE, UPDATE, etc. is fine here.
-      if (receipts.length > 0) assertSafeMigration(sql);
+      // Always guard — the database may hold user data even with zero receipts
+      // (via /database/import, /database/schema/*, or runtime CREATE TABLE).
+      assertSafeMigration(sql);
       if (/_bh_migrations/i.test(sql)) throw new RuntimeError('Migration metadata is reserved.');
       const receipt = { name, checksum, appliedAt: Date.now() };
       await this.api().query(databaseId, sql);
