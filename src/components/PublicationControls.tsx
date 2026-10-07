@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Copy, ExternalLink, Loader2 } from 'lucide-react';
+import { Check, Copy, ExternalLink, Globe2, Lock, Loader2 } from 'lucide-react';
 import { runtimeRequest, useProjectRuntime } from '../lib/project-runtime-client';
-import { projectPublication } from '../lib/auth-client';
+import { authFetch, projectPublication } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
 import { getProjects } from '../lib/project-store';
 import { usePlatformStatus } from '../lib/status-store';
 import { publishProject, checkSlugAvailability, setAppSlug, toAppSlug, APP_SLUG_RE } from '../lib/publish-project';
@@ -53,6 +54,50 @@ export function publishProgressView(job: Pick<RuntimeJob, 'status' | 'message' |
     currentStage: stageKeys.indexOf(job.publishStage || 'build'),
     waitingInQueue: false,
   };
+}
+
+function VisibilityToggle({ projectId }: { projectId: string }) {
+  const [showcase, setShowcase] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    void authFetch(`${apiOrigin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) return;
+        const data = await response.json() as { showcase: boolean };
+        setShowcase(data.showcase);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [projectId]);
+  const toggle = async () => {
+    if (busy || showcase === null) return;
+    const next = !showcase;
+    setBusy(true); setNotice('');
+    try {
+      const response = await authFetch(`${apiOrigin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showcase: next }),
+      });
+      const data = await response.json() as { showcase: boolean; error?: string };
+      if (!response.ok) throw new Error(data.error || 'Visibility could not be changed.');
+      setShowcase(data.showcase);
+      setNotice(data.showcase ? 'Your app is now public and listed in the gallery.' : 'Your app is now private — removed from the gallery.');
+    } catch (cause) { setNotice(cause instanceof Error ? cause.message : 'Visibility could not be changed.'); }
+    finally { setBusy(false); }
+  };
+  if (showcase === null) return null;
+  return <div className="publication-visibility">
+    <div className="publication-visibility-status">
+      {showcase ? <Globe2 size={15} /> : <Lock size={15} />}
+      <span>{showcase ? 'Public — listed in the gallery' : 'Private — only people with the link can open it'}</span>
+    </div>
+    <button type="button" className="button-ghost" disabled={busy} onClick={() => void toggle()}>
+      {busy ? <Loader2 size={14} className="publication-spinner" /> : null}
+      {showcase ? 'Make private' : 'Make public'}
+    </button>
+    {notice && <p className="publication-visibility-notice" role="status">{notice}</p>}
+  </div>;
 }
 
 export default function PublicationControls({ projectId, files, publishOnOpen, onManage, onOpenHostedSlots }: { projectId: string; files: SourceFiles; publishOnOpen?: SourceFiles; onManage?: () => void; onOpenHostedSlots?: () => void }) {
@@ -259,6 +304,7 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
       <strong>{currentIsLive ? 'This version is live' : 'Your published version'}</strong>
       <a href={status.productionUrl} target="_blank" rel="noopener noreferrer">{status.productionUrl}<ExternalLink size={15} /></a>
       <button type="button" className="button-secondary" onClick={() => { void navigator.clipboard.writeText(status.productionUrl).then(() => setCopied(true)).catch(() => setError('Copy the public URL shown above. Clipboard access is unavailable.')); }}><Copy size={14} />{copied ? 'Copied' : 'Copy public link'}</button>
+      <VisibilityToggle projectId={projectId} />
       {!currentIsLive && <p>Publish again to put your latest changes online.</p>}
       {!confirmOffline ? <button type="button" className="button-ghost" disabled={busy || !!active} onClick={() => setConfirmOffline(true)}>Take app offline</button> : <div className="publication-offline-confirm">
         <p>Your app will stop working for visitors. Your saved information and versions stay safe — you can publish again any time.</p>

@@ -34,6 +34,13 @@
 .publication-offline-confirm { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 8px; padding: 14px; border: 1px solid var(--border-medium); border-radius: 10px; background: var(--bg-card, #212121); }
 .publication-offline-confirm p { margin: 0; font-size: 13px; }
 
+/* ── Visibility toggle ── */
+.publication-visibility { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; padding: 10px 14px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-surface, #292929); }
+.publication-visibility-status { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 550; color: var(--text-primary); }
+.publication-visibility-status svg { flex: none; color: var(--text-muted); }
+.publication-visibility .button-ghost { flex: none; font-size: 12.5px; }
+.publication-visibility-notice { width: 100%; margin: 2px 0 0; font-size: 12.5px; color: var(--text-secondary); }
+
 /* ── Actions ── */
 .publication-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 20px 0 14px; }
 .publication-footnote { color: var(--text-muted); font-size: 12.5px; margin: 0 0 14px; line-height: 1.55; }
