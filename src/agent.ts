@@ -190,6 +190,11 @@ export const TRUNCATION_RETRY_MESSAGE = 'The previous response ended with an unf
 // the user's token budget while the UI never resolves.
 const MAX_TRUNCATION_RETRIES = 2;
 const MAX_SYNTAX_REPAIRS = 2;
+// Global hard cap on LLM calls per single user request. Prevents pathological
+// combinations (transient retries × truncation × syntax × completeness) from
+// producing runaway cost. A normal generation uses 1–3 calls; the worst case
+// with all repair types is ~12, so 16 is generous with headroom.
+const MAX_LLM_CALLS_PER_GENERATION = 16;
 
 /**
  * Backend-owned write paths for the mandatory write-order rule. Covers the
@@ -1087,7 +1092,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       const specExt = d.specifier.match(/\.[A-Za-z0-9]+$/)?.[0]?.toLowerCase();
       if (specExt) { out.add(d.resolvedPath + specExt); continue; }
       const importerExt = d.importer.match(/\.[A-Za-z0-9]+$/)?.[0]?.toLowerCase();
-      out.add(d.resolvedPath + (importerExt && JS_EXTS.includes(importerExt) ? importerExt : '.tsx'));
+      const ext = importerExt && JS_EXTS.includes(importerExt) ? importerExt : '.tsx';
+      out.add(d.resolvedPath + ext);
+      // Directory imports: `import './utils'` may mean `./utils/index.tsx`
+      out.add(d.resolvedPath + '/index' + ext);
     }
     return [...out];
   }
@@ -2551,17 +2559,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                         } catch (e) { console.warn('Final completeness check threw:', e); }
                       }
                     }
-                    if (repairQueuedThisTurn) {
-                      // P0-4: a repair/retry turn was queued — the build is not
-                      // done. Hold the done marker and the completed status
-                      // until the repair turn resolves (see the finally block
-                      // and resolveCompletenessRepair).
-                    } else {
-                      deferTerminal(() => {
-                        flushFrame();
-                        try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
-                        try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
-                      });
+                    // Always send stream.done so the client knows the response
+                    // stream has ended. When a repair/retry was queued we do
+                    // NOT set completed=true — the job status stays pending
+                    // until the repair turn resolves (P0-4).
+                    deferTerminal(() => {
+                      flushFrame();
+                      try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
+                      try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+                    });
+                    if (!repairQueuedThisTurn) {
                       completed = true;
                     }
                   } else {
@@ -2596,7 +2603,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   // Transient provider failures (rate limit, overload, dropped
                   // connection, timeout) get automatic retries. When partial
                   // output was streamed, a stream_clear resets the client first.
-                  if (classification.retryable && !abortController.signal.aborted && transientRetries < GENERATION_TRANSIENT_RETRIES) {
+                  if (classification.retryable && !abortController.signal.aborted && transientRetries < GENERATION_TRANSIENT_RETRIES && accounting.providerCalls < MAX_LLM_CALLS_PER_GENERATION) {
                     transientRetries += 1;
                     if (displayContent) {
                       // Text was already streamed to the client — tell it to
@@ -2932,6 +2939,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       for (const tokenLimit of ladder) {
         if (aiResponse) break;
         if (attempts >= MAX_CF_ATTEMPTS) break;
+        if (accounting && accounting.providerCalls >= MAX_LLM_CALLS_PER_GENERATION) { console.warn(`Global LLM call cap (${MAX_LLM_CALLS_PER_GENERATION}) reached; stopping CF retries`); break; }
         if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) return { ok: false, repairMarker: null };
         attempts++;
         try {
@@ -3088,18 +3096,16 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         epoch,
         deferTerminal,
       });
-      // P0-4: a queued repair/retry means the build is not done — hold the done
-      // marker and report the marker so the caller holds the completed status
-      // until the repair turn resolves.
+      // P0-4: track the queued repair marker so the caller can hold the
+      // completed status until the repair turn resolves. Always send
+      // stream.done so the client knows the response stream has ended.
       const cfRepairMarker = extraction.triggerQueued && extraction.triggerMarker ? extraction.triggerMarker
         : cfRetryQueued ? AUTO_RETRY_FULL_APP_MARKER : null;
-      if (!cfRepairMarker) {
-        const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
-        deferTerminal(() => {
-          try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
-          try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
-        });
-      }
+      const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
+      deferTerminal(() => {
+        try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
+        try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+      });
       return { ok: true, repairMarker: cfRepairMarker };
     } catch (e) {
       if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) {

@@ -565,22 +565,25 @@ export function buildCssJsModule(cleanPath: string, content: string): string {
 export function buildMissingComponentStub(cleanPath: string): string {
   const compName = cleanPath.split('/').pop()?.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_]/g, '') || 'FallbackComponent';
   return `import React from 'react';
+console.error('[BrainHalf] Missing module: ${cleanPath.replace(/'/g, "\\'")} — this file was imported but never generated.');
+try { window.parent.postMessage({ type: 'preview-error', error: 'Missing module: ${cleanPath.replace(/'/g, "\\'")}' }, '*'); } catch(e) {}
 export default function ${compName}(props) {
   return React.createElement('div', {
     style: {
       padding: '16px 20px',
       margin: '12px 0',
-      border: '1px dashed rgba(245, 158, 11, 0.4)',
+      border: '2px dashed #ef4444',
       borderRadius: '8px',
-      background: 'rgba(245, 158, 11, 0.06)',
-      color: '#f59e0b',
+      background: 'rgba(239, 68, 68, 0.06)',
+      color: '#ef4444',
       fontSize: '13px',
-      fontFamily: 'sans-serif',
+      fontWeight: '600',
+      fontFamily: 'system-ui, sans-serif',
       display: 'flex',
       alignItems: 'center',
       gap: '8px'
     }
-  }, 'Component [' + ${JSON.stringify(cleanPath)} + '] not found');
+  }, '\\u26A0 Missing file: ' + ${JSON.stringify(cleanPath)});
 }
 `;
 }

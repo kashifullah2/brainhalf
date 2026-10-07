@@ -55,6 +55,10 @@ describe('7.3 extracted preview templates', () => {
     // The path is embedded via JSON.stringify, so it is quoted for the browser,
     // not for the template.
     expect(stub).toContain('"/src/components/My Widget.jsx"');
+    // Reports the missing file to console and parent frame
+    expect(stub).toContain('console.error');
+    expect(stub).toContain('Missing module');
+    expect(stub).toContain('preview-error');
   });
 
   it('serves a css file as a JS module that also injects a style tag', () => {
