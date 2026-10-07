@@ -1,9 +1,54 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUpRight, CalendarCheck, Check, ClipboardList, Package, Users } from 'lucide-react';
 import { apiOrigin } from '../lib/api-origin';
 import { safeCatch } from '../lib/safe-catch';
 import type { GalleryApp } from '../lib/gallery-types';
+import { BUSINESS_APPS } from '../lib/business-apps';
 import './GalleryRow.css';
+
+/**
+ * When nobody has listed an app yet, the section still has a job: show honest
+ * starting points (labelled as example ideas, never as real customer apps)
+ * whose one click drops a complete, realistic prompt into the hero composer.
+ */
+const EXAMPLE_IDS = ['inventory', 'booking', 'crm', 'tasks'] as const;
+const EXAMPLE_IDEAS = EXAMPLE_IDS.map(id => BUSINESS_APPS.find(app => app.id === id)!).filter(Boolean);
+const EXAMPLE_ICONS = { inventory: Package, booking: CalendarCheck, crm: Users, tasks: ClipboardList } as const;
+
+function ExamplePreview({ id }: { id: (typeof EXAMPLE_IDS)[number] }) {
+  if (id === 'inventory') {
+    return (
+      <span className="idea-preview" aria-hidden="true">
+        <span className="idea-row"><i className="idea-cell idea-cell-name" /><i className="idea-pill" /></span>
+        <span className="idea-row"><i className="idea-cell idea-cell-name short" /><i className="idea-pill idea-pill-warn" /></span>
+        <span className="idea-row"><i className="idea-cell idea-cell-name" /><i className="idea-pill" /></span>
+      </span>
+    );
+  }
+  if (id === 'booking') {
+    return (
+      <span className="idea-preview idea-preview-slots" aria-hidden="true">
+        {[0, 1, 2, 3, 4, 5].map(slot => <i key={slot} className={`idea-slot${slot === 1 || slot === 3 ? ' is-taken' : ''}`} />)}
+      </span>
+    );
+  }
+  if (id === 'crm') {
+    return (
+      <span className="idea-preview" aria-hidden="true">
+        <span className="idea-row"><i className="idea-avatar" /><i className="idea-cell idea-cell-name" /><i className="idea-dot" /></span>
+        <span className="idea-row"><i className="idea-avatar" /><i className="idea-cell idea-cell-name short" /><i className="idea-dot idea-dot-won" /></span>
+        <span className="idea-row"><i className="idea-avatar" /><i className="idea-cell idea-cell-name" /><i className="idea-dot" /></span>
+      </span>
+    );
+  }
+  return (
+    <span className="idea-preview" aria-hidden="true">
+      <span className="idea-row"><i className="idea-check is-done"><Check size={10} strokeWidth={3.5} /></i><i className="idea-cell idea-cell-name is-done" /></span>
+      <span className="idea-row"><i className="idea-check" /><i className="idea-cell idea-cell-name short" /></span>
+      <span className="idea-row"><i className="idea-check" /><i className="idea-cell idea-cell-name" /></span>
+    </span>
+  );
+}
 
 /** Deterministic, honest thumbnail: a gradient picked from the app id plus its initial. No stock imagery. */
 function thumbHue(id: string): number {
@@ -43,7 +88,7 @@ function GalleryCard({ app }: { app: GalleryApp }) {
   );
 }
 
-export const GalleryRow: React.FC = () => {
+export const GalleryRow: React.FC<{ onUseIdea?: (prompt: string) => void }> = ({ onUseIdea }) => {
   const [apps, setApps] = useState<GalleryApp[] | null>(null);
   const [error, setError] = useState('');
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -66,18 +111,27 @@ export const GalleryRow: React.FC = () => {
     scrollerRef.current?.scrollBy({ left: direction * 320, behavior: reduceMotion ? 'auto' : 'smooth' });
   };
 
+  const hasRealApps = !error && apps !== null && apps.length > 0;
+  const showExamples = !error && apps !== null && apps.length === 0;
+
   return (
     <section className="gallery-row-section" aria-labelledby="gallery-row-heading">
       <div className="landing-section-intro gallery-row-intro">
         <div>
-          <p className="landing-kicker">From the gallery</p>
-          <h2 id="gallery-row-heading">Built by people like you.</h2>
-          <p className="landing-section-lede">Real apps, published by their owners. Open one — every button does something.</p>
+          <p className="landing-kicker">{showExamples ? 'Start from an idea' : 'From the gallery'}</p>
+          <h2 id="gallery-row-heading">{showExamples ? 'Describe it. BrainHalf builds it.' : 'Built by people like you.'}</h2>
+          <p className="landing-section-lede">
+            {showExamples
+              ? 'Pick a starting point — the words land in the box above, ready to make yours.'
+              : 'Real apps, published by their owners. Open one — every button does something.'}
+          </p>
         </div>
-        <div className="gallery-row-controls">
-          <button type="button" onClick={() => scrollBy(-1)} aria-label="Scroll gallery backwards"><ArrowLeft size={16} aria-hidden="true" /></button>
-          <button type="button" onClick={() => scrollBy(1)} aria-label="Scroll gallery forwards"><ArrowRight size={16} aria-hidden="true" /></button>
-        </div>
+        {hasRealApps && (
+          <div className="gallery-row-controls">
+            <button type="button" onClick={() => scrollBy(-1)} aria-label="Scroll gallery backwards"><ArrowLeft size={16} aria-hidden="true" /></button>
+            <button type="button" onClick={() => scrollBy(1)} aria-label="Scroll gallery forwards"><ArrowRight size={16} aria-hidden="true" /></button>
+          </div>
+        )}
       </div>
 
       {error && <p className="gallery-row-error" role="alert">{error}</p>}
@@ -88,13 +142,32 @@ export const GalleryRow: React.FC = () => {
         </div>
       )}
 
-      {!error && apps !== null && apps.length === 0 && (
-        <p className="gallery-row-empty">
-          Nothing listed yet. <a href="/gallery">Be the first to publish an app to the gallery.</a>
-        </p>
+      {showExamples && (
+        <div className="idea-grid">
+          {EXAMPLE_IDEAS.map(idea => {
+            const Icon = EXAMPLE_ICONS[idea.id as (typeof EXAMPLE_IDS)[number]] ?? Package;
+            return (
+              <button
+                key={idea.id}
+                type="button"
+                className="idea-card"
+                onClick={() => onUseIdea?.(idea.prompt)}
+                aria-label={`Use this idea: ${idea.label}. Fills the app description box.`}
+              >
+                <span className="idea-badge"><Icon size={12} aria-hidden="true" /> Example idea</span>
+                <ExamplePreview id={idea.id as (typeof EXAMPLE_IDS)[number]} />
+                <span className="idea-body">
+                  <strong>{idea.label}</strong>
+                  <small>{idea.detail}</small>
+                  <span className="idea-cta">Use this idea <ArrowRight size={13} aria-hidden="true" /></span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       )}
 
-      {!error && apps !== null && apps.length > 0 && (
+      {hasRealApps && (
         <div className="gallery-row-scroller" ref={scrollerRef} role="region" aria-label="Public gallery apps" tabIndex={0}>
           {apps.slice(0, 12).map(app => <GalleryCard key={app.id} app={app} />)}
         </div>

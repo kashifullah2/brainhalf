@@ -8,7 +8,9 @@ import { findPublicPage, formatContentDate } from '../seo/content';
 import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
 import MobileNav from './MobileNav';
+import LandingFooter from './landing/LandingFooter';
 import './GalleryPage.css';
+import './PublicPage.css';
 
 const NAV_LINKS = [
   { href: '/', label: 'AI app builder' },
@@ -19,8 +21,11 @@ const NAV_LINKS = [
 
 const page = findPublicPage('/gallery');
 
-export default function GalleryPage() {
-  const [apps, setApps] = useState<GalleryApp[] | null>(null);
+export default function GalleryPage({ initialApps = null }: { initialApps?: GalleryApp[] | null }) {
+  // Builds can embed a snapshot of the published gallery so crawlers and
+  // no-JS visitors see real app cards instead of a loading placeholder.
+  // The effect below still refreshes the list after hydration.
+  const [apps, setApps] = useState<GalleryApp[] | null>(initialApps);
   const [error, setError] = useState('');
   const [remixing, setRemixing] = useState<string | null>(null);
   const [remixError, setRemixError] = useState<Record<string, string>>({});
@@ -68,7 +73,7 @@ export default function GalleryPage() {
         {page && <div className="public-content-meta"><span>Updated <time dateTime={page.dateModified}>{formatContentDate(page.dateModified)}</time></span></div>}
       </div>
       <section className="gallery-grid-section" aria-label="Showcased apps">
-        {error && <p role="alert" className="gallery-empty">{error}</p>}
+        {error && apps === null && <p role="alert" className="gallery-empty">{error}</p>}
         {!error && apps === null && <p className="gallery-empty">Loading apps…</p>}
         {!error && apps !== null && apps.length === 0 && <div className="gallery-empty"><p>No apps in the gallery yet.</p><p>Publish your app and turn on “List in gallery” in the project console to feature it here.</p></div>}
         <div className="gallery-grid">
@@ -86,6 +91,19 @@ export default function GalleryPage() {
           </article>)}
         </div>
       </section>
+      {page && page.sections.length > 0 && <div className="public-body gallery-body">
+        <article className="public-article" aria-label="About the gallery">
+          {page.sections.map(section => <section key={section.id} id={section.id}>
+            <h2>{section.title}</h2>
+            {section.paragraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}
+          </section>)}
+        </article>
+      </div>}
+      {page && page.related.length > 0 && <section className="public-related" aria-labelledby="related-heading"><p className="studio-section-label">KEEP EXPLORING</p><h2 id="related-heading">A useful next step</h2><div>{page.related.map(relatedPath => {
+        const related = findPublicPage(relatedPath);
+        return related && <a href={related.path} key={relatedPath}><span>{related.category}</span><strong>{related.heading}</strong><ArrowUpRight size={18} /></a>;
+      })}</div></section>}
     </main>
+    <LandingFooter />
   </div>;
 }

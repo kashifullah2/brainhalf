@@ -56,7 +56,7 @@ export function publishProgressView(job: Pick<RuntimeJob, 'status' | 'message' |
 }
 
 export default function PublicationControls({ projectId, files, publishOnOpen, onManage, onOpenHostedSlots }: { projectId: string; files: SourceFiles; publishOnOpen?: SourceFiles; onManage?: () => void; onOpenHostedSlots?: () => void }) {
-  const runtime = useProjectRuntime(projectId, 'production');
+  const runtime = useProjectRuntime(projectId, 'production', true);
   const [revision, setRevision] = useState('');
   const [sourceError, setSourceError] = useState('');
   const [error, setError] = useState('');

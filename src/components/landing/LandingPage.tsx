@@ -104,7 +104,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         <InteractiveDemo onUseIdea={handleExamplePrompt} />
 
-        <GalleryRow />
+        <GalleryRow onUseIdea={handleExamplePrompt} />
 
         <HowItWorks />
 

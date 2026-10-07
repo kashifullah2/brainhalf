@@ -31,6 +31,43 @@ const TYPING_PROMPTS = [
 const STATIC_PLACEHOLDER = 'Describe your app in plain words…';
 
 /**
+ * One orchestrated moment on the hero: a small status pill on the product
+ * frame walks through the same stages the real builder reports, then rests on
+ * "Ready to share". It mirrors BuildProgress so the page never promises a
+ * process the product does not actually run. Reduced-motion users get the
+ * resting state only.
+ */
+const BUILD_STAGES = [
+  'Reading your idea…',
+  'Creating your pages…',
+  'Adding your database…',
+  'Checking everything…',
+  'Ready to share',
+] as const;
+
+function BuildLoop() {
+  // Rest on the finished state so the prerendered HTML and reduced-motion
+  // users see an honest, calm frame; the loop only starts after mount.
+  const [stage, setStage] = useState(BUILD_STAGES.length - 1);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    setStage(0);
+    const timer = window.setInterval(() => {
+      setStage(current => (current + 1) % BUILD_STAGES.length);
+    }, 2400);
+    return () => window.clearInterval(timer);
+  }, []);
+  const done = BUILD_STAGES[stage] === 'Ready to share';
+  return (
+    <div className={`hero-build${done ? ' is-done' : ''}`} aria-hidden="true">
+      <span className="hero-build-dot" />
+      <span className="hero-build-text" key={stage}>{BUILD_STAGES[stage]}</span>
+      <span className="hero-build-bar"><i style={{ width: `${((stage + 1) / BUILD_STAGES.length) * 100}%` }} /></span>
+    </div>
+  );
+}
+
+/**
  * Cursor-follow tilt for the product frame, hard-capped at 4 degrees so the
  * motion stays subtle. px/py are -0.5..0.5 cursor offsets from the visual center.
  */
@@ -145,7 +182,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
           <h1 id="hero-heading">
             From a sentence
             <br />
-            to <span className="hero-gradient">working software.</span>
+            to <span className="hero-underline">working software.<svg className="hero-underline-stroke" viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true"><path d="M4 10 C 70 4, 210 3, 296 9" pathLength={1} /></svg></span>
           </h1>
           <p className="hero-sub">
             Describe what your business needs in plain words. BrainHalf builds the app,
@@ -222,6 +259,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
               <figcaption>The real workspace — describe on the left, watch your app take shape on the right.</figcaption>
             </figure>
           </div>
+          <BuildLoop />
 
           <div className="hero-chip hero-chip-inventory" style={{ ['--depth' as string]: 1 }} aria-hidden="true">
             <span className="hero-chip-float">

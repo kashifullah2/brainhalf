@@ -558,11 +558,22 @@ export async function handleModelTest(
 
       const { createOpenAI } = await import('@ai-sdk/openai');
       const { streamText } = await import('ai');
+      const atriaFetch: typeof fetch = async (url, init) => {
+        if (init?.body && typeof init.body === 'string') {
+          try {
+            const body = JSON.parse(init.body);
+            body.thinking = { type: 'disabled' };
+            return fetch(url as string, { ...init, body: JSON.stringify(body) });
+          } catch { /* fall through */ }
+        }
+        return fetch(url as string, init as RequestInit);
+      };
       const atria = createOpenAI({
         name: 'atria',
         apiKey: atriaApiKey,
         baseURL: atriaBaseUrl,
         compatibility: 'compatible',
+        fetch: atriaFetch,
       } as any);
       const stream = streamText({
         model: meteredModel(atria.chat(resolved.id)),

@@ -107,8 +107,8 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
   const inFlight = useRef(false);
   const filesRef = useRef(files); filesRef.current = files;
   const dialogRef = useModalFocus(true, () => { if (!inFlight.current) onClose(); });
-  const development = useProjectRuntime(projectId, 'development');
-  const production = useProjectRuntime(projectId, 'production');
+  const development = useProjectRuntime(projectId, 'development', true);
+  const production = useProjectRuntime(projectId, 'production', true);
   const runtime = environment === 'development' ? development : production;
   const status = runtime.status;
   const hostingReady = status?.enabled && status.availability?.state === 'ready';

@@ -305,6 +305,11 @@ export default {
     if (url.pathname === '/sign-in' || url.pathname === '/login') {
       return Response.redirect(`${url.origin}/`, 301);
     }
+    // /extractor was a retired tool page that Search Console still reports as a
+    // 404 with inbound referring traffic; send it to the homepage permanently.
+    if (url.pathname === '/extractor' || url.pathname === '/extractor/') {
+      return Response.redirect(`${url.origin}/`, 301);
+    }
     const privateSearch = isPrivateSearch(url.search);
     const origin = request.headers.get('origin');
     const untrustedOrigin = (origin !== null && !isAllowedOrigin(origin, { IS_DEV: _isDev })) || request.headers.get('sec-fetch-site') === 'cross-site';

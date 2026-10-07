@@ -97,3 +97,24 @@ describe('Private search surfaces', () => {
     expect(response.headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
   });
 });
+
+describe('Legacy URLs and gallery prerender', () => {
+  it.each(['/extractor', '/extractor/'])('permanently redirects %s to the homepage', async path => {
+    const response = await worker.fetch(new Request(`${SITE_URL}${path}`), {} as unknown as import('../worker').PlatformEnv, {} as never);
+    expect(response.status).toBe(301);
+    expect(response.headers.get('Location')).toBe(`${SITE_URL}/`);
+  });
+  it('ships real gallery cards and a hydration snapshot instead of a loading placeholder', () => {
+    const apps = [{ id: 'app-1', name: 'Stock Room', description: 'Inventory tracker for a repair shop.', remixCount: 3 }];
+    const { html, head } = render('/gallery', { galleryApps: apps });
+    expect(html).toContain('Stock Room');
+    expect(html).toContain('Inventory tracker for a repair shop.');
+    expect(html).toContain('href="/p/app-1/"');
+    expect(html).not.toContain('Loading apps…');
+    const embedded = head.match(/<script type="application\/json" id="gallery-apps-data">([\s\S]+?)<\/script>/);
+    expect(embedded).not.toBeNull();
+    expect(JSON.parse(embedded![1])).toEqual(apps);
+    expect(render('/gallery').html).toContain('Loading apps…');
+    expect(render('/gallery').head).not.toContain('gallery-apps-data');
+  });
+});

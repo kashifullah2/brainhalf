@@ -65,7 +65,9 @@ for (const path of paths) {
     assert(new RegExp(`<time datetime="${date}"`, 'i').test(html), `${path}: the revision date must be visible`);
   }
   const links = [...html.matchAll(/<a\b[^>]*href="(\/[^"?#]*)[^" ]*"/g)].map(([, href]) => href);
-  for (const href of links) assert(paths.has(href) || accountPaths.has(href), `${path}: broken internal link ${href}`);
+  // Gallery cards link to published app previews (/p/<id>/): live public URLs
+  // served by the runtime, excluded from indexing via robots.txt by design.
+  for (const href of links) assert(paths.has(href) || accountPaths.has(href) || /^\/p\/[^/]+\/$/.test(href), `${path}: broken internal link ${href}`);
   publicLinks.set(path, links.filter(href => paths.has(href)));
   for (const [, asset] of html.matchAll(/(?:src|href)="(\/(?:assets|fonts|images|brand)\/[^"?#]+)"/g)) await stat(resolve(root, asset.slice(1)));
   assert(!html.match(/rel="(?:modulepreload|stylesheet)"[^>]+(?:vendor-monaco|editor\.api|Workspace-|ChatPanel-)/), `${path}: editor resources loaded on public page`);

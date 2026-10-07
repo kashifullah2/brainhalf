@@ -2330,7 +2330,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   // plain string.
                   system: model.provider === 'anthropic'
                     ? ({ role: 'system', content: stageSystemPrompt, providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } } satisfies SystemModelMessage)
-                    : model.provider === 'aws'
+                    : model.provider === 'aws' && model.id.includes('anthropic')
                     ? ({ role: 'system', content: stageSystemPrompt, providerOptions: { bedrock: { cachePoint: { type: 'default' } } } } satisfies SystemModelMessage)
                     : stageSystemPrompt,
                   messages: currentNativeMessages,
@@ -2458,11 +2458,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     continue;
                   }
                   const classification = classifyGenerationError(effectiveErr);
-                  // A custom endpoint rejecting the tool payload (400s naming
-                  // tools/functions/schema) is not a transient failure — drop
-                  // the tools and retry the stage once with plain text output.
+                  // A custom endpoint rejecting the tool payload is not a transient
+                  // failure — drop tools and retry with plain text output. Catches both
+                  // 400s (explicit rejection) and 500s (Groq and others 500 on bad tool
+                  // schemas instead of returning a proper 4xx).
                   if (customModel && !customToolsDisabled && !displayContent && !abortController.signal.aborted
-                    && /\btools?\b|\bfunctions?\b|schema|400|bad request|invalid (?:param|argument|request)/i.test(errMessage)) {
+                    && /\btools?\b|\bfunctions?\b|schema|400|500|bad request|invalid (?:param|argument|request)|internal (?:server )?error/i.test(errMessage)) {
                     customToolsDisabled = true;
                     console.warn(`Custom model ${customModel.name} rejected tool calling; retrying stage "${stage.stageId}" without tools`);
                     try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'This model does not support tool calls — switching to direct file output…', stage: stage.stageId, requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }
@@ -2700,7 +2701,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         connection.send(JSON.stringify({ type: 'generation_notice', message: 'The app builder is working…', stage: 'model', requestId: this.activeGeneration?.id }));
         // These models document reasoning as enabled by default. Apply the
         // user's fast-mode choice to tool turns as well as the final answer.
-        const supportsThinking = ['@cf/deepseek-ai/deepseek-v4-pro-0813', '@cf/zai-org/glm-5.3-flash'].includes(model);
+        const supportsThinking = ['@cf/deepseek-ai/deepseek-v4-pro-0813', '@cf/deepseek-ai/deepseek-v4-flash-0731', '@cf/zai-org/glm-5.3-flash'].includes(model);
         const request = supportsThinking ? { ...input, chat_template_kwargs: { enable_thinking: !fastMode } } : input;
         return env.AI.run(model, request, options);
       };

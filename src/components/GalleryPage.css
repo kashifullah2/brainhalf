@@ -113,6 +113,24 @@
   to { transform: rotate(360deg); }
 }
 
+/* Crawlable about/remix copy below the grid: single centered article column,
+   matching the public-page typography without its sticky sidebar. */
+.gallery-body {
+  grid-template-columns: minmax(0, 720px);
+  justify-content: center;
+  padding-bottom: 20px;
+}
+
+.gallery-page .public-article h2 {
+  font-family: var(--font-sans);
+  font-size: 25px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -.6px;
+  margin: 0 0 18px;
+  text-wrap: pretty;
+}
+
 @media (max-width: 640px) {
   .gallery-grid {
     grid-template-columns: 1fr;

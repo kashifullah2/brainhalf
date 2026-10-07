@@ -498,6 +498,41 @@ describe('Project runtime with real SQLite state', () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ error: expect.stringContaining('different database schema') });
   });
+  it('blocks destructive migrations even when no migration receipts exist', async () => {
+    const p = await project();
+    const job = { id: 'migration-job', kind: 'preview', status: 'running', createdAt: Date.now(), processIds: [], leaseUntil: Date.now() + 60_000 };
+    await p.ctx.storage.put('current', job);
+    // Simulates user data written outside the migration system (/database/import,
+    // /database/schema/*) — zero rows in _bh_migrations, real rows in a user table.
+    const data = new DatabaseSync(':memory:'); databases.push(data);
+    data.exec('CREATE TABLE items(id TEXT PRIMARY KEY, title TEXT)');
+    data.prepare('INSERT INTO items VALUES(?,?)').run('saved-item', 'user data');
+    vi.spyOn(CloudflareAPI.prototype, 'query').mockImplementation(async (_id, sql, params = []) => {
+      if (sql.includes('_bh_migrations')) return [];
+      return data.prepare(sql).all(...params as (string | number | null)[]);
+    });
+    const snapshot = { files: { 'migrations/0001_reset.sql': 'DROP TABLE items' } } as any;
+    await expect((p.object as any).migrate('disposable-db', snapshot, job)).rejects.toThrow('reviewed migration workflow');
+    expect(data.prepare("SELECT name FROM sqlite_schema WHERE name='items'").get()).toBeTruthy();
+    expect(data.prepare('SELECT COUNT(*) AS count FROM items').get()).toMatchObject({ count: 1 });
+  });
+  it('applies a first-run additive migration when no receipts exist and records the receipt', async () => {
+    const p = await project();
+    const job = { id: 'migration-job', kind: 'preview', status: 'running', createdAt: Date.now(), processIds: [], leaseUntil: Date.now() + 60_000 };
+    await p.ctx.storage.put('current', job);
+    const data = new DatabaseSync(':memory:'); databases.push(data);
+    const queries: string[] = [];
+    vi.spyOn(CloudflareAPI.prototype, 'query').mockImplementation(async (_id, sql, params = []) => {
+      queries.push(sql);
+      if (sql.includes('_bh_migrations')) return [];
+      return data.prepare(sql).all(...params as (string | number | null)[]);
+    });
+    const snapshot = { files: { 'migrations/0001_items.sql': 'CREATE TABLE items(id TEXT PRIMARY KEY)' } } as any;
+    const receipts = await (p.object as any).migrate('disposable-db', snapshot, job);
+    expect(receipts).toMatchObject([{ name: 'migrations/0001_items.sql' }]);
+    expect(queries.some(sql => sql.startsWith('INSERT INTO _bh_migrations'))).toBe(true);
+    expect(data.prepare("SELECT name FROM sqlite_schema WHERE name='items'").get()).toBeTruthy();
+  });
   it('waits for pending database provisioning before acknowledging stop and never deploys afterward', async () => {
     const p = await builtProject(); const creation = deferred<{ uuid: string; name: string }>();
     const create = vi.spyOn(CloudflareAPI.prototype, 'createDatabase').mockReturnValue(creation.promise);

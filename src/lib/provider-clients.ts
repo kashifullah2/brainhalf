@@ -92,7 +92,22 @@ export function providerModel(model: AllowedModel, env: Record<string, unknown>,
   if (model.provider === 'atria') {
     const { apiKey, baseURL } = atriaConfiguration(env);
     if (!apiKey) throw new Error('Atria credentials are not configured');
-    const atria = createOpenAI({ name: 'atria', apiKey, baseURL, compatibility: 'compatible' } as any);
+    // Atria Dawn Preview defaults to extended thinking mode, burning ~93% of the
+    // token budget on hidden reasoning (479/512 tokens = thinking at 26s vs 9s).
+    // Disable it via a fetch interceptor since there's no first-class SDK setting.
+    const atriaFetch: typeof fetch = async (url, init) => {
+      if (init?.body && typeof init.body === 'string') {
+        try {
+          const body = JSON.parse(init.body);
+          body.thinking = { type: 'disabled' };
+          return fetch(url as string, { ...init, body: JSON.stringify(body) });
+        } catch {
+          // fall through to unmodified request if body parse fails
+        }
+      }
+      return fetch(url as string, init as RequestInit);
+    };
+    const atria = createOpenAI({ name: 'atria', apiKey, baseURL, compatibility: 'compatible', fetch: atriaFetch } as any);
     return { aiModel: atria.chat(model.id), maxTokens: model.maxTokens };
   }
   throw new Error(`Provider "${model.provider}" is not handled by providerModel.`);

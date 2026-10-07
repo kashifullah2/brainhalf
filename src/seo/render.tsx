@@ -6,13 +6,21 @@ import GalleryPage from '../components/GalleryPage';
 import { ACCOUNT_PAGES, HOME_DESCRIPTION, PUBLIC_PAGES, contentModified, findPublicPage, SITE_URL, SOCIAL_IMAGE } from './content';
 import AccountPage from '../components/AccountPage';
 import { pageMetadata, structuredData } from './metadata';
+import type { GalleryApp } from '../lib/gallery-types';
 
 const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 export const paths = ['/', ...PUBLIC_PAGES.map(page => page.path), ...Object.keys(ACCOUNT_PAGES), '/404'];
-export function render(path: string) {
+export interface RenderOptions {
+  // Snapshot of published gallery apps collected at build time. When present,
+  // the prerendered /gallery page ships real app cards and a matching JSON
+  // payload so hydration renders identical markup before the live refresh.
+  galleryApps?: GalleryApp[] | null;
+}
+export function render(path: string, options?: RenderOptions) {
   const meta = pageMetadata(path);
   const schema = structuredData(path);
-  const content = path === '/' ? <LandingPage onOpenProject={() => {}} onSubmitInitialPrompt={() => {}} onLoginRequest={() => {}} currentUser={null} /> : path === '/gallery' ? <GalleryPage /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
+  const galleryApps = path === '/gallery' ? options?.galleryApps ?? null : null;
+  const content = path === '/' ? <LandingPage onOpenProject={() => {}} onSubmitInitialPrompt={() => {}} onLoginRequest={() => {}} currentUser={null} /> : path === '/gallery' ? <GalleryPage initialApps={galleryApps} /> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
   const head = [
     `<title>${escape(meta.title)}</title>`,
     `<meta name="description" content="${escape(meta.description)}" />`,
@@ -35,6 +43,9 @@ export function render(path: string) {
     `<meta name="twitter:image" content="${SOCIAL_IMAGE}" />`,
     `<meta name="twitter:image:alt" content="BrainHalf AI app builder — describe, preview, and refine your next web app" />`,
     ...(schema ? [`<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>`] : []),
+    // Lives in <head> (outside the hydrated root) so the client can seed the
+    // gallery with the exact prerendered list without a hydration mismatch.
+    ...(galleryApps ? [`<script type="application/json" id="gallery-apps-data">${JSON.stringify(galleryApps).replace(/</g, '\\u003c')}</script>`] : []),
   ].join('\n    ');
   return { head, html: renderToString(content) };
 }

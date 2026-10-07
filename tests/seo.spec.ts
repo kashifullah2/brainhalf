@@ -209,7 +209,8 @@ test('example previews support keyboard navigation and preserve a prompt through
   await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Task manager');
   await page.keyboard.press('ArrowRight');
   await expect(travel).toBeFocused();
-  await page.getByRole('button', { name: /Inventory tool/ }).click();
+  // The gallery idea-cards also offer "Inventory tool"; the demo's button is the exact match.
+  await page.getByRole('button', { name: 'Use this idea: Inventory tool', exact: true }).click();
   const prompt = page.getByLabel('Describe your app', { exact: true });
   await expect(prompt).toBeFocused();
   await expect(prompt).toHaveValue(/inventory tool/);

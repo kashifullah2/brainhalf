@@ -15,13 +15,27 @@ import { pageMetadata, isPrivateSearch } from './seo/metadata';
 import { getToken } from './lib/auth-client';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { initializeAnalytics } from './lib/analytics';
+import type { GalleryApp } from './lib/gallery-types';
+
+// The prerendered /gallery page embeds its app snapshot in <head> so hydration
+// renders the same cards the crawler saw; the live list refreshes after mount.
+function prerenderedGalleryApps(): GalleryApp[] | null {
+  try {
+    const text = document.getElementById('gallery-apps-data')?.textContent;
+    if (!text) return null;
+    const parsed = JSON.parse(text) as unknown;
+    return Array.isArray(parsed) ? parsed as GalleryApp[] : null;
+  } catch {
+    return null;
+  }
+}
 
 const root = document.getElementById('root');
 if (root && window.self === window.top && !/^\/(preview|p)(\/|$)/.test(window.location.pathname)) {
   const path = window.location.pathname.replace(/\/$/, '') || '/';
   const home = path === '/' || path === '/index.html';
   const appRoute = home || path === '/dashboard';
-  const content = appRoute ? <App /> : path === '/gallery' ? <GalleryPage /> : path === '/admin' ? <Suspense fallback={null}><AdminPage /></Suspense> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
+  const content = appRoute ? <App /> : path === '/gallery' ? <GalleryPage initialApps={prerenderedGalleryApps()} /> : path === '/admin' ? <Suspense fallback={null}><AdminPage /></Suspense> : ACCOUNT_PAGES[path] ? <AccountPage path={path} /> : <PublicPage page={findPublicPage(path)} />;
   const tree = <StrictMode><ErrorBoundary>{content}</ErrorBoundary></StrictMode>;
   // /admin is an operator tool: never indexed, never canonicalized.
   const meta = path === '/admin' ? null : pageMetadata(home ? '/' : path);
