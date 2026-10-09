@@ -354,7 +354,6 @@ export interface ChatAgentEnv {
   REGISTRY: { get(id: unknown): { fetch(input: string | Request, init?: RequestInit): Promise<Response> }; idFromName(name: string): unknown };
   SESSION_SECRET: string;
   REQUIRED_MODEL_PROVIDERS?: string;
-  REQUIRED_PUBLIC_SERVICES?: string;
   BRAINHALF_SERVICES?: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
   BRAINHALF_SERVICE_TOKEN?: string;
   [key: string]: unknown;
