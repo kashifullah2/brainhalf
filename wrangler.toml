@@ -5,9 +5,12 @@ compatibility_flags = [ "nodejs_compat" ]
 
 [vars]
 REQUIRED_MODEL_PROVIDERS = "cloudflare"
-ADMIN_EMAILS = "kashifullah919@gmail.com,whyai4@gmail.com"
 # Set to "true" only in .dev.vars for local development; never in production.
 IS_DEV = "false"
+# ADMIN_EMAILS is a Worker secret (not a [vars] entry) so operator email
+# addresses are never committed to the repository. Set it with:
+#   wrangler secret put ADMIN_EMAILS
+# Value format: comma-separated emails, e.g. "alice@example.com,bob@example.com"
 
 [[routes]]
 pattern = "brainhalf.com"

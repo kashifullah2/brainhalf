@@ -65,6 +65,8 @@ qa-audit/
 # Local wrangler dev secrets (never commit)
 .dev.vars
 .dev.vars.*
+# ...but the example template is safe to commit
+!.dev.vars.example
 
 # E2E screenshot artifacts written by specs (e.g. tests/managed-runtime.spec.ts)
 /audit-artifacts/

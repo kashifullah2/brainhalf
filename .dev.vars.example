@@ -1,0 +1,39 @@
+# Local development secrets — copy this file to .dev.vars and fill in your values.
+# .dev.vars is git-ignored. Never commit real secrets.
+#
+# Minimum required for `npm run dev` to work end-to-end:
+SESSION_SECRET=replace-with-at-least-32-random-chars-here
+
+# Enables localhost CORS origins (http://localhost:5173 / http://127.0.0.1:*)
+# Only set in local dev, never in production wrangler.toml
+IS_DEV=true
+
+# Admin access (comma-separated email addresses).
+# In production this must be a Worker secret — NOT a wrangler.toml [vars] entry
+# — so operator addresses are never committed to git:
+#   wrangler secret put ADMIN_EMAILS
+# For local dev, setting it here in .dev.vars is fine.
+ADMIN_EMAILS=yourname@example.com
+
+# Optional — AI providers (at least one must be configured for generation to work)
+ANTHROPIC_API_KEY=
+
+# AWS Bedrock (for claude-sonnet-6 / kimi-k3)
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_REGION=us-east-1
+
+# Atria ASI (for Atria-Dawn-Preview)
+ATRIA_API_KEY=
+ATRIA_BASE_URL=
+
+# Transactional email via Resend (for signup/verify/reset flows)
+RESEND_API_KEY=
+RESEND_FROM_EMAIL=
+
+# Google OAuth for platform sign-in
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# Operator analytics gate (comma-separated user IDs)
+PRODUCT_METRICS_OWNER_IDS=
