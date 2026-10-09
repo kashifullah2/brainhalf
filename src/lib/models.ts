@@ -59,7 +59,7 @@ const CF_DEFAULT_MAX = 65536;
 
 const CF_MODELS: AllowedModel[] = [
   { name: DEFAULT_MODEL_ID, provider: 'cloudflare', id: DEFAULT_MODEL_ID, maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
-  { name: '@cf/deepseek-ai/deepseek-v4-flash-0731', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-v4-flash-0731', maxTokens: CF_DEFAULT_MAX },
+  { name: '@cf/deepseek-ai/deepseek-v4-flash-0731', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-v4-flash-0731', maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
   { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: 32768 },
@@ -175,6 +175,71 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, label: str
 /** Models that support reasoning/thinking via chat_template_kwargs.enable_thinking. */
 export function modelSupportsThinking(model: string): boolean {
   return MODEL_ALLOWLIST.some(m => m.id === model && m.supportsThinking === true);
+}
+
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  [DEFAULT_MODEL_ID]: 'DeepSeek V4 Pro',
+  '@cf/deepseek-ai/deepseek-v4-flash-0731': 'DeepSeek V4 Flash',
+  '@cf/openai/gpt-oss-120b': 'GPT-OSS 120B',
+  '@cf/moonshotai/kimi-k2.7-code': 'Kimi K2.7 Code',
+  '@cf/qwen/qwen3.8-27b': 'Qwen 3.8 27B',
+  '@cf/meta/llama-4-scout-17b-16e-instruct': 'Llama 4 Scout',
+  '@cf/meta/llama-4-maverick-17b-128e-instruct': 'Llama 4 Maverick',
+  '@cf/google/gemma-3-27b-it': 'Gemma 3 27B',
+  '@cf/mistralai/mistral-small-3.1-24b-instruct': 'Mistral Small 3.1',
+  '@cf/qwen/qwen2.5-coder-32b-instruct': 'Qwen 2.5 Coder 32B',
+  '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b': 'DeepSeek R1 32B',
+  '@cf/zai-org/glm-5.3-flash': 'GLM 5.3 Flash',
+  'claude-sonnet-6': 'Claude Sonnet 4.6',
+  'claude-opus-6': 'Claude Opus 4.6',
+  'kimi-k3': 'Kimi K3 v1',
+  'minimax-m2.5': 'MiniMax M2.5',
+  'Atria-Dawn-Preview': 'Atria Dawn Preview',
+};
+
+export function displayModelName(modelId: string): string {
+  return MODEL_DISPLAY_NAMES[modelId] || modelId;
+}
+
+export type KillSwitchStatus = { integratedModelsEnabled: boolean; disabledModels: string[] };
+
+/**
+ * Pure decision: given a known status snapshot, returns the admin-refusal
+ * message if the requested model is currently disabled, or null if allowed.
+ * Extracted so agent.ts and tests can share the logic without mocking the DO.
+ */
+export function killSwitchRefusal(
+  status: KillSwitchStatus,
+  opts: { isCustom: boolean; requestedId: string; displayName: string; modelKey: string },
+): string | null {
+  if (opts.isCustom) {
+    if (status.disabledModels.includes(opts.requestedId)) {
+      return `Model "${opts.displayName}" is currently turned off by the administrator.`;
+    }
+  } else {
+    if (!status.integratedModelsEnabled) {
+      return 'The built-in models are currently turned off by the administrator.';
+    }
+    if (status.disabledModels.includes(opts.modelKey)) {
+      return `Model "${opts.displayName}" is currently turned off by the administrator.`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetches the live model-status snapshot; falls back to `getCached` when the
+ * live fetch throws or returns null. Returns null when both fail — callers
+ * MUST treat null as "fail closed: refuse the request."
+ */
+export async function resolveKillSwitchStatus(
+  fetchLive: () => Promise<KillSwitchStatus | null>,
+  getCached: () => Promise<KillSwitchStatus | null>,
+): Promise<KillSwitchStatus | null> {
+  const live = await fetchLive().catch(() => null);
+  if (live != null) return live;
+  const cached = await getCached().catch(() => null);
+  return cached ?? null;
 }
 
 /** Models whose image inputs are verified against their provider interface. */

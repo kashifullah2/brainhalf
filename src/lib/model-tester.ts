@@ -8,6 +8,7 @@ import type { DurableBinding } from './bindings';
 import {
   MODEL_ALLOWLIST,
   MODEL_TEST_TIMEOUT_MS,
+  modelSupportsThinking,
   resolveModel,
   withTimeout,
 } from './models';
@@ -348,13 +349,7 @@ export async function handleModelTest(
         throw new Error('Cloudflare Workers AI binding env.AI is not available');
       }
 
-      // Only send enable_thinking: false to models that actually support thinking.
-      // Other CF models silently drop the response when this param is unrecognised.
-      const cfSupportsThinking = [
-        '@cf/deepseek-ai/deepseek-v4-pro-0813',
-        '@cf/deepseek-ai/deepseek-v4-flash-0731',
-        '@cf/zai-org/glm-5.3-flash',
-      ].includes(resolved.id);
+      const cfSupportsThinking = modelSupportsThinking(resolved.id);
 
       let aiResponse: ModelTestStreamResponse | null = null;
       const testLadder = [32768, 16384, 8192, 4096];

@@ -16,7 +16,7 @@ import { createTypeScriptStarter } from './lib/project-starters';
 import { prepareModuleSource, buildTranspileErrorModule, findDanglingImports } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
-import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, modelSupportsThinking, type AllowedModel } from './lib/models';
+import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, modelSupportsThinking, killSwitchRefusal, resolveKillSwitchStatus, type AllowedModel, type KillSwitchStatus } from './lib/models';
 import { safeFetchText } from './lib/ssrf';
 import { validateRuntimeProviders } from './lib/runtime-config';
 import { BEDROCK_ALIASES, createBedrockClient, providerCredentials, providerModel, selectModelTransport, type ProviderLanguageModel } from './lib/provider-clients';
@@ -33,6 +33,7 @@ import { isPublicPreviewFile, isPublicPreviewRead, PREVIEW_ACCESS_HEADER } from 
 import { isolatedPreviewHtml, previewFiles } from './lib/preview-isolation';
 import { isConversationalPrompt, isDestructivePrompt, isQuestionPrompt, isAmbiguousPrompt, shouldAutoPlannerMode, shouldUseStagedPipeline } from './lib/prompt-mode';
 import { isBlockedSecretFile } from './lib/secret-files';
+import { verificationPlan } from './runtime/verification';
 import { boundedConversation, contextFileAllowed, estimateTokens, fileContextRank } from './lib/agent-context';
 import { generationControls, generationContextLimits } from './lib/generation-controls';
 import { needsBackend, hostingAvailability } from './lib/generation-target';
@@ -41,10 +42,15 @@ import type { RuntimeStatus } from './runtime/types';
 import { AiBudget, AiBudgetError, meteredModel } from './lib/ai-budget';
 import { sourceSnapshot } from './runtime/source';
 import { GenerationUserError, classifyGenerationError, errorMessage } from './lib/generation-errors';
+import { FlipFlopGuard, RepairLog } from './lib/repair-budget';
 
 // Transient provider failures (rate limits, overload, dropped connections)
 // get this many automatic retries per pipeline stage before we give up.
 const GENERATION_TRANSIENT_RETRIES = 3;
+
+// DO storage key for the last-known kill-switch status, used to fail closed
+// when the registry is unreachable on the next session after a wake cycle.
+const KILL_SWITCH_CACHE_KEY = 'ks_cache';
 
 // A failed WebSocket send used to vanish into an empty catch block, so a client
 // that missed `done`, `error` or `file_updated` looked like a model bug. Count
@@ -182,6 +188,7 @@ const COMPLETENESS_REPAIR_MARKER = '[AUTO-FIX] The build finished but these file
 /** Prefix of the [AUTO-FIX] prompt for syntax-discarded files. */
 const SYNTAX_REPAIR_MARKER = '[AUTO-FIX] These files were discarded because of syntax errors';
 const PHANTOM_HOOK_REPAIR_MARKER = '[AUTO-FIX] These files use useAuth/AuthProvider/AuthContext without defining them:';
+export const VERIFY_FILE_REPAIR_MARKER = '[AUTO-FIX] brainhalf.verify.json is invalid:';
 const MIN_FULL_APP_RESPONSE_CHARS = 260;
 const MIN_FULL_APP_RESPONSE_LINES = 5;
 
@@ -420,6 +427,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    */
   private finalCompletenessRepairAttempts = 0;
   private phantomHookRepairAttempts = 0;
+  private verifyFileRepairAttempts = 0;
+  private flipFlopGuard = new FlipFlopGuard();
+  private repairLog = new RepairLog();
+  /** Last-known kill-switch snapshot; survives within a DO instance lifetime. */
+  private killSwitchCache: KillSwitchStatus | null = null;
   /**
    * P0-4: when a repair/retry turn is queued at the end of a generation, the
    * parent turn must not be recorded as completed. This holds the parent job
@@ -1362,6 +1374,70 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   }
 
   /**
+   * Post-generation check: validate brainhalf.verify.json using the same Zod
+   * schema the publisher uses. Triggers a repair turn when:
+   *   (a) the file is missing but a worker backend (/worker/index.ts) exists, or
+   *   (b) the file is present but fails schema validation (< 3 steps, no write
+   *       step, no database assertion, etc.).
+   * Capped at one repair attempt so a model that cannot produce a valid file
+   * does not loop; the user sees a generation notice and can prompt manually.
+   */
+  private verifyVerificationPlanFile(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
+    try {
+      const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
+      const allFiles = new Map<string, string>();
+      for (const r of rows || []) allFiles.set(r.path, r.content || '');
+      if (allFiles.size === 0) return false;
+
+      const hasWorkerBackend = allFiles.has('/worker/index.ts');
+      const verifyRaw = allFiles.get('/brainhalf.verify.json') ?? allFiles.get('brainhalf.verify.json');
+
+      if (!verifyRaw) {
+        // Only require the file when there is a worker backend to test.
+        if (!hasWorkerBackend) return false;
+        if (this.verifyFileRepairAttempts >= 1) return false;
+        this.verifyFileRepairAttempts++;
+        const repairPrompt =
+          `${VERIFY_FILE_REPAIR_MARKER} missing\n\n` +
+          `This app has a worker backend (/worker/index.ts) but no brainhalf.verify.json. ` +
+          `Write a complete, valid brainhalf.verify.json that exercises the app\'s actual API routes. ` +
+          `The file MUST satisfy all schema rules: at least 3 steps, one successful POST/PUT/PATCH/DELETE ` +
+          `request step, one database assertion step with rows > 0 and at least one assertion, and for ` +
+          `private apps one anonymous or otherUser access-denial step. ` +
+          `Use <file path="/brainhalf.verify.json">…</file> — do not modify any other file.`;
+        try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Generating verification plan for your app…' })); } catch {}
+        defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch {} });
+        return true;
+      }
+
+      // File exists — validate it.
+      let validationError: string | null = null;
+      try {
+        verificationPlan({ 'brainhalf.verify.json': verifyRaw });
+      } catch (err) {
+        validationError = err instanceof Error ? err.message : String(err);
+      }
+      if (!validationError) return false;
+
+      if (this.verifyFileRepairAttempts >= 1) return false;
+      this.verifyFileRepairAttempts++;
+      const repairPrompt =
+        `${VERIFY_FILE_REPAIR_MARKER} ${validationError}\n\n` +
+        `Fix /brainhalf.verify.json so it passes all schema checks: at least 3 steps, one successful ` +
+        `POST/PUT/PATCH/DELETE request step (method not GET, status < 300), one database assertion step ` +
+        `(type:"database", rows > 0, non-empty assertions[]), and for private apps one anonymous or ` +
+        `otherUser access-denial step (status 401/403/404). Use a targeted <edit> block or rewrite the ` +
+        `file with <file path="/brainhalf.verify.json">…</file>. Do not modify any other file.`;
+      try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Fixing verification plan…' })); } catch {}
+      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch {} });
+      return true;
+    } catch (err) {
+      console.warn('verify.json check failed:', err instanceof Error ? err.message : String(err));
+    }
+    return false;
+  }
+
+  /**
    * P0-4: record that a turn queued a repair/retry turn. First marker wins per
    * turn (the client honors a single trigger-auto-reply per response). If this
    * turn IS itself a pending repair that queued a follow-up, the original
@@ -2137,7 +2213,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
     // server recognizes via its own continuation prompts.
-    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; this.finalCompletenessRepairAttempts = 0; this.phantomHookRepairAttempts = 0; }
+    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; this.finalCompletenessRepairAttempts = 0; this.phantomHookRepairAttempts = 0; this.flipFlopGuard?.clear(); }
     const controls = generationControls(data);
     const generationTimeoutMs = controls.timeoutMs;
     const maxSteps = controls.maxSteps;
@@ -2224,6 +2300,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         try { this.broadcast(payload, [connection.id]); } catch (e) { noteSendFailure(e); }
       });
     };
+    // Set by the tool-loop's prepareStep when the kill-switch fires mid-generation.
+    // Checked first in the outer catch so the right message reaches the client.
+    let midGenerationKillSwitch: string | null = null;
 
     const budget = new AiBudget(this.env, this.connectionUserIds.get(connection.id) || '', abortController.signal);
     try {
@@ -2286,31 +2365,51 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             resolved = allowlisted;
           }
 
-          // Admin kill-switch: applies to both built-in models and custom models.
-          try {
-            const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth')).fetch('https://registry/public/model-status');
-            if (statusRes.ok) {
-              const statusBody = await statusRes.json() as { integratedModelsEnabled?: boolean; disabledModels?: string[] };
-              if (customModel) {
-                // Custom models use their cm_xxx ID as the disable key.
-                if (Array.isArray(statusBody.disabledModels) && statusBody.disabledModels.includes(requestedModel)) {
-                  sendError(`Model "${customModel.name}" is currently turned off by the administrator.`);
-                  return;
-                }
-              } else {
-                if (statusBody.integratedModelsEnabled === false) {
-                  sendError('The built-in models are currently turned off by the administrator.');
-                  return;
-                }
-                const modelKey = `${resolved!.provider}:${resolved!.name}`;
-                if (Array.isArray(statusBody.disabledModels) && statusBody.disabledModels.includes(modelKey)) {
-                  sendError(`Model "${resolved!.name}" is currently turned off by the administrator.`);
-                  return;
-                }
-              }
-            }
-          } catch {
-            // Fail open: a registry blip must not kill generation.
+          // Admin kill-switch — fail closed.
+          // The live fetch updates the in-memory + DO cache so that a brief
+          // registry blip mid-generation falls back to last-known status instead
+          // of either failing every iteration or silently ignoring disables.
+          const resolvedDisplayName = customModel ? customModel.name : resolved!.name;
+          const resolvedModelKey = `${resolved?.provider}:${resolved?.name}`;
+          const getKillSwitchStatus = () => resolveKillSwitchStatus(
+            async () => {
+              const statusRes = await this.env.REGISTRY.get(this.env.REGISTRY.idFromName('auth'))
+                .fetch(new Request('https://registry/public/model-status'));
+              if (!statusRes.ok) return null;
+              const body = await statusRes.json() as { integratedModelsEnabled?: boolean; disabledModels?: string[] };
+              const status: KillSwitchStatus = {
+                integratedModelsEnabled: body.integratedModelsEnabled !== false,
+                disabledModels: Array.isArray(body.disabledModels) ? body.disabledModels : [],
+              };
+              this.killSwitchCache = status;
+              void this.ctx.storage.put?.(KILL_SWITCH_CACHE_KEY, status);
+              return status;
+            },
+            async () => {
+              if (this.killSwitchCache != null) return this.killSwitchCache;
+              const stored = await this.ctx.storage.get?.<KillSwitchStatus>(KILL_SWITCH_CACHE_KEY);
+              if (stored) this.killSwitchCache = stored;
+              return stored ?? null;
+            },
+          );
+          const getDisabledMsg = (status: KillSwitchStatus) => killSwitchRefusal(status, {
+            isCustom: !!customModel,
+            requestedId: requestedModel,
+            displayName: resolvedDisplayName,
+            modelKey: resolvedModelKey,
+          });
+
+          // Fail closed: if the registry is unreachable and there is no prior
+          // cached status, refuse rather than silently allowing a disabled model.
+          const initialStatus = await getKillSwitchStatus();
+          if (initialStatus === null) {
+            sendError('Model status could not be verified. Please try again.');
+            return;
+          }
+          const initialRefusal = getDisabledMsg(initialStatus);
+          if (initialRefusal) {
+            sendError(initialRefusal);
+            return;
           }
 
           const assetPaths = new Set<string>();
@@ -2973,11 +3072,28 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   tools: plannerMode || fileOutputRetry || directGeneration || customToolsDisabled || modes?.destructiveMode || modes?.questionMode || modes?.ambiguousMode ? undefined : instrumentedTools,
                   toolChoice: fileOutputRetry || directGeneration || customToolsDisabled ? 'none' : 'auto',
                   stopWhen: isStepCount(maxSteps + 1),
-                  prepareStep: ({ stepNumber, messages }) => stepNumber >= maxSteps ? {
-                    activeTools: [],
-                    toolChoice: 'none',
-                    messages: [...messages, { role: 'user', content: 'The tool phase is complete. Finish the original task using the results above. Return remaining implementation as complete file blocks. Report any checks that still need to run.' }],
-                  } : undefined,
+                  prepareStep: async ({ stepNumber, messages }) => {
+                    // Re-check kill-switch on every tool-loop iteration so an
+                    // admin disable mid-generation takes effect before the next
+                    // LLM call rather than waiting for the user's next turn.
+                    const iterStatus = await getKillSwitchStatus();
+                    if (iterStatus !== null) {
+                      const refusal = getDisabledMsg(iterStatus);
+                      if (refusal) {
+                        midGenerationKillSwitch = refusal;
+                        abortController.abort();
+                        return undefined;
+                      }
+                    }
+                    if (stepNumber >= maxSteps) {
+                      return {
+                        activeTools: [],
+                        toolChoice: 'none',
+                        messages: [...messages, { role: 'user', content: 'The tool phase is complete. Finish the original task using the results above. Return remaining implementation as complete file blocks. Report any checks that still need to run.' }],
+                      };
+                    }
+                    return undefined;
+                  },
                   maxOutputTokens: requestedMaxTokens ?? maxTokensForModel,
                   maxRetries: 0,
                   abortSignal: abortController.signal,
@@ -3088,6 +3204,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                               && this.noteRepairQueued(accounting.id, actualPrompt, PHANTOM_HOOK_REPAIR_MARKER)) repairQueuedThisTurn = true;
                           } catch (e) { console.warn('Phantom auth hook check threw:', e); }
                         }
+                        if (!repairQueuedThisTurn) {
+                          try {
+                            if (this.verifyVerificationPlanFile(connection, deferTerminal)
+                              && this.noteRepairQueued(accounting.id, actualPrompt, VERIFY_FILE_REPAIR_MARKER)) repairQueuedThisTurn = true;
+                          } catch (e) { console.warn('verify.json post-gen check threw:', e); }
+                        }
                       }
                     }
                     // Always send stream.done so the client knows the response
@@ -3182,6 +3304,15 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         });
       });
     } catch (err) {
+      // Kill-switch fired in the tool loop's prepareStep: abort was called
+      // after setting midGenerationKillSwitch. Send the specific refusal
+      // message and treat the run as a non-retryable failure (the model is
+      // disabled; retrying would hit the same wall).
+      if (midGenerationKillSwitch !== null) {
+        sendError(midGenerationKillSwitch);
+        jobOutcome = { kind: 'failed', error: midGenerationKillSwitch };
+        return;
+      }
       // FIX (high): the catch here used to call runCloudflareWorkersAI with a
       // hardcoded '@cf/meta/llama-3.3-70b-instruct-fp8-fast'. That silently
       // substituted a different model for the one the user selected and was
@@ -4033,10 +4164,62 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     }
     if (pendingWrites.size === 0 && pendingDeletes.size === 0) return summary;
 
+    const brokenFiles: Array<{ path: string; error: string }> = [];
+
+    // Shrinkage guard: a file >30% shorter than its existing version is likely
+    // truncated by a finish_reason:length cutoff. Keep the old file and queue
+    // the path for repair so the model regenerates it properly.
+    // Exempt: intentionally empty writes (content === '') and tiny files (<100 bytes)
+    // where a rewrite is more likely than truncation.
+    for (const [path, content] of [...pendingWrites.entries()]) {
+      const rows = this.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = ${path}`;
+      const existing = rows[0]?.content;
+      if (!existing || existing.length < 100 || content.length === 0 || content.length >= existing.length * 0.7) continue;
+      const pct = Math.round((1 - content.length / existing.length) * 100);
+      pendingWrites.delete(path);
+      brokenFiles.push({ path, error: `Replacement is ${pct}% shorter (${content.length} vs ${existing.length} bytes); likely truncated` });
+      this.repairLog?.add(this.name, 'shrinkage', `${path}: ${existing.length} → ${content.length} bytes (${pct}% shorter)`);
+    }
+
+    // Flip-flop guard: when a dependency version in package.json alternates
+    // between two values across repair rounds, the model is chasing its tail.
+    // Stop and surface the real error instead of looping.
+    const pkgContent = pendingWrites.get('/package.json');
+    if (pkgContent && this.flipFlopGuard) {
+      try {
+        const newPkg = JSON.parse(pkgContent);
+        const pkgPath = '/package.json';
+        const oldRow = this.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = ${pkgPath}`;
+        if (oldRow[0]?.content) {
+          const oldPkg = JSON.parse(oldRow[0].content);
+          let flipFlop = false;
+          for (const section of ['dependencies', 'devDependencies'] as const) {
+            const oldDeps: Record<string, string> = oldPkg[section] || {};
+            const newDeps: Record<string, string> = newPkg[section] || {};
+            for (const [pkg, newVer] of Object.entries(newDeps)) {
+              if (oldDeps[pkg] && oldDeps[pkg] !== newVer) {
+                if (this.flipFlopGuard.record(`${this.name}:${pkg}`, newVer)) {
+                  flipFlop = true;
+                  try {
+                    connection.send(JSON.stringify({
+                      type: 'error',
+                      error: `Dependency "${pkg}" keeps alternating versions. The builder cannot resolve this conflict automatically — check the peer dependency requirements and pin a compatible version.`,
+                    }));
+                  } catch (e) { noteSendFailure(e); }
+                }
+              }
+            }
+          }
+          if (flipFlop) {
+            pendingWrites.delete('/package.json');
+          }
+        }
+      } catch { /* parse failure handled by syntax check */ }
+    }
+
     // Validate syntax before writing. Try auto-repair on truncated files and
     // drop only the unrecoverable ones, so one bad file does not discard a whole
     // successful generation.
-    const brokenFiles: Array<{ path: string; error: string }> = [];
     for (const [path, content] of pendingWrites.entries()) {
       // Coverage beyond /src: worker/, shared/ and server/ code fails the real
       // build at publish time, so a syntax error there must be caught at save.

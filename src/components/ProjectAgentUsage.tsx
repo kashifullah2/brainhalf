@@ -5,6 +5,7 @@ import { apiOrigin } from '../lib/api-origin';
 import { runtimeRequest } from '../lib/project-runtime-client';
 import type { AiUsage } from '../lib/ai-budget';
 import type { RuntimeStatus, VerificationReport } from '../runtime/types';
+import { displayModelName } from '../lib/models';
 
 interface Generation { model: string; started_at: number; finished_at: number | null; status: string; input_tokens: number | null; output_tokens: number | null; source_revision?: string | null; first_response_at?: number | null; provider_calls?: number | null }
 export default function ProjectAgentUsage({ projectId }: { projectId: string }) {
@@ -52,7 +53,7 @@ export default function ProjectAgentUsage({ projectId }: { projectId: string }) 
     {error && <p role="status" className="settings-error">{error}</p>}{!error && !generations.length && <p className="settings-muted">No builder activity recorded yet.</p>}
     {!!generations.length && <>
       <p className="settings-muted">First response measures how long until the builder first does something visible. AI calls include retries. Older activity shows a dash when measurements are missing.</p>
-      <div className="settings-table-scroll" role="region" aria-label="Builder activity" tabIndex={0}><table><thead><tr><th>AI model</th><th>Status</th><th>Checks</th><th>Text in / out</th><th>First response</th><th>AI requests</th><th>Duration</th></tr></thead><tbody>{generations.map((item, index) => <tr key={index}><td>{item.model === 'claude-sonnet-6' ? 'Claude Sonnet 4.6' : item.model}</td><td>{item.status}</td><td>{item.source_revision && verification?.revision === item.source_revision ? verification.passed ? 'Passed on this version' : 'Failed on this version' : 'Not checked'}</td><td>{item.input_tokens?.toLocaleString() ?? '—'} / {item.output_tokens?.toLocaleString() ?? '—'}</td><td>{item.first_response_at != null ? `${Math.max(0, (item.first_response_at - item.started_at) / 1000).toFixed(1)}s` : '—'}</td><td>{item.provider_calls ?? '—'}</td><td>{item.finished_at ? `${Math.round((item.finished_at - item.started_at) / 1000)}s` : '—'}</td></tr>)}</tbody></table></div>
+      <div className="settings-table-scroll" role="region" aria-label="Builder activity" tabIndex={0}><table><thead><tr><th>AI model</th><th>Status</th><th>Checks</th><th>Text in / out</th><th>First response</th><th>AI requests</th><th>Duration</th></tr></thead><tbody>{generations.map((item, index) => <tr key={index}><td>{displayModelName(item.model)}</td><td>{item.status}</td><td>{item.source_revision && verification?.revision === item.source_revision ? verification.passed ? 'Passed on this version' : 'Failed on this version' : 'Not checked'}</td><td>{item.input_tokens?.toLocaleString() ?? '—'} / {item.output_tokens?.toLocaleString() ?? '—'}</td><td>{item.first_response_at != null ? `${Math.max(0, (item.first_response_at - item.started_at) / 1000).toFixed(1)}s` : '—'}</td><td>{item.provider_calls ?? '—'}</td><td>{item.finished_at ? `${Math.round((item.finished_at - item.started_at) / 1000)}s` : '—'}</td></tr>)}</tbody></table></div>
     </>}
   </section>;
 }

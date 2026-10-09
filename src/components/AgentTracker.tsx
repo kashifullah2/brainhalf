@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Clock, FileCode2, Wrench, AlertCircle, CheckCircle2, Zap, Bug, Eye, RotateCcw } from 'lucide-react';
 import { appEvents } from '../lib/events';
+import { displayModelName } from '../lib/models';
 import { getGenerationTimings, type GenerationTiming } from '../lib/generation-timing';
 import { authFetch } from '../lib/auth-client';
 import { apiOrigin } from '../lib/api-origin';
@@ -185,7 +186,7 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
           <div className="agent-tracker-stats">
             <div className="tracker-stat">
               <span className="tracker-stat-label">Model</span>
-              <span className="tracker-stat-value">{latestGen.model === 'claude-sonnet-6' ? 'Claude Sonnet 4.6' : latestGen.model}</span>
+              <span className="tracker-stat-value">{displayModelName(latestGen.model)}</span>
             </div>
             <div className="tracker-stat">
               <span className="tracker-stat-label">Status</span>
@@ -264,7 +265,7 @@ export default function AgentTracker({ projectId, onClose }: { projectId: string
               {generations.map((gen, i) => (
                 <div key={i} className="tracker-history-row">
                   <div className="tracker-history-top">
-                    <span className="tracker-history-model">{gen.model === 'claude-sonnet-6' ? 'Claude Sonnet 4.6' : gen.model}</span>
+                    <span className="tracker-history-model">{displayModelName(gen.model)}</span>
                     <span className={`tracker-badge tracker-badge-${gen.status}`}>{gen.status}</span>
                   </div>
                   <div className="tracker-history-meta">

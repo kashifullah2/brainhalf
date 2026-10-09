@@ -133,5 +133,40 @@ describe('7.3 extracted system prompt', () => {
     expect(prompt).toContain('MODEL HANDOFF & CONTINUITY NOTICE:');
     expect(prompt).toContain('Switched from Claude-3.5-Sonnet to GPT-4o');
   });
+
+  it('teaches the brainhalf.verify.json schema rules: min steps, API write, database assertion', () => {
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    // Minimum step count rule
+    expect(prompt).toContain('AT LEAST 3');
+    // Must include an API write step
+    expect(prompt).toContain('successful API write');
+    // Must include a database assertion step with rows > 0 and non-empty assertions
+    expect(prompt).toContain('database assertion step');
+    expect(prompt).toContain('rows > 0');
+    // Private apps need a step denying anonymous/otherUser access
+    expect(prompt).toContain('anonymous or otherUser');
+    // Unique step names
+    expect(prompt).toContain('unique');
+  });
+
+  it('includes a complete valid brainhalf.verify.json example in the managed backend rules', () => {
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    // The example must be a syntactically valid JSON object we can parse.
+    const match = prompt.match(/VALID EXAMPLE: (\{.*?\})\./s);
+    expect(match, 'VALID EXAMPLE must appear in the managed backend rules').not.toBeNull();
+    const parsed = JSON.parse(match![1]);
+    expect(parsed.version).toBe(1);
+    expect(Array.isArray(parsed.steps)).toBe(true);
+    expect(parsed.steps.length).toBeGreaterThanOrEqual(3);
+    // Must contain at least one write step and one database step.
+    expect(parsed.steps.some((s: any) => s.type === 'request' && s.method === 'POST')).toBe(true);
+    expect(parsed.steps.some((s: any) => s.type === 'database')).toBe(true);
+  });
+
+  it('does not include brainhalf.verify.json guidance in the export backend rules', () => {
+    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false, executionTarget: 'export' });
+    // Export apps use their own hosting; the managed-only verify.json rule must not appear.
+    expect(prompt).not.toContain('brainhalf.verify.json');
+  });
 });
 

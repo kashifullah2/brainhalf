@@ -108,6 +108,12 @@ const BUILTIN_MODEL_META: Record<string, { label: string; badge: string; colorCl
     colorClass: 'admin-provider-cloudflare',
     desc: 'Flagship code & fullstack generation engine',
   },
+  '@cf/deepseek-ai/deepseek-v4-flash-0731': {
+    label: 'DeepSeek V4 Flash',
+    badge: 'Cloudflare',
+    colorClass: 'admin-provider-cloudflare',
+    desc: 'Fast lightweight code generation model',
+  },
   '@cf/openai/gpt-oss-120b': {
     label: 'GPT-OSS 120B',
     badge: 'Cloudflare',
@@ -185,6 +191,12 @@ const BUILTIN_MODEL_META: Record<string, { label: string; badge: string; colorCl
     badge: 'AWS Bedrock',
     colorClass: 'admin-provider-aws',
     desc: 'MiniMax flagship — strong coding and creative generation',
+  },
+  '@cf/zai-org/glm-5.3-flash': {
+    label: 'GLM 5.3 Flash',
+    badge: 'Cloudflare',
+    colorClass: 'admin-provider-cloudflare',
+    desc: 'Code generation model — currently disabled (timeouts)',
   },
   'Atria-Dawn-Preview': {
     label: 'Atria Dawn Preview',

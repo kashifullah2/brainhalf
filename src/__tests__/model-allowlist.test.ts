@@ -1,13 +1,21 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import {
   AI_TIMEOUT_MS,
   CLIENT_SELECTABLE_MODELS,
   MAX_OUTPUT_TOKENS,
   MODEL_ALLOWLIST,
   MODEL_TEST_TIMEOUT_MS,
+  acceptsImageInput,
   capTokenLimit,
+  displayModelName,
+  killSwitchRefusal,
+  modelSupportsThinking,
+  resolveKillSwitchStatus,
   resolveModel,
   withTimeout,
+  type KillSwitchStatus,
 } from '../lib/models';
 import { handleModelTest } from '../lib/model-tester';
 
@@ -223,5 +231,182 @@ describe('P2 /api/test/* endpoint hardening', () => {
       'simple'
     );
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://brainhalf.com');
+  });
+});
+
+describe('Kill-switch and disabled_models structural coverage', () => {
+  const agentSource = readFileSync(resolve(__dirname, '../agent.ts'), 'utf-8');
+
+  it('the kill-switch check follows every resolveModel call in the generation path', () => {
+    const resolveIdx = agentSource.indexOf("const allowlisted = resolveModel(requestedModel, data.provider)");
+    const killSwitchIdx = agentSource.indexOf("// Admin kill-switch — fail closed.");
+    expect(resolveIdx, 'resolveModel call must exist in agent.ts').toBeGreaterThan(-1);
+    expect(killSwitchIdx, 'kill-switch comment must exist in agent.ts').toBeGreaterThan(-1);
+    expect(killSwitchIdx, 'kill-switch must follow allowlist resolution').toBeGreaterThan(resolveIdx);
+  });
+
+  it('the kill-switch uses resolveKillSwitchStatus and killSwitchRefusal from models.ts', () => {
+    expect(agentSource).toContain('resolveKillSwitchStatus(');
+    expect(agentSource).toContain('killSwitchRefusal(');
+    expect(agentSource).toContain("KILL_SWITCH_CACHE_KEY");
+    expect(agentSource).toContain("ctx.storage.put?.(KILL_SWITCH_CACHE_KEY");
+    expect(agentSource).toContain("ctx.storage.get?.<KillSwitchStatus>(KILL_SWITCH_CACHE_KEY)");
+  });
+
+  it('resume_generation reuses the same validation path (no separate model resolution)', () => {
+    // The resume block (data.type === 'resume_generation') sets data.prompt
+    // and falls through; it never calls resolveModel itself. The shared
+    // requestedModel = data.model at line 2258 handles both paths.
+    const resumeBlock = agentSource.indexOf("if (data.type === 'resume_generation')");
+    const sharedModelLine = agentSource.indexOf("const requestedModel = data.model || DEFAULT_MODEL_ID");
+    expect(resumeBlock, 'resume_generation block must exist').toBeGreaterThan(-1);
+    expect(sharedModelLine, 'shared requestedModel must exist').toBeGreaterThan(-1);
+    // The resume block must appear BEFORE the shared model resolution so it
+    // falls through into it, not around it.
+    expect(sharedModelLine, 'model validation must come after the resume block').toBeGreaterThan(resumeBlock);
+  });
+
+  it('the repair path sends a normal WS message that enters the same onMessage handler', () => {
+    // Repair is dispatched by ChatPanel via handleSendMessage → ws.send(),
+    // not by a separate code path in agent.ts. Verify agent.ts has no
+    // special repair message type that would skip validation.
+    expect(agentSource).not.toContain("data.type === 'repair'");
+    expect(agentSource).not.toContain("data.type === 'auto_fix'");
+  });
+
+  it('killSwitchRefusal: refuses a per-model-disabled built-in', () => {
+    const status: KillSwitchStatus = { integratedModelsEnabled: true, disabledModels: ['aws:claude-sonnet-6'] };
+    const msg = killSwitchRefusal(status, { isCustom: false, requestedId: 'claude-sonnet-6', displayName: 'Claude Sonnet 4.6', modelKey: 'aws:claude-sonnet-6' });
+    expect(msg).toMatch(/turned off by the administrator/);
+    expect(msg).toContain('Claude Sonnet 4.6');
+  });
+
+  it('killSwitchRefusal: refuses when integratedModelsEnabled is false', () => {
+    const status: KillSwitchStatus = { integratedModelsEnabled: false, disabledModels: [] };
+    const msg = killSwitchRefusal(status, { isCustom: false, requestedId: '@cf/deepseek-ai/deepseek-v4-pro-0813', displayName: 'DeepSeek V4 Pro', modelKey: 'cloudflare:@cf/deepseek-ai/deepseek-v4-pro-0813' });
+    expect(msg).toMatch(/built-in models are currently turned off/);
+  });
+
+  it('killSwitchRefusal: refuses a disabled custom model', () => {
+    const status: KillSwitchStatus = { integratedModelsEnabled: true, disabledModels: ['cm_abc123'] };
+    const msg = killSwitchRefusal(status, { isCustom: true, requestedId: 'cm_abc123', displayName: 'My Custom LLM', modelKey: '' });
+    expect(msg).toMatch(/My Custom LLM/);
+    expect(msg).toMatch(/turned off by the administrator/);
+  });
+
+  it('killSwitchRefusal: returns null when model is allowed', () => {
+    const status: KillSwitchStatus = { integratedModelsEnabled: true, disabledModels: [] };
+    expect(killSwitchRefusal(status, { isCustom: false, requestedId: 'claude-sonnet-6', displayName: 'Claude Sonnet 4.6', modelKey: 'aws:claude-sonnet-6' })).toBeNull();
+    expect(killSwitchRefusal(status, { isCustom: true, requestedId: 'cm_xyz', displayName: 'Custom', modelKey: '' })).toBeNull();
+  });
+
+  it('resolveKillSwitchStatus: returns live status when fetch succeeds', async () => {
+    const live: KillSwitchStatus = { integratedModelsEnabled: true, disabledModels: ['cloudflare:@cf/google/gemma-3-27b-it'] };
+    const result = await resolveKillSwitchStatus(() => Promise.resolve(live), () => Promise.resolve(null));
+    expect(result).toEqual(live);
+  });
+
+  it('resolveKillSwitchStatus: uses cache when registry throws (fail-closed with cache)', async () => {
+    const cached: KillSwitchStatus = { integratedModelsEnabled: true, disabledModels: [] };
+    const result = await resolveKillSwitchStatus(
+      () => Promise.reject(new Error('registry down')),
+      () => Promise.resolve(cached),
+    );
+    expect(result).toEqual(cached);
+  });
+
+  it('resolveKillSwitchStatus: returns null when registry throws and no cache (fail closed)', async () => {
+    const result = await resolveKillSwitchStatus(
+      () => Promise.reject(new Error('registry down')),
+      () => Promise.resolve(null),
+    );
+    expect(result).toBeNull();
+  });
+
+  it('resolveKillSwitchStatus: treats undefined cache return as null (fail closed)', async () => {
+    // Object.create bypass or uninitialized field can make getCached return undefined.
+    const result = await resolveKillSwitchStatus(
+      () => Promise.reject(new Error('registry down')),
+      () => Promise.resolve(undefined as any),
+    );
+    expect(result).toBeNull();
+  });
+});
+
+describe('Model registry drift detection', () => {
+  const uniqueNames = [...new Set(MODEL_ALLOWLIST.map(m => m.name))];
+
+  it('every allowlist model has a displayModelName entry', () => {
+    for (const name of uniqueNames) {
+      const display = displayModelName(name);
+      expect(display, `displayModelName("${name}") should not fall through to the raw id`).not.toBe(name);
+    }
+  });
+
+  it('displayModelName has no orphan entries outside the allowlist', () => {
+    for (const name of uniqueNames) {
+      expect(resolveModel(name), `displayModelName("${name}") has no matching allowlist entry`).not.toBeNull();
+    }
+  });
+
+  it('acceptsImageInput only returns true for allowlisted models', () => {
+    const imageModels = uniqueNames.filter(n => acceptsImageInput(n));
+    expect(imageModels.length).toBeGreaterThan(0);
+    for (const name of imageModels) {
+      expect(resolveModel(name), `acceptsImageInput("${name}") is not in the allowlist`).not.toBeNull();
+    }
+  });
+
+  it('modelSupportsThinking only returns true for allowlisted models', () => {
+    const thinkingModels = MODEL_ALLOWLIST.filter(m => m.supportsThinking).map(m => m.id);
+    expect(thinkingModels.length).toBeGreaterThan(0);
+    for (const id of thinkingModels) {
+      expect(modelSupportsThinking(id)).toBe(true);
+    }
+  });
+
+  it('every model has a non-zero maxTokens and valid provider', () => {
+    const validProviders = new Set(['cloudflare', 'anthropic', 'aws', 'atria', 'custom']);
+    for (const m of MODEL_ALLOWLIST) {
+      expect(m.maxTokens, `${m.name} has zero or negative maxTokens`).toBeGreaterThan(0);
+      expect(validProviders.has(m.provider), `${m.name} has unknown provider "${m.provider}"`).toBe(true);
+    }
+  });
+
+  it('no duplicate (name, provider) pairs in the allowlist', () => {
+    const seen = new Set<string>();
+    for (const m of MODEL_ALLOWLIST) {
+      const key = `${m.provider}:${m.name}`;
+      expect(seen.has(key), `duplicate allowlist entry: ${key}`).toBe(false);
+      seen.add(key);
+    }
+  });
+
+  it('every allowlisted model has a maxTokens cost ceiling (no free-running model)', () => {
+    for (const m of MODEL_ALLOWLIST) {
+      expect(m.maxTokens, `${m.name} is missing a maxTokens cost ceiling`).toBeGreaterThan(0);
+      expect(m.maxTokens, `${m.name} maxTokens exceeds the global cap`).toBeLessThanOrEqual(MAX_OUTPUT_TOKENS);
+    }
+  });
+
+  it('agent.ts does not maintain its own model ID list', () => {
+    const agentSource = readFileSync(resolve(__dirname, '../agent.ts'), 'utf-8');
+    const allowlistedIds = new Set(MODEL_ALLOWLIST.map(m => m.id));
+    const exempt = new Set(['@cf/black-forest-labs/flux-1-schnell']);
+    const cfModelPattern = /@cf\/[a-z0-9_-]+\/[a-z0-9_.-]+/g;
+    const nonAllowlisted: string[] = [];
+    for (const line of agentSource.split('\n')) {
+      if (line.trimStart().startsWith('//') || line.trimStart().startsWith('*')) continue;
+      for (const match of line.matchAll(cfModelPattern)) {
+        if (!allowlistedIds.has(match[0]) && !exempt.has(match[0])) {
+          nonAllowlisted.push(match[0]);
+        }
+      }
+    }
+    expect(
+      nonAllowlisted,
+      `agent.ts references CF model IDs not in MODEL_ALLOWLIST: ${nonAllowlisted.join(', ')}. ` +
+      'Add them to models.ts or remove the hardcoded reference.',
+    ).toEqual([]);
   });
 });

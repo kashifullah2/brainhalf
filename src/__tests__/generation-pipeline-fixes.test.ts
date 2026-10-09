@@ -18,6 +18,7 @@ import {
   isBackendWritePath,
 } from '../agent';
 import { WriteEpoch } from '../lib/concurrency';
+import { FlipFlopGuard, RepairLog } from '../lib/repair-budget';
 
 /**
  * Drives `extractAndSaveFiles` through a fake SQLite handle, mirroring
@@ -63,6 +64,9 @@ function makeAgent(files: Map<string, string>) {
   };
   agent.broadcast = () => {};
   agent.backupToR2 = async () => {};
+  agent.name = 'test-project';
+  agent.flipFlopGuard = new FlipFlopGuard();
+  agent.repairLog = new RepairLog();
 
   const events: any[] = [];
   const connection = { id: 'connection', send: (message: string) => events.push(JSON.parse(message)) };
@@ -229,5 +233,66 @@ describe('extractAndSaveFiles truncation handling', () => {
     expect(events.some(event => event.type === 'file_updated')).toBe(false);
     // Atomic: the good file was rolled back with the rejected one.
     expect(files.has('/src/App.tsx')).toBe(false);
+  });
+});
+
+describe('extractAndSaveFiles shrinkage guard (item 3)', () => {
+  it('rejects a file replacement that is >30% shorter and keeps the old content', () => {
+    const original = 'export default function App() {\n' + '  return <div>' + 'x'.repeat(500) + '</div>;\n}\n';
+    const files = new Map([['/src/App.tsx', original]]);
+    const { agent, connection, events } = makeAgent(files);
+    // A truncated replacement that is <70% of the original length.
+    const truncated = 'export default function App() {}';
+    expect(truncated.length).toBeLessThan(original.length * 0.7);
+
+    const summary = agent.extractAndSaveFiles(
+      `<file path="/src/App.tsx">${truncated}</file>`,
+      connection,
+    );
+    // The old content must be preserved.
+    expect(files.get('/src/App.tsx')).toBe(original);
+    // The shrunk file is queued for repair via the broken-files path.
+    expect(summary.hadSyntaxDrops).toBe(true);
+  });
+
+  it('allows a file replacement that is ≤30% shorter', () => {
+    const original = 'export default function App() { return <h1>Hello World</h1>; }';
+    const files = new Map([['/src/App.tsx', original]]);
+    const { agent, connection } = makeAgent(files);
+    const shorter = 'export default function App() { return <h1>Hi</h1>; }';
+    expect(shorter.length).toBeGreaterThanOrEqual(original.length * 0.7);
+
+    agent.extractAndSaveFiles(`<file path="/src/App.tsx">${shorter}</file>`, connection);
+    expect(files.get('/src/App.tsx')).toBe(shorter);
+  });
+
+  it('allows writes to new files regardless of length', () => {
+    const files = new Map<string, string>();
+    const { agent, connection } = makeAgent(files);
+    agent.extractAndSaveFiles('<file path="/src/App.tsx">export default () => <h1>Hi</h1>;</file>', connection);
+    expect(files.has('/src/App.tsx')).toBe(true);
+  });
+});
+
+describe('extractAndSaveFiles flip-flop guard (item 4)', () => {
+  it('blocks package.json write when a dependency version flip-flops', () => {
+    const pkgV1 = JSON.stringify({ dependencies: { vite: '^5.0.0' }, scripts: { build: 'vite build' } });
+    const pkgV2 = JSON.stringify({ dependencies: { vite: '4.3.2' }, scripts: { build: 'vite build' } });
+    const files = new Map([['/package.json', pkgV1]]);
+    const { agent, connection, events } = makeAgent(files);
+
+    // Round 1: change vite from ^5.0.0 to 4.3.2
+    agent.extractAndSaveFiles(`<file path="/package.json">${pkgV2}</file>`, connection);
+    expect(JSON.parse(files.get('/package.json')!).dependencies.vite).toBe('4.3.2');
+
+    // Round 2: change vite back to ^5.0.0 — not a flip-flop yet (only 2 values)
+    agent.extractAndSaveFiles(`<file path="/package.json">${pkgV1}</file>`, connection);
+    expect(JSON.parse(files.get('/package.json')!).dependencies.vite).toBe('^5.0.0');
+
+    // Round 3: change back to 4.3.2 — A→B→A flip-flop detected!
+    agent.extractAndSaveFiles(`<file path="/package.json">${pkgV2}</file>`, connection);
+    // The flip-flop guard should reject the write and keep the old version.
+    expect(JSON.parse(files.get('/package.json')!).dependencies.vite).toBe('^5.0.0');
+    expect(events.some(e => e.type === 'error' && /alternating/i.test(e.error))).toBe(true);
   });
 });
