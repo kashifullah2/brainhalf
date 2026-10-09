@@ -140,5 +140,13 @@ describe('Untrusted preview execution boundary', () => {
     const adminSrc = readFileSync('src/components/AdminPage.tsx', 'utf8');
     expect(adminSrc).toContain('PREVIEW_ALLOW');
     expect(adminSrc).toContain('allow={PREVIEW_ALLOW}');
+
+    // The preview document's own Permissions-Policy must NOT block microphone —
+    // if it did, getUserMedia would fail even with the parent's allow="microphone"
+    // delegation (effective policy = intersection of delegation and doc policy).
+    const previewPP = previewSecurityHeaders()['Permissions-Policy'];
+    expect(previewPP).not.toContain('microphone');
+    // camera stays blocked at the document level since it is not delegated.
+    expect(previewPP).toContain('camera=()');
   });
 });

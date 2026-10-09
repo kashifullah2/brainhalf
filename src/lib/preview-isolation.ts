@@ -59,7 +59,12 @@ export function previewSecurityHeaders(): Record<string, string> {
     'X-Robots-Tag': 'noindex, nofollow',
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=()',
+    // microphone is intentionally absent: the shell page delegates it to
+    // preview iframes via allow="microphone". Including microphone=() here
+    // would block getUserMedia even when the parent has delegated the feature,
+    // because the effective policy is the intersection of delegation and this
+    // document's own policy. camera=() stays because camera is not supported.
+    'Permissions-Policy': 'camera=(), geolocation=(), clipboard-read=(), clipboard-write=()',
     'Access-Control-Allow-Origin': 'null',
     'Cross-Origin-Resource-Policy': 'cross-origin',
     'Cross-Origin-Embedder-Policy': 'credentialless',
