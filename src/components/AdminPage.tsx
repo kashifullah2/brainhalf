@@ -331,6 +331,7 @@ export default function AdminPage() {
   const [modelSearch, setModelSearch] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [copiedModelUrl, setCopiedModelUrl] = useState<string | null>(null);
+  const [emailStatus, setEmailStatus] = useState<{ configured: boolean; fromEmail: string | null; hint: string } | null>(null);
 
   const load = async (signal?: AbortSignal) => {
     setState('loading');
@@ -392,6 +393,17 @@ export default function AdminPage() {
   };
 
   useEffect(() => { if (state === 'ready') void loadIntegratedSetting(); }, [state, tab]);
+
+  useEffect(() => {
+    if (state !== 'ready') return;
+    authFetch('/api/admin/email-status')
+      .then(async res => {
+        if (!res.ok) return;
+        const body = await res.json() as { configured?: boolean; fromEmail?: string | null; hint?: string };
+        setEmailStatus({ configured: body.configured === true, fromEmail: body.fromEmail ?? null, hint: body.hint ?? '' });
+      })
+      .catch(() => {});
+  }, [state]);
 
   const toggleIntegrated = async () => {
     setIntegratedToggling(true);
@@ -1153,6 +1165,21 @@ export default function AdminPage() {
                   </div>
                 </section>
               ) : null}
+
+              {/* Email service health badge */}
+              {emailStatus && (
+                <div className="admin-email-status-bar" role="status" title={emailStatus.hint}>
+                  <span className={`admin-badge ${emailStatus.configured ? 'admin-badge-ok' : 'admin-badge-danger'}`}>
+                    {emailStatus.configured ? 'Email configured' : 'Email misconfigured'}
+                  </span>
+                  {emailStatus.fromEmail && (
+                    <span className="admin-email-from">from {emailStatus.fromEmail}</span>
+                  )}
+                  {!emailStatus.configured && (
+                    <span className="admin-email-hint">{emailStatus.hint}</span>
+                  )}
+                </div>
+              )}
 
               {/* Section 3: Management Hub */}
               <section className="admin-section" id="manage" aria-label="Manage">

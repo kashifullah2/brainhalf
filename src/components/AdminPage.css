@@ -2128,6 +2128,32 @@
   }
 }
 
+.admin-email-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-email-from {
+  color: var(--text-muted, rgba(255, 255, 255, 0.5));
+}
+
+.admin-email-hint {
+  color: var(--text-muted, rgba(255, 255, 255, 0.45));
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Guarded rule for mobile-nav-theme.test.tsx:
    AdminPage renders the hamburger menu button (its nav hides under 720px) */
 @media (max-width: 720px) {
