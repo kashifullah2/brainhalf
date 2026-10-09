@@ -44,6 +44,7 @@ import { sourceSnapshot } from './runtime/source';
 import { GenerationUserError, classifyGenerationError, errorMessage } from './lib/generation-errors';
 import { FlipFlopGuard, RepairLog } from './lib/repair-budget';
 import { checkShrinkage, isShrinkIntentional, isConfigWriteBlocked, logWritePath, SHRINK_OK_MARKER } from './lib/write-guard';
+import { extractApiFetches, extractWorkerRoutes, findUncoveredFetches } from './lib/api-coverage';
 
 // Transient provider failures (rate limits, overload, dropped connections)
 // get this many automatic retries per pipeline stage before we give up.
@@ -190,6 +191,7 @@ const COMPLETENESS_REPAIR_MARKER = '[AUTO-FIX] The build finished but these file
 const SYNTAX_REPAIR_MARKER = '[AUTO-FIX] These files were discarded because of syntax errors';
 const PHANTOM_HOOK_REPAIR_MARKER = '[AUTO-FIX] These files use useAuth/AuthProvider/AuthContext without defining them:';
 export const VERIFY_FILE_REPAIR_MARKER = '[AUTO-FIX] brainhalf.verify.json is invalid:';
+const ROUTE_COVERAGE_REPAIR_MARKER = '[AUTO-FIX] The frontend calls these /api/ routes but no matching handler exists in worker/index.ts:';
 const MIN_FULL_APP_RESPONSE_CHARS = 260;
 const MIN_FULL_APP_RESPONSE_LINES = 5;
 
@@ -428,6 +430,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   private finalCompletenessRepairAttempts = 0;
   private phantomHookRepairAttempts = 0;
   private verifyFileRepairAttempts = 0;
+  private apiRouteCoverageRepairAttempts = 0;
   private flipFlopGuard = new FlipFlopGuard();
   private repairLog = new RepairLog();
   /** Last-known kill-switch snapshot; survives within a DO instance lifetime. */
@@ -1438,6 +1441,49 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   }
 
   /**
+   * Post-generation check: every fetch('/api/...') call in /src/ files must
+   * have a matching route handler in /worker/index.ts. When uncovered routes
+   * are found, queues one bounded repair turn that adds the missing handlers.
+   */
+  private verifyApiRouteCoverage(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
+    try {
+      const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
+      const allFiles = new Map<string, string>();
+      for (const r of rows || []) allFiles.set(r.path, r.content || '');
+      if (allFiles.size === 0) return false;
+      const workerContent = allFiles.get('/worker/index.ts') ?? allFiles.get('worker/index.ts');
+      if (!workerContent) return false;
+      const fetches = extractApiFetches(allFiles);
+      if (fetches.length === 0) return false;
+      const routes = extractWorkerRoutes(workerContent);
+      const uncovered = findUncoveredFetches(fetches, routes);
+      if (uncovered.length === 0) return false;
+      console.warn(`Route coverage check: ${uncovered.length} fetch call(s) with no matching route: ${uncovered.join(', ')}`);
+      if (this.apiRouteCoverageRepairAttempts < 1) {
+        this.apiRouteCoverageRepairAttempts++;
+        const list = uncovered.slice(0, 8).map(p => `- ${p}`).join('\n');
+        const repairPrompt =
+          `${ROUTE_COVERAGE_REPAIR_MARKER}\n${list}\n\n` +
+          `Add the missing route handler(s) to /worker/index.ts. ` +
+          `Use the existing auth middleware and D1 pattern already in that file. ` +
+          `Do not modify any other file.`;
+        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The backend is missing ${uncovered.length} route(s). Adding them now…` })); } catch (e) { noteSendFailure(e); }
+        defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch (e) { noteSendFailure(e); } });
+        return true;
+      }
+      try {
+        connection.send(JSON.stringify({
+          type: 'error',
+          error: `The app is incomplete: ${uncovered.length} API call(s) in the frontend have no matching backend route (${uncovered.slice(0, 5).join(', ')}${uncovered.length > 5 ? ', …' : ''}). Ask the builder to add the missing routes.`,
+        }));
+      } catch { }
+    } catch (err) {
+      console.warn('Route coverage check failed:', err instanceof Error ? err.message : String(err));
+    }
+    return false;
+  }
+
+  /**
    * P0-4: record that a turn queued a repair/retry turn. First marker wins per
    * turn (the client honors a single trigger-auto-reply per response). If this
    * turn IS itself a pending repair that queued a follow-up, the original
@@ -2213,7 +2259,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
     // server recognizes via its own continuation prompts.
-    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; this.finalCompletenessRepairAttempts = 0; this.phantomHookRepairAttempts = 0; this.flipFlopGuard?.clear(); }
+    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; this.finalCompletenessRepairAttempts = 0; this.phantomHookRepairAttempts = 0; this.apiRouteCoverageRepairAttempts = 0; this.flipFlopGuard?.clear(); }
     const controls = generationControls(data);
     const generationTimeoutMs = controls.timeoutMs;
     const maxSteps = controls.maxSteps;
@@ -3252,6 +3298,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                             if (this.verifyVerificationPlanFile(connection, deferTerminal)
                               && this.noteRepairQueued(accounting.id, actualPrompt, VERIFY_FILE_REPAIR_MARKER)) repairQueuedThisTurn = true;
                           } catch (e) { console.warn('verify.json post-gen check threw:', e); }
+                        }
+                        if (!repairQueuedThisTurn) {
+                          try {
+                            if (this.verifyApiRouteCoverage(connection, deferTerminal)
+                              && this.noteRepairQueued(accounting.id, actualPrompt, ROUTE_COVERAGE_REPAIR_MARKER)) repairQueuedThisTurn = true;
+                          } catch (e) { console.warn('Route coverage check threw:', e); }
                         }
                       }
                     }
