@@ -70,6 +70,37 @@ describe('Untrusted preview execution boundary', () => {
     for (const directive of ["frame-src 'none'", "worker-src 'none'", "form-action 'self'", "base-uri 'none'"]) expect(policy).toContain(directive);
   });
 
+  it('project CSS never reaches the host document — stylesCode injection is confined to the opaque-origin sandbox', () => {
+    // PreviewRunner is the only component allowed to inject project CSS via dangerouslySetInnerHTML.
+    // It is safe because preview-main.tsx refuses to mount it unless window.origin === 'null' (opaque sandbox).
+    const previewMain = readFileSync('src/preview-main.tsx', 'utf8');
+    const previewRunner = readFileSync('src/components/PreviewRunner.tsx', 'utf8');
+
+    // The isolation gate must appear before createRoot in the same file.
+    const gateIdx = previewMain.indexOf("window.origin === 'null'");
+    const mountIdx = previewMain.indexOf('createRoot(root)');
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(mountIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeLessThan(mountIdx);
+
+    // PreviewRunner itself must still carry the opaque-origin comment so the
+    // invariant is visible at the injection site.
+    expect(previewRunner).toContain('opaque-origin sandbox');
+
+    // No component other than PreviewRunner may inject project CSS.
+    // (CodeFileBlock uses dangerouslySetInnerHTML for syntax-highlighted display
+    //  HTML that it generates itself — not for raw project CSS — so it is excluded.)
+    const { readdirSync } = require('node:fs');
+    const { join } = require('node:path');
+    const componentFiles = readdirSync('src/components')
+      .filter((f: string) => f !== 'PreviewRunner.tsx' && (f.endsWith('.tsx') || f.endsWith('.ts')));
+    for (const file of componentFiles) {
+      const src = readFileSync(join('src/components', file), 'utf8');
+      // No component other than PreviewRunner should inject stylesCode via dangerouslySetInnerHTML.
+      expect(src, `${file} must not inject stylesCode into the host document`).not.toMatch(/stylesCode.*dangerouslySetInnerHTML|dangerouslySetInnerHTML.*stylesCode/s);
+    }
+  });
+
   it('keeps the runtime independent of platform identity and caches and routes preview assets through the Worker', () => {
     const runner = readFileSync('src/components/PreviewRunner.tsx', 'utf8');
     const filesHook = readFileSync('src/lib/use-preview-files.ts', 'utf8');

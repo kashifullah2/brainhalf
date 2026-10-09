@@ -226,6 +226,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
   if (waitingForFiles || !dependencies || dependencies.files !== files) {
     return (
       <>
+        {/* Safe: PreviewRunner only mounts inside an opaque-origin sandbox — see preview-main.tsx:41 */}
         {stylesCode && <style dangerouslySetInnerHTML={{ __html: stylesCode.replace(/<\/style/gi, '<\\/style') }} />}
         <PreparingPreview />
       </>
@@ -234,6 +235,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
 
   return (
     <>
+      {/* Safe: PreviewRunner only mounts inside an opaque-origin sandbox — see preview-main.tsx:41 */}
       {stylesCode && <style dangerouslySetInnerHTML={{ __html: stylesCode.replace(/<\/style/gi, '<\\/style') }} />}
       {htmlEntry && <HtmlPreview files={files} entry={htmlEntry} libraries={dependencies.libraries} onError={reportRuntimeError} />}
       <PreviewErrorBoundary
