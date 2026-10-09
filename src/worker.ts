@@ -277,7 +277,10 @@ export function shellSecurityHeaders(): Record<string, string> {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
     'Cross-Origin-Opener-Policy': 'same-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    // microphone=(self) lets the shell delegate the permission to preview iframes
+    // via allow="microphone". camera stays blocked at the top level until camera
+    // apps are actively supported.
+    'Permissions-Policy': 'camera=(), microphone=(self), geolocation=()',
     // The shell is an authenticated app; never let a shared cache hold it.
     'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
     // The session cookie is Secure, but nothing here tells a browser to never

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { isolatedPreviewHtml, previewFiles, previewSecurityHeaders } from '../lib/preview-isolation';
+import { isolatedPreviewHtml, previewFiles, previewSecurityHeaders, PREVIEW_SANDBOX, PREVIEW_ALLOW } from '../lib/preview-isolation';
 import { previewDependencyMap, resolvePreviewImport } from '../lib/preview-modules';
 import { createPreviewStorage } from '../lib/preview-storage';
 
@@ -115,5 +115,30 @@ describe('Untrusted preview execution boundary', () => {
     expect(readFileSync('src/preview-main.tsx', 'utf8')).toContain("window.origin === 'null'");
     const routes = JSON.parse(readFileSync('wrangler.toml', 'utf8').match(/run_worker_first\s*=\s*(\[[^\n]+\])/)![1]);
     expect(routes).toEqual(expect.arrayContaining(['/api/*', '/agents/*', '/preview/*', '/p/*', '/preview-runtime.js']));
+  });
+
+  it('delegates microphone/fullscreen/autoplay to preview iframes without allowing camera or same-origin', () => {
+    expect(PREVIEW_ALLOW).toContain('microphone');
+    expect(PREVIEW_ALLOW).toContain('fullscreen');
+    expect(PREVIEW_ALLOW).toContain('autoplay');
+    expect(PREVIEW_ALLOW).not.toContain('camera');
+    expect(PREVIEW_SANDBOX).not.toContain('allow-same-origin');
+
+    // Shell page must allow microphone delegation to iframes (microphone=(self)),
+    // not block it entirely — otherwise allow="microphone" on the iframe is a no-op.
+    const workerSrc = readFileSync('src/worker.ts', 'utf8');
+    const ppMatch = workerSrc.match(/'Permissions-Policy'\s*:\s*'([^']+)'/);
+    expect(ppMatch, 'Permissions-Policy header not found in worker.ts').toBeTruthy();
+    expect(ppMatch![1]).toContain('microphone=(self)');
+    expect(ppMatch![1]).not.toContain('microphone=()');
+
+    // Every preview iframe in the UI must carry the allow attribute.
+    const workspaceSrc = readFileSync('src/components/Workspace.tsx', 'utf8');
+    expect(workspaceSrc).toContain('PREVIEW_ALLOW');
+    expect(workspaceSrc.match(/allow=\{PREVIEW_ALLOW\}/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+
+    const adminSrc = readFileSync('src/components/AdminPage.tsx', 'utf8');
+    expect(adminSrc).toContain('PREVIEW_ALLOW');
+    expect(adminSrc).toContain('allow={PREVIEW_ALLOW}');
   });
 });

@@ -34,7 +34,7 @@ import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
 import MobileNav from './MobileNav';
 import { authFetch } from '../lib/auth-client';
-import { PREVIEW_SANDBOX } from '../lib/preview-isolation';
+import { PREVIEW_SANDBOX, PREVIEW_ALLOW } from '../lib/preview-isolation';
 import { CLIENT_SELECTABLE_MODELS } from '../lib/models';
 import './AdminPage.css';
 
@@ -2261,6 +2261,7 @@ export default function AdminPage() {
                   className="admin-preview-frame"
                   src={`/api/admin/projects/${encodeURIComponent(previewProject.id)}/preview/`}
                   sandbox={PREVIEW_SANDBOX}
+                  allow={PREVIEW_ALLOW}
                 />
               </div>
             </div>

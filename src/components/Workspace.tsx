@@ -21,7 +21,7 @@ import { PreviewStoreCappedBanner } from './PreviewStoreCappedBanner';
 import { PREVIEW_LOAD_TIMEOUT, PREVIEW_SYNC_DEBOUNCE } from '../lib/timeouts';
 import { normalizePath } from '../lib/utils';
 import { selectAppEntry, selectHtmlEntry, isStarterApp } from '../lib/preview-entry';
-import { previewFiles, PREVIEW_SANDBOX } from '../lib/preview-isolation';
+import { previewFiles, PREVIEW_SANDBOX, PREVIEW_ALLOW } from '../lib/preview-isolation';
 import { setPreviewStatus, setPlatformStatus } from '../lib/status-store';
 import { bindProjectStore, recoverProjectFiles } from '../lib/project-store';
 import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
@@ -1727,6 +1727,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
                     src={`/preview/${activeProjectId}/index.html`}
                     sandbox={PREVIEW_SANDBOX}
+                    allow={PREVIEW_ALLOW}
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
                       // During generation the file set is partial — Vite HMR errors are expected.
@@ -2142,6 +2143,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
                     src={`/preview/${activeProjectId}/index.html`}
                     sandbox={PREVIEW_SANDBOX}
+                    allow={PREVIEW_ALLOW}
                     onLoad={handlePreviewIframeLoad}
                     onError={() => {
                       // During generation the file set is partial — Vite HMR errors are expected.

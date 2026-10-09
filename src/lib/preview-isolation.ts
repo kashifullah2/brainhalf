@@ -7,6 +7,11 @@ import { usesSimulatedApi } from './preview-mode.ts';
 // it window.open() is silently dropped and auth links go nowhere in the iframe.
 export const PREVIEW_SANDBOX = 'allow-scripts allow-forms allow-popups';
 
+// Feature delegation: generated apps may use these browser APIs.
+// camera is omitted intentionally — add it here and to the shell Permissions-Policy
+// only when camera apps are actively supported.
+export const PREVIEW_ALLOW = 'microphone; fullscreen; autoplay';
+
 export function previewFiles(files: Record<string, string>, includeBackend = false): Record<string, string> {
   const visibleFiles = Object.fromEntries(Object.entries(files).filter(([path, content]) => {
     if (typeof content !== 'string') return false;
