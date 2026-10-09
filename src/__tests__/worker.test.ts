@@ -116,6 +116,17 @@ describe('Canonical host and navigational redirects', () => {
 });
 
 describe('Cloudflare Worker Gateway & Routing', () => {
+  it.each(['GET', 'PUT', 'DELETE', 'PATCH'])('returns 405 for %s on /api/test/* (only POST is allowed)', async method => {
+    // SESSION_SECRET must be present to pass the auth-service gate; REGISTRY is
+    // never reached because the 405 fires before verifySession is called.
+    const response = await worker.fetch(
+      new Request('https://brainhalf.com/api/test/simple', { method, headers: { origin: 'https://brainhalf.com' } }),
+      { SESSION_SECRET: SECRET } as unknown as import('../worker').PlatformEnv,
+      {} as any,
+    );
+    expect(response.status).toBe(405);
+  });
+
   it('fails closed when the inference rate-limit store is unavailable', async () => {
     const registry = mockRegistry();
     const original = registry._fetch.getMockImplementation()!;
@@ -125,7 +136,7 @@ describe('Cloudflare Worker Gateway & Routing', () => {
       return original(input, init);
     });
     const inference = vi.fn();
-    const { request } = await authenticatedRequest('https://brainhalf.com/api/test/simple?model=@cf/openai/gpt-oss-120b');
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/test/simple?model=@cf/openai/gpt-oss-120b', { method: 'POST' });
     const response = await worker.fetch(request, envWith(registry, { AI: { run: inference } }), {} as any);
     expect(response.status).toBe(503); expect(inference).not.toHaveBeenCalled();
   });

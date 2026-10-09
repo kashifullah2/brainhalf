@@ -944,6 +944,7 @@ export default {
     // the model allowlist is enforced inside handleModelTest, and the endpoint
     // is now rate limited per user because each call costs inference.
     if (url.pathname === '/api/test/simple' || url.pathname === '/api/test/medium' || url.pathname === '/api/test/hard') {
+      if (request.method !== 'POST') return withCors(new Response(null, { status: 405 }), origin);
       const level = url.pathname === '/api/test/simple' ? 'simple' : url.pathname === '/api/test/medium' ? 'medium' : 'hard';
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized('Sign in to run model tests'), origin);
