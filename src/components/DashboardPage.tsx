@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Plus } from 'lucide-react';
-import { authFetch, getToken, removeProject } from '../lib/auth-client';
+import { authFetch, removeProject } from '../lib/auth-client';
 import { apiOrigin } from '../lib/api-origin';
 import { appEvents } from '../lib/events';
 import { getProjects, reconcileOwnedProjects, type Project, updateProjectName } from '../lib/project-store';
@@ -38,12 +38,7 @@ function DashboardUsageExtra() {
     const loadUsage = async () => {
       try {
         const origin = apiOrigin();
-        const token = getToken();
-        const response = await fetch(`${origin}/api/account/ai-usage`, {
-          signal: controller.signal,
-          credentials: 'include',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const response = await authFetch(`${origin}/api/account/ai-usage`, { signal: controller.signal });
         const body = await response.json();
         if (!response.ok || !body?.limits) throw new Error('Account usage is unavailable.');
         if (!controller.signal.aborted) setAccountAiUsage(body as AccountAiUsage);
@@ -80,12 +75,7 @@ function DashboardQuotaMeter({ onAtLimit }: { onAtLimit: (atLimit: boolean) => v
     const loadQuota = async () => {
       try {
         const origin = apiOrigin();
-        const token = getToken();
-        const response = await fetch(`${origin}/api/account/project-quota`, {
-          signal: controller.signal,
-          credentials: 'include',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const response = await authFetch(`${origin}/api/account/project-quota`, { signal: controller.signal });
         const body = await response.json();
         if (!response.ok || typeof body?.live !== 'number' || typeof body?.limit !== 'number') throw new Error('quota unavailable');
         if (!controller.signal.aborted) {
@@ -144,9 +134,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
   useEffect(() => { setHydrated(true); }, []);
   useEffect(() => {
     const controller = new AbortController();
-    const token = getToken();
-    if (!token) return;
-    void fetch(`${apiOrigin()}/api/projects`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include', signal: controller.signal })
+    void authFetch(`${apiOrigin()}/api/projects`, { signal: controller.signal })
       .then(async res => {
         const body = await res.json();
         if (!res.ok || !Array.isArray(body?.projects)) return;
