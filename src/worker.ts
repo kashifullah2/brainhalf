@@ -46,6 +46,12 @@ export interface PlatformEnv {
   DISPATCHER: DispatchBinding;
   RUNTIME: BindingFetcher;
   AI: Ai;
+  /** DO namespace for the PilotCoordinator in brainhalf-runtime. Accessed via RPC cast. */
+  PILOT?: DurableBinding;
+  /** Required for session signing/verification; validated with validSessionSecret(). */
+  SESSION_SECRET?: string;
+  /** Comma-separated list of admin email addresses for the operator gate. */
+  ADMIN_EMAILS?: string;
   CONTACT_EMAIL?: string;
   PRODUCT_METRICS_OWNER_IDS?: string;
   /** Set to "true" in .dev.vars / wrangler dev to enable localhost CORS origins. */
