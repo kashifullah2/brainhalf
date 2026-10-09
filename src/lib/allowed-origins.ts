@@ -51,6 +51,6 @@ export const ALLOWED_ORIGINS: readonly string[] = [
  */
 export function isAllowedOrigin(origin: string | null | undefined, env?: { IS_DEV?: unknown }): boolean {
   if (!origin) return false;
-  const dev = Boolean(env?.IS_DEV);
+  const dev = env?.IS_DEV === true || env?.IS_DEV === 'true';
   return allowedOrigins(dev).includes(origin);
 }

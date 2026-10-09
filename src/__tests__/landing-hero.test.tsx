@@ -20,11 +20,11 @@ function renderHero(overrides: Record<string, unknown> = {}) {
 }
 
 describe('LandingHero redesign', () => {
-  it('renders the headline with the gradient phrase and both CTAs', () => {
+  it('renders the headline with gradient text and key links', () => {
     const html = renderHero();
     expect(html).toContain('id="hero-heading"');
-    expect(html).toContain('hero-underline');
-    expect(html).toContain('working software.');
+    expect(html).toContain('hero-gradient-text');
+    expect(html).toContain('build it.');
     expect(html).toContain('Start building');
     expect(html).toContain('See examples');
     expect(html).toContain('href="#examples"');
@@ -44,19 +44,6 @@ describe('LandingHero redesign', () => {
   it('disables the submit button while the prompt is empty', () => {
     const html = renderHero();
     expect(html).toMatch(/<button[^>]*landing-submit-btn[^>]*disabled/);
-  });
-
-  it('shows the current-UI workspace screenshot in the browser frame', () => {
-    const html = renderHero();
-    expect(html).toContain('/images/landing-workspace.png');
-    expect(html).toContain('landing-browser-frame');
-  });
-
-  it('renders the three floating UI chips', () => {
-    const html = renderHero();
-    expect(html).toContain('Inventory');
-    expect(html).toContain('Bookings');
-    expect(html).toContain('Customers');
   });
 
   it('caps cursor tilt at 4 degrees', () => {

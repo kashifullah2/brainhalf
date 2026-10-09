@@ -103,6 +103,37 @@ export const AGENT_MIGRATIONS: Migration[] = [
       claimed_at INTEGER NOT NULL
     )`,
   ] },
+  { version: 13, name: 'generation_analytics', statements: [
+    'ALTER TABLE generation_usage ADD COLUMN prompt_category TEXT',
+    'ALTER TABLE generation_usage ADD COLUMN files_written INTEGER',
+    'ALTER TABLE generation_usage ADD COLUMN retry_count INTEGER',
+    'ALTER TABLE generation_usage ADD COLUMN repair_types TEXT',
+  ] },
+  { version: 14, name: 'conversation_branches', statements: [
+    `CREATE TABLE IF NOT EXISTS conversation_branches (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      parent_branch_id TEXT,
+      fork_message_id INTEGER,
+      created_at INTEGER NOT NULL
+    )`,
+    `INSERT OR IGNORE INTO conversation_branches (id, name, created_at) VALUES ('main', 'Main', ${Date.now()})`,
+    'ALTER TABLE messages ADD COLUMN branch_id TEXT DEFAULT \'main\'',
+    'CREATE INDEX IF NOT EXISTS idx_messages_branch ON messages(branch_id, id)',
+  ] },
+  { version: 15, name: 'preview_store', statements: [
+    // Persists the simulated-backend InMemoryDataStore across DO hibernation.
+    // One row per table; rows_json holds the JSON array of all records.
+    // Schema changes to the generated backend do NOT auto-reset this data —
+    // old rows survive alongside new ones, which is intentional: resetting on
+    // every generation would destroy test sessions and seed data mid-workflow.
+    // Users who need a clean slate can POST /api/auth/reset or re-register.
+    `CREATE TABLE IF NOT EXISTS preview_store (
+      table_name TEXT PRIMARY KEY,
+      rows_json TEXT NOT NULL DEFAULT '[]',
+      next_id INTEGER NOT NULL DEFAULT 1
+    )`,
+  ] },
 
 ];
 

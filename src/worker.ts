@@ -94,6 +94,10 @@ const CORS_PREFIXES = ['/api/', '/agents/', '/preview/', '/p/'];
 const RATE_LIMIT_CONFIG = {
   modelTest: { limit: 20, windowMs: 60_000 },
   auth: { limit: 10, windowMs: 60_000 },
+  // ws-ticket mints short-lived single-use credentials for WS upgrades. Each
+  // call writes a row in the Registry's SQLite storage, so an authenticated
+  // user could storage-DoS themselves if it were unmetered.
+  wsTicket: { limit: 30, windowMs: 60_000 },
   // Preview reads are per IP+project: a single page load costs ~2 requests
   // (HTML + file snapshot), so 120/min leaves generous headroom for reload
   // loops while still stopping scrape/refresh abuse. Writes are tighter.
@@ -286,11 +290,64 @@ function withShellSecurity(response: Response, privateSearch = false): Response 
   return next;
 }
 
+function crc32(data: Uint8Array): number {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < data.length; i++) {
+    let b = (crc ^ data[i]) & 0xFF;
+    for (let j = 0; j < 8; j++) b = b & 1 ? (0xEDB88320 ^ (b >>> 1)) : (b >>> 1);
+    crc = (crc >>> 8) ^ b;
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function buildZip(files: [string, string][]): Uint8Array {
+  const enc = new TextEncoder();
+  const localParts: Uint8Array[] = [];
+  const cdParts: Uint8Array[] = [];
+  let dataOffset = 0;
+  for (const [rawPath, content] of files) {
+    const name = enc.encode(rawPath.replace(/^\/+/, ''));
+    const data = enc.encode(content);
+    const crc = crc32(data);
+    const size = data.length;
+    const lh = new Uint8Array(30 + name.length);
+    const lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034B50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0, true);
+    lv.setUint16(8, 0, true); lv.setUint16(10, 0, true); lv.setUint16(12, 0, true);
+    lv.setUint32(14, crc, true); lv.setUint32(18, size, true); lv.setUint32(22, size, true);
+    lv.setUint16(26, name.length, true); lv.setUint16(28, 0, true);
+    lh.set(name, 30);
+    const cd = new Uint8Array(46 + name.length);
+    const cv = new DataView(cd.buffer);
+    cv.setUint32(0, 0x02014B50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0, true); cv.setUint16(10, 0, true); cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0, true); cv.setUint32(16, crc, true); cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true); cv.setUint16(28, name.length, true); cv.setUint16(30, 0, true);
+    cv.setUint16(32, 0, true); cv.setUint16(34, 0, true); cv.setUint16(36, 0, true);
+    cv.setUint32(38, 0, true); cv.setUint32(42, dataOffset, true);
+    cd.set(name, 46);
+    localParts.push(lh, data);
+    cdParts.push(cd);
+    dataOffset += lh.length + data.length;
+  }
+  const cdSize = cdParts.reduce((s, p) => s + p.length, 0);
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054B50, true); ev.setUint16(4, 0, true); ev.setUint16(6, 0, true);
+  ev.setUint16(8, cdParts.length, true); ev.setUint16(10, cdParts.length, true);
+  ev.setUint32(12, cdSize, true); ev.setUint32(16, dataOffset, true); ev.setUint16(20, 0, true);
+  const allParts = [...localParts, ...cdParts, eocd];
+  const result = new Uint8Array(allParts.reduce((s, p) => s + p.length, 0));
+  let pos = 0;
+  for (const part of allParts) { result.set(part, pos); pos += part.length; }
+  return result;
+}
+
 export default {
   async fetch(request: Request, env: PlatformEnv, _ctx: ExecutionContext) {
     // Set per-request dev flag for the CORS helper (module-level, safe because
     // Workers are single-threaded within an isolate).
-    _isDev = Boolean(env.IS_DEV);
+    _isDev = env.IS_DEV === 'true';
     const url = new URL(request.url);
     // Canonical host consolidation: Google indexed www.brainhalf.com as a
     // duplicate of the apex (splitting ranking signals across hosts), so the
@@ -375,8 +432,12 @@ export default {
       // Login and signup are the classic credential-stuffing targets and were
       // completely unmetered. Session and logout are cheap, so only the two
       // write paths are limited.
-      if (request.method === 'POST' && url.pathname !== '/api/auth/session' && url.pathname !== '/api/auth/ws-ticket') {
-        const rate = await checkRateLimit(env, 'auth', clientKey(request));
+      if (request.method === 'POST' && url.pathname !== '/api/auth/session') {
+        // ws-ticket gets its own bucket — it requires a valid session so it
+        // can't be hit anonymously, but it writes to Registry storage and must
+        // not be unmetered. All other auth write paths share the auth bucket.
+        const bucket = url.pathname === '/api/auth/ws-ticket' ? 'wsTicket' : 'auth';
+        const rate = await checkRateLimit(env, bucket, clientKey(request));
         if (!rate.ok) return withCors(rate.unavailable ? jsonError('Rate-limit service unavailable. Please retry shortly.', 503) : tooManyRequests(rate.retryAfter), origin);
       }
 
@@ -623,6 +684,31 @@ export default {
       if (!user) return withCors(unauthorized(), origin);
       try { return withCors(await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/projects/quota?userId=${encodeURIComponent(user.userId)}`), origin); }
       catch { return withCors(jsonError('Project quota unavailable', 503), origin); }
+    }
+    /* --------- Export project as ZIP --------- */
+    const exportZipMatch = url.pathname.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/export-zip$/);
+    if (exportZipMatch && request.method === 'GET') {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      const projectId = exportZipMatch[1];
+      if (!await isProjectOwner(env, projectId, user.userId)) return withCors(forbidden('You do not own this project'), origin);
+      try {
+        const filesRes = await env.ChatAgent.get(env.ChatAgent.idFromName(projectId))
+          .fetch(injectUserId(new Request('https://agent/internal/admin-files', { headers: { 'x-bh-project': projectId } }), user.userId));
+        if (!filesRes.ok) return withCors(jsonError('Project files unavailable', 502), origin);
+        const files = await filesRes.json() as Record<string, string> | null;
+        if (!files || typeof files !== 'object' || Array.isArray(files)) return withCors(jsonError('Invalid project files', 502), origin);
+        const fileEntries = Object.entries(files).filter(([, v]) => typeof v === 'string') as [string, string][];
+        if (!fileEntries.length) return withCors(jsonError('No files to export', 400), origin);
+        const zipBytes = buildZip(fileEntries);
+        return new Response(new Blob([zipBytes.buffer.slice(0, zipBytes.byteLength) as ArrayBuffer]), {
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': `attachment; filename="${projectId.slice(0, 32)}.zip"`,
+            'Cache-Control': 'no-store',
+          },
+        });
+      } catch { return withCors(jsonError('Export failed. Please try again.', 503), origin); }
     }
     /* --------- project listing / management (authenticated) --------- */
     const stopMatch = url.pathname.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/stop$/);
@@ -887,7 +973,7 @@ export default {
         const access = await checkPreviewAccess(env, scriptName, user?.userId, request.method, subPath, 'deployment');
         if (!access.ok) return withCors(previewDenied(access.status), origin);
         const limited = await checkPreviewRateLimit(env, request, scriptName);
-        if (limited) return withCors(limited, origin);
+        if (limited) return withCors(withPreviewPrivacy(limited), origin);
 
         if (env.DISPATCHER) {
           try {
@@ -915,7 +1001,7 @@ export default {
           return withPreviewPrivacy(await obj.fetch(forwardRequest));
         }
 
-        return jsonError('Deployment not found', 404);
+        return withPreviewPrivacy(jsonError('Deployment not found', 404));
       }
     }
 
@@ -929,7 +1015,7 @@ export default {
         const access = await checkPreviewAccess(env, agentId, user?.userId, request.method, subPath);
         if (!access.ok) return withCors(previewDenied(access.status), origin);
         const limited = await checkPreviewRateLimit(env, request, agentId);
-        if (limited) return withCors(limited, origin);
+        if (limited) return withCors(withPreviewPrivacy(limited), origin);
 
         const id = env.ChatAgent.idFromName(agentId);
         const obj = env.ChatAgent.get(id);

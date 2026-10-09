@@ -7,7 +7,7 @@ import { safeCatch } from '../lib/safe-catch';
 interface ShowcaseState { showcase: boolean; description: string; remixCount: number }
 
 /** Lets the owner list a published app in the public gallery, or remove it. */
-export default function GalleryListing({ projectId }: { projectId: string }) {
+export default function GalleryListing({ projectId, productionUrl }: { projectId: string; productionUrl?: string }) {
   const [state, setState] = useState<ShowcaseState | null>(null);
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
@@ -44,7 +44,7 @@ export default function GalleryListing({ projectId }: { projectId: string }) {
     setBusy(true); setNotice('');
     try {
       const response = await authFetch(`${apiOrigin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showcase, description }),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showcase, description, ...(showcase && productionUrl ? { productionUrl } : {}) }),
       });
       const data = await response.json() as ShowcaseState & { error?: string };
       if (!response.ok) throw new Error(data.error || 'Gallery listing could not be saved.');

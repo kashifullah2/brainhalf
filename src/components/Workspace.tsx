@@ -17,12 +17,13 @@ import { basicReactTemplate } from '../lib/templates';
 import { appEvents, type GenerationStatusPayload } from '../lib/events';
 import { exportProjectAsZip } from '../lib/zip-export';
 import { useGithubSync } from './GithubSyncModal';
+import { PreviewStoreCappedBanner } from './PreviewStoreCappedBanner';
 import { PREVIEW_LOAD_TIMEOUT, PREVIEW_SYNC_DEBOUNCE } from '../lib/timeouts';
 import { normalizePath } from '../lib/utils';
 import { selectAppEntry, selectHtmlEntry, isStarterApp } from '../lib/preview-entry';
 import { previewFiles, PREVIEW_SANDBOX } from '../lib/preview-isolation';
 import { setPreviewStatus, setPlatformStatus } from '../lib/status-store';
-import { bindProjectStore } from '../lib/project-store';
+import { bindProjectStore, recoverProjectFiles } from '../lib/project-store';
 import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
 import { diagnosePreviewError, plainPreviewError, extractFileFromError, detectLayerFromError, sanitizeErrorForDisplay } from '../lib/preview-diagnostics';
 import { createTypeScriptStarter } from '../lib/project-starters';
@@ -361,6 +362,25 @@ const Workspace: React.FC<WorkspaceProps> = ({
   }, [status]);
   useAutomaticBuildFix(activeProjectId, runtime, status === 'Generating', () => setAutoFixing(true));
 
+  const [projectDeletedFlag, setProjectDeletedFlag] = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  useEffect(() => { setProjectDeletedFlag(false); }, [activeProjectId]);
+  useEffect(() =>
+    appEvents.on('runtime-status', event => {
+      if (event.projectId === activeProjectId && (event as any).deleted) setProjectDeletedFlag(true);
+    }),
+  [activeProjectId]);
+  const handleRecoveryExport = useCallback(async () => {
+    setRecoveryBusy(true);
+    try {
+      const recovered = await recoverProjectFiles(activeProjectId);
+      const source = recovered && Object.keys(recovered).length > 0 ? recovered : filesRef.current;
+      if (!source || !Object.keys(source).length) { alert('No files could be recovered for this project.'); return; }
+      await exportProjectAsZip(source, activeProjectId || 'brainhalf-recovery');
+    } catch { alert('Export failed. Your files may still be recoverable — try again.'); }
+    finally { setRecoveryBusy(false); }
+  }, [activeProjectId]);
+
   // Switched to Lovable-style Instant Preview by bypassing WebContainers
   const wcEnabled = false; // webContainerSupported();
   const wc = useWebContainer(activeProjectId, files);
@@ -521,6 +541,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const syncedPreviewFilesRef = useRef<FileMap>({});
   const [previewIssue, setPreviewIssue] = useState<PreviewIssue | null>(null);
+  const [previewCapReason, setPreviewCapReason] = useState<'rows' | 'bytes' | null>(null);
   const [previewLoadState, setPreviewLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [previewLoadError, setPreviewLoadError] = useState('');
   const previewLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1145,6 +1166,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
         }
       }),
       appEvents.on('workspace-files-changed', handleWorkspaceFilesChanged),
+      appEvents.on('preview-store-capped', (payload: unknown) => {
+        const p = payload as { capped: boolean; reason?: string };
+        setPreviewCapReason(p.capped ? ((p.reason as 'rows' | 'bytes') ?? 'rows') : null);
+      }),
     ];
     return () => {
       active = false;
@@ -1671,6 +1696,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     </button>
                   </div>
                 )}
+                {projectDeletedFlag && (
+                  <div className="preview-health-strip has-fault" role="alert" style={{ background: 'var(--bg-error, #2a1215)', borderColor: 'var(--border-error, #5c2127)' }}>
+                    <AlertCircle size={15} />
+                    <div className="preview-health-strip-body">
+                      <strong>Project deleted</strong> · This project was deleted from the server and can no longer be edited.
+                      <br />You can still download a copy of your files.
+                    </div>
+                    <button type="button" disabled={recoveryBusy} onClick={handleRecoveryExport}>
+                      <Download size={14} style={{ marginRight: '6px' }} />{recoveryBusy ? 'Exporting…' : 'Download files'}
+                    </button>
+                  </div>
+                )}
                 <PreviewCanvas mode={viewportMode}>
                   {wcEnabled ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
@@ -1707,6 +1744,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 </PreviewCanvas>
                 {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status">{autoFixing ? <Loader2 size={15} className="lucide-spin" /> : <AlertCircle size={15} />}<span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{autoFixing ? 'Auto-fixing…' : previewIssue.plainExplanation}</span>{!autoFixing && <button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Fix</button>}{!autoFixing && undoCheckpoint && <button disabled={undoLoading} onClick={quickUndo}>{undoLoading ? 'Reverting…' : 'Revert'}</button>}{!autoFixing && <button onClick={() => { openChat(); appEvents.emit('screenshot-fix-request', { projectId: activeProjectId }); }} title="Fix with screenshot"><Camera size={13} /></button>}</div>}
                 {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>{generationMode === 'incremental' ? 'Editing your app — targeted changes in progress.' : 'Building your app — the preview refreshes when it\'s ready.'}</span></div>}
+                {hasGeneratedApp && !previewIssue && <PreviewStoreCappedBanner reason={previewCapReason} />}
               </div>
             </div>
           </div>
@@ -2073,6 +2111,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   </button>
                 </div>
               )}
+              {projectDeletedFlag && (
+                <div className="preview-health-strip has-fault" role="alert" style={{ background: 'var(--bg-error, #2a1215)', borderColor: 'var(--border-error, #5c2127)' }}>
+                  <AlertCircle size={15} />
+                  <div className="preview-health-strip-body">
+                    <strong>Project deleted</strong> · This project was deleted from the server.
+                    <br />You can still download a copy of your files.
+                  </div>
+                  <button type="button" disabled={recoveryBusy} onClick={handleRecoveryExport}>
+                    <Download size={14} style={{ marginRight: '6px' }} />{recoveryBusy ? 'Exporting…' : 'Download files'}
+                  </button>
+                </div>
+              )}
               <PreviewCanvas mode={viewportMode}>
                   {wcEnabled ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
@@ -2109,6 +2159,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               </PreviewCanvas>
               {hasGeneratedApp && previewIssue && status !== 'Generating' && <div className="preview-health-strip has-error" role="status">{autoFixing ? <Loader2 size={15} className="lucide-spin" /> : <AlertCircle size={15} />}<span title={sanitizeErrorForDisplay(previewIssue.error).slice(0, 500)}>{autoFixing ? 'Auto-fixing…' : previewIssue.plainExplanation}</span>{!autoFixing && <button onClick={() => appEvents.emit('auto-fix-error', { ...previewIssue, projectId: activeProjectId })}>Fix</button>}{!autoFixing && undoCheckpoint && <button disabled={undoLoading} onClick={quickUndo}>{undoLoading ? 'Reverting…' : 'Revert'}</button>}{!autoFixing && <button onClick={() => { openChat(); appEvents.emit('screenshot-fix-request', { projectId: activeProjectId }); }} title="Fix with screenshot"><Camera size={13} /></button>}</div>}
               {hasGeneratedApp && status === 'Generating' && previewLoadState !== 'error' && <div className="preview-building-pill" role="status"><Loader2 size={13} className="lucide-spin" /><span>{generationMode === 'incremental' ? 'Editing your app — targeted changes in progress.' : 'Building your app — the preview refreshes when it\'s ready.'}</span></div>}
+              {hasGeneratedApp && !previewIssue && <PreviewStoreCappedBanner reason={previewCapReason} />}
 
             </div>
           </div>

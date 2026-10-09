@@ -123,14 +123,11 @@ export async function verifySession(
   env: RegistryEnv
 ): Promise<AuthenticatedUser | null> {
   try {
-    // ?token= is honored only for WebSocket upgrades and agent routes — the
-    // transports that cannot carry headers or cookies. On every other endpoint
-    // a query-string token would leak into logs, history, and referrers.
-    let allowQueryToken = request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
-    if (!allowQueryToken) {
-      try { allowQueryToken = new URL(request.url).pathname.startsWith('/agents/'); }
-      catch { /* not a URL */ }
-    }
+    // ?token= is honored only for WebSocket upgrades — the one transport where
+    // browsers cannot carry headers. On every other endpoint, including /agents/
+    // HTTP routes, a query-string token would appear in access logs, browser
+    // history, and Referer headers. All HTTP agent routes use Authorization: Bearer.
+    const allowQueryToken = request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
     const token = extractToken(request, { allowQueryToken });
     const secret = getSessionSecret(env);
     const verified = await verifyTokenSignature(token, secret);

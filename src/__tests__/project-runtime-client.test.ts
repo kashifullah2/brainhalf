@@ -14,7 +14,7 @@ vi.mock('../lib/project-store', () => ({
   updateProjectDeployment: vi.fn(),
 }));
 
-import { parseRetryAfterMs, runtimeRequest, RuntimeRequestError } from '../lib/project-runtime-client';
+import { parseRetryAfterMs, runtimeRequest, RuntimeRequestError, STATUS_NOT_FOUND_MAX_RETRIES } from '../lib/project-runtime-client';
 
 describe('project runtime client polling guards', () => {
   beforeEach(() => {
@@ -73,6 +73,31 @@ describe('project runtime client polling guards', () => {
     } satisfies Partial<RuntimeRequestError>);
 
     expect(state.authFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('410 produces a RuntimeRequestError — immediate stop signal', async () => {
+    state.authFetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Gone' }), {
+      status: 410,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+
+    await expect(runtimeRequest('proj-gone-410', '/status', 'development')).rejects.toMatchObject({
+      name: 'RuntimeRequestError',
+      status: 410,
+    } satisfies Partial<RuntimeRequestError>);
+  });
+
+  it('404 is retryable — produces a RuntimeRequestError but is not 410', async () => {
+    state.authFetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+
+    await expect(runtimeRequest('proj-not-found', '/status', 'development')).rejects.toMatchObject({
+      name: 'RuntimeRequestError',
+      status: 404,
+    } satisfies Partial<RuntimeRequestError>);
+    expect(STATUS_NOT_FOUND_MAX_RETRIES).toBe(3);
   });
 
   it('isolates cancelled status subscribers from publishing and remounted panels', async () => {

@@ -9,7 +9,7 @@
  * script at that URL, including model-generated preview code.
  */
 
-import { deleteProjectDurably, getProjects, getProjectStorageScope, isEmptyDraftProject, reconcileOwnedProjects, setProjectAccount, updateProjectPublication, type Project } from './project-store';
+import { deleteProjectDurably, flushExpiredPurges, getProjectFilesAsync, getProjectMessagesAsync, getProjects, getProjectStorageScope, isEmptyDraftProject, reconcileOwnedProjects, setProjectAccount, softDeleteProject, updateProjectPublication, type Project } from './project-store';
 
 const TOKEN_KEY = 'bh_session_token';
 const USER_KEY = 'bh_session_user';
@@ -290,21 +290,40 @@ export async function removeProject(projectId: string): Promise<Project[]> {
 }
 
 /**
- * Best-effort cleanup of abandoned blank projects. Local drafts that never
- * received a first message are deleted on the server too, so they stop
- * counting against the 50-project limit. Called before a new project is
- * created; failures are swallowed so creation is never blocked by cleanup.
+ * Best-effort cleanup of abandoned blank projects. Purge is local-only: the
+ * server entry (if any) is left in place because a false-positive here would
+ * permanently destroy a project the user worked on. The server slot is
+ * reclaimed by the Registry's periodic quota-cleanup instead.
  */
 export async function purgeEmptyDrafts(): Promise<void> {
   if (!getProjectStorageScope().accountId || !getToken()) return;
-  const drafts = getProjects().filter(isEmptyDraftProject);
-  if (!drafts.length) return;
-  // Delete in parallel: each call has a 20s timeout and sequential deletion of
-  // 50 drafts would block new project creation for up to 1000 seconds.
-  await Promise.allSettled(drafts.map(draft => removeProject(draft.id)));
+  const candidates = getProjects().filter(isEmptyDraftProject);
+  if (!candidates.length) return;
+
+  const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+  const stale = candidates.filter(p => p.updatedAt < cutoffMs);
+  if (!stale.length) return;
+
+  const confirmed: typeof stale = [];
+  for (const draft of stale) {
+    try {
+      const msgs = await getProjectMessagesAsync(draft.id);
+      if (msgs && msgs.length > 0) continue;
+      const files = await getProjectFilesAsync(draft.id);
+      if (files && Object.keys(files).length > 0) continue;
+    } catch {
+      continue;
+    }
+    confirmed.push(draft);
+  }
+  if (!confirmed.length) return;
+
+  for (const draft of confirmed) softDeleteProject(draft.id);
+
+  void flushExpiredPurges();
 }
 
-export async function projectPublication(projectId: string, signal: AbortSignal, published?: boolean): Promise<boolean> {
+export async function projectPublication(projectId: string, signal: AbortSignal, published?: boolean, productionUrl?: string): Promise<boolean> {
   const token = getToken();
   const scope = getProjectStorageScope();
   const response = await fetch(`${apiBase()}/api/projects/${encodeURIComponent(projectId)}/publication`, {
@@ -312,7 +331,7 @@ export async function projectPublication(projectId: string, signal: AbortSignal,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     credentials: 'include',
     signal,
-    body: published === undefined ? undefined : JSON.stringify({ published }),
+    body: published === undefined ? undefined : JSON.stringify({ published, ...(productionUrl ? { productionUrl } : {}) }),
   });
   const body = await response.json().catch(() => null);
   if (!response.ok || typeof body?.published !== 'boolean') throw new Error(body?.error || 'Could not confirm publication status. Try again.');

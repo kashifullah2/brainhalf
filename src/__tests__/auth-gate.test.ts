@@ -55,11 +55,11 @@ describe('P1 Auth — session verification (fail closed)', () => {
     expect(await verifySession(req, envWith(registry))).toEqual({ userId: USER_ID });
   });
 
-  it('accepts a valid token carried in the ?token= query (WebSocket transport)', async () => {
+  it('rejects a ?token= query on /agents/ HTTP routes (token would appear in access logs)', async () => {
     const { token } = await issueToken(SECRET, USER_ID);
     const registry = await registryFor(token);
     const req = new Request(`https://brainhalf.com/agents/chat-agent/proj-a?token=${token}`);
-    expect(await verifySession(req, envWith(registry))).toEqual({ userId: USER_ID });
+    expect(await verifySession(req, envWith(registry))).toBeNull();
   });
 
   it('rejects a ?token= query on regular API endpoints (token would leak into logs/history)', async () => {

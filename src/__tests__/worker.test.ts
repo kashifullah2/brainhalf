@@ -551,6 +551,128 @@ describe('P1 Worker auth gate (fail-closed)', () => {
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('9');
   });
+
+  it('ws-ticket uses its own rate-limit bucket, not the shared auth bucket', async () => {
+    // wsTicket bucket is exhausted; auth bucket is fine. Endpoint must still 429.
+    const registry = mockRegistry({
+      onRateLimitCheck: (bucket) => bucket === 'wsTicket'
+        ? { ok: false, retryAfter: 60 }
+        : { ok: true, retryAfter: 0 },
+    });
+    const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/auth/ws-ticket', { method: 'POST' });
+    const res = await worker.fetch(request, env, {} as any);
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('60');
+  });
+
+  it('ws-ticket is not blocked by auth-bucket exhaustion — the buckets are separate', async () => {
+    // auth bucket exhausted; wsTicket bucket is fine. Endpoint must NOT 429.
+    // (It will succeed or fail for another reason — we only verify it isn't 429.)
+    const registry = mockRegistry({
+      onRateLimitCheck: (bucket) => bucket === 'auth'
+        ? { ok: false, retryAfter: 60 }
+        : { ok: true, retryAfter: 0 },
+    });
+    const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/auth/ws-ticket', { method: 'POST' });
+    const res = await worker.fetch(request, env, {} as any);
+    expect(res.status).not.toBe(429);
+  });
+
+  // Helper: extract the onBeforeRequest / onBeforeConnect hooks by triggering
+  // a single worker.fetch call with the mocked SDK. Hooks are the auth boundary.
+  async function agentHooks() {
+    vi.mocked(routeAgentRequest).mockResolvedValue(new Response('', { status: 200 }) as any);
+    const registry = mockRegistry();
+    const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    await worker.fetch(
+      new Request('https://brainhalf.com/agents/chat-agent/proj-alpha'),
+      env, {} as any,
+    );
+    const opts = vi.mocked(routeAgentRequest).mock.calls[vi.mocked(routeAgentRequest).mock.calls.length - 1][2] as any;
+    return { opts, env, registry };
+  }
+
+  // Ticket-capable registry: answers /ws-tickets/verify with a userId + 64-hex
+  // sessionHash, and /projects/claim for a normal ownership check.
+  function mockRegistryWithTicket(ticket: string, userId = 'user-1') {
+    const base = mockRegistry({ userId });
+    const originalImpl = base._fetch.getMockImplementation()!;
+    base._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : (input as Request).url);
+      if (url.pathname === '/ws-tickets/verify' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body)) as { ticket?: string };
+        if (body.ticket === ticket) {
+          return Response.json({ userId, sessionHash: 'a'.repeat(64) });
+        }
+        return Response.json({ error: 'Ticket not found' }, { status: 401 });
+      }
+      return originalImpl(input, init);
+    });
+    return base;
+  }
+
+  it('?token=bh_... on an /agents/ HTTP GET is rejected with 401 by onBeforeRequest', async () => {
+    const { token } = await issueToken(SECRET, 'user-1');
+    const { opts } = await agentHooks();
+    // Token is present only in the URL query — no Authorization header, no cookie.
+    const req = new Request(`https://brainhalf.com/agents/chat-agent/proj-alpha?token=${token}`);
+    const result = await opts.onBeforeRequest(req, { name: 'proj-alpha' });
+    expect(result instanceof Response).toBe(true);
+    expect((result as Response).status).toBe(401);
+  });
+
+  it('?token=bh_... on a WS upgrade without a bhwt_ ticket is rejected with 401 by onBeforeConnect', async () => {
+    const { token } = await issueToken(SECRET, 'user-1');
+    const { opts } = await agentHooks();
+    // Long-lived token in ?token=; no ?ticket= with a bhwt_ prefix.
+    // The Worker strips ?token= before the verifySession fallback, so no cookie/
+    // header is present either → onBeforeConnect returns 401.
+    const req = new Request(
+      `https://brainhalf.com/agents/chat-agent/proj-alpha?token=${token}`,
+      { headers: { Upgrade: 'websocket' } },
+    );
+    const result = await opts.onBeforeConnect(req, { name: 'proj-alpha' });
+    expect(result instanceof Response).toBe(true);
+    expect((result as Response).status).toBe(401);
+  });
+
+  it('valid bhwt_ ticket authenticates a WS upgrade via onBeforeConnect', async () => {
+    vi.mocked(routeAgentRequest).mockResolvedValue(new Response('', { status: 200 }) as any);
+    const ticket = 'bhwt_' + 'x'.repeat(32);
+    const registry = mockRegistryWithTicket(ticket);
+    const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    await worker.fetch(
+      new Request('https://brainhalf.com/agents/chat-agent/proj-alpha'),
+      env, {} as any,
+    );
+    const opts = vi.mocked(routeAgentRequest).mock.calls[vi.mocked(routeAgentRequest).mock.calls.length - 1][2] as any;
+
+    const req = new Request(
+      `https://brainhalf.com/agents/chat-agent/proj-alpha?ticket=${ticket}`,
+      { headers: { Upgrade: 'websocket' } },
+    );
+    const result = await opts.onBeforeConnect(req, { name: 'proj-alpha' });
+    // A successful onBeforeConnect returns a rewritten Request carrying the user id.
+    expect(result instanceof Request).toBe(true);
+    expect((result as Request).headers.get('x-auth-user-id')).toBe('user-1');
+  });
+
+  it('POST with a body reaches the agent with the correct user id via onBeforeRequest', async () => {
+    const { opts } = await agentHooks();
+    const { request } = await authenticatedRequest(
+      'https://brainhalf.com/agents/chat-agent/proj-alpha/checkpoints',
+      { method: 'POST', body: JSON.stringify({ revision: 1, label: 'save' }),
+        headers: { 'content-type': 'application/json' } },
+    );
+    const result = await opts.onBeforeRequest(request, { name: 'proj-alpha' });
+    expect(result instanceof Request).toBe(true);
+    const rewritten = result as Request;
+    expect(rewritten.headers.get('x-auth-user-id')).toBe('user-1');
+    // Body must survive the rewrite — onBeforeRequest must not consume it.
+    expect(await rewritten.text()).toBe(JSON.stringify({ revision: 1, label: 'save' }));
+  });
 });
 
 describe('product outcome access', () => {
@@ -753,6 +875,77 @@ describe('Gallery remix orchestration', () => {
     const denied = await worker.fetch(request, envWith(registry, { ChatAgent: agents.binding }), {} as any);
     expect(denied.status).toBe(404);
     expect(agents.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('P1 Preview security headers — sandbox CSP on every response', () => {
+  const SANDBOX_CSP_FRAGMENT = 'sandbox allow-scripts allow-forms;';
+
+  function cspHeader(res: Response): string {
+    const v = res.headers.get('Content-Security-Policy');
+    expect(v, `Content-Security-Policy must be set (status ${res.status})`).toBeTruthy();
+    return v as string;
+  }
+
+  it('/preview/ 401 denial carries the sandbox CSP', async () => {
+    const env = envWith(mockRegistry(), { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    const res = await worker.fetch(new Request('https://brainhalf.com/preview/proj-x/index.html'), env, {} as any);
+    expect(res.status).toBe(401);
+    expect(cspHeader(res)).toContain(SANDBOX_CSP_FRAGMENT);
+  });
+
+  it('/preview/ 429 rate-limit response carries the sandbox CSP', async () => {
+    const registry = mockRegistry({
+      onRateLimitCheck: (bucket) => bucket.startsWith('preview') ? { ok: false, retryAfter: 5 } : { ok: true, retryAfter: 0 },
+    });
+    const env = envWith(registry, {
+      ChatAgent: { idFromName: vi.fn().mockReturnValue('id'), get: vi.fn().mockReturnValue({ fetch: vi.fn().mockResolvedValue(new Response('', { status: 200 })) }) },
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-x/index.html');
+    const res = await worker.fetch(request, env, {} as any);
+    expect(res.status).toBe(429);
+    expect(cspHeader(res)).toContain(SANDBOX_CSP_FRAGMENT);
+  });
+
+  it('/preview/ 200 carries the sandbox CSP', async () => {
+    const registry = mockRegistry();
+    const env = envWith(registry, {
+      ChatAgent: {
+        idFromName: vi.fn().mockReturnValue('id'),
+        get: vi.fn().mockReturnValue({ fetch: vi.fn().mockResolvedValue(Response.json({ '/index.html': '<h1>ok</h1>' })) }),
+      },
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-x/index.html');
+    const res = await worker.fetch(request, env, {} as any);
+    expect(res.status).toBe(200);
+    expect(cspHeader(res)).toContain(SANDBOX_CSP_FRAGMENT);
+  });
+
+  it('/preview/ HEAD carries the sandbox CSP', async () => {
+    const registry = mockRegistry();
+    const env = envWith(registry, {
+      ChatAgent: {
+        idFromName: vi.fn().mockReturnValue('id'),
+        get: vi.fn().mockReturnValue({ fetch: vi.fn().mockResolvedValue(Response.json({ '/index.html': '<h1>ok</h1>' })) }),
+      },
+    });
+    const { request } = await authenticatedRequest('https://brainhalf.com/preview/proj-x/index.html', { method: 'HEAD' });
+    const res = await worker.fetch(request, env, {} as any);
+    expect(cspHeader(res)).toContain(SANDBOX_CSP_FRAGMENT);
+  });
+
+  it('preview responses never combine Access-Control-Allow-Origin: null with credentials', async () => {
+    const env = envWith(mockRegistry(), { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    const res = await worker.fetch(new Request('https://brainhalf.com/preview/proj-x/index.html'), env, {} as any);
+    const acao = res.headers.get('Access-Control-Allow-Origin');
+    const acac = res.headers.get('Access-Control-Allow-Credentials');
+    // ACAO is either a real origin or absent — never the string "null".
+    expect(acao).not.toBe('null');
+    // When credentials are advertised, ACAO must not be a wildcard or "null".
+    if (acac === 'true') {
+      expect(acao).not.toBe('*');
+      expect(acao).not.toBe('null');
+    }
   });
 });
 

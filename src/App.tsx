@@ -396,7 +396,11 @@ function App() {
         aria-busy="true"
         aria-label="Verifying session"
       >
-        <div><BrainHalfLogo size={28} strokeWidth={1.5} color="currentColor" /><span>Opening your studio…</span></div>
+        <div>
+          <span className="loading-logo-ring"><BrainHalfLogo size={32} strokeWidth={1.5} color="currentColor" /></span>
+          <span className="loading-text">Opening your studio…</span>
+          <span className="loading-bar" />
+        </div>
       </div>
     );
   }
@@ -486,7 +490,7 @@ function App() {
   if (currentView === 'dashboard') {
     return (
       <ErrorBoundary>
-      <Suspense fallback={<div className="studio-session-loading" aria-busy="true" aria-label="Loading dashboard"><div><BrainHalfLogo size={28} strokeWidth={1.5} color="currentColor" /></div></div>}>
+      <Suspense fallback={<div className="studio-session-loading" aria-busy="true" aria-label="Loading dashboard"><div><span className="loading-logo-ring"><BrainHalfLogo size={32} strokeWidth={1.5} color="currentColor" /></span><span className="loading-text">Loading your projects…</span><span className="loading-bar" /></div></div>}>
         <DashboardPage currentUser={user} onOpenProject={handleOpenProject} onCreateProject={handleCreateNewProject} creatingProject={creatingProject} onGoHome={handleGoHome} onLogout={handleLogout} />
       </Suspense>
       </ErrorBoundary>
@@ -495,7 +499,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-    <Suspense fallback={<div className="studio-session-loading" aria-busy="true" aria-label="Loading workspace"><div><BrainHalfLogo size={28} strokeWidth={1.5} color="currentColor" /></div></div>}>
+    <Suspense fallback={<div className="studio-session-loading" aria-busy="true" aria-label="Loading workspace"><div><span className="loading-logo-ring"><BrainHalfLogo size={32} strokeWidth={1.5} color="currentColor" /></span><span className="loading-text">Setting up your workspace…</span><span className="loading-bar" /></div></div>}>
     <div className="app-container studio-workspace">
       <div className="main-content">
         {/* TopNav is now rendered inside Workspace for workspace mode (Bolt-style unified topbar) */}

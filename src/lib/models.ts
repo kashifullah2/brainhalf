@@ -30,6 +30,8 @@ export interface AllowedModel {
    * so this flag — not a second copy of the catalog — is what the UI shows.
    */
   clientSelectable?: boolean;
+  /** When true, the model supports reasoning/thinking via chat_template_kwargs.enable_thinking. */
+  supportsThinking?: boolean;
 }
 
 /**
@@ -56,7 +58,7 @@ const ATRIA_DEFAULT_MAX = 65536;
 const CF_DEFAULT_MAX = 65536;
 
 const CF_MODELS: AllowedModel[] = [
-  { name: DEFAULT_MODEL_ID, provider: 'cloudflare', id: DEFAULT_MODEL_ID, maxTokens: CF_DEFAULT_MAX },
+  { name: DEFAULT_MODEL_ID, provider: 'cloudflare', id: DEFAULT_MODEL_ID, maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
   { name: '@cf/deepseek-ai/deepseek-v4-flash-0731', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-v4-flash-0731', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
@@ -70,7 +72,7 @@ const CF_MODELS: AllowedModel[] = [
   { name: '@cf/qwen/qwen2.5-coder-32b-instruct', provider: 'cloudflare', id: '@cf/qwen/qwen2.5-coder-32b-instruct', maxTokens: 32768 },
   { name: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', maxTokens: CF_DEFAULT_MAX },
   // Disabled: times out on all generation levels; removed from picker until stable.
-  { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: 8192, clientSelectable: false },
+  { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: 8192, clientSelectable: false, supportsThinking: true },
 ];
 
 const ANTHROPIC_MODELS: AllowedModel[] = [
@@ -168,6 +170,11 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, label: str
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/** Models that support reasoning/thinking via chat_template_kwargs.enable_thinking. */
+export function modelSupportsThinking(model: string): boolean {
+  return MODEL_ALLOWLIST.some(m => m.id === model && m.supportsThinking === true);
 }
 
 /** Models whose image inputs are verified against their provider interface. */

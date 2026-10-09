@@ -196,6 +196,8 @@ const BUILTIN_MODEL_META: Record<string, { label: string; badge: string; colorCl
 
 const PRESET_PROVIDERS = [
   { name: 'OpenAI', url: 'https://api.openai.com/v1', model: 'gpt-4o' },
+  { name: 'Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.0-flash' },
+  { name: 'Cohere', url: 'https://api.cohere.com/compatibility/v1', model: 'command-a-03-2025' },
   { name: 'DeepSeek', url: 'https://api.deepseek.com', model: 'deepseek-chat' },
   { name: 'Groq', url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' },
   { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', model: 'anthropic/claude-3.5-sonnet' },

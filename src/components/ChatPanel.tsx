@@ -1143,6 +1143,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             // Skip when the conversation is still just the welcome greeting —
             // scrolling to the end clips the welcome hero on short viewports.
             if (messagesRef.current.some(message => message.role === 'user')) scheduleAutoScroll('instant');
+            if (typeof data.previewStoreCapped === 'boolean') {
+              appEvents.emit('preview-store-capped', { capped: data.previewStoreCapped, reason: data.previewCappedReason });
+            }
           } else if (data.type === 'stream') {
             if (!isGeneratingRef.current) return;
             if (data.chunk?.response) {
@@ -1324,6 +1327,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             if (data.mode === 'incremental' || data.mode === 'full') {
               appEvents.emit('generation-mode', { mode: data.mode });
             }
+          } else if (data.type === 'preview_store_capped') {
+            appEvents.emit('preview-store-capped', { capped: Boolean(data.capped), reason: data.reason });
           } else if (data.type === 'error') {
             if (writeInFlight) {
               writeInFlight = false;

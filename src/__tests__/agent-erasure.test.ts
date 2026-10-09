@@ -13,6 +13,7 @@ function fixture(owner = 'owner') {
   agent.env = { REGISTRY: { idFromName: () => 'auth', get: () => ({ fetch: async () => Response.json({ ownerId: owner }) }) } };
   agent.generationLock = new BusyLock(); agent.writeEpoch = new WriteEpoch(); agent.connectionUserIds = new Map([['socket', owner]]); agent.authCache = new Map();
   agent.getConnections = () => [{ close }]; agent.pendingBackups = new Set();
+  agent.previewStore = { reset: vi.fn() }; agent.previewStoreLoaded = false;
   const request = new Request('https://agent/internal/erase', { method: 'POST', headers: { 'x-auth-user-id': 'owner', 'x-bh-project': 'project' } });
   return { agent, request, deleteAll, close };
 }

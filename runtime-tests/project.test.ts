@@ -1080,6 +1080,61 @@ it('applies the hosted project limit per account, including old registrations an
   expect(await coordinator.lookup('bob-1')).toMatchObject({ ownerId: 'bob' });
 });
 
+describe('Verification session tokens never leak to logs, reports or screenshots', () => {
+  it('preview cookie is hashed in storage and absent from the report and logs', async () => {
+    const p = await project();
+    const preview = await (p.object as any).createSession('preview', 'development', {}, 60);
+    expect(preview).toHaveLength(64);
+    const stored = p.db.prepare("SELECT token FROM sessions WHERE kind='preview'").all();
+    for (const row of stored) expect(row.token).not.toBe(preview);
+    expect(stored[0].token).toHaveLength(64);
+
+    const report = { jobId: 'test', revision: 'r', environment: 'development', at: Date.now(), passed: true, checks: [{ name: 'Page loads', passed: true, detail: 'HTTP 200' }] };
+    await p.ctx.storage.put('verification:development', report);
+    const status = await (await p.call('/status')).json() as any;
+    const serialized = JSON.stringify(status);
+    expect(serialized).not.toContain(preview);
+
+    (p.object as any).log('test', 'Build output here');
+    const logs = p.db.prepare('SELECT text FROM logs').all();
+    for (const row of logs) expect(row.text).not.toContain(preview);
+  });
+});
+
+describe('Failed and timed-out jobs count toward daily limits', () => {
+  it('pilot.acquire increments daily job count at admission (before the job can fail)', async () => {
+    const c = context();
+    const coordinator = new PilotCoordinator(c.ctx, {} as any);
+    expect(await coordinator.acquire('job-1', 'sandbox', 'project-a')).toEqual({ ok: true });
+    expect(await coordinator.acquire('job-2', 'sandbox', 'project-a')).toEqual({ ok: true });
+    await coordinator.release('job-1');
+    await coordinator.release('job-2');
+    const usage = c.map.get('usage:project-a');
+    expect(usage.count).toBe(2);
+  });
+
+  it('owner consumeUsage counts the job even if it later fails', async () => {
+    const c = context();
+    const coordinator = new PilotCoordinator(c.ctx, {} as any);
+    expect(await coordinator.consumeUsage('jobs', 'failed-job')).toEqual({ ok: true });
+    const status = await coordinator.usageStatus();
+    expect(status.used.jobs).toBe(1);
+    expect(await coordinator.consumeUsage('jobs', 'failed-job')).toEqual({ ok: true });
+    expect((await coordinator.usageStatus()).used.jobs).toBe(1);
+  });
+
+  it('sandbox lease is released after failed job without reversing the daily count', async () => {
+    const c = context();
+    const coordinator = new PilotCoordinator(c.ctx, {} as any);
+    expect(await coordinator.acquire('doomed-job', 'sandbox', 'project-x')).toEqual({ ok: true });
+    await coordinator.release('doomed-job');
+    const leaseGone = !(await c.ctx.storage.get('lease:doomed-job'));
+    expect(leaseGone).toBe(true);
+    const usage = c.map.get('usage:project-x');
+    expect(usage.count).toBe(1);
+  });
+});
+
 it('retries durable publication outcome delivery without counting a failed delivery twice', async () => {
   const p = await project();
   const event = { id: 'job', ownerId: 'owner', projectId: 'project', kind: 'publish_passed', at: Date.now(), revision: 'a'.repeat(64) };

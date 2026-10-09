@@ -56,7 +56,7 @@ export function publishProgressView(job: Pick<RuntimeJob, 'status' | 'message' |
   };
 }
 
-function VisibilityToggle({ projectId }: { projectId: string }) {
+function VisibilityToggle({ projectId, productionUrl }: { projectId: string; productionUrl?: string }) {
   const [showcase, setShowcase] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -77,7 +77,7 @@ function VisibilityToggle({ projectId }: { projectId: string }) {
     setBusy(true); setNotice('');
     try {
       const response = await authFetch(`${apiOrigin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showcase: next }),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ showcase: next, ...(next && productionUrl ? { productionUrl } : {}) }),
       });
       const data = await response.json() as { showcase: boolean; error?: string };
       if (!response.ok) throw new Error(data.error || 'Visibility could not be changed.');
@@ -232,10 +232,20 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
   useEffect(() => {
     if (job?.kind !== 'publish' || job.status !== 'passed' || markedPublishedJob.current === job.id) return;
     markedPublishedJob.current = job.id;
-    const controller = new AbortController();
-    void projectPublication(projectId, controller.signal, true).catch(() => {});
-    return () => controller.abort();
+    // Fire-and-forget: this PUT must complete even if the component unmounts,
+    // so it intentionally does NOT use an AbortController. A failed call here
+    // means the registry never learns the app is published, blocking gallery
+    // listing and leaving the dashboard stuck on "Draft".
+    void projectPublication(projectId, AbortSignal.timeout(30_000), true, status?.productionUrl || '').catch(() => {});
   }, [projectId, job?.id, job?.status, job?.kind]);
+  // Backfill: when the console opens on an already-live release, push the
+  // production URL to the registry so gallery links resolve correctly.
+  const backfilledUrl = useRef('');
+  useEffect(() => {
+    if (!release || !status?.productionUrl || backfilledUrl.current === status.productionUrl) return;
+    backfilledUrl.current = status.productionUrl;
+    void projectPublication(projectId, AbortSignal.timeout(30_000), true, status.productionUrl).catch(() => {});
+  }, [projectId, release, status?.productionUrl]);
 
   const runtimeDomain = (runtime.status as (typeof runtime.status & { productionUrl?: string }))?.productionUrl?.replace(/https?:\/\/[^.]+\./, '') || 'apps.brainhalf.com';
 
@@ -304,7 +314,7 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
       <strong>{currentIsLive ? 'This version is live' : 'Your published version'}</strong>
       <a href={status.productionUrl} target="_blank" rel="noopener noreferrer">{status.productionUrl}<ExternalLink size={15} /></a>
       <button type="button" className="button-secondary" onClick={() => { void navigator.clipboard.writeText(status.productionUrl).then(() => setCopied(true)).catch(() => setError('Copy the public URL shown above. Clipboard access is unavailable.')); }}><Copy size={14} />{copied ? 'Copied' : 'Copy public link'}</button>
-      <VisibilityToggle projectId={projectId} />
+      <VisibilityToggle projectId={projectId} productionUrl={status?.productionUrl} />
       {!currentIsLive && <p>Publish again to put your latest changes online.</p>}
       {!confirmOffline ? <button type="button" className="button-ghost" disabled={busy || !!active} onClick={() => setConfirmOffline(true)}>Take app offline</button> : <div className="publication-offline-confirm">
         <p>Your app will stop working for visitors. Your saved information and versions stay safe — you can publish again any time.</p>

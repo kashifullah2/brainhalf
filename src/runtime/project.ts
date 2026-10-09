@@ -1126,7 +1126,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     const current = await this.ctx.storage.get<StoredJob>('current');
     if (environment === 'development' && current?.node && current.kind === 'preview' && current.status === 'running' && current.step === 4) {
       const headers = new Headers(request.headers);
-      for (const key of [...headers.keys()]) if (/^(?:x-bh-|x-brainhalf-|x-auth-|cf-access-)/i.test(key)) headers.delete(key);
+      for (const key of [...headers.keys()]) if (/^(?:x-bh-|x-brainhalf-|x-auth-|cf-access-)/i.test(key) || key === 'authorization') headers.delete(key);
       const appCookies = headers.get('cookie')?.split(';').filter(value => !/^(?:__Host-bh_|bh_session)/.test(value.trim())).join(';');
       headers.delete('cookie'); if (appCookies) headers.set('cookie', appCookies);
       return this.sandbox(current).containerFetch(new Request(request, { headers }), 3000);
@@ -1309,7 +1309,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       // config — a generated login page that cannot reach it signs nobody in.
       const usesManagedAuth = Object.values(snapshot.files).some(content => typeof content === 'string' && content.includes('/api/auth/'));
       if (usesManagedAuth) {
-        const authConfig = await this.appRequest(new Request(this.url('development') + '/api/auth/config', { signal: AbortSignal.timeout(15_000) }), 'development');
+        const authConfig = await this.appRequest(new Request(this.url('development') + '/api/auth/config', { headers: { Cookie: `__Host-bh_preview=${preview}` }, signal: AbortSignal.timeout(15_000) }), 'development');
         const authOk = authConfig.ok;
         await authConfig.body?.cancel();
         report.checks.push({ name: 'Authentication ready', passed: authOk, detail: authOk ? 'The app exposes its hosted sign-in configuration.' : `Sign-in configuration failed (HTTP ${authConfig.status}).` });

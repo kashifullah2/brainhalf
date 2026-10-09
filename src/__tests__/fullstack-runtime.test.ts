@@ -68,6 +68,80 @@ describe('Full-stack runtime boundaries', () => {
     expect(() => assertSafeMigration('ALTER TABLE users RENAME TO gone')).toThrow();
     expect(() => assertSafeMigration('CREATE TABLE items(id TEXT PRIMARY KEY)')).not.toThrow();
   });
+  describe('assertSafeMigration bypass attempts', () => {
+    it('allows legitimate additive migrations', () => {
+      expect(() => assertSafeMigration('CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL)')).not.toThrow();
+      expect(() => assertSafeMigration('CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY)')).not.toThrow();
+      expect(() => assertSafeMigration('CREATE INDEX idx_name ON users(name)')).not.toThrow();
+      expect(() => assertSafeMigration('CREATE UNIQUE INDEX idx_email ON users(email)')).not.toThrow();
+      expect(() => assertSafeMigration("ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''")).not.toThrow();
+      expect(() => assertSafeMigration("INSERT INTO settings(key,value) VALUES ('version','2')")).not.toThrow();
+      expect(() => assertSafeMigration("CREATE TABLE x(id TEXT);\nINSERT INTO x(id) VALUES ('seed')")).not.toThrow();
+    });
+    it("blocks backslash-quote SQLite escape mismatch: \\' does not escape in SQLite", () => {
+      expect(() => assertSafeMigration("SELECT 'a\\'; DROP TABLE x; SELECT ''")).toThrow();
+      expect(() => assertSafeMigration("INSERT INTO t VALUES('a\\'); DROP TABLE x; --")).toThrow();
+    });
+    it('blocks uppercase, mixed case, and unicode tricks', () => {
+      expect(() => assertSafeMigration('DROP TABLE users')).toThrow();
+      expect(() => assertSafeMigration('drop table users')).toThrow();
+      expect(() => assertSafeMigration('DrOp TaBlE users')).toThrow();
+      expect(() => assertSafeMigration('TRUNCATE TABLE items')).toThrow();
+      expect(() => assertSafeMigration('DELETE FROM users WHERE 1=1')).toThrow();
+      expect(() => assertSafeMigration('PRAGMA journal_mode=OFF')).toThrow();
+      expect(() => assertSafeMigration('ATTACH DATABASE ":memory:" AS stolen')).toThrow();
+      expect(() => assertSafeMigration('VACUUM')).toThrow();
+    });
+    it('blocks stacked statements hiding destructive SQL after safe prefix', () => {
+      expect(() => assertSafeMigration('CREATE TABLE x(id TEXT); DROP TABLE users')).toThrow();
+      expect(() => assertSafeMigration('CREATE TABLE x(id TEXT);\nDELETE FROM users')).toThrow();
+      expect(() => assertSafeMigration('INSERT INTO x VALUES(1); UPDATE users SET admin=1')).toThrow();
+    });
+    it('blocks WITH ... DELETE (CTE-wrapped destructive operations)', () => {
+      expect(() => assertSafeMigration('WITH deleted AS (DELETE FROM users RETURNING id) SELECT * FROM deleted')).toThrow();
+      expect(() => assertSafeMigration('WITH x AS (SELECT 1) DELETE FROM users')).toThrow();
+    });
+    it('blocks nested comments that could hide SQL', () => {
+      expect(() => assertSafeMigration('/* outer /* inner */ DROP TABLE users; */')).toThrow();
+      expect(() => assertSafeMigration('CREATE TABLE x(id TEXT); /* safe */ DROP TABLE y')).toThrow();
+    });
+    it('does not false-positive on banned keywords inside SQL string literals', () => {
+      expect(() => assertSafeMigration("CREATE TABLE x(status TEXT DEFAULT 'DO NOT DELETE')")).not.toThrow();
+      expect(() => assertSafeMigration("CREATE TABLE x(note TEXT CHECK(note <> 'VACUUM'))")).not.toThrow();
+      expect(() => assertSafeMigration("INSERT INTO x(status) VALUES ('PRAGMA mode')")).not.toThrow();
+    });
+    it('handles SQLite doubled-quote escaping correctly', () => {
+      expect(() => assertSafeMigration("CREATE TABLE x(name TEXT DEFAULT 'it''s fine')")).not.toThrow();
+      expect(() => assertSafeMigration("INSERT INTO x VALUES('value with ''quotes''')")).not.toThrow();
+    });
+    it('rejects bare SELECT, UPDATE, REPLACE as non-additive statements', () => {
+      expect(() => assertSafeMigration('SELECT * FROM users')).toThrow();
+      expect(() => assertSafeMigration('UPDATE users SET admin=1')).toThrow();
+      expect(() => assertSafeMigration('REPLACE INTO users VALUES(1,"admin")')).toThrow();
+    });
+    it('blocks ALTER TABLE DROP COLUMN and ALTER TABLE RENAME', () => {
+      expect(() => assertSafeMigration('ALTER TABLE users DROP COLUMN bio')).toThrow();
+      expect(() => assertSafeMigration('ALTER TABLE users RENAME TO deleted_users')).toThrow();
+      expect(() => assertSafeMigration('ALTER TABLE users RENAME COLUMN old TO new')).toThrow();
+    });
+    it('blocks INSERT INTO ... SELECT from reserved tables', () => {
+      expect(() => assertSafeMigration('INSERT INTO leaked SELECT * FROM _bh_migrations')).toThrow('reserved');
+      expect(() => assertSafeMigration('INSERT INTO leaked SELECT name FROM _cf_KV')).toThrow('reserved');
+      expect(() => assertSafeMigration('INSERT INTO leaked SELECT * FROM sqlite_master')).toThrow('reserved');
+      expect(() => assertSafeMigration('CREATE TABLE x AS SELECT * FROM _bh_migrations')).toThrow('reserved');
+    });
+    it('allows BEGIN/COMMIT and a stray COMMIT, blocks BEGIN without matching scope', () => {
+      expect(() => assertSafeMigration('BEGIN; CREATE TABLE x(id TEXT); COMMIT')).not.toThrow();
+      expect(() => assertSafeMigration('COMMIT')).not.toThrow();
+      expect(() => assertSafeMigration('BEGIN')).not.toThrow();
+      expect(() => assertSafeMigration('BEGIN; DROP TABLE users; COMMIT')).toThrow();
+    });
+    it('blocks multi-statement strings mixing allowed and banned', () => {
+      expect(() => assertSafeMigration('CREATE TABLE a(id TEXT); SELECT 1; CREATE TABLE b(id TEXT)')).toThrow();
+      expect(() => assertSafeMigration("INSERT INTO x VALUES(1); ATTACH ':memory:' AS stolen")).toThrow();
+      expect(() => assertSafeMigration('CREATE INDEX idx ON t(col); PRAGMA table_info(t)')).toThrow();
+    });
+  });
   it('uploads only the tenant D1 binding and managed marker; no platform secrets', async () => {
     const mock = vi.fn(async (_input: string, _init: RequestInit) => Response.json({ success: true, result: {} })); vi.stubGlobal('fetch', mock);
     await new CloudflareAPI('account', 'platform-token').upload('projects', 'release', 'export default {}', 'tenant-db');

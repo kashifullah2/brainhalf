@@ -44,13 +44,14 @@ export function migrationFiles(files: SourceFiles): Array<{ name: string; sql: s
   return Object.entries(files).filter(([name]) => /^migrations\/\d+_[\w-]+\.sql$/.test(name)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([name, sql]) => ({ name, sql }));
 }
 export function assertSafeMigration(sql: string): void {
-  // The pilot supports additive migrations. Destructive schema changes require a separate reviewed migration workflow.
-  // Strip line comments, block comments, and single-quoted string literals before
-  // scanning for banned keywords so a column default like DEFAULT 'DO NOT DELETE'
-  // or a CHECK constraint mentioning 'VACUUM' is never falsely rejected.
   const stripped = sql
     .replace(/--[^\n]*/g, '')
     .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/'(?:[^'\\]|\\.)*'/g, "''");
+    .replace(/'(?:[^']|'')*'/g, "''");
   if (/\b(?:DROP|TRUNCATE|DELETE|REPLACE|UPDATE|ATTACH|DETACH|VACUUM|PRAGMA)\b/i.test(stripped) || /\bALTER\s+TABLE\b[\s\S]*\b(?:DROP|RENAME)\b/i.test(stripped)) throw new RuntimeError('This migration changes existing data or schema. Export a backup and use a reviewed migration workflow.');
+  if (/\b(?:_bh_migrations|_bh_\w+|_cf_\w+|sqlite_\w+)\b/i.test(stripped)) throw new RuntimeError('Migration metadata is reserved.');
+  const statements = stripped.split(';').map(s => s.trim()).filter(Boolean);
+  for (const stmt of statements) {
+    if (!/^(?:CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)|ALTER\s+TABLE\s+\S+\s+ADD\s|INSERT\s+INTO|BEGIN|COMMIT|END)\b/i.test(stmt)) throw new RuntimeError('This migration changes existing data or schema. Export a backup and use a reviewed migration workflow.');
+  }
 }

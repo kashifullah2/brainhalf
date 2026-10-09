@@ -3,7 +3,7 @@ import { ArrowLeft, Plus } from 'lucide-react';
 import { authFetch, getToken, removeProject } from '../lib/auth-client';
 import { apiOrigin } from '../lib/api-origin';
 import { appEvents } from '../lib/events';
-import { getProjects, type Project, updateProjectName } from '../lib/project-store';
+import { getProjects, reconcileOwnedProjects, type Project, updateProjectName } from '../lib/project-store';
 import { useModalFocus } from '../lib/use-modal-focus';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import ConfirmModal from './ConfirmModal';
@@ -142,7 +142,22 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
   const [projects, setProjects] = useState<Project[]>(() => dedupe(getProjects()));
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => { setHydrated(true); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const token = getToken();
+    if (!token) return;
+    void fetch(`${apiOrigin()}/api/projects`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include', signal: controller.signal })
+      .then(async res => {
+        const body = await res.json();
+        if (!res.ok || !Array.isArray(body?.projects)) return;
+        reconcileOwnedProjects(body.projects);
+        setProjects(dedupe(getProjects()));
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [projectsToDelete, setProjectsToDelete] = useState<string[] | null>(null);
   const [projectToRename, setProjectToRename] = useState<Project | null>(null);
   const [renamedName, setRenamedName] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -194,6 +209,28 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!projectsToDelete?.length || deletionPending.current) return;
+    deletionPending.current = true;
+    setDeleting(true);
+    setDeleteError('');
+    const ids = [...projectsToDelete];
+    let remaining = projects;
+    const errors: string[] = [];
+    for (const pid of ids) {
+      try {
+        remaining = dedupe(await removeProject(pid));
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `Could not delete ${pid}.`);
+      }
+    }
+    setProjects(remaining);
+    if (errors.length) setDeleteError(errors[0]);
+    else setProjectsToDelete(null);
+    deletionPending.current = false;
+    setDeleting(false);
+  };
+
   const saveRename = () => {
     if (projectToRename && renamedName.trim()) updateProjectName(projectToRename.id, renamedName.trim());
     setProjectToRename(null);
@@ -223,7 +260,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
           {[0, 1, 2, 3].map(i => <div key={i} className="dashboard-skeleton-card" />)}
         </div>
       ) : projects.length > 0 ? (
-        <RecentProjects projects={projects} onOpenProject={onOpenProject} onRenameProject={project => { setProjectToRename(project); setRenamedName(project.name); }} onDeleteProject={setProjectToDelete} />
+        <RecentProjects projects={projects} onOpenProject={onOpenProject} onRenameProject={project => { setProjectToRename(project); setRenamedName(project.name); }} onDeleteProject={setProjectToDelete} onBulkDeleteProjects={setProjectsToDelete} />
       ) : (
         <section className="dashboard-empty"><span><Plus size={22} /></span><h2>Create your first project</h2><p>Open a blank workspace and describe the app you want to make.</p><button type="button" onClick={onCreateProject} disabled={creatingProject || atQuotaLimit} title={atQuotaLimit ? 'Project limit reached — delete a project to create another' : undefined}>{creatingProject ? 'Creating…' : 'Create new project'}</button></section>
       )}
@@ -243,6 +280,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
       )}
     </main>
     {projectToDelete && <ConfirmModal isOpen title="Delete Project" message="Delete this project, its published apps, and its saved data? Access is revoked immediately. Your files and conversation history are removed first; everything else is erased by an automatic cleanup job that you can track here on the dashboard." confirmLabel={deleting ? 'Deleting…' : 'Delete Project'} pending={deleting} error={deleteError} isDestructive onConfirm={handleDelete} onCancel={() => { if (!deletionPending.current) { setProjectToDelete(null); setDeleteError(''); } }} />}
+    {projectsToDelete && <ConfirmModal isOpen title={`Delete ${projectsToDelete.length} project${projectsToDelete.length !== 1 ? 's' : ''}`} message={`Permanently delete ${projectsToDelete.length} selected project${projectsToDelete.length !== 1 ? 's' : ''}, their published apps, and all saved data? This cannot be undone.`} confirmLabel={deleting ? 'Deleting…' : `Delete ${projectsToDelete.length} project${projectsToDelete.length !== 1 ? 's' : ''}`} pending={deleting} error={deleteError} isDestructive onConfirm={handleBulkDelete} onCancel={() => { if (!deletionPending.current) { setProjectsToDelete(null); setDeleteError(''); } }} />}
     {projectToRename && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rename-title" ref={renameDialogRef} tabIndex={-1} onClick={() => setProjectToRename(null)}><div className="modal-card dashboard-rename" onClick={event => event.stopPropagation()}><h2 id="rename-title">Rename project</h2><label htmlFor="project-rename-input">Project name</label><input id="project-rename-input" className="text-input" value={renamedName} onChange={event => setRenamedName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveRename(); }} /><div><button className="button-secondary" type="button" onClick={() => setProjectToRename(null)}>Cancel</button><button className="button-primary" type="button" onClick={saveRename}>Save</button></div></div></div>}
   </div>;
 }

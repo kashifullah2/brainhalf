@@ -11,7 +11,7 @@ describe('Conversation history rewrite', () => {
   it('normalizes client AI turns and preserves valid assistant turns', async () => {
     const database = new DatabaseSync(':memory:');
     try {
-      database.exec('CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT)');
+      database.exec('CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT, branch_id TEXT DEFAULT \'main\')');
       const agent: any = Object.create(ChatAgent.prototype);
       agent.writeEpoch = new WriteEpoch();
       agent.connectionUserIds = new Map([['connection', 'owner']]);

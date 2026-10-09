@@ -219,6 +219,7 @@ export class AuthRegistry {
       ['showcase_description', "TEXT NOT NULL DEFAULT ''"],
       ['remix_count', 'INTEGER NOT NULL DEFAULT 0'],
       ['showcased_at', 'INTEGER'],
+      ['production_url', "TEXT NOT NULL DEFAULT ''"],
     ];
     for (const [name, ddl] of showcaseColumns) {
       if (!columns.some(column => column.name === name)) sql.exec(`ALTER TABLE project_owners ADD COLUMN ${name} ${ddl}`);
@@ -253,6 +254,16 @@ export class AuthRegistry {
       )`
     );
     sql.exec(`CREATE INDEX IF NOT EXISTS idx_rate_limits_reset_at ON rate_limits(reset_at)`);
+    // GitHub OAuth tokens for push-to-repo. Encrypted at rest; the encryption
+    // key is SESSION_SECRET (with GITHUB_TOKEN_SECRET as a preferred override).
+    sql.exec(
+      `CREATE TABLE IF NOT EXISTS github_tokens (
+        user_id TEXT PRIMARY KEY,
+        login TEXT NOT NULL,
+        token_encrypted TEXT NOT NULL,
+        connected_at INTEGER NOT NULL
+      )`
+    );
     sql.exec(
       `INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (${SCHEMA_VERSION}, ${Date.now()})`
     );
@@ -518,6 +529,7 @@ export class AuthRegistry {
           this.sql.exec('DELETE FROM email_verification WHERE user_id = ?', userId);
           this.sql.exec('DELETE FROM email_actions WHERE user_id = ?', userId);
           this.sql.exec('DELETE FROM oauth_identities WHERE user_id = ?', userId);
+          this.sql.exec('DELETE FROM github_tokens WHERE user_id = ?', userId);
           this.sql.exec('DELETE FROM users WHERE id = ?', userId);
         });
         this.galleryCache = null;
@@ -762,6 +774,18 @@ export class AuthRegistry {
         if (!isValidEmail(email) || !isValidPassword(password))
           return this.json(401, { error: 'Invalid email or password' });
 
+        // Per-email brute-force protection: block after 10 failures in 15 min.
+        // We check the count without consuming it; the counter is only incremented
+        // on failure, so successful logins do not erode the budget.
+        // Same generic error as a wrong password — no signal that the account is locked.
+        const now = Date.now();
+        const failRows = this.sql
+          .exec('SELECT count FROM rate_limits WHERE bucket = ? AND rate_key = ? AND reset_at > ?', 'loginFail', email, now)
+          .toArray() as Array<{ count: number }>;
+        if (failRows.length > 0 && Number(failRows[0].count) >= 10) {
+          return this.json(401, { error: 'Invalid email or password' });
+        }
+
         const rows = this.sql
           .exec('SELECT id, password_hash FROM users WHERE email = ?', email)
           .toArray() as Array<{ id: string; password_hash: string }>;
@@ -769,12 +793,16 @@ export class AuthRegistry {
           // Spend the same PBKDF2 time as a real check; returning instantly
           // let anyone enumerate registered emails by response time.
           await hashPassword(password);
+          this.consumeRateLimit('loginFail', email, 10, 15 * 60 * 1000);
           return this.json(401, { error: 'Invalid email or password' });
         }
 
         // Same message for unknown user and wrong password — no user enumeration.
         const ok = await verifyPassword(password, rows[0].password_hash);
-        if (!ok) return this.json(401, { error: 'Invalid email or password' });
+        if (!ok) {
+          this.consumeRateLimit('loginFail', email, 10, 15 * 60 * 1000);
+          return this.json(401, { error: 'Invalid email or password' });
+        }
 
         const verification = this.sql.exec('SELECT verified_at FROM email_verification WHERE user_id = ?', rows[0].id).toArray();
         if (verification.length && verification[0].verified_at === null) return this.json(403, { error: 'Verify your email before signing in. You can request a new link below.', code: 'EMAIL_VERIFICATION_REQUIRED' });
@@ -1012,7 +1040,7 @@ export class AuthRegistry {
       }
 
       if (path === '/projects/publication' && (method === 'GET' || method === 'PUT')) {
-        const body = method === 'PUT' ? await json<{ published?: boolean }>() : null;
+        const body = method === 'PUT' ? await json<{ published?: boolean; productionUrl?: string }>() : null;
         const projectId = url.searchParams.get('projectId');
         const userId = url.searchParams.get('userId');
         if (!isValidProjectId(projectId) || !userId) return this.json(400, { error: 'Invalid request' });
@@ -1023,10 +1051,8 @@ export class AuthRegistry {
         if (!rows.length || rows[0].deleted_at != null) return this.json(404, { error: 'Project not found' });
         if (rows[0].user_id !== userId) return this.json(403, { error: 'Not the project owner' });
         if (method === 'PUT') {
-          // Gallery listings link to the live app, so only a published app can
-          // stay listed. Taking an app offline removes it from the gallery; the
-          // owner can list it again after republishing.
-          this.sql.exec('UPDATE project_owners SET published = ?, showcase = CASE WHEN ? = 1 THEN showcase ELSE 0 END, updated_at = ? WHERE project_id = ?', body!.published ? 1 : 0, body!.published ? 1 : 0, Date.now(), projectId as string);
+          const urlValue = typeof body!.productionUrl === 'string' ? body!.productionUrl.slice(0, 200) : '';
+          this.sql.exec('UPDATE project_owners SET published = ?, showcase = CASE WHEN ? = 1 THEN showcase ELSE 0 END, production_url = CASE WHEN ? = 1 AND ? != \'\' THEN ? ELSE production_url END, updated_at = ? WHERE project_id = ?', body!.published ? 1 : 0, body!.published ? 1 : 0, body!.published ? 1 : 0, urlValue, urlValue, Date.now(), projectId as string);
           this.galleryCache = null;
         }
         return this.json(200, { published: method === 'PUT' ? body!.published : rows[0].published === 1 });
@@ -1042,8 +1068,8 @@ export class AuthRegistry {
           return this.json(200, this.galleryCache.data);
         }
         const rows = this.sql.exec(
-          'SELECT project_id, name, showcase_description, remix_count, showcased_at FROM project_owners WHERE showcase = 1 AND deleted_at IS NULL ORDER BY showcased_at DESC LIMIT 60'
-        ).toArray() as Array<{ project_id: string; name: string; showcase_description: string; remix_count: number; showcased_at: number | null }>;
+          'SELECT project_id, name, showcase_description, remix_count, showcased_at, production_url FROM project_owners WHERE showcase = 1 AND deleted_at IS NULL ORDER BY showcased_at DESC LIMIT 60'
+        ).toArray() as Array<{ project_id: string; name: string; showcase_description: string; remix_count: number; showcased_at: number | null; production_url: string }>;
         const data = {
           apps: rows.map((row) => ({
             id: row.project_id,
@@ -1051,6 +1077,7 @@ export class AuthRegistry {
             description: row.showcase_description,
             remixCount: row.remix_count,
             showcasedAt: row.showcased_at,
+            productionUrl: row.production_url || '',
           })),
         };
         this.galleryCache = { data, timestamp: now };
@@ -1058,7 +1085,7 @@ export class AuthRegistry {
       }
 
       if (path === '/projects/showcase' && (method === 'GET' || method === 'PUT')) {
-        const body = method === 'PUT' ? await json<{ showcase?: boolean; description?: string }>() : null;
+        const body = method === 'PUT' ? await json<{ showcase?: boolean; description?: string; productionUrl?: string }>() : null;
         const projectId = url.searchParams.get('projectId');
         const userId = url.searchParams.get('userId');
         if (!isValidProjectId(projectId) || !userId) return this.json(400, { error: 'Invalid request' });
@@ -1071,9 +1098,10 @@ export class AuthRegistry {
           if (typeof body?.showcase !== 'boolean') return this.json(400, { error: 'Expected a showcase boolean' });
           const description = typeof body.description === 'string' ? body.description.trim().slice(0, 280) : rows[0].showcase_description;
           if (body.showcase && rows[0].published !== 1) return this.json(409, { error: 'Publish your app first — the gallery links to the live app.' });
+          const urlValue = typeof body.productionUrl === 'string' ? body.productionUrl.slice(0, 200) : '';
           this.sql.exec(
-            'UPDATE project_owners SET showcase = ?, showcase_description = ?, showcased_at = CASE WHEN ? = 1 AND showcased_at IS NULL THEN ? ELSE showcased_at END, updated_at = ? WHERE project_id = ?',
-            body.showcase ? 1 : 0, description, body.showcase ? 1 : 0, Date.now(), Date.now(), projectId as string
+            'UPDATE project_owners SET showcase = ?, showcase_description = ?, showcased_at = CASE WHEN ? = 1 AND showcased_at IS NULL THEN ? ELSE showcased_at END, production_url = CASE WHEN ? != \'\' THEN ? ELSE production_url END, updated_at = ? WHERE project_id = ?',
+            body.showcase ? 1 : 0, description, body.showcase ? 1 : 0, Date.now(), urlValue, urlValue, Date.now(), projectId as string
           );
           this.galleryCache = null;
         }

@@ -1,8 +1,9 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import {
-  ArrowRight, ArrowUpRight, BarChart3, ChevronDown, ClipboardList, Edit2,
-  FolderOpen, GalleryHorizontalEnd, LayoutGrid, ListTodo, MessageSquare,
-  MoreHorizontal, PanelsTopLeft, Search, ShoppingBag, Trash2, X,
+  ArrowRight, ArrowUpRight, BarChart3, CheckSquare2, ChevronDown, ClipboardList,
+  Edit2, ExternalLink, FolderOpen, GalleryHorizontalEnd, LayoutGrid, ListTodo,
+  MessageSquare, MoreHorizontal, PanelsTopLeft, Search, ShoppingBag, Square,
+  Trash2, X,
 } from 'lucide-react';
 import { appEvents } from '../lib/events';
 import ActionMenu from './ActionMenu';
@@ -39,9 +40,10 @@ interface RecentProjectsProps {
   onOpenProject: (id: string) => void;
   onRenameProject: (project: Project) => void;
   onDeleteProject: (id: string) => void;
+  onBulkDeleteProjects?: (ids: string[]) => void;
 }
 
-export default function RecentProjects({ projects, onOpenProject, onRenameProject, onDeleteProject }: RecentProjectsProps) {
+export default function RecentProjects({ projects, onOpenProject, onRenameProject, onDeleteProject, onBulkDeleteProjects }: RecentProjectsProps) {
   const id = useId();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<ProjectSort>('updated');
@@ -49,6 +51,18 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
   const [limit, setLimit] = useState(PROJECT_PAGE_SIZE);
   const [collapsed, setCollapsed] = useState<Set<ProjectDateGroup>>(new Set());
   const [snapshot, setSnapshot] = useState(() => ({ now: Date.now() }));
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (projectId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId); else next.add(projectId);
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => { setSelectionMode(false); setSelectedIds(new Set()); };
 
   useEffect(() => {
     const refresh = () => setSnapshot({ now: Date.now() });
@@ -103,7 +117,42 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
             <option value="updated">Recently updated</option><option value="name">Name</option><option value="status">Status</option>
           </select><ChevronDown size={15} aria-hidden="true" /></label>
         </>}
+        <button
+          type="button"
+          className={`recent-projects-select-mode-btn${selectionMode ? ' active' : ''}`}
+          onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+          aria-pressed={selectionMode}
+        >
+          {selectionMode ? <><X size={14} aria-hidden="true" /> Cancel</> : <><CheckSquare2 size={14} aria-hidden="true" /> Select</>}
+        </button>
       </div>
+      {selectionMode && (
+        <div className="recent-projects-selection-bar" role="toolbar" aria-label="Selection actions">
+          <span className="recent-projects-selection-count">
+            {selectedIds.size === 0 ? 'Click cards to select' : `${selectedIds.size} selected`}
+          </span>
+          <div className="recent-projects-selection-actions">
+            <button type="button" onClick={() => setSelectedIds(new Set(loaded.map(e => e.project.id)))}>
+              <CheckSquare2 size={13} aria-hidden="true" /> Select all
+            </button>
+            {selectedIds.size > 0 && <>
+              <button type="button" onClick={() => setSelectedIds(new Set())}>
+                <Square size={13} aria-hidden="true" /> Deselect all
+              </button>
+              <button type="button" className="recent-projects-selection-newtab" onClick={() => {
+                for (const pid of selectedIds) window.open(`/?project=${pid}`, '_blank', 'noopener');
+              }}>
+                <ExternalLink size={13} aria-hidden="true" /> Open {selectedIds.size} in new tab{selectedIds.size !== 1 ? 's' : ''}
+              </button>
+              {onBulkDeleteProjects && (
+                <button type="button" className="recent-projects-selection-delete" onClick={() => { onBulkDeleteProjects([...selectedIds]); exitSelectionMode(); }}>
+                  <Trash2 size={13} aria-hidden="true" /> Delete {selectedIds.size} project{selectedIds.size !== 1 ? 's' : ''}
+                </button>
+              )}
+            </>}
+          </div>
+        </div>
+      )}
 
       {PROJECT_DATE_GROUPS.map(group => {
         const groupEntries = loaded.filter(entry => entry.dateGroup === group);
@@ -118,7 +167,23 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
             {expanded && groupEntries.map(entry => {
               const { project, title, description, category, status, untitled } = entry;
               const Icon = CATEGORIES[category].icon;
-              return <article className="landing-project-card" key={project.id}>
+              const isSelected = selectedIds.has(project.id);
+              return <article
+                className={`landing-project-card${selectionMode ? ' selection-mode' : ''}${isSelected ? ' is-selected' : ''}`}
+                key={project.id}
+                onClick={selectionMode ? () => toggleSelect(project.id) : undefined}
+              >
+                {selectionMode && (
+                  <button
+                    type="button"
+                    className="recent-project-checkbox"
+                    aria-label={isSelected ? `Deselect ${title}` : `Select ${title}`}
+                    aria-pressed={isSelected}
+                    onClick={e => { e.stopPropagation(); toggleSelect(project.id); }}
+                  >
+                    {isSelected ? <CheckSquare2 size={18} aria-hidden="true" /> : <Square size={18} aria-hidden="true" />}
+                  </button>
+                )}
                 <div className={`recent-project-thumbnail category-${category}`} title={`App type: ${CATEGORIES[category].label} — detected from what the app does`}>
                   <Icon size={28} strokeWidth={1.5} aria-hidden="true" /><span>{CATEGORIES[category].label}</span>
                 </div>
@@ -126,20 +191,21 @@ export default function RecentProjects({ projects, onOpenProject, onRenameProjec
                   <div className="recent-project-meta"><span className={`recent-project-status status-${status}`} title={STATUS_TITLES[status]}><i aria-hidden="true" />{STATUS_LABELS[status]}</span><time dateTime={new Date(project.updatedAt).toISOString()} title={new Date(project.updatedAt).toLocaleString()}>{formatRelativeTime(project.updatedAt)}</time></div>
                   <h4 className="landing-card-title" title={title}>{title}</h4>
                   <p className="recent-project-description">{description || 'Your next idea starts here.'}</p>
-                  <div className="recent-project-footer">
+                  {!selectionMode && <div className="recent-project-footer">
                     {untitled && <button type="button" className="recent-project-continue" onClick={() => onOpenProject(project.id)}>Continue building <ArrowRight size={13} aria-hidden="true" /></button>}
                     <button type="button" className="landing-project-open" aria-label={`Open ${title}`} onClick={() => onOpenProject(project.id)}>Open <ArrowUpRight size={15} aria-hidden="true" /></button>
-                  </div>
+                  </div>}
                 </div>
-                <div className="landing-card-actions">
+                {!selectionMode && <div className="landing-card-actions">
                   <ActionMenu label={`Project actions for ${title}`} className="landing-card-menu-btn" items={[
                     { label: 'Open', icon: <FolderOpen size={14} aria-hidden="true" />, onSelect: () => onOpenProject(project.id) },
+                    { label: 'Open in new tab', icon: <ExternalLink size={14} aria-hidden="true" />, onSelect: () => window.open(`/?project=${project.id}`, '_blank', 'noopener') },
                     { label: 'Rename', icon: <Edit2 size={14} aria-hidden="true" />, onSelect: () => onRenameProject(project) },
                     { label: 'Delete', icon: <Trash2 size={14} aria-hidden="true" />, onSelect: () => onDeleteProject(project.id), danger: true, separator: true },
                   ]}>
                     <MoreHorizontal size={18} aria-hidden="true" />
                   </ActionMenu>
-                </div>
+                </div>}
               </article>;
             })}
           </div>

@@ -34,6 +34,8 @@ export class RuntimeRequestError extends Error {
   }
 }
 
+export const STATUS_NOT_FOUND_MAX_RETRIES = 3;
+
 export function parseRetryAfterMs(value: string | null, now = Date.now()): number | null {
   if (!value) return null;
   const trimmed = value.trim();
@@ -54,7 +56,12 @@ function statusRequestKey(projectId: string, environment: ProjectEnvironment): s
   return `${scope.accountId || 'anon'}:${projectId}:${environment}`;
 }
 
-function computeRetryDelay(cause: unknown, attempts: number): number {
+export function computeRetryDelay(cause: unknown, attempts: number, notFoundStreak: number): number | null {
+  if (cause instanceof RuntimeRequestError) {
+    if (cause.status === 410) return null;
+    if (cause.status === 404 && notFoundStreak >= STATUS_NOT_FOUND_MAX_RETRIES) return null;
+  }
+
   const exponential = Math.min(
     STATUS_ERROR_RETRY_MAX_MS,
     STATUS_ERROR_RETRY_MIN_MS * 2 ** Math.max(0, Math.min(attempts - 1, 6))
@@ -186,6 +193,7 @@ export function useProjectRuntime(projectId: string, environment: ProjectEnviron
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let failedAttempts = 0;
+    let notFoundStreak = 0;
 
     setStatus(null);
     setError('');
@@ -223,14 +231,21 @@ export function useProjectRuntime(projectId: string, environment: ProjectEnviron
         }
 
         failedAttempts = 0;
+        notFoundStreak = 0;
         if (!controller.signal.aborted) timer = setTimeout(update, running ? 10_000 : 30_000);
       } catch (cause) {
         if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : 'Runtime unavailable.');
           failedAttempts += 1;
-          // Transient failures should not abandon the runtime lease, but must
-          // respect server rate limiting and avoid a retry storm.
-          timer = setTimeout(update, withJitter(computeRetryDelay(cause, failedAttempts)));
+          if (cause instanceof RuntimeRequestError && cause.status === 404) notFoundStreak++;
+          else notFoundStreak = 0;
+          const delay = computeRetryDelay(cause, failedAttempts, notFoundStreak);
+          if (delay === null) {
+            setError('This project has been deleted.');
+            appEvents.emit('runtime-status', { projectId, running: false, deleted: true });
+            return;
+          }
+          setError(cause instanceof Error ? cause.message : 'Runtime unavailable.');
+          timer = setTimeout(update, withJitter(delay));
         }
       }
     };

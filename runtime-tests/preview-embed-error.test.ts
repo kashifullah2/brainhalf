@@ -56,6 +56,45 @@ describe('embedPreviewErrorPage (N3)', () => {
   });
 });
 
+describe('Sandbox and deployed-Worker header stripping', () => {
+  it('both paths strip Authorization, internal headers, and platform cookies', () => {
+    const incoming = new Headers({
+      Authorization: 'Bearer platform-secret',
+      Cookie: '__Host-bh_preview=tok; bh_session=sess; app_cookie=keep',
+      'X-Bh-Project': 'project-id',
+      'X-Brainhalf-Internal': 'value',
+      'X-Auth-User-Id': 'forged',
+      'Cf-Access-Jwt-Assertion': 'jwt',
+      'Content-Type': 'application/json',
+      'X-Custom': 'preserved',
+    });
+
+    const sandboxHeaders = new Headers(incoming);
+    for (const key of [...sandboxHeaders.keys()]) if (/^(?:x-bh-|x-brainhalf-|x-auth-|cf-access-)/i.test(key) || key === 'authorization') sandboxHeaders.delete(key);
+    const appCookies = sandboxHeaders.get('cookie')?.split(';').filter(value => !/^(?:__Host-bh_|bh_session)/.test(value.trim())).join(';');
+    sandboxHeaders.delete('cookie'); if (appCookies) sandboxHeaders.set('cookie', appCookies);
+
+    expect(sandboxHeaders.has('authorization')).toBe(false);
+    expect(sandboxHeaders.has('x-bh-project')).toBe(false);
+    expect(sandboxHeaders.has('x-brainhalf-internal')).toBe(false);
+    expect(sandboxHeaders.has('x-auth-user-id')).toBe(false);
+    expect(sandboxHeaders.has('cf-access-jwt-assertion')).toBe(false);
+    expect(sandboxHeaders.get('cookie')).toContain('app_cookie=keep');
+    expect(sandboxHeaders.get('content-type')).toBe('application/json');
+    expect(sandboxHeaders.get('x-custom')).toBe('preserved');
+
+    const deployedHeaders = new Headers(incoming);
+    for (const key of [...deployedHeaders.keys()]) if (/^(?:x-bh-|x-brainhalf-|cf-access-)/i.test(key) || ['authorization', 'cookie'].includes(key)) deployedHeaders.delete(key);
+
+    expect(deployedHeaders.has('authorization')).toBe(false);
+    expect(deployedHeaders.has('cookie')).toBe(false);
+    expect(deployedHeaders.has('x-bh-project')).toBe(false);
+    expect(deployedHeaders.has('cf-access-jwt-assertion')).toBe(false);
+    expect(deployedHeaders.get('content-type')).toBe('application/json');
+    expect(deployedHeaders.get('x-custom')).toBe('preserved');
+  });
+});
+
 describe('/__brainhalf/open with an expired ticket (N3)', () => {
   it('serves the reporting HTML page for embed loads instead of JSON', async () => {
     const object = await project();

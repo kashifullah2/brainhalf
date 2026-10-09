@@ -109,7 +109,7 @@ describe('Legacy URLs and gallery prerender', () => {
     const { html, head } = render('/gallery', { galleryApps: apps });
     expect(html).toContain('Stock Room');
     expect(html).toContain('Inventory tracker for a repair shop.');
-    expect(html).toContain('href="https://app-1.apps.brainhalf.com"');
+    expect(html).toContain('href="/p/app-1/"');
     expect(html).not.toContain('Loading apps…');
     const embedded = head.match(/<script type="application\/json" id="gallery-apps-data">([\s\S]+?)<\/script>/);
     expect(embedded).not.toBeNull();

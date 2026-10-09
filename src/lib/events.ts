@@ -19,7 +19,7 @@ type AppEventMap = {
   'generation-status': GenerationStatusPayload;
   'stop-generation-request': { projectId: string };
   'repair-project-request': { projectId: string; message: string; onAccepted: () => void };
-  'runtime-status': { projectId: string; running: boolean };
+  'runtime-status': { projectId: string; running: boolean; deleted?: boolean };
   'merge-conflict': { sourceName: string; conflicts: string[] };
   'open-project-console': undefined;
   'open-file': { path: string };

@@ -68,7 +68,7 @@ function CardPreview({ appId, appName }: { appId: string; appName: string }) {
       </div>
       {(phase === 'loading' || phase === 'ready') && (
         <iframe
-          src={`https://${encodeURIComponent(appId)}.apps.brainhalf.com`}
+          src={`/p/${encodeURIComponent(appId)}/`}
           className={`gallery-card-preview-frame${phase === 'ready' ? ' is-ready' : ''}`}
           style={{ width: IFRAME_W, height: IFRAME_H, transform: `scale(${scale})` }}
           sandbox="allow-scripts allow-same-origin allow-forms"
@@ -154,7 +154,7 @@ export default function GalleryPage({ initialApps = null }: { initialApps?: Gall
             <p className="gallery-card-meta">{app.remixCount === 1 ? '1 remix' : `${app.remixCount} remixes`}</p>
             {remixError[app.id] && <p role="alert" className="gallery-card-error">{remixError[app.id]}</p>}
             <div className="gallery-card-actions">
-              <a className="gallery-open" href={`https://${encodeURIComponent(app.id)}.apps.brainhalf.com`} target="_blank" rel="noopener noreferrer">Open app <ArrowUpRight size={14} /></a>
+              <a className="gallery-open" href={app.productionUrl || `/p/${encodeURIComponent(app.id)}/`} target="_blank" rel="noopener noreferrer">Open app <ArrowUpRight size={14} /></a>
               {mounted && getToken()
                 ? <button className="gallery-remix" disabled={remixing !== null} onClick={() => void remix(app.id)}>{remixing === app.id ? <Loader2 size={14} className="gallery-spin" /> : <Copy size={14} />} Remix</button>
                 : <a className="gallery-remix" href="/#start-building">Sign in to remix</a>}

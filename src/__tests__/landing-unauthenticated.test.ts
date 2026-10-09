@@ -30,7 +30,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
 
     expect(html).toContain('Get Started');
     expect(html).toContain('Sign in');
-    expect(html).toContain('From a sentence');
+    expect(html).toContain('Describe it.');
     expect(html).toContain('Start building');
   });
 

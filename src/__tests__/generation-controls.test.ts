@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_RELIABILITY, generationContextLimits, generationControls, normalizeReliabilityControls } from '../lib/generation-controls';
-import { boundedConversation } from '../lib/agent-context';
+import { boundedConversation, estimateTokens } from '../lib/agent-context';
 import { AI_TIMEOUT_MS, MAX_OUTPUT_TOKENS } from '../lib/models';
 import { getReliabilityControls, setReliabilityControls } from '../lib/project-growth';
 
@@ -44,11 +44,11 @@ describe('Generation performance controls', () => {
     const history = [...Array.from({ length: 8 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', content: 'old context '.repeat(800) })), { role: 'user', content: prompt }];
     const fast = generationContextLimits(true);
     const balanced = generationContextLimits(false);
-    const selected = boundedConversation(history, prompt, fast.historyChars);
+    const selected = boundedConversation(history, prompt, fast.historyTokens);
     expect(selected[selected.length - 1]?.content).toBe(prompt);
     expect(selected.filter(row => row.content === prompt)).toHaveLength(1);
-    expect(selected.slice(0, -1).reduce((size, row) => size + row.content.length, 0)).toBeLessThanOrEqual(fast.historyChars);
+    expect(selected.slice(0, -1).reduce((size, row) => size + estimateTokens(row.content), 0)).toBeLessThanOrEqual(fast.historyTokens);
     expect(fast.sourceChars).toBeLessThan(balanced.sourceChars);
-    expect(selected.length).toBeLessThan(boundedConversation(history, prompt, balanced.historyChars).length);
+    expect(selected.length).toBeLessThan(boundedConversation(history, prompt, balanced.historyTokens).length);
   });
 });

@@ -46,7 +46,7 @@ function RowPreview({ appId, appName }: { appId: string; appName: string }) {
       {/* Live iframe — fades in when loaded */}
       {(phase === 'loading' || phase === 'ready') && (
         <iframe
-          src={`https://${encodeURIComponent(appId)}.apps.brainhalf.com`}
+          src={`/p/${encodeURIComponent(appId)}/`}
           className={`gallery-row-preview-frame${phase === 'ready' ? ' is-ready' : ''}`}
           sandbox="allow-scripts allow-same-origin allow-forms"
           onLoad={() => setPhase('ready')}
@@ -112,7 +112,7 @@ function GalleryCard({ app }: { app: GalleryApp }) {
   return (
     <a
       className="gallery-row-card"
-      href={`https://${encodeURIComponent(app.id)}.apps.brainhalf.com`}
+      href={app.productionUrl || `/p/${encodeURIComponent(app.id)}/`}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`Open ${app.name} in a new tab`}

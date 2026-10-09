@@ -19,7 +19,9 @@ import ProjectGrowthHub from './ProjectGrowthHub';
 import ConfirmModal from './ConfirmModal';
 import PublicationControls from './PublicationControls';
 import GalleryListing from './GalleryListing';
+import GithubPush from './GithubPush';
 import CustomDomainSettings from './CustomDomainSettings';
+import { getProjects } from '../lib/project-store';
 import { pushUsageEvent, setOnboardingState } from '../lib/project-growth';
 import { plainLanguageCheck } from '../lib/verification-copy';
 import { HOSTED_APP_LIMIT, isHostedLimitError } from '../lib/hosted-limit';
@@ -236,7 +238,8 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
       </>}
       {section === 'Go live' && <>
         <PublicationControls key={projectId} projectId={projectId} files={files} onManage={() => { setEnvironment('production'); setSection('People'); }} onOpenHostedSlots={() => setSection('My live apps')} />
-        <GalleryListing projectId={projectId} />
+        <GalleryListing projectId={projectId} productionUrl={production.status?.productionUrl} />
+        <GithubPush projectId={projectId} projectName={getProjects().find(p => p.id === projectId)?.name || 'my-app'} />
         {fullStack && <section className="settings-card">
           <h3>Get your app ready</h3>
           <p>Three steps before your app is ready for visitors. Everything runs on a safe copy — your live app is never touched.</p>

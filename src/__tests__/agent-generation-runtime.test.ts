@@ -27,7 +27,7 @@ afterEach(() => {
 function createAgent() {
   const database = new DatabaseSync(':memory:');
   databases.push(database);
-  database.exec('CREATE TABLE project_files (path TEXT PRIMARY KEY, content TEXT, updated_at TEXT); CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT)');
+  database.exec('CREATE TABLE project_files (path TEXT PRIMARY KEY, content TEXT, updated_at TEXT); CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT, branch_id TEXT DEFAULT \'main\')');
   database.exec('CREATE TABLE generation_usage (id TEXT PRIMARY KEY, model TEXT NOT NULL, started_at INTEGER NOT NULL, finished_at INTEGER, status TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER)');
   database.exec('ALTER TABLE generation_usage ADD COLUMN first_response_at INTEGER; ALTER TABLE generation_usage ADD COLUMN provider_calls INTEGER');
   for (const statement of BUILDER_SCHEMA) database.exec(statement);
@@ -37,6 +37,7 @@ function createAgent() {
   agent.generationLock = new BusyLock();
   agent.idempotency = new IdempotencyStore();
   agent.connectionUserIds = new Map([['connection', 'owner']]);
+  agent.generationBranchId = 'main';
   agent.pendingAuth = new Map();
   agent.authCache = new Map();
   agent.authorizeConnection = vi.fn(async () => true);
@@ -330,7 +331,7 @@ describe('Agent generation against the installed AI SDK', () => {
     const visible = firstText + '<agent-tools>write_file</agent-tools>' + secondText;
     expect(database.prepare("SELECT content FROM messages WHERE role = 'assistant'").get()?.content).toBe(visible);
     expect(events.filter(event => event.type === 'stream' && !event.chunk.done).map(event => event.chunk.response).join('')).toBe(visible);
-    expect(events.find(event => event.type === 'tool_call')).not.toHaveProperty('args');
+    expect(events.find(event => event.type === 'tool_call')).toHaveProperty('args', { path: '/src/styles.css' });
     expect(events[events.length - 1]).toEqual({ type: 'stream', chunk: { response: '', done: true } });
     expect(events.filter(event => event.type === 'error' || event.type === 'trigger-auto-reply')).toEqual([]);
     expect(agent.backupToR2).toHaveBeenCalled();

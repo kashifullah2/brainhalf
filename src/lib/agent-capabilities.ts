@@ -94,7 +94,7 @@ export function cfImageMessages(messages: Array<{ role: string; content: string 
 }
 
 /** Current Workers AI chat-completions models use the standard function/tool-call envelope. */
-export async function runCapabilityLoop(run: (input: Record<string, unknown>) => Promise<unknown>, messages: Array<Record<string, unknown>>, capabilities: AgentCapabilities, signal: AbortSignal, onUsage: (usage: Record<string, number>) => void, onTool: (name: string) => void = () => {}, onText: (text: string) => void = () => {}, options: { maxSteps?: number } = {}) {
+export async function runCapabilityLoop(run: (input: Record<string, unknown>) => Promise<unknown>, messages: Array<Record<string, unknown>>, capabilities: AgentCapabilities, signal: AbortSignal, onUsage: (usage: Record<string, number>) => void, onTool: (name: string) => void = () => {}, onText: (text: string) => void = () => {}, options: { maxSteps?: number; onToolResult?: (name: string, success: boolean) => void } = {}) {
   const tools = Object.entries(capabilities).map(([name, entry]) => ({ type: 'function', function: { name, description: entry.description, parameters: entry.parameters } }));
   const text: string[] = [];
   const maxSteps = typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps) ? Math.max(1, Math.min(10, Math.floor(options.maxSteps))) : 6;
@@ -126,6 +126,8 @@ export async function runCapabilityLoop(run: (input: Record<string, unknown>) =>
         onTool(call.function.name);
         result = await withAbortSignal(entry.execute(args), signal);
       } catch (error) { signal.throwIfAborted(); result = { error: error instanceof Error ? error.message : 'Tool failed.' }; }
+      const isErr = result && typeof result === 'object' && (('error' in (result as Record<string, unknown>)) || ('success' in (result as Record<string, unknown>) && !(result as any).success));
+      options.onToolResult?.(call.function.name, !isErr);
       const serialized = JSON.stringify(result) ?? 'null';
       return { role: 'tool', tool_call_id: call.id, content: serialized.length <= 26000 ? serialized : JSON.stringify({ error: 'Tool output was too large. Request a smaller result or a narrower line range.', truncated: true }) };
     };

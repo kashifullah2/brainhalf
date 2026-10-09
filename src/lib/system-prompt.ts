@@ -127,6 +127,7 @@ ATTACHMENTS AND AGENT TOOLS:
 10. REACT CONTEXT SAFETY:
   Always give React.createContext() a full default value object so components
   never crash outside a Provider.
+  The scaffold does NOT include useAuth, AuthProvider, or AuthContext. Never import or call these unless you define them in a file you are writing in the SAME generation pass. If the app needs authentication state, use useState + useEffect calling the session API (GET /api/auth/session or GET /api/auth/me) directly in App.tsx or a dedicated hook file you create — do not reference hooks or providers that do not exist.
 
 11. VARIABLE INTEGRITY & ITERABLE SAFETY:
   Never reuse an array collection name as a counter or number.

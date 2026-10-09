@@ -19,33 +19,37 @@ export function contextFileAllowed(path: string): boolean {
   return !isBlockedSecretFile(path) && !/(^|\/)(?:node_modules|\.git|\.wrangler|dist|dist-worker|coverage)(\/|$)/.test(path) && !/(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/.test(path);
 }
 
+/** Approximate token count for mixed code/English text (~3.5 chars per token). */
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 3.5);
+}
+
 /** Summarize file payloads, bound every turn and the total, and append the current prompt once. */
-export function boundedConversation(history: Array<{ role: string; content: string }>, prompt: string, maxChars = 28_000) {
+export function boundedConversation(history: Array<{ role: string; content: string }>, prompt: string, maxTokens = 8_000) {
   const rows = [...history];
   const last = rows[rows.length - 1];
   if (last?.role === 'user' && last?.content.replace(/^\/plan\s+/, '').trim() === prompt.trim()) rows.pop();
-  let remaining = maxChars;
+  let remaining = maxTokens;
   const selected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   for (const row of rows.reverse()) {
     if (!['user', 'assistant', 'ai'].includes(row.role)) continue;
     const role = row.role === 'user' ? 'user' : 'assistant';
     let content = String(row.content || '');
-    // Server-injected continuation turns (stage continues, resume prompts,
-    // truncation retries) are orchestration noise, not user intent. Feeding
-    // them back teaches the model to expect instructions the user never wrote.
     if (role === 'user' && isSystemContinuation(content)) continue;
-    // B1: never feed poisoned turns (empty/placeholder assistant replies from
-    // failed attempts) back to the model — each retry would start more
-    // corrupted than the last.
     if (role === 'assistant' && isEmptyAssistantResponse(content)) continue;
     if (role === 'assistant') content = content
       .replace(/<(?:file|edit)\s+path=["']([^"']+)["']>[\s\S]*?<\/(?:file|edit)>/gi, '[Changed $1; read current source for contents]')
       .replace(/```[\w-]*\r?\n[\s\S]*?```/g, '[Earlier code; inspect current project files]');
-    const limit = Math.min(remaining, 8_000);
-    if (content.length > limit) content = content.slice(0, Math.max(0, limit - 32)) + '\n[Earlier message shortened]';
+    const tokenLimit = Math.min(remaining, 2_300);
+    const tokens = estimateTokens(content);
+    if (tokens > tokenLimit) {
+      const charLimit = Math.floor(tokenLimit * 3.5) - 32;
+      content = content.slice(0, Math.max(0, charLimit)) + '\n[Earlier message shortened]';
+    }
     if (content) selected.push({ role, content });
-    remaining -= content.length;
-    if (remaining < 128) break;
+    remaining -= estimateTokens(content);
+    if (remaining < 36) break;
   }
   return [...selected.reverse(), { role: 'user' as const, content: prompt }];
 }

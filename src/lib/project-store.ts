@@ -80,6 +80,15 @@ export function reconcileOwnedProjects(owned: Project[]): void {
   const current = getProjects();
   const merged = new Map(current.map(project => [project.id, project]));
   for (const project of owned) {
+    // A server-confirmed project that has a localStorage deletion marker but was
+    // NOT deleted in this session was likely a false-positive purge from a prior
+    // session (quota exceeded → status stayed 'draft' → purge fired). Restore it.
+    // We do NOT restore projects that were explicitly deleted this session
+    // (deletedProjectIds tracks those) even if the server hasn't caught up yet.
+    if (projectDeleted(project.id) && !deletedProjectIds.has(project.id)) {
+      try { localStorage.removeItem(projectStorageKey(`deleted:project:${project.id}`)); } catch {}
+      try { localStorage.removeItem(projectStorageKey(`deleted:purge_ts:${project.id}`)); } catch {}
+    }
     if (projectDeleted(project.id)) continue;
     const saved = merged.get(project.id) || legacy.find(saved => saved.id === project.id) || project;
     merged.set(project.id, {
@@ -89,6 +98,10 @@ export function reconcileOwnedProjects(owned: Project[]): void {
   }
   saveProjects([...merged.values()]);
   appEvents.emit('project-account-changed');
+}
+
+export function isProjectClaimed(id: string): boolean {
+  return legacyProjectIds.has(id);
 }
 
 // A hard-coded project id would be shared by every brand-new visitor, and the
@@ -392,11 +405,12 @@ export async function deleteProjectDurably(id: string): Promise<Project[]> {
   const marker = projectStorageKey(`deleted:project:${id}`);
   const legacyMarker = projectStorageKey(`deleted:${id}`);
   const remaining = deleteProject(id);
-  // deleteProject() already writes the deletion marker to localStorage; only
-  // remove the data keys here (the marker write would be a no-op duplicate).
   try {
     localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${id}`));
     localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${id}`));
+    localStorage.removeItem(`brainhalf_files_${id}`);
+    localStorage.removeItem(`brainhalf_messages_${id}`);
+    localStorage.removeItem(`brainhalf_${id}`);
   } catch {
     throw new Error('Server deletion succeeded, but browser cleanup failed. Retry to finish cleanup.');
   }
@@ -411,6 +425,7 @@ export async function deleteProjectDurably(id: string): Promise<Project[]> {
       transaction.objectStore(name).put(true, marker);
       transaction.objectStore(name).put(true, legacyMarker);
       transaction.objectStore(name).delete(key);
+      transaction.objectStore(name).delete(id);
     }
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(new Error('Server deletion succeeded, but browser cleanup failed. Retry to finish cleanup.'));
@@ -418,6 +433,57 @@ export async function deleteProjectDurably(id: string): Promise<Project[]> {
   });
   if (scope !== accountScope) throw new Error('Account changed during deletion');
   return remaining;
+}
+
+/**
+ * Soft-delete used by purgeEmptyDrafts. Removes the project from the list and
+ * clears localStorage caches, but preserves IndexedDB file/message data for 7
+ * days so recoverProjectFiles() can still return them. This is the only safe
+ * way to purge: a false-positive hard-delete is unrecoverable.
+ */
+export function softDeleteProject(id: string): Project[] {
+  const wasActive = getActiveProjectId() === id;
+  deletedProjectIds.add(id);
+  projectSubmissionKeys.delete(id);
+  try { localStorage.setItem(projectStorageKey(`deleted:project:${id}`), 'true'); } catch {}
+  try { localStorage.setItem(projectStorageKey(`deleted:purge_ts:${id}`), String(Date.now())); } catch {}
+  let projects = getProjects().filter(p => p.id !== id);
+  if (projects.length === 0) projects = [seedProject()];
+  saveProjects(projects);
+  delete memoryCache[`files_${id}`];
+  delete memoryCache[`messages_${id}`];
+  markStorageWrite(`files_${id}`);
+  markStorageWrite(`messages_${id}`);
+  try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${id}`)); } catch {}
+  try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${id}`)); } catch {}
+  if (wasActive) setActiveProjectId(projects[0].id);
+  return projects;
+}
+
+export const PURGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Flush IDB data for projects that were soft-deleted more than 7 days ago.
+ * Called lazily during purgeEmptyDrafts.
+ */
+export async function flushExpiredPurges(): Promise<void> {
+  if (!accountScope.accountId) return;
+  const now = Date.now();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.includes(':deleted:purge_ts:')) continue;
+    const ts = Number(localStorage.getItem(key));
+    if (!ts || now - ts < PURGE_RETENTION_MS) continue;
+    const projectId = key.slice(key.lastIndexOf(':deleted:purge_ts:') + ':deleted:purge_ts:'.length);
+    if (!projectId) continue;
+    if (!projectDeleted(projectId)) {
+      try { localStorage.removeItem(key); } catch {}
+      continue;
+    }
+    try { localStorage.removeItem(key); } catch {}
+    void idbDelete('files', projectId);
+    void idbDelete('messages', projectId);
+  }
 }
 
 const PROJECT_FILES_PREFIX = 'brainhalf_files_';
@@ -751,6 +817,25 @@ export async function getProjectMessagesAsync(projectId: string): Promise<any[] 
   return null;
 }
 
+/**
+ * Recovery export: read project files from IndexedDB even if the project has a
+ * local deletion marker or the server returns 410. This bypasses the normal
+ * projectDeleted() guard so the user can salvage work.
+ */
+export async function recoverProjectFiles(projectId: string): Promise<Record<string, string> | null> {
+  if (!accountScope.accountId) return null;
+  const scopedKey = projectStorageKey(projectId);
+  const result = await readIdbKey<Record<string, string>>('files', scopedKey);
+  if (result && typeof result === 'object' && !Array.isArray(result)) return result;
+  const legacy = await readIdbKey<Record<string, string>>('files', projectId);
+  if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) return legacy;
+  try {
+    const raw = localStorage.getItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`));
+    if (raw) { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed; }
+  } catch {}
+  return null;
+}
+
 export function getProjectDisplayTitle(proj: Project): string {
   if (!proj) return 'Untitled Project';
 
@@ -786,15 +871,43 @@ export function saveProjectMessages(projectId: string, messages: any[]) {
   // 1. Asynchronously persist to high-capacity IndexedDB
   void idbSet('messages', projectId, clean);
 
-  // 2. Synchronously cache to localStorage if within quota
+  // 2. Synchronously cache to localStorage if within quota; on failure, evict
+  //    other projects' caches to make room and retry before giving up.
   try {
     if (!localStorageWriteFailed && typeof localStorage !== 'undefined') {
       localStorage.setItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`), JSON.stringify(clean));
     }
   } catch (e) {
-    localStorageWriteFailed = true;
-    try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`)); } catch {}
-    console.warn('localStorage unavailable for messages; IndexedDB persistence requested:', e);
+    let retryOk = false;
+    try {
+      // Evict other projects' message and file caches (oldest first) to free space.
+      const others = getProjects().filter(p => p.id !== projectId).sort((a, b) => a.updatedAt - b.updatedAt);
+      for (const p of others) {
+        try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${p.id}`)); } catch {}
+        try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${p.id}`)); } catch {}
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`), JSON.stringify(clean));
+        retryOk = true;
+      }
+    } catch {}
+    if (!retryOk) {
+      localStorageWriteFailed = true;
+      try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`)); } catch {}
+      console.warn('localStorage unavailable for messages even after eviction; IndexedDB persistence requested:', e);
+    }
+  }
+
+  // 3. Once a project has real messages, promote it out of 'draft' status so
+  //    isEmptyDraftProject() cannot false-positive on the next session reload.
+  //    Messages may be in IndexedDB only (quota exceeded) — the status lives in
+  //    the small projects-list write which is far less likely to fail.
+  if (clean.length > 0) {
+    const projects = getProjects();
+    const proj = projects.find(p => p.id === projectId);
+    if (proj?.status === 'draft') {
+      saveProjects(projects.map(p => p.id === projectId ? { ...p, status: 'ready' } : p));
+    }
   }
 }
 

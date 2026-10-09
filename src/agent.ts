@@ -16,7 +16,7 @@ import { createTypeScriptStarter } from './lib/project-starters';
 import { prepareModuleSource, buildTranspileErrorModule, findDanglingImports } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
-import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, type AllowedModel } from './lib/models';
+import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, modelSupportsThinking, type AllowedModel } from './lib/models';
 import { safeFetchText } from './lib/ssrf';
 import { validateRuntimeProviders } from './lib/runtime-config';
 import { BEDROCK_ALIASES, createBedrockClient, providerCredentials, providerModel, selectModelTransport, type ProviderLanguageModel } from './lib/provider-clients';
@@ -33,7 +33,7 @@ import { isPublicPreviewFile, isPublicPreviewRead, PREVIEW_ACCESS_HEADER } from 
 import { isolatedPreviewHtml, previewFiles } from './lib/preview-isolation';
 import { isConversationalPrompt, isDestructivePrompt, isQuestionPrompt, isAmbiguousPrompt, shouldAutoPlannerMode, shouldUseStagedPipeline } from './lib/prompt-mode';
 import { isBlockedSecretFile } from './lib/secret-files';
-import { boundedConversation, contextFileAllowed, fileContextRank } from './lib/agent-context';
+import { boundedConversation, contextFileAllowed, estimateTokens, fileContextRank } from './lib/agent-context';
 import { generationControls, generationContextLimits } from './lib/generation-controls';
 import { needsBackend, hostingAvailability } from './lib/generation-target';
 import { managedAppScaffold } from './lib/managed-app-scaffold';
@@ -118,6 +118,9 @@ type ClientMessage = {
   limit?: unknown;
   offset?: unknown;
   revision?: unknown;
+  name?: string;
+  branchId?: string;
+  messageIndex?: number;
 };
 
 /**
@@ -148,6 +151,9 @@ export function selectForwardableHeaders(headers: Headers, store?: InMemoryDataS
   return out;
 }
 
+export { applyPreviewCappedHeader } from './lib/preview-store-utils';
+import { applyPreviewCappedHeader, evaluateStoreCaps, orphanedTableNames, computeNextHydratedNames } from './lib/preview-store-utils';
+
 // The error card, the preview index.html, the harness module and the starter
 // files are large string literals that never touch `this`. They live in
 // lib/preview-templates.ts so this file stays a class rather than a template
@@ -175,6 +181,7 @@ const AUTO_RETRY_FULL_APP_MARKER = '[AUTO-RETRY-FULL-APP]';
 const COMPLETENESS_REPAIR_MARKER = '[AUTO-FIX] The build finished but these files are imported by the app and were never written:';
 /** Prefix of the [AUTO-FIX] prompt for syntax-discarded files. */
 const SYNTAX_REPAIR_MARKER = '[AUTO-FIX] These files were discarded because of syntax errors';
+const PHANTOM_HOOK_REPAIR_MARKER = '[AUTO-FIX] These files use useAuth/AuthProvider/AuthContext without defining them:';
 const MIN_FULL_APP_RESPONSE_CHARS = 260;
 const MIN_FULL_APP_RESPONSE_LINES = 5;
 
@@ -412,6 +419,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * between batches; this is the last line of defense before the user sees the app.
    */
   private finalCompletenessRepairAttempts = 0;
+  private phantomHookRepairAttempts = 0;
   /**
    * P0-4: when a repair/retry turn is queued at the end of a generation, the
    * parent turn must not be recorded as completed. This holds the parent job
@@ -474,6 +482,19 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * /api/users in project A would be readable as GET /api/users in project B.
    */
   private readonly previewStore = new InMemoryDataStore();
+  // Tracks whether the store has been loaded from SQLite since last wake.
+  // Reset to false when the DO instance is created (constructor or hibernation wake).
+  private previewStoreLoaded = false;
+  // true when the last persistPreviewStore() call was skipped due to the row or
+  // byte cap; cleared when a later persist succeeds. Exposed to clients via the
+  // X-BH-Preview-Capped response header and the preview_store_capped WS event.
+  private previewStoreCapped = false;
+  // 'rows' when row cap exceeded, 'bytes' when any table exceeded the byte cap, null when not capped.
+  private previewCappedReason: 'rows' | 'bytes' | null = null;
+  // Tables successfully loaded from SQLite in the current instance lifetime.
+  // Used by persistPreviewStore to delete DB rows for tables that have since
+  // been removed from memory (e.g. app reset after a schema change).
+  private hydratedTableNames = new Set<string>();
 
   /**
    * Per-connection authenticated user ids. The Worker verifies the session token
@@ -482,6 +503,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * gate, so we refuse it. Every entry point fails closed.
    */
   private connectionUserIds: Map<string, string> = new Map();
+  private generationBranchId: string = 'main';
 
   /**
    * Runs a statement. Accepts a tagged template (the usual case) or a plain
@@ -522,6 +544,136 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     } catch (e) {
       console.warn('Schema migration note:', e);
     }
+  }
+
+  /**
+   * Lazily hydrates previewStore from SQLite on the first preview /api/* request
+   * after a DO wake. Subsequent calls within the same instance are no-ops.
+   */
+  private hydratePreviewStore(): void {
+    if (this.previewStoreLoaded) return;
+    this.previewStoreLoaded = true;
+    this.hydratedTableNames = new Set();
+    let rows: Array<{ table_name: string; rows_json: string; next_id: number }>;
+    try {
+      rows = this.runSql<{ table_name: string; rows_json: string; next_id: number }>`SELECT table_name, rows_json, next_id FROM preview_store`;
+    } catch (e) {
+      // "no such table" is expected on pre-v15 deploys or when a preview request
+      // arrives before ensureSchema() runs. Any other error is unexpected.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/no such table/i.test(msg)) console.warn('Preview store could not be read:', msg);
+      return;
+    }
+    for (const row of rows) {
+      try {
+        const items: unknown = JSON.parse(row.rows_json);
+        if (!Array.isArray(items)) throw new Error('rows_json is not an array');
+        this.previewStore.loadTable(row.table_name, items, row.next_id);
+        this.hydratedTableNames.add(row.table_name.toLowerCase());
+      } catch (e) {
+        // Log but do NOT load an empty table in place of the corrupt one.
+        // persistPreviewStore uses INSERT OR REPLACE, so the corrupt DB row is
+        // preserved until a real mutation creates the same table with valid data.
+        // Corrupt tables are intentionally NOT added to hydratedTableNames so
+        // they are never deleted from the DB by the orphan-sweep below.
+        console.warn(`Preview table "${row.table_name}" has corrupt data — skipped:`, e instanceof Error ? e.message : e);
+      }
+    }
+    // Re-evaluate caps against the freshly loaded data so previewStoreCapped is
+    // accurate immediately after wake — before the first mutating request arrives.
+    const capReason = evaluateStoreCaps(
+      this.previewStore.serialize(),
+      ChatAgent.MAX_PREVIEW_PERSIST_ROWS,
+      ChatAgent.MAX_PREVIEW_TABLE_BYTES,
+    );
+    if (capReason !== null) {
+      this.previewStoreCapped = true;
+      this.previewCappedReason = capReason;
+    }
+  }
+
+  /**
+   * Persists the current previewStore snapshot to SQLite after every mutating
+   * preview API call (POST/PUT/PATCH/DELETE). GET requests skip this to avoid
+   * unnecessary writes — reads cannot change store state.
+   *
+   * Write-through trade-off: persisting after every request adds one
+   * synchronous SQLite transaction per mutating call. The alternative — a
+   * debounce timer — risks losing the last mutations if the DO hibernates
+   * before the timer fires. For a DO that can hibernate the moment a request
+   * completes, write-through is the only safe choice.
+   *
+   * Size caps: if total rows exceed MAX_PREVIEW_PERSIST_ROWS the whole persist
+   * is skipped. If any single table's JSON blob exceeds MAX_PREVIEW_TABLE_BYTES
+   * that table is skipped individually. Both cases set previewStoreCapped so the
+   * caller can add X-BH-Preview-Capped to the response. The flag is cleared the
+   * next time a persist succeeds within both caps.
+   *
+   * Uses INSERT OR REPLACE (not DELETE+INSERT) so tables that failed hydration
+   * due to corrupt rows_json are not overwritten until a real mutation touches
+   * that table. If preview_store does not exist yet (request arrived before
+   * ensureSchema ran), the INSERT throws and the outer catch handles it silently.
+   */
+  private static readonly MAX_PREVIEW_PERSIST_ROWS = 5_000;
+  // 256 KB per table JSON blob; prevents one table with enormous row objects
+  // from filling storage even when total row count is below MAX_PREVIEW_PERSIST_ROWS.
+  // Per-table skip (not all-or-nothing) because tables are typically independent
+  // REST resources — one oversized table should not block others from persisting.
+  private static readonly MAX_PREVIEW_TABLE_BYTES = 256 * 1024;
+  private persistPreviewStore(): void {
+    try {
+      const tables = this.previewStore.serialize();
+      const totalRows = tables.reduce((sum, t) => sum + t.rows.length, 0);
+      if (totalRows > ChatAgent.MAX_PREVIEW_PERSIST_ROWS) {
+        if (!this.previewStoreCapped || this.previewCappedReason !== 'rows') {
+          console.warn(`Preview store row cap exceeded (${totalRows}/${ChatAgent.MAX_PREVIEW_PERSIST_ROWS}); data will not survive hibernation`);
+          this.broadcastPreviewCapped(true, 'rows');
+        }
+        this.previewStoreCapped = true;
+        this.previewCappedReason = 'rows';
+        return;
+      }
+      const inMemoryNames = new Set(tables.map(t => t.name.toLowerCase()));
+      const byteCappedNames = new Set<string>();
+      this.transact(() => {
+        for (const { name, rows, nextId } of tables) {
+          const blob = JSON.stringify(rows);
+          if (blob.length > ChatAgent.MAX_PREVIEW_TABLE_BYTES) {
+            if (!this.previewStoreCapped) {
+              console.warn(`Preview table "${name}" exceeds byte cap (${blob.length}/${ChatAgent.MAX_PREVIEW_TABLE_BYTES} bytes); not persisted`);
+            }
+            byteCappedNames.add(name.toLowerCase());
+            continue;
+          }
+          // INSERT OR REPLACE so tables that failed hydration (corrupt rows_json)
+          // are not overwritten until a real mutation touches the same table name.
+          this.runSql`INSERT OR REPLACE INTO preview_store (table_name, rows_json, next_id) VALUES (${name}, ${blob}, ${nextId})`;
+        }
+        // Remove rows for tables that were successfully hydrated but are no longer
+        // in memory (e.g. app regenerated with a different schema, or after reset).
+        // Tables with corrupt rows_json are not in hydratedTableNames and are
+        // therefore preserved — their stale DB row remains until a real mutation.
+        for (const name of orphanedTableNames(this.hydratedTableNames, inMemoryNames)) {
+          this.runSql`DELETE FROM preview_store WHERE table_name = ${name}`;
+        }
+      });
+      this.hydratedTableNames = computeNextHydratedNames(this.hydratedTableNames, inMemoryNames, byteCappedNames);
+      const byteCapped = byteCappedNames.size > 0;
+      const newReason = byteCapped ? 'bytes' as const : null;
+      const stateChanged = byteCapped !== this.previewStoreCapped || (byteCapped && newReason !== this.previewCappedReason);
+      if (stateChanged) this.broadcastPreviewCapped(byteCapped, byteCapped ? 'bytes' : undefined);
+      this.previewStoreCapped = byteCapped;
+      this.previewCappedReason = newReason;
+    } catch { /* auxiliary; preview data is best-effort */ }
+  }
+
+  private broadcastPreviewCapped(capped: boolean, reason?: 'rows' | 'bytes'): void {
+    try {
+      const msg = JSON.stringify({ type: 'preview_store_capped', capped, ...(capped && reason ? { reason } : {}) });
+      for (const conn of this.getConnections()) {
+        try { conn.send(msg); } catch { /* stale connection */ }
+      }
+    } catch { /* auxiliary */ }
   }
 
   private builderService(ownerId: string) {
@@ -770,11 +922,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   private saveTurn(prompt: string, response: string) {
     if (!prompt || !response) return;
     try {
-      // One transaction: a prompt stored without its response (or vice versa)
-      // corrupts the conversation context on the next read.
+      const branch = this.generationBranchId;
       this.transact(() => {
-        this.runSql`INSERT INTO messages (role, content) VALUES ('user', ${prompt});`;
-        this.runSql`INSERT INTO messages (role, content) VALUES ('assistant', ${response});`;
+        this.runSql`INSERT INTO messages (role, content, branch_id) VALUES ('user', ${prompt}, ${branch});`;
+        this.runSql`INSERT INTO messages (role, content, branch_id) VALUES ('assistant', ${response}, ${branch});`;
       });
     } catch (e) {
       console.warn('Failed saving turn to SQLite:', e);
@@ -803,6 +954,20 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    */
   private senderUserId(connection: Connection): string | undefined {
     return this.connectionUserIds?.get(connection.id);
+  }
+
+  private getConnectionBranch(connection: Connection): string {
+    try {
+      const state = connection.state as { branchId?: string } | null;
+      return state?.branchId || 'main';
+    } catch { return 'main'; }
+  }
+
+  private setConnectionBranch(connection: Connection, branchId: string): void {
+    try {
+      const state = (connection.state as Record<string, unknown>) || {};
+      connection.setState({ ...state, branchId });
+    } catch (e) { console.warn('Failed to set branch state:', e); }
   }
 
   private backupToR2(ownerId?: string): Promise<void> {
@@ -929,7 +1094,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       try { connection.close(4401, 'Reconnect to verify your session'); } catch {}
       return;
     }
-    try { connection.setState({ userId, sessionHash }); } catch (e) { console.warn('Failed to persist connection state:', e instanceof Error ? e.message : e); }
+    try { connection.setState({ userId, sessionHash, branchId: 'main' }); } catch (e) { console.warn('Failed to persist connection state:', e instanceof Error ? e.message : e); }
     // Skip authorizeConnection here: the worker's onBeforeConnect already
     // verified session + ownership milliseconds ago. The per-message check
     // in onMessage still runs on every subsequent message, so logout and
@@ -991,19 +1156,20 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       }
     } catch { /* resumable state is auxiliary */ }
     try {
-      const totalRows = [...this.sql`SELECT COUNT(*) as count FROM messages`];
+      const branchId = this.getConnectionBranch(connection);
+      const totalRows = [...this.sql`SELECT COUNT(*) as count FROM messages WHERE branch_id = ${branchId}`];
       const total = Number(totalRows[0]?.count ?? 0);
       const rows = total > HISTORY_ON_CONNECT
-        ? [...this.sql`SELECT role, content FROM messages ORDER BY id DESC LIMIT ${HISTORY_ON_CONNECT}`].reverse()
-        : [...this.sql`SELECT role, content FROM messages ORDER BY id ASC`];
+        ? [...this.sql`SELECT role, content FROM messages WHERE branch_id = ${branchId} ORDER BY id DESC LIMIT ${HISTORY_ON_CONNECT}`].reverse()
+        : [...this.sql`SELECT role, content FROM messages WHERE branch_id = ${branchId} ORDER BY id ASC`];
       const transcript = rows.map(row => ({ ...row,
         content: row.role === 'assistant' ? formatToolTranscript(String(row.content || '')) : row.content,
         internal: row.role === 'user' && isSystemContinuation(String(row.content || '')),
       }));
-      connection.send(JSON.stringify({ type: 'history', data: transcript, total, truncated: total > rows.length, workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot(), resumableJob }));
+      connection.send(JSON.stringify({ type: 'history', data: transcript, total, truncated: total > rows.length, workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot(), resumableJob, activeBranch: branchId, previewStoreCapped: this.previewStoreCapped, previewCappedReason: this.previewCappedReason }));
     } catch (e) {
       console.warn('Failed retrieving history onConnect:', e);
-      connection.send(JSON.stringify({ type: 'history', data: [], workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot(), resumableJob }));
+      try { connection.send(JSON.stringify({ type: 'history', data: [], workspaceSync: 'snapshot-v2', workspaceEmpty, generation: this.generationSnapshot(), resumableJob, activeBranch: 'main', previewStoreCapped: this.previewStoreCapped, previewCappedReason: this.previewCappedReason })); } catch (e2) { noteSendFailure(e2); }
     }
     try { connection.send(JSON.stringify({ type: 'files_changed', revision: this.getFilesRevision() })); } catch (e) { noteSendFailure(e); }
   }
@@ -1142,6 +1308,55 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       }
     } catch (err) {
       console.warn('Final completeness check failed:', err instanceof Error ? err.message : String(err));
+    }
+    return false;
+  }
+
+  /**
+   * Post-generation check: detect files that call useAuth, AuthProvider, or
+   * AuthContext without any file in the project defining them. When found,
+   * queue a repair turn that replaces the phantom references with direct
+   * session-API calls.
+   */
+  private verifyNoPhantomAuthHooks(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
+    try {
+      const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
+      const allFiles = new Map<string, string>();
+      for (const r of rows || []) allFiles.set(r.path, r.content || '');
+      if (allFiles.size === 0) return false;
+      const phantomPattern = /\buseAuth\b|\bAuthProvider\b|\bAuthContext\b/;
+      const definitionPattern = /(?:function\s+useAuth|const\s+useAuth|export\s+(?:default\s+)?(?:function|const)\s+(?:useAuth|AuthProvider)|createContext.*Auth|AuthContext\s*=\s*createContext)/;
+      let anyDefines = false;
+      const consumers: string[] = [];
+      for (const [path, content] of allFiles) {
+        if (!/\.(?:[jt]sx?)$/.test(path)) continue;
+        const stripped = content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+        if (definitionPattern.test(stripped)) { anyDefines = true; break; }
+        if (phantomPattern.test(stripped)) consumers.push(path);
+      }
+      if (anyDefines || consumers.length === 0) return false;
+      if (this.phantomHookRepairAttempts >= 1) {
+        try {
+          connection.send(JSON.stringify({
+            type: 'error',
+            error: `${consumers.length} file(s) reference useAuth/AuthProvider/AuthContext but no file defines them (${consumers.slice(0, 3).join(', ')}). Ask the builder to fix this.`,
+          }));
+        } catch {}
+        return false;
+      }
+      this.phantomHookRepairAttempts++;
+      const list = consumers.slice(0, 8).map(p => `- ${p}`).join('\n');
+      const repairPrompt =
+        `${PHANTOM_HOOK_REPAIR_MARKER}\n${list}\n\n` +
+        `These files call useAuth, AuthProvider, or AuthContext but no file in the project defines them — the app will crash. ` +
+        `Replace every phantom reference: use useState + useEffect calling the session API (GET /api/auth/session) directly, ` +
+        `or create and export a real useAuth hook in a new /src/hooks/useAuth.tsx file that all consumers import. ` +
+        `Use targeted <edit> blocks; do not rewrite entire files.`;
+      try { connection.send(JSON.stringify({ type: 'generation_notice', message: `Found ${consumers.length} file(s) using an undefined auth hook. Repairing…` })); } catch {}
+      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch {} });
+      return true;
+    } catch (err) {
+      console.warn('Phantom auth hook check failed:', err instanceof Error ? err.message : String(err));
     }
     return false;
   }
@@ -1300,10 +1515,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
       if (data.type === 'clear') {
         try {
-          this.runSql`DELETE FROM messages;`;
-          const clearedMsg = JSON.stringify({ type: 'history', data: [] });
+          const branchId = this.getConnectionBranch(connection);
+          this.runSql`DELETE FROM messages WHERE branch_id = ${branchId};`;
+          const clearedMsg = JSON.stringify({ type: 'history', data: [], clearedBranch: branchId });
           try { connection.send(clearedMsg); } catch (e) { noteSendFailure(e); }
-          try { this.broadcast(clearedMsg); } catch (e) { noteSendFailure(e); }
+          try { this.broadcast(clearedMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
         } catch (e) {
           console.error('Error clearing history:', e);
         }
@@ -1325,14 +1541,106 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               .filter(m => m.role === 'user' || !isEmptyAssistantResponse(m.content))
               .map(m => ({ role: m.role === 'ai' ? 'assistant' : m.role, content: String(m.content).slice(0, 200_000) }))
           );
+          const branchId = this.getConnectionBranch(connection);
           this.transact(() => {
-            this.runSql`DELETE FROM messages;`;
+            this.runSql`DELETE FROM messages WHERE branch_id = ${branchId};`;
             for (const msg of messages) {
-              this.runSql`INSERT INTO messages (role, content) VALUES (${msg.role}, ${msg.content});`;
+              this.runSql`INSERT INTO messages (role, content, branch_id) VALUES (${msg.role}, ${msg.content}, ${branchId});`;
             }
           });
         } catch (e) {
           console.error('Error rewriting history:', e);
+        }
+        return;
+      }
+
+      if (data.type === 'fork_conversation') {
+        try {
+          const currentBranch = this.getConnectionBranch(connection);
+          const forkName = typeof data.name === 'string' ? data.name.slice(0, 100) : `Fork ${Date.now()}`;
+          const forkId = `branch_${crypto.randomUUID()}`;
+          const currentMessages = this.runSql<{ role: string; content: string }>`SELECT role, content FROM messages WHERE branch_id = ${currentBranch} ORDER BY id ASC`;
+          const forkPoint = typeof data.messageIndex === 'number' ? Math.max(0, Math.min(data.messageIndex, currentMessages.length)) : currentMessages.length;
+          this.transact(() => {
+            this.runSql`INSERT INTO conversation_branches (id, name, parent_branch_id, fork_message_id, created_at) VALUES (${forkId}, ${forkName}, ${currentBranch}, ${forkPoint}, ${Date.now()})`;
+            for (let i = 0; i < forkPoint; i++) {
+              this.runSql`INSERT INTO messages (role, content, branch_id) VALUES (${currentMessages[i].role}, ${currentMessages[i].content}, ${forkId})`;
+            }
+          });
+          this.setConnectionBranch(connection, forkId);
+          const evt = JSON.stringify({ type: 'branch_created', branchId: forkId, name: forkName, messageCount: forkPoint });
+          try { connection.send(evt); } catch (e) { noteSendFailure(e); }
+        } catch (e) {
+          try { connection.send(JSON.stringify({ type: 'error', error: 'Failed to fork conversation' })); } catch {}
+          console.error('Fork conversation error:', e);
+        }
+        return;
+      }
+
+      if (data.type === 'switch_branch' && typeof data.branchId === 'string') {
+        try {
+          const branchExists = this.runSql`SELECT id FROM conversation_branches WHERE id = ${data.branchId}`;
+          if (!branchExists.length) {
+            try { connection.send(JSON.stringify({ type: 'error', error: 'Branch not found' })); } catch {}
+            return;
+          }
+          this.setConnectionBranch(connection, data.branchId);
+          const totalRows = this.runSql<{ count: number }>`SELECT COUNT(*) as count FROM messages WHERE branch_id = ${data.branchId}`;
+          const total = Number(totalRows[0]?.count ?? 0);
+          const branchMessages = total > HISTORY_ON_CONNECT
+            ? this.runSql<{ role: string; content: string }>`SELECT role, content FROM messages WHERE branch_id = ${data.branchId} ORDER BY id DESC LIMIT ${HISTORY_ON_CONNECT}`.reverse()
+            : this.runSql<{ role: string; content: string }>`SELECT role, content FROM messages WHERE branch_id = ${data.branchId} ORDER BY id ASC`;
+          const transcript = branchMessages.map(row => ({
+            ...row,
+            content: row.role === 'assistant' ? formatToolTranscript(String(row.content || '')) : row.content,
+            internal: row.role === 'user' && isSystemContinuation(String(row.content || '')),
+          }));
+          connection.send(JSON.stringify({ type: 'branch_switched', branchId: data.branchId, history: transcript, total, truncated: total > branchMessages.length }));
+        } catch (e) {
+          console.error('Switch branch error:', e);
+          try { connection.send(JSON.stringify({ type: 'error', error: 'Failed to switch branch' })); } catch {}
+        }
+        return;
+      }
+
+      if (data.type === 'list_branches') {
+        try {
+          const branches = this.runSql<{ id: string; name: string; parent_branch_id: string | null; created_at: number; messageCount: number }>`SELECT b.id, b.name, b.parent_branch_id, b.created_at, COUNT(m.id) as messageCount FROM conversation_branches b LEFT JOIN messages m ON m.branch_id = b.id GROUP BY b.id ORDER BY b.created_at ASC`;
+          const result = branches.map(b => ({ ...b, messageCount: Number(b.messageCount ?? 0) }));
+          connection.send(JSON.stringify({ type: 'branches_list', branches: result, activeBranch: this.getConnectionBranch(connection) }));
+        } catch (e) {
+          console.error('List branches error:', e);
+          try { connection.send(JSON.stringify({ type: 'error', error: 'Failed to list branches' })); } catch {}
+        }
+        return;
+      }
+
+      if (data.type === 'delete_branch' && typeof data.branchId === 'string') {
+        try {
+          if (data.branchId === 'main') {
+            try { connection.send(JSON.stringify({ type: 'error', error: 'Cannot delete the main branch' })); } catch {}
+            return;
+          }
+          if (this.generationLock?.isHeld && this.generationBranchId === data.branchId) {
+            try { connection.send(JSON.stringify({ type: 'error', error: 'Cannot delete a branch while it has an active generation' })); } catch {}
+            return;
+          }
+          this.transact(() => {
+            this.runSql`DELETE FROM messages WHERE branch_id = ${data.branchId}`;
+            this.runSql`UPDATE conversation_branches SET parent_branch_id = NULL WHERE parent_branch_id = ${data.branchId}`;
+            this.runSql`DELETE FROM conversation_branches WHERE id = ${data.branchId}`;
+          });
+          for (const conn of this.getConnections()) {
+            if (this.getConnectionBranch(conn) === data.branchId) {
+              this.setConnectionBranch(conn, 'main');
+            }
+          }
+          const evt = JSON.stringify({ type: 'branch_deleted', branchId: data.branchId });
+          try { connection.send(evt); } catch (e) { noteSendFailure(e); }
+          try { this.broadcast(evt, [connection.id]); } catch (e) { noteSendFailure(e); }
+        } catch (e) {
+          console.error('Delete branch error:', e);
+          try { connection.send(JSON.stringify({ type: 'error', error: 'Failed to delete branch' })); } catch {}
         }
         return;
       }
@@ -1662,6 +1970,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       let generationStarted = false;
       try {
         lockResult = await this.generationLock.run(`generate:${actualPrompt.slice(0, 60)}`, async () => {
+          this.generationBranchId = this.getConnectionBranch(connection);
           const epoch = this.writeEpoch.begin();
           if (!plannerMode) {
             try { this.saveCheckpoint('Before agent changes'); }
@@ -1828,7 +2137,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
     // server recognizes via its own continuation prompts.
-    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; this.finalCompletenessRepairAttempts = 0; }
+    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; this.finalCompletenessRepairAttempts = 0; this.phantomHookRepairAttempts = 0; }
     const controls = generationControls(data);
     const generationTimeoutMs = controls.timeoutMs;
     const maxSteps = controls.maxSteps;
@@ -1899,6 +2208,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       clearInterval(accessTimer);
       this.currentAbortController = null;
       this.activeAccounting = null;
+      try { this.generationJobs().interrupt(accounting.id, 'The build was stopped.'); } catch { /* auxiliary */ }
+      if (this.activeJobId === accounting.id) this.activeJobId = null;
       try { this.runSql`UPDATE generation_usage SET finished_at=${Date.now()},status=${'stopped'} WHERE id=${accounting.id}`; } catch (e) { console.warn('Failed to record generation stop:', e); }
       if (this.activeGeneration?.epoch === epoch) this.activeGeneration = null;
       return;
@@ -1925,12 +2236,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       await Promise.all([
         budget.startAndReserve(maxReserveTokens),
         Promise.resolve().then(() => {
-          try { rawHistory = this.runSql<{ role: string; content: string }>`SELECT role, content FROM messages ORDER BY id DESC LIMIT 12`.reverse(); }
+          try { const branch = this.generationBranchId; rawHistory = this.runSql<{ role: string; content: string }>`SELECT role, content FROM messages WHERE branch_id = ${branch} ORDER BY id DESC LIMIT 12`.reverse(); }
           catch { console.warn('Could not load conversation context'); }
         }),
       ]);
       this.activeBudget = budget;
-      const inputMessages = boundedConversation(rawHistory, actualPrompt, generationContextLimits(controls.fastMode).historyChars);
+      const inputMessages = boundedConversation(rawHistory, actualPrompt, generationContextLimits(controls.fastMode).historyTokens);
       await tracing.enterSpan('invoke_agent', async (invokeSpan) => {
         invokeSpan.setAttribute('gen_ai.operation.name', 'invoke_agent');
 
@@ -2023,11 +2334,50 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           }, plannerMode);
           const vision = acceptsImageInput(requestedModel);
           systemPrompt += extensions.context;
-          if (!vision && extensions.attachments.some(file => file.mime.startsWith('image/'))) systemPrompt += '\nThis model has no verified image-input support. You can use the original image in the app with use_attachment, but cannot see or describe its pixels. For visual analysis ask the user to select Kimi K2.7 Code or Claude Sonnet 6; never invent image content.';
+          if (!vision && extensions.attachments.some(file => file.mime.startsWith('image/'))) {
+            const ai = this.env?.AI;
+            if (ai) {
+              const imageFiles = extensions.attachments.filter(f => f.mime.startsWith('image/')).slice(0, 3);
+              const descriptions: string[] = [];
+              for (const img of imageFiles) {
+                if (abortController.signal.aborted) break;
+                try {
+                  const visionCall = ai.run('@cf/meta/llama-4-scout-17b-16e-instruct' as any, { messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this image concisely in 2-3 sentences. Focus on colors, layout, content, and any text visible.' }, { type: 'image_url', image_url: { url: img.dataUrl } }] }], max_tokens: 300 });
+                  visionCall.catch(() => {});
+                  let visionTimer: ReturnType<typeof setTimeout> | undefined;
+                  const visionResult = await withAbortSignal<any>(Promise.race([visionCall, new Promise((_, reject) => { visionTimer = setTimeout(() => reject(new Error('Vision model timed out')), 15_000); })]), abortController.signal).finally(() => clearTimeout(visionTimer));
+                  const desc = visionResult?.response || visionResult?.choices?.[0]?.message?.content || '';
+                  const safeName = String(img.name || 'image').replace(/["\n\r]/g, '_');
+                  if (desc) descriptions.push(`[Image "${safeName}"]: ${desc}`);
+                  else descriptions.push(`[Image "${safeName}"]: (description unavailable)`);
+                } catch {
+                  const safeName = String(img.name || 'image').replace(/["\n\r]/g, '_');
+                  descriptions.push(`[Image "${safeName}"]: (description unavailable)`);
+                }
+              }
+              systemPrompt += `\nImage descriptions from a vision model (the images themselves are not visible to you, but you can use them in the app via use_attachment):\n${descriptions.join('\n')}`;
+            } else {
+              systemPrompt += '\nThis model has no verified image-input support. You can use the original image in the app with use_attachment, but cannot see or describe its pixels. For visual analysis ask the user to select Kimi K2.7 Code or Claude Sonnet 6; never invent image content.';
+            }
+          }
           const nativeMessages = imageMessages(inputMessages, extensions.attachments, vision);
 
           // The client's token request is capped server-side (lib/models).
           const requestedMaxTokens = capTokenLimit(controls.maxTokens, resolved);
+
+          const emitCostEstimate = (promptText: string, msgs: Array<{ content: string | unknown }>) => {
+            const systemTokens = estimateTokens(promptText);
+            const historyTokens = msgs.reduce((sum, m) => {
+              if (typeof m.content === 'string') return sum + estimateTokens(m.content);
+              if (Array.isArray(m.content)) {
+                return sum + (m.content as Array<{ type?: string; text?: string }>).reduce((s, part) => s + (part.type === 'text' && part.text ? estimateTokens(part.text) : part.type === 'image_url' ? 85 : 0), 0);
+              }
+              return sum;
+            }, 0);
+            const estimatedInputTokens = systemTokens + historyTokens;
+            const costEstimate = JSON.stringify({ type: 'cost_estimate', model: resolved.name, estimatedInputTokens, maxOutputTokens: requestedMaxTokens });
+            try { connection.send(costEstimate); } catch (e) { noteSendFailure(e); }
+          };
 
           const toolWrittenPaths = assetPaths;
           const inspectedFiles = new Map<string, string>();
@@ -2097,6 +2447,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 : { type: 'file_updated', path: cleanPath, content: normalizedContent });
               try { connection.send(update); } catch (e) { noteSendFailure(e); }
               try { this.broadcast(update, [connection.id]); } catch (e) { noteSendFailure(e); }
+              const progress = JSON.stringify({ type: 'file_progress', written: toolWrittenPaths.size, paths: [...toolWrittenPaths] });
+              try { connection.send(progress); } catch (e) { noteSendFailure(e); }
               return { success: true, path: cleanPath };
             } catch (error) {
               return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -2150,6 +2502,40 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   }
                 },
               }),
+              search_files: tool({
+                description: 'Search all workspace files for a text pattern. Returns matching file paths with the matched lines. Useful for finding where something is defined or imported.',
+                inputSchema: z.object({
+                  query: z.string().min(1).max(500),
+                  caseSensitive: z.boolean().optional(),
+                }),
+                execute: async ({ query, caseSensitive }: { query: string; caseSensitive?: boolean }) => {
+                  try {
+                    const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
+                    const results: Array<{ path: string; matches: Array<{ line: number; text: string }> }> = [];
+                    let totalMatches = 0;
+                    for (const r of rows) {
+                      if (isBlockedSecretFile(r.path)) continue;
+                      const lines = String(r.content || '').split('\n');
+                      const fileMatches: Array<{ line: number; text: string }> = [];
+                      for (let i = 0; i < lines.length; i++) {
+                        const haystack = caseSensitive ? lines[i] : lines[i].toLowerCase();
+                        const needle = caseSensitive ? query : query.toLowerCase();
+                        if (haystack.includes(needle)) {
+                          fileMatches.push({ line: i + 1, text: lines[i].slice(0, 200) });
+                          totalMatches++;
+                          if (totalMatches >= 100) break;
+                        }
+                      }
+                      if (fileMatches.length > 0) results.push({ path: r.path, matches: fileMatches });
+                      if (totalMatches >= 100) break;
+                    }
+                    if (results.length === 0) return { results: [], message: 'No matches found.' };
+                    return { results, totalMatches };
+                  } catch (e) {
+                    return { error: errorMessage(e) };
+                  }
+                },
+              }),
               check_syntax: tool({
                 description: 'Check if React JSX/TSX code has valid syntax before saving it.',
                 inputSchema: z.object({ code: z.string() }),
@@ -2188,6 +2574,110 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   if (original === undefined) return { success: false, error: 'Read the complete file before editing it.' };
                   try { return await saveToolFile(cleanPath, applyExactEdits(original, edits)); }
                   catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+                },
+              }),
+              batch_edit: tool({
+                description: 'Apply exact edits to multiple files in one atomic transaction. All files must have been read first. If any file fails validation, the entire batch is rolled back.',
+                inputSchema: z.object({ files: z.array(z.object({ path: z.string(), edits: z.array(z.object({ search: z.string().min(1), replace: z.string() })).min(1).max(30) })).min(1).max(10) }),
+                execute: async ({ files }: { files: Array<{ path: string; edits: Array<{ search: string; replace: string }> }> }) => {
+                  try {
+                    if (!this.writeEpoch.accepts(epoch) || abortController.signal.aborted) {
+                      return { success: false, error: 'This generation was superseded; batch edit discarded.' };
+                    }
+                    const pending = new Map<string, { cleanPath: string; content: string }>();
+                    for (const file of files) {
+                      const cleanPath = normalizePath(file.path);
+                      if (this.isHarnessEntry(cleanPath)) return { success: false, error: `This entry point is owned by the preview: ${cleanPath}` };
+                      const original = pending.has(cleanPath) ? pending.get(cleanPath)!.content : inspectedFiles.get(cleanPath);
+                      if (original === undefined) return { success: false, error: `Read the complete file before editing it: ${cleanPath}` };
+                      pending.set(cleanPath, { cleanPath, content: ensureHtmlDoctype(cleanPath, applyExactEdits(original, file.edits)) });
+                    }
+                    this.transact(() => {
+                      for (const { cleanPath, content } of pending.values()) {
+                        if (!this.upsertFile(cleanPath, content)) throw new Error(`File ${cleanPath} exceeds the ${MAX_FILE_BYTES} byte limit`);
+                      }
+                    });
+                    for (const { cleanPath, content } of pending.values()) {
+                      inspectedFiles.set(cleanPath, content);
+                      toolWrittenPaths.add(cleanPath);
+                      const update = JSON.stringify(isBlockedSecretFile(cleanPath) ? { type: 'file_updated', path: cleanPath, redacted: true } : { type: 'file_updated', path: cleanPath, content });
+                      try { connection.send(update); } catch (e) { noteSendFailure(e); }
+                      try { this.broadcast(update, [connection.id]); } catch (e) { noteSendFailure(e); }
+                    }
+                    if (this.activeGeneration?.epoch === epoch) this.activeGeneration.filesChanged = true;
+                    this.backupToR2(this.senderUserId(connection)).catch(console.error);
+                    const progress = JSON.stringify({ type: 'file_progress', written: toolWrittenPaths.size, paths: [...toolWrittenPaths] });
+                    try { connection.send(progress); } catch (e) { noteSendFailure(e); }
+                    return { success: true, paths: [...pending.keys()] };
+                  } catch (error) {
+                    return { success: false, error: error instanceof Error ? error.message : String(error) };
+                  }
+                },
+              }),
+              delete_file: tool({
+                description: 'Delete a file from the workspace. The file must exist. Cannot delete platform-owned entry points.',
+                inputSchema: z.object({ path: z.string() }),
+                execute: async ({ path }: { path: string }) => {
+                  try {
+                    if (!this.writeEpoch.accepts(epoch) || abortController.signal.aborted) {
+                      return { success: false, error: 'This generation was superseded; delete discarded.' };
+                    }
+                    const cleanPath = normalizePath(path);
+                    if (this.isHarnessEntry(cleanPath)) return { success: false, error: 'This entry point is owned by the preview and cannot be deleted.' };
+                    const existing = this.runSql`SELECT 1 FROM project_files WHERE path = ${cleanPath}`;
+                    if (!existing.length) return { success: false, error: 'File not found.' };
+                    this.runSql`DELETE FROM project_files WHERE path = ${cleanPath}`;
+                    inspectedFiles.delete(cleanPath);
+                    toolWrittenPaths.delete(cleanPath);
+                    if (this.activeGeneration?.epoch === epoch) this.activeGeneration.filesChanged = true;
+                    this.backupToR2(this.senderUserId(connection)).catch(console.error);
+                    const deleteMsg = JSON.stringify({ type: 'file_deleted', path: cleanPath });
+                    try { connection.send(deleteMsg); } catch (e) { noteSendFailure(e); }
+                    try { this.broadcast(deleteMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+                    return { success: true, path: cleanPath };
+                  } catch (e) {
+                    return { success: false, error: errorMessage(e) };
+                  }
+                },
+              }),
+              rename_file: tool({
+                description: 'Rename or move a file within the workspace. Atomically copies content to the new path and deletes the old one.',
+                inputSchema: z.object({ oldPath: z.string(), newPath: z.string() }),
+                execute: async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
+                  try {
+                    if (!this.writeEpoch.accepts(epoch) || abortController.signal.aborted) {
+                      return { success: false, error: 'This generation was superseded; rename discarded.' };
+                    }
+                    const cleanOld = normalizePath(oldPath);
+                    const cleanNew = normalizePath(newPath);
+                    if (cleanOld === cleanNew) return { success: false, error: 'Source and destination are the same.' };
+                    if (this.isHarnessEntry(cleanOld)) return { success: false, error: 'Cannot rename a platform-owned entry point.' };
+                    if (this.isHarnessEntry(cleanNew)) return { success: false, error: 'Cannot rename to a platform-owned entry point.' };
+                    const existing = this.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = ${cleanOld}`;
+                    if (!existing.length) return { success: false, error: `File not found: ${cleanOld}` };
+                    const content = existing[0].content;
+                    this.transact(() => {
+                      if (!this.upsertFile(cleanNew, content)) throw new Error(`Destination file exceeds the ${MAX_FILE_BYTES} byte limit`);
+                      this.runSql`DELETE FROM project_files WHERE path = ${cleanOld}`;
+                    });
+                    inspectedFiles.delete(cleanOld);
+                    inspectedFiles.set(cleanNew, content);
+                    toolWrittenPaths.delete(cleanOld);
+                    toolWrittenPaths.add(cleanNew);
+                    if (this.activeGeneration?.epoch === epoch) this.activeGeneration.filesChanged = true;
+                    this.backupToR2(this.senderUserId(connection)).catch(console.error);
+                    const deleteMsg = JSON.stringify({ type: 'file_deleted', path: cleanOld });
+                    try { connection.send(deleteMsg); } catch (e) { noteSendFailure(e); }
+                    try { this.broadcast(deleteMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+                    const update = JSON.stringify(isBlockedSecretFile(cleanNew)
+                      ? { type: 'file_updated', path: cleanNew, redacted: true }
+                      : { type: 'file_updated', path: cleanNew, content });
+                    try { connection.send(update); } catch (e) { noteSendFailure(e); }
+                    try { this.broadcast(update, [connection.id]); } catch (e) { noteSendFailure(e); }
+                    return { success: true, oldPath: cleanOld, newPath: cleanNew };
+                  } catch (e) {
+                    return { success: false, error: errorMessage(e) };
+                  }
                 },
               }),
               call_cloudflare_model: tool({
@@ -2282,8 +2772,27 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               })
           };
 
+          const instrumentedTools = Object.fromEntries(
+            Object.entries(agentTools).map(([name, t]: [string, any]) => [name, {
+              ...t,
+              execute: async (input: any, ctx: any) => {
+                let result: any;
+                let threw = false;
+                try { result = await t.execute(input, ctx); } catch (err) { threw = true; throw err; } finally {
+                  const isErr = threw || (result && typeof result === 'object' && (('error' in result) || ('success' in result && !result.success)));
+                  const evt = JSON.stringify({ type: 'tool_result', tool: name, success: !isErr });
+                  try { connection.send(evt); } catch (e) { noteSendFailure(e); }
+                  try { this.broadcast(evt, [connection.id]); } catch (e) { noteSendFailure(e); }
+                }
+                return result;
+              },
+            }])
+          ) as typeof agentTools;
+
           const fileOutputRetry = actualPrompt.includes(AUTO_RETRY_FULL_APP_MARKER);
           if (fileOutputRetry) systemPrompt += '\nFILE-OUTPUT RECOVERY: Tool use is disabled for this response. Work from the supplied project source and conversation. Do not emit DSML, function calls, or a plan to inspect files. Return the requested implementation as complete <file path="/...">content</file> blocks. Never claim you ran a tool.';
+
+          emitCostEstimate(systemPrompt, nativeMessages);
 
           // 1. Cloudflare Workers AI edge binding
           if (resolved.provider === 'cloudflare') {
@@ -2306,7 +2815,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               requestedMaxTokens,
               epoch,
               expectFiles,
-              toolLess ? {} : { ...extensions.capabilities, ...await capabilitiesFromTools(Object.fromEntries(Object.entries(agentTools).filter(([name]) => ['read_file', 'list_files', 'check_syntax', 'write_file', 'edit_file'].includes(name))), abortController.signal) }, extensions.attachments, assetPaths, deferTerminal, maxSteps, controls.fastMode
+              toolLess ? {} : { ...extensions.capabilities, ...await capabilitiesFromTools(Object.fromEntries(Object.entries(agentTools).filter(([name]) => ['read_file', 'list_files', 'search_files', 'check_syntax', 'write_file', 'edit_file', 'batch_edit', 'delete_file'].includes(name))), abortController.signal) }, extensions.attachments, assetPaths, deferTerminal, maxSteps, controls.fastMode
             );
             // P0-4: a queued repair turn means the build is not done — hold the
             // completed status (and the durable job) until the repair turn
@@ -2394,6 +2903,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             // tool-less — the <file> text protocol still delivers the app.
             let customToolsDisabled = false;
 
+            // Atria-Dawn-Preview is fast enough to generate a full app in one
+            // pass without the tool loop. Skipping read_file / write_file /
+            // check_syntax round-trips cuts generation from ~30 min to ~3 min.
+            const directGeneration = model.provider === 'atria';
+            if (directGeneration) systemPrompt += '\nDIRECT GENERATION: Tool use is disabled. Return the complete implementation as <file path="/...">content</file> blocks in a single response. Write ALL files needed for a working app. Do not emit function calls or plan to inspect files.';
+
             for (let stageIdx = 0; stageIdx < pipelineStages.length; stageIdx++) {
               const stage = pipelineStages[stageIdx];
               const isLastStage = stageIdx === pipelineStages.length - 1;
@@ -2439,6 +2954,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   if (flushTimer === null) flushTimer = setTimeout(flushFrame, 50);
                 };
                 
+                if (stageIdx > 0) emitCostEstimate(stageSystemPrompt, currentNativeMessages);
                 const streamOptions: Parameters<typeof streamText>[0] = {
                   model: meteredModel(activeAiModel, () => { accounting.providerCalls++; }),
                   // Anthropic and Bedrock support prompt caching. The system prompt is
@@ -2454,8 +2970,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   messages: currentNativeMessages,
                   // B4/B5: destructive and question modes are tool-less — the model
                   // answers in text only; zero file operations are possible.
-                  tools: plannerMode || fileOutputRetry || customToolsDisabled || modes?.destructiveMode || modes?.questionMode || modes?.ambiguousMode ? undefined : agentTools,
-                  toolChoice: fileOutputRetry || customToolsDisabled ? 'none' : 'auto',
+                  tools: plannerMode || fileOutputRetry || directGeneration || customToolsDisabled || modes?.destructiveMode || modes?.questionMode || modes?.ambiguousMode ? undefined : instrumentedTools,
+                  toolChoice: fileOutputRetry || directGeneration || customToolsDisabled ? 'none' : 'auto',
                   stopWhen: isStepCount(maxSteps + 1),
                   prepareStep: ({ stepNumber, messages }) => stepNumber >= maxSteps ? {
                     activeTools: [],
@@ -2494,10 +3010,19 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     if (chunk?.type === 'tool-call') {
                       flushFrame();
                       sendDisplay(toolSummaryMarkup([String(chunk.toolName || 'tool')]));
-                      const toolMsg = JSON.stringify({
-                        type: 'tool_call',
-                        tool: chunk.toolName,
-                      });
+                      let callArgs: Record<string, unknown> | undefined;
+                      try {
+                        const raw = (chunk as any).args ?? (chunk as any).input;
+                        callArgs = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : undefined;
+                      } catch { /* ignore malformed args */ }
+                      const safeArgs: Record<string, unknown> = {};
+                      if (callArgs?.path) safeArgs.path = callArgs.path;
+                      if (callArgs?.query) safeArgs.query = callArgs.query;
+                      if (callArgs?.oldPath) safeArgs.oldPath = callArgs.oldPath;
+                      if (callArgs?.newPath) safeArgs.newPath = callArgs.newPath;
+                      if (callArgs?.url) safeArgs.url = callArgs.url;
+                      if (callArgs?.filename) safeArgs.filename = callArgs.filename;
+                      const toolMsg = JSON.stringify({ type: 'tool_call', tool: chunk.toolName, args: safeArgs });
                       try { connection.send(toolMsg); } catch (e) { noteSendFailure(e); }
                       try { this.broadcast(toolMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
                     }
@@ -2557,6 +3082,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                           if (this.verifyFinalCompleteness(connection, deferTerminal)
                             && this.noteRepairQueued(accounting.id, actualPrompt, COMPLETENESS_REPAIR_MARKER)) repairQueuedThisTurn = true;
                         } catch (e) { console.warn('Final completeness check threw:', e); }
+                        if (!repairQueuedThisTurn) {
+                          try {
+                            if (this.verifyNoPhantomAuthHooks(connection, deferTerminal)
+                              && this.noteRepairQueued(accounting.id, actualPrompt, PHANTOM_HOOK_REPAIR_MARKER)) repairQueuedThisTurn = true;
+                          } catch (e) { console.warn('Phantom auth hook check threw:', e); }
+                        }
                       }
                     }
                     // Always send stream.done so the client knows the response
@@ -2755,6 +3286,15 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         try { this.runSql`UPDATE generation_usage SET finished_at=${Date.now()},status=${completed ? 'completed' : abortController.signal.aborted ? 'stopped' : 'failed'},input_tokens=${accounting.inputTokens},output_tokens=${accounting.outputTokens} WHERE id=${accounting.id}`; } catch { /* Inference results remain available if metering storage fails. */ }
       }
       try { this.runSql`UPDATE generation_usage SET first_response_at=${accounting.firstResponseAt},provider_calls=${accounting.providerCalls} WHERE id=${accounting.id}`; } catch { console.warn('Generation latency could not be saved.'); }
+      try {
+        const promptCategory = plannerMode ? 'planner' : modes?.questionMode ? 'question' : modes?.destructiveMode ? 'destructive' : modes?.ambiguousMode ? 'ambiguous' : modes?.isIncrementalEdit ? 'edit' : 'build';
+        const repairTypes: string[] = [];
+        if (this.truncationRetries > 0) repairTypes.push('truncation');
+        if (this.syntaxRepairAttempts > 0) repairTypes.push('syntax');
+        if (this.finalCompletenessRepairAttempts > 0) repairTypes.push('completeness');
+        const filesWritten = completed ? Object.keys(this.readAllProjectFiles()).length : null;
+        this.runSql`UPDATE generation_usage SET prompt_category=${promptCategory},files_written=${filesWritten},retry_count=${accounting.providerCalls > 1 ? accounting.providerCalls - 1 : 0},repair_types=${repairTypes.length ? repairTypes.join(',') : null} WHERE id=${accounting.id}`;
+      } catch { /* Analytics columns are best-effort */ }
       if (measureGeneration && !repairPending) await this.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });
       if (this.activeAccounting === accounting) this.activeAccounting = null;
       if (this.activeGeneration?.epoch === epoch) this.activeGeneration = null;
@@ -2849,8 +3389,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         connection.send(JSON.stringify({ type: 'generation_notice', message: 'The app builder is working…', stage: 'model', requestId: this.activeGeneration?.id }));
         // These models document reasoning as enabled by default. Apply the
         // user's fast-mode choice to tool turns as well as the final answer.
-        const supportsThinking = ['@cf/deepseek-ai/deepseek-v4-pro-0813', '@cf/zai-org/glm-5.3-flash'].includes(model);
-        const request = supportsThinking ? { ...input, chat_template_kwargs: { enable_thinking: !fastMode } } : input;
+        const request = modelSupportsThinking(model) ? { ...input, chat_template_kwargs: { enable_thinking: !fastMode } } : input;
         return env.AI.run(model, request, options);
       };
 
@@ -2923,7 +3462,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             flushFrame();
             const event = JSON.stringify({ type: 'tool_call', tool: name });
             try { connection.send(event); this.broadcast(event, [connection.id]); } catch (e) { noteSendFailure(e); }
-          }, emit, { maxSteps });
+          }, emit, { maxSteps, onToolResult: (name, success) => {
+            const evt = JSON.stringify({ type: 'tool_result', tool: name, success });
+            try { connection.send(evt); this.broadcast(evt, [connection.id]); } catch (e) { noteSendFailure(e); }
+          } });
           // Tool turns already streamed through the same transcript and file
           // collector. Finalize once without replaying the completed response.
           if (answer !== null) aiResponse = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n')); controller.close(); } });
@@ -3630,7 +4172,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       try { this.broadcast(deleteMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
     }
 
-    for (const path of written) {
+    for (let i = 0; i < written.length; i++) {
+      const path = written[i];
       const content = pendingWrites.get(path) as string;
       const updateMsg = JSON.stringify(
         isBlockedSecretFile(path)
@@ -3639,6 +4182,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       );
       try { connection.send(updateMsg); } catch (e) { noteSendFailure(e); }
       try { this.broadcast(updateMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+      const progress = JSON.stringify({ type: 'file_progress', written: i + 1, total: written.length, paths: written.slice(0, i + 1) });
+      try { connection.send(progress); } catch (e) { noteSendFailure(e); }
     }
 
     summary.writtenCount = written.length;
@@ -3696,6 +4241,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       await this.ctx.storage.deleteAlarm();
       await this.ctx.storage.deleteAll();
       this.connectionUserIds.clear();
+      this.previewStore.reset();
+      this.previewStoreLoaded = false;
       return Response.json({ ok: true });
     }
     if (this.erasing) return Response.json({ error: 'Project deleted' }, { status: 410 });
@@ -3861,7 +4408,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (!usageUserId || !usageProjectId || usageProjectId !== this.name || !(await isProjectOwner(this.env, usageProjectId, usageUserId))) {
         return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
       }
-      return Response.json({ generations: this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls FROM generation_usage ORDER BY started_at DESC LIMIT 50` }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
+      return Response.json({ generations: this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls,prompt_category,files_written,retry_count,repair_types FROM generation_usage ORDER BY started_at DESC LIMIT 50` }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
     }
 
     // Source controls are available only through the authenticated agent route,
@@ -3968,8 +4515,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           try { bodyData = await request.json(); } catch { /* body optional */ }
         }
 
+        // Restore persisted preview data on first request after a DO wake.
+        this.hydratePreviewStore();
         const headersObj = selectForwardableHeaders(request.headers, this.previewStore);
 
+        let previewResponse: Response;
         try {
           const backendRes = await executeBackendRequest(allFiles, {
             method: request.method,
@@ -3978,7 +4528,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             body: bodyData
           }, this.previewStore);
 
-          return new Response(JSON.stringify(backendRes.body), {
+          previewResponse = new Response(JSON.stringify(backendRes.body), {
             status: backendRes.status,
             headers: {
               ...corsHeaders,
@@ -3990,7 +4540,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // FIX: a throw from the generated backend escaped this handler and
           // surfaced as an opaque 500 with no layer attribution, so the preview
           // could not tell the user which side failed.
-          return new Response(JSON.stringify({
+          previewResponse = new Response(JSON.stringify({
             layer: 'backend',
             error: errorMessage(e) || 'Backend execution failed',
             file: 'server/index.js'
@@ -3999,6 +4549,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         }
+        // Persist after every mutating request. GET/HEAD/OPTIONS cannot change
+        // store state, so they skip the write entirely.
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method.toUpperCase())) {
+          this.persistPreviewStore();
+        }
+        return applyPreviewCappedHeader(previewResponse, this.previewStoreCapped);
       }
 
       if (path === '/index.html') {

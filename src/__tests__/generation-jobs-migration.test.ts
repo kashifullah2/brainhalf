@@ -13,7 +13,7 @@ it('adds the generation_jobs resume table without touching existing data and run
   try {
     runMigrations(AGENT_MIGRATIONS.filter(migration => migration.version < 11), query, transaction);
     database.prepare('INSERT INTO generation_usage(id,model,started_at,status) VALUES (?,?,?,?)').run('old', 'model', 100, 'completed');
-    expect(runMigrations(AGENT_MIGRATIONS, query, transaction)).toBe(2);
+    expect(runMigrations(AGENT_MIGRATIONS, query, transaction)).toBe(5);
     const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='generation_jobs'`).all();
     expect(tables.length).toBe(1);
     // Pre-existing usage rows survive the upgrade untouched.

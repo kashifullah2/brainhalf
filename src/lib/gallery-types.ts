@@ -4,4 +4,5 @@ export interface GalleryApp {
   description: string;
   remixCount: number;
   showcasedAt?: number | null;
+  productionUrl?: string;
 }

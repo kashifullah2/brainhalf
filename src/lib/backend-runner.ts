@@ -122,7 +122,15 @@ export class InMemoryDataStore {
     this.autoIds.clear();
   }
 
-  private getTable(name: string): Map<string, any> {
+  // Returns the stored table map for reads; returns a transient empty Map if
+  // the table has never been created, so reads never spawn phantom table entries
+  // that would show up in serialize() and get written to SQLite.
+  private readTable(name: string): Map<string, any> {
+    return this.tables.get(name.toLowerCase()) ?? new Map();
+  }
+
+  // Returns (and creates if needed) the table map for write operations.
+  private ensureTable(name: string): Map<string, any> {
     const tableKey = name.toLowerCase();
     if (!this.tables.has(tableKey)) {
       if (this.tables.size >= MAX_TABLES) {
@@ -138,16 +146,16 @@ export class InMemoryDataStore {
   }
 
   findAll(table: string): any[] {
-    return Array.from(this.getTable(table).values());
+    return Array.from(this.readTable(table).values());
   }
 
   findById(table: string, id: string | number): any | null {
-    const item = this.getTable(table).get(String(id));
+    const item = this.readTable(table).get(String(id));
     return item || null;
   }
 
   create(table: string, data: any): any {
-    const tbl = this.getTable(table);
+    const tbl = this.ensureTable(table);
     const tableKey = table.toLowerCase();
 
     // A table that has hit the ceiling refuses further inserts. Seeding and
@@ -203,7 +211,7 @@ export class InMemoryDataStore {
   }
 
   update(table: string, id: string | number, data: any): any | null {
-    const tbl = this.getTable(table);
+    const tbl = this.readTable(table);
     const existing = this.findById(table, id);
     if (!existing) return null;
 
@@ -218,7 +226,7 @@ export class InMemoryDataStore {
   }
 
   delete(table: string, id: string | number): boolean {
-    const tbl = this.getTable(table);
+    const tbl = this.readTable(table);
     const existing = this.findById(table, id);
     if (!existing) return false;
     return tbl.delete(String(existing.id));
@@ -228,6 +236,30 @@ export class InMemoryDataStore {
     for (const item of items) {
       this.create(table, item);
     }
+  }
+
+  /**
+   * Serializable snapshot of the current store state, used by the DO to
+   * persist preview data to SQLite across hibernation cycles.
+   */
+  serialize(): Array<{ name: string; rows: any[]; nextId: number }> {
+    const out: Array<{ name: string; rows: any[]; nextId: number }> = [];
+    for (const [name, table] of this.tables) {
+      out.push({ name, rows: Array.from(table.values()), nextId: this.autoIds.get(name) ?? 1 });
+    }
+    return out;
+  }
+
+  /**
+   * Load one table from persisted data, bypassing the size guard.
+   * Safe because the data was already bounded by create() when first written.
+   */
+  loadTable(name: string, rows: any[], nextId: number): void {
+    const key = name.toLowerCase();
+    const map = new Map<string, any>();
+    for (const row of rows) map.set(String(row.id), row);
+    this.tables.set(key, map);
+    this.autoIds.set(key, nextId);
   }
 }
 

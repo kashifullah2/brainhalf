@@ -43,6 +43,6 @@ export function generationControls(input: Record<string, unknown>): ReliabilityC
 
 export function generationContextLimits(fastMode: boolean) {
   return fastMode
-    ? { sourceChars: 24_000, maxFiles: 20, historyChars: 12_000 }
-    : { sourceChars: 64_000, maxFiles: 40, historyChars: 28_000 };
+    ? { sourceChars: 24_000, maxFiles: 20, historyTokens: 3_400 }
+    : { sourceChars: 64_000, maxFiles: 40, historyTokens: 8_000 };
 }

@@ -210,18 +210,144 @@ select optgroup {
 }
 
 .studio-session-loading {
-  min-height: 100dvh;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
   display: grid;
   place-items: center;
   background: var(--studio-paper);
   color: var(--studio-blue);
+  animation: loading-entrance 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.studio-session-loading>div {
+@keyframes loading-entrance {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.studio-session-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(50% 40% at 20% 10%, rgba(99, 102, 241, 0.12), transparent 60%),
+    radial-gradient(45% 35% at 80% 15%, rgba(129, 140, 248, 0.1), transparent 60%),
+    radial-gradient(55% 45% at 70% 85%, rgba(56, 189, 248, 0.08), transparent 65%);
+  animation: loading-aurora 10s ease-in-out infinite alternate;
+}
+
+@keyframes loading-aurora {
+  0%   { opacity: 1; transform: scale(1); }
+  50%  { opacity: 0.7; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(0.98); }
+}
+
+.studio-session-loading > div {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.studio-session-loading .loading-logo-ring {
+  position: relative;
   display: grid;
-  justify-items: center;
-  gap: 16px;
-  font-size: 14px;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  animation: loading-logo-breathe 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.studio-session-loading .loading-logo-ring::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--studio-blue);
+  border-right-color: rgba(129, 140, 248, 0.3);
+  animation: loading-ring-spin 1.4s linear infinite;
+}
+
+.studio-session-loading .loading-logo-ring::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
+  animation: loading-glow-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes loading-logo-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
+@keyframes loading-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes loading-glow-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.2); }
+}
+
+.studio-session-loading .loading-text {
+  margin-top: 20px;
+  font-size: 13.5px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary, var(--studio-muted));
+  animation: loading-text-fade 600ms 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes loading-text-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.studio-session-loading .loading-bar {
+  margin-top: 16px;
+  width: 120px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-subtle, rgba(148, 163, 255, 0.15));
+  overflow: hidden;
+  animation: loading-text-fade 600ms 350ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.studio-session-loading .loading-bar::after {
+  content: '';
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--studio-blue), rgba(56, 189, 248, 0.8));
+  animation: loading-bar-slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes loading-bar-slide {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(200%); }
+  100% { transform: translateX(350%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-session-loading,
+  .studio-session-loading::before,
+  .studio-session-loading .loading-logo-ring,
+  .studio-session-loading .loading-logo-ring::before,
+  .studio-session-loading .loading-logo-ring::after,
+  .studio-session-loading .loading-text,
+  .studio-session-loading .loading-bar,
+  .studio-session-loading .loading-bar::after {
+    animation: none;
+  }
+  .studio-session-loading .loading-text,
+  .studio-session-loading .loading-bar { opacity: 1; transform: none; }
 }
 
 .modal-backdrop {

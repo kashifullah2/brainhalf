@@ -33,7 +33,7 @@ describe('gallery showcase', () => {
     expect(response.status).toBe(200);
     const { apps } = await response.json() as { apps: Array<Record<string, unknown>> };
     expect(apps).toHaveLength(1);
-    expect(apps[0]).toEqual({ id: 'app-one', name: 'Inventory Tracker', description: 'Tracks stock levels.', remixCount: 0, showcasedAt: expect.any(Number) });
+    expect(apps[0]).toEqual({ id: 'app-one', name: 'Inventory Tracker', description: 'Tracks stock levels.', remixCount: 0, showcasedAt: expect.any(Number), productionUrl: '' });
     expect(JSON.stringify(apps)).not.toContain('owner-1');
   });
 
