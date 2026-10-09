@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   FETCH_MAX_BYTES,
   FETCH_MAX_TEXT,
+  assertSafeCustomModelUrl,
   isPublicIp,
   isPublicRoutableHost,
   safeFetchText,
@@ -203,5 +204,56 @@ describe('P3 Redirect re-validation', () => {
     const res = await safeFetchText('http://169.254.169.254/', impl);
     expect(res.error).toMatch(/Refused/);
     expect(called).toBe(false);
+  });
+});
+
+describe('assertSafeCustomModelUrl — custom model base URL SSRF guard', () => {
+  it('accepts a valid HTTPS domain', () => {
+    expect(assertSafeCustomModelUrl('https://api.openai.com/v1')).toBeNull();
+  });
+
+  it('accepts an HTTPS URL with a subdomain and path', () => {
+    expect(assertSafeCustomModelUrl('https://my-provider.example.com/openai/v1')).toBeNull();
+  });
+
+  it('rejects http:// — HTTPS required', () => {
+    expect(assertSafeCustomModelUrl('http://api.openai.com/v1')).toMatch(/https/i);
+  });
+
+  it('rejects localhost', () => {
+    expect(assertSafeCustomModelUrl('https://localhost/v1')).toMatch(/not a public routable address/i);
+  });
+
+  it('rejects 127.0.0.1 loopback as an IP literal', () => {
+    expect(assertSafeCustomModelUrl('https://127.0.0.1/v1')).toMatch(/IP address literals/i);
+  });
+
+  it('rejects the cloud metadata address 169.254.169.254 as an IP literal', () => {
+    expect(assertSafeCustomModelUrl('https://169.254.169.254/')).toMatch(/IP address literals/i);
+  });
+
+  it('rejects 10.x.x.x private range as an IP literal', () => {
+    expect(assertSafeCustomModelUrl('https://10.0.0.1/v1')).toMatch(/IP address literals/i);
+  });
+
+  it('rejects 172.16.x.x private range as an IP literal', () => {
+    expect(assertSafeCustomModelUrl('https://172.16.0.1/v1')).toMatch(/IP address literals/i);
+  });
+
+  it('rejects 192.168.x.x private range as an IP literal', () => {
+    expect(assertSafeCustomModelUrl('https://192.168.1.1/v1')).toMatch(/IP address literals/i);
+  });
+
+  it('rejects any raw IPv4 literal including public IPs', () => {
+    // Even a public IP is rejected — a domain name is required.
+    expect(assertSafeCustomModelUrl('https://8.8.8.8/v1')).toMatch(/IP address literals/i);
+  });
+
+  it('rejects bracketed IPv6 literals', () => {
+    expect(assertSafeCustomModelUrl('https://[::1]/v1')).toMatch(/IP address literals/i);
+  });
+
+  it('rejects an invalid URL', () => {
+    expect(assertSafeCustomModelUrl('not-a-url')).not.toBeNull();
   });
 });

@@ -557,6 +557,9 @@ export class AuthRegistry {
         } catch {
           return this.json(400, { error: 'Base URL must be a valid URL.' });
         }
+        const { assertSafeCustomModelUrl } = await import('./lib/ssrf');
+        const urlError = assertSafeCustomModelUrl(baseUrl);
+        if (urlError) return this.json(400, { error: `Base URL is not allowed: ${urlError}.` });
         // MODEL_KEY_SECRET must be a separate secret dedicated to encrypting
         // custom model API keys; reusing SESSION_SECRET would let a single
         // compromised value expose both session forgery and key decryption.
@@ -591,9 +594,17 @@ export class AuthRegistry {
         const { decryptValue } = await import('./lib/crypto');
         const apiKey = await decryptValue(secret, rows[0].api_key_encrypted);
         if (!apiKey) return this.json(500, { error: 'Could not decrypt the API key.' });
-        // Unlimited: no max_tokens cap — the model generates until it stops.
+        // Defense-in-depth: re-validate the stored URL before every outbound
+        // fetch in case the record was written before this check was added.
+        const { assertSafeCustomModelUrl: assertSafe } = await import('./lib/ssrf');
+        const storedUrlError = assertSafe(rows[0].base_url);
+        if (storedUrlError) return this.json(400, { error: `Stored base URL is not allowed: ${storedUrlError}.` });
+        // redirect:'manual' prevents the fetch from silently following a 3xx
+        // to a different host — a redirect to an internal address would bypass
+        // the URL check above.
         const upstream = await fetch(`${rows[0].base_url}/chat/completions`, {
           method: 'POST',
+          redirect: 'manual',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
           body: JSON.stringify({
             model: rows[0].model_id,
@@ -603,7 +614,8 @@ export class AuthRegistry {
         });
         if (!upstream.ok || !upstream.body) {
           const text = await upstream.text().catch(() => '');
-          return this.json(502, { error: `Model API error (${upstream.status}): ${text.slice(0, 200)}` });
+          console.error('Custom model API error:', text);
+          return this.json(502, { error: `Model API returned ${upstream.status}` });
         }
         // Stream the upstream SSE through to the client.
         return new Response(upstream.body, {

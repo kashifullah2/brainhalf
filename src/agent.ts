@@ -2935,6 +2935,15 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // Custom admin-added models use an OpenAI-compatible client pointed
           // at their own base URL and API key.
           if (customModel) {
+            // Defense-in-depth re-validation: the URL was checked at registration
+            // time, but re-checking here catches any record written before the
+            // guard existed or modified outside the normal admin flow.
+            const { assertSafeCustomModelUrl } = await import('./lib/ssrf');
+            const cmUrlError = assertSafeCustomModelUrl(customModel.baseUrl);
+            if (cmUrlError) {
+              sendError(`Custom model base URL is not allowed: ${cmUrlError}`);
+              return;
+            }
             try {
               const { createOpenAI } = await import('@ai-sdk/openai');
               const custom = createOpenAI({ apiKey: customModel.apiKey, baseURL: customModel.baseUrl, compatibility: 'compatible' } as any);

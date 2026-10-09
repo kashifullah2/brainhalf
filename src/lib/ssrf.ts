@@ -237,3 +237,33 @@ export async function safeFetchText(
 
   return { status: 0, data: '', error: 'Refused: redirect loop' };
 }
+
+/**
+ * Validates a custom model base URL for storage and use.
+ *
+ * Stricter than validateFetchUrl — HTTPS is required and raw IP literals are
+ * rejected regardless of whether they are public. A domain name is required so
+ * the target is human-auditable and admin-approved rather than an arbitrary
+ * address. Returns null if safe, or a human-readable reason string if refused.
+ */
+export function assertSafeCustomModelUrl(rawUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return 'not a valid URL';
+  }
+  if (url.protocol !== 'https:') {
+    return 'base URL must use HTTPS';
+  }
+  const host = url.hostname.toLowerCase();
+  // Reject raw IPv4 dotted-quad and bracketed IPv6 literals entirely.
+  // IP-literal targets are hard to audit and are the primary SSRF vector.
+  if (/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/.test(host) || host.startsWith('[')) {
+    return 'IP address literals are not allowed; use a domain name';
+  }
+  if (!isPublicRoutableHost(host)) {
+    return `hostname "${host}" is not a public routable address (localhost and private ranges are not allowed)`;
+  }
+  return null;
+}
