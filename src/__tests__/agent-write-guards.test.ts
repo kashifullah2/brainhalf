@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { FlipFlopGuard, RepairLog } from '../lib/repair-budget';
 
 /**
  * agent.ts imports `cloudflare:workers` (tracing) and the `agents` SDK base class,
@@ -50,8 +51,13 @@ function makeAgent(files: Map<string, string>) {
   };
   agent.broadcast = () => {};
   agent.backupToR2 = async () => {};
+  agent.name = 'test-project';
+  agent.flipFlopGuard = new FlipFlopGuard();
+  agent.repairLog = new RepairLog();
 
-  return { agent, statements };
+  const events: any[] = [];
+  const connection = { id: 'connection', send: (message: string) => events.push(JSON.parse(message)) };
+  return { agent, statements, connection, events };
 }
 
 describe('P4 file extraction commits deletes and writes as one batch', () => {
@@ -194,6 +200,151 @@ describe('P4 file extraction commits deletes and writes as one batch', () => {
 
     expect(files.get('/src/app.tsx')).toBe('original');
     expect(statements.filter(s => s.startsWith('INSERT'))).toHaveLength(0);
+  });
+});
+
+import { checkShrinkage, isShrinkIntentional, isConfigWriteBlocked, SHRINK_OK_MARKER } from '../lib/write-guard';
+
+describe('write-guard primitives', () => {
+  describe('checkShrinkage', () => {
+    it('rejects a 772→443 line App.tsx write (audio visualizer regression)', () => {
+      const existing = Array.from({ length: 772 }, (_, i) => `// line ${i + 1} padding to reach realistic size`).join('\n');
+      const shrunk = Array.from({ length: 443 }, (_, i) => `// line ${i + 1} padding to reach realistic size`).join('\n');
+      // 443/772 ≈ 57% — well below the 70% threshold
+      expect(checkShrinkage('/src/App.tsx', shrunk, existing)).toBeGreaterThan(0);
+    });
+
+    it('always checks /worker/index.ts even when byte count is small', () => {
+      const existing = 'export default { fetch() {} }'.repeat(5); // ~145 bytes
+      const shrunk = 'export default {};';
+      expect(checkShrinkage('/worker/index.ts', shrunk, existing)).toBeGreaterThan(0);
+    });
+
+    it('always checks files >200 lines regardless of byte size', () => {
+      const existing = Array.from({ length: 210 }, (_, i) => `line${i}`).join('\n');
+      const shrunk = 'line0\nline1\n';
+      expect(checkShrinkage('/src/big.tsx', shrunk, existing)).toBeGreaterThan(0);
+    });
+
+    it('allows a write within 30% of original size', () => {
+      const existing = 'x'.repeat(1000);
+      const similar = 'x'.repeat(720); // 72% — just above threshold
+      expect(checkShrinkage('/src/App.tsx', similar, existing)).toBe(0);
+    });
+
+    it('allows empty content (handled by finish_reason check separately)', () => {
+      const existing = 'x'.repeat(1000);
+      expect(checkShrinkage('/src/App.tsx', '', existing)).toBe(0);
+    });
+
+    it('allows writes to new files (no existing)', () => {
+      expect(checkShrinkage('/src/App.tsx', 'content', '')).toBe(0);
+    });
+  });
+
+  describe('isShrinkIntentional', () => {
+    it('detects "remove the music player"', () => {
+      expect(isShrinkIntentional('remove the music player')).toBe(true);
+    });
+
+    it('detects other removal/cleanup keywords', () => {
+      expect(isShrinkIntentional('delete the sidebar')).toBe(true);
+      expect(isShrinkIntentional('simplify the header')).toBe(true);
+      expect(isShrinkIntentional('strip out the analytics')).toBe(true);
+      expect(isShrinkIntentional('rewrite the app from scratch')).toBe(true);
+    });
+
+    it('returns false for unrelated prompts', () => {
+      expect(isShrinkIntentional('add a dark mode toggle')).toBe(false);
+      expect(isShrinkIntentional('fix the button color')).toBe(false);
+      expect(isShrinkIntentional('')).toBe(false);
+    });
+  });
+
+  describe('SHRINK_OK_MARKER bypass', () => {
+    it('marker string matches expected value', () => {
+      expect(SHRINK_OK_MARKER).toBe('/* shrink-ok */');
+    });
+  });
+
+  describe('isConfigWriteBlocked', () => {
+    it('blocks package.json / tsconfig / vite.config when not in prompt', () => {
+      expect(isConfigWriteBlocked('/package.json', 'add a dark mode toggle')).toBe(true);
+      expect(isConfigWriteBlocked('/tsconfig.json', 'add a dark mode toggle')).toBe(true);
+      expect(isConfigWriteBlocked('/vite.config.ts', 'add a dark mode toggle')).toBe(true);
+    });
+
+    it('allows when prompt mentions the file by name', () => {
+      expect(isConfigWriteBlocked('/package.json', 'update package.json to add react-query')).toBe(false);
+      expect(isConfigWriteBlocked('/tsconfig.json', 'fix the tsconfig.json path aliases')).toBe(false);
+      expect(isConfigWriteBlocked('/vite.config.ts', 'update vite.config.ts')).toBe(false);
+    });
+
+    it('allows package.json when prompt mentions dependencies', () => {
+      expect(isConfigWriteBlocked('/package.json', 'add react-query as a dependency')).toBe(false);
+      expect(isConfigWriteBlocked('/package.json', 'install the latest version of date-fns')).toBe(false);
+    });
+
+    it('allows tsconfig when prompt mentions TypeScript config', () => {
+      expect(isConfigWriteBlocked('/tsconfig.json', 'enable strict mode in typescript')).toBe(false);
+    });
+
+    it('allows vite.config when prompt mentions the build', () => {
+      expect(isConfigWriteBlocked('/vite.config.ts', 'update the vite build config')).toBe(false);
+    });
+
+    it('never blocks non-config files', () => {
+      expect(isConfigWriteBlocked('/src/App.tsx', 'add a dark mode toggle')).toBe(false);
+      expect(isConfigWriteBlocked('/worker/index.ts', 'add a dark mode toggle')).toBe(false);
+    });
+
+    it('unblocks when build error context mentions the file', () => {
+      expect(isConfigWriteBlocked('/package.json', 'fix the build', 'Cannot find module — check package.json')).toBe(false);
+    });
+  });
+});
+
+describe('write-guard: extractAndSaveFiles regression (audio visualizer)', () => {
+  it('rejects a 772→443 line App.tsx write and preserves old content', () => {
+    const existingLine = '// line content with realistic padding to hit byte threshold   ';
+    const existing = Array.from({ length: 772 }, () => existingLine).join('\n');
+    const shrunk = Array.from({ length: 443 }, () => existingLine).join('\n');
+    const files = new Map([['/src/App.tsx', existing]]);
+    const { agent, connection } = makeAgent(files);
+
+    const summary = agent.extractAndSaveFiles(`<file path="/src/App.tsx">${shrunk}</file>`, connection);
+
+    expect(files.get('/src/App.tsx')).toBe(existing); // old content preserved
+    expect(summary.hadSyntaxDrops).toBe(true);
+  });
+
+  it('allows a 772→443 line write when prompt says "remove the music player" (intentional removal)', () => {
+    const existingLine = '// line content with realistic padding to hit byte threshold';
+    const existing = Array.from({ length: 772 }, () => existingLine).join('\n');
+    const shrunk = Array.from({ length: 443 }, () => existingLine).join('\n');
+    const files = new Map([['/src/App.tsx', existing]]);
+    const { agent, connection } = makeAgent(files);
+    agent.activeGeneration = { prompt: 'remove the music player', id: 'x', model: 'm', response: '', startedAt: 0, filesChanged: false, truncated: false, epoch: 1 };
+
+    agent.extractAndSaveFiles(`<file path="/src/App.tsx">${shrunk}</file>`, connection);
+
+    // shrinkage bypassed — new (shorter) content should be saved
+    expect(files.get('/src/App.tsx')).not.toBe(existing);
+    expect(files.get('/src/App.tsx')?.split('\n').length).toBeLessThan(772);
+  });
+
+  it('allows a shrunk write when SHRINK_OK_MARKER is present in the content', () => {
+    const existingLine = '// line content with realistic padding to hit byte threshold';
+    const existing = Array.from({ length: 772 }, () => existingLine).join('\n');
+    const shrunk = `/* shrink-ok */\n` + Array.from({ length: 443 }, () => existingLine).join('\n');
+    const files = new Map([['/src/App.tsx', existing]]);
+    const { agent, connection } = makeAgent(files);
+
+    agent.extractAndSaveFiles(`<file path="/src/App.tsx">${shrunk}</file>`, connection);
+
+    // marker present — new content should be saved (not the 772-line original)
+    expect(files.get('/src/App.tsx')).not.toBe(existing);
+    expect(files.get('/src/App.tsx')).toContain(SHRINK_OK_MARKER);
   });
 });
 

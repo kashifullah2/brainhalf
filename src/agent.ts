@@ -43,6 +43,7 @@ import { AiBudget, AiBudgetError, meteredModel } from './lib/ai-budget';
 import { sourceSnapshot } from './runtime/source';
 import { GenerationUserError, classifyGenerationError, errorMessage } from './lib/generation-errors';
 import { FlipFlopGuard, RepairLog } from './lib/repair-budget';
+import { checkShrinkage, isShrinkIntentional, isConfigWriteBlocked, logWritePath, SHRINK_OK_MARKER } from './lib/write-guard';
 
 // Transient provider failures (rate limits, overload, dropped connections)
 // get this many automatic retries per pipeline stage before we give up.
@@ -2534,6 +2535,20 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               if (typeof existing === 'string' && inspectedFiles.get(cleanPath) !== existing) {
                 return { success: false, error: 'Read the complete current file before changing it. It may have changed since your last read.' };
               }
+              // Config file protection: block speculative regeneration of package.json / tsconfig / vite.config
+              if (isConfigWriteBlocked(cleanPath, actualPrompt ?? '')) {
+                logWritePath('tool:write_file', cleanPath, 'rejected', 'config file not in prompt');
+                return { success: false, error: `Writing ${cleanPath} is blocked: config files should only be updated when the request explicitly involves them. If this is intentional, explain the change.` };
+              }
+              // Shrinkage guard: reject writes that trim >30% without intent or marker
+              if (typeof existing === 'string') {
+                const shrinkPct = checkShrinkage(cleanPath, normalizedContent, existing);
+                if (shrinkPct > 0 && !isShrinkIntentional(actualPrompt ?? '') && !normalizedContent.includes(SHRINK_OK_MARKER)) {
+                  logWritePath('tool:write_file', cleanPath, 'rejected', `shrunk ${shrinkPct}%`);
+                  return { success: false, error: `This write shrinks ${cleanPath} by ${shrinkPct}% (${normalizedContent.length} bytes vs ${existing.length} bytes). If intentional, include ${SHRINK_OK_MARKER} in the file and resend; otherwise resend the complete file content.` };
+                }
+              }
+              logWritePath('tool:write_file', cleanPath, 'accepted');
               if (/\.(?:[cm]?jsx?|tsx?)$/i.test(cleanPath)) transform(content, { transforms: ['typescript', 'jsx'], filePath: cleanPath });
               if (!this.upsertFile(cleanPath, normalizedContent)) return { success: false, error: `File exceeds the ${MAX_FILE_BYTES} byte limit` };
               inspectedFiles.set(cleanPath, normalizedContent);
@@ -2650,13 +2665,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 description: 'Create a new file with complete contents. For an intentional whole-file rewrite, first read the complete existing file. Use edit_file for localized changes.',
                 inputSchema: z.object({ path: z.string(), content: z.string() }),
                 execute: async ({ path, content }: { path: string; content: string }) => {
-                  if (modes?.isIncrementalEdit) {
+                  {
                     const cleanPath = normalizePath(path);
                     const existingRow = this.runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`[0];
                     if (existingRow && typeof existingRow.content === 'string') {
                       const lines = existingRow.content.split('\n').length;
-                      if (lines > 200) {
-                        return { success: false, error: `This file has ${lines} lines. In incremental edit mode, use edit_file with targeted search/replace pairs instead of rewriting the entire file. Call read_file first, then edit_file.` };
+                      const alwaysBlocked = lines > 200 || cleanPath === '/worker/index.ts';
+                      if (alwaysBlocked || modes?.isIncrementalEdit) {
+                        return { success: false, error: `This file has ${lines} lines. Use edit_file with targeted search/replace pairs instead of rewriting the entire file. Call read_file first, then edit_file.` };
                       }
                     }
                   }
@@ -2670,8 +2686,20 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   const cleanPath = normalizePath(path);
                   const original = inspectedFiles.get(cleanPath);
                   if (original === undefined) return { success: false, error: 'Read the complete file before editing it.' };
-                  try { return await saveToolFile(cleanPath, applyExactEdits(original, edits)); }
-                  catch (error) { return { success: false, error: error instanceof Error ? error.message : String(error) }; }
+                  let result: string;
+                  try { result = applyExactEdits(original, edits); }
+                  catch (error) {
+                    const msg = error instanceof Error ? error.message : String(error);
+                    logWritePath('tool:edit_file', cleanPath, 'rejected', msg);
+                    return { success: false, error: msg };
+                  }
+                  const shrinkPct = checkShrinkage(cleanPath, result, original);
+                  if (shrinkPct > 0 && !isShrinkIntentional(actualPrompt ?? '') && !result.includes(SHRINK_OK_MARKER)) {
+                    logWritePath('tool:edit_file', cleanPath, 'rejected', `result shrunk ${shrinkPct}%`);
+                    return { success: false, error: `This edit shrinks ${cleanPath} by ${shrinkPct}%. If removing content intentionally, include ${SHRINK_OK_MARKER} in a comment and resend; otherwise check the replacement is complete.` };
+                  }
+                  logWritePath('tool:edit_file', cleanPath, 'accepted');
+                  return await saveToolFile(cleanPath, result);
                 },
               }),
               batch_edit: tool({
@@ -2688,7 +2716,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       if (this.isHarnessEntry(cleanPath)) return { success: false, error: `This entry point is owned by the preview: ${cleanPath}` };
                       const original = pending.has(cleanPath) ? pending.get(cleanPath)!.content : inspectedFiles.get(cleanPath);
                       if (original === undefined) return { success: false, error: `Read the complete file before editing it: ${cleanPath}` };
-                      pending.set(cleanPath, { cleanPath, content: ensureHtmlDoctype(cleanPath, applyExactEdits(original, file.edits)) });
+                      const editResult = ensureHtmlDoctype(cleanPath, applyExactEdits(original, file.edits));
+                      const shrinkPct = checkShrinkage(cleanPath, editResult, typeof original === 'string' ? original : '');
+                      if (shrinkPct > 0 && !isShrinkIntentional(actualPrompt ?? '') && !editResult.includes(SHRINK_OK_MARKER)) {
+                        logWritePath('tool:batch_edit', cleanPath, 'rejected', `result shrunk ${shrinkPct}%`);
+                        return { success: false, error: `This edit shrinks ${cleanPath} by ${shrinkPct}%. If removing content intentionally, include ${SHRINK_OK_MARKER} in a comment and resend; otherwise check the replacement is complete.` };
+                      }
+                      logWritePath('tool:batch_edit', cleanPath, 'accepted');
+                      pending.set(cleanPath, { cleanPath, content: editResult });
                     }
                     this.transact(() => {
                       for (const { cleanPath, content } of pending.values()) {
@@ -4174,18 +4209,35 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
     const brokenFiles: Array<{ path: string; error: string }> = [];
 
-    // Shrinkage guard: a file >30% shorter than its existing version is likely
-    // truncated by a finish_reason:length cutoff. Keep the old file and queue
-    // the path for repair so the model regenerates it properly.
-    // Exempt: intentionally empty writes (content === '') and tiny files (<100 bytes)
-    // where a rewrite is more likely than truncation.
+    // Shared write guard (text-protocol path): finish_reason and shrinkage.
+    // Config file protection is applied only on the interactive tool path (saveToolFile).
+    const userPromptForGuard = this.activeGeneration?.prompt ?? '';
     for (const [path, content] of [...pendingWrites.entries()]) {
       const rows = this.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = ${path}`;
       const existing = rows[0]?.content;
-      if (!existing || existing.length < 100 || content.length === 0 || content.length >= existing.length * 0.7) continue;
-      const pct = Math.round((1 - content.length / existing.length) * 100);
+      // finish_reason:length guard — empty writes are only safe on a normal (non-truncated) finish
+      if (content.length === 0 && wasTruncated && existing) {
+        pendingWrites.delete(path);
+        logWritePath('text-protocol', path, 'rejected', 'empty write on truncated generation');
+        brokenFiles.push({ path, error: 'Generation was cut off before writing this file; the empty content was discarded.' });
+        continue;
+      }
+      if (!existing) continue;
+      // SHRINK_OK_MARKER: model explicitly confirmed the removal
+      if (content.includes(SHRINK_OK_MARKER)) {
+        logWritePath('text-protocol', path, 'accepted', 'shrink-ok marker');
+        continue;
+      }
+      // Intentional removal: user's prompt asked to remove/clean up
+      if (isShrinkIntentional(userPromptForGuard)) {
+        logWritePath('text-protocol', path, 'accepted', 'removal intent in prompt');
+        continue;
+      }
+      const pct = checkShrinkage(path, content, existing);
+      if (pct === 0) continue;
       pendingWrites.delete(path);
-      brokenFiles.push({ path, error: `Replacement is ${pct}% shorter (${content.length} vs ${existing.length} bytes); likely truncated` });
+      logWritePath('text-protocol', path, 'rejected', `shrunk ${pct}%`);
+      brokenFiles.push({ path, error: `Replacement is ${pct}% shorter (${content.length} vs ${existing.length} bytes); likely truncated. Resend the complete file, or include ${SHRINK_OK_MARKER} if removal was intentional.` });
       this.repairLog?.add(this.name, 'shrinkage', `${path}: ${existing.length} → ${content.length} bytes (${pct}% shorter)`);
     }
 
