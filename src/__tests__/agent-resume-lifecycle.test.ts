@@ -114,6 +114,41 @@ describe('resumable generations', () => {
     expect(events.some(event => event.type === 'generation_interrupted')).toBe(false);
   });
 
+  it('treats an HTTP 500 "internal error" mid-turn as resumable, preserving all files written before the failure', async () => {
+    // Demonstrates the resume mechanism:
+    //   1. Files are durable-checkpointed via upsertFile as each tool call
+    //      completes — the /src/App.tsx write survives the crash.
+    //   2. After GENERATION_TRANSIENT_RETRIES (3) inline retry attempts the
+    //      stage gives up and the job is saved as 'interrupted' (not 'failed').
+    //   3. The client receives generation_interrupted with resumable:true so
+    //      the user (or auto-resume) can continue from the saved files.
+    const { database, events, run } = createAgent();
+    let call = 0;
+    providerState.model = new MockLanguageModelV4({
+      doStream: async () => {
+        if (call++ === 0) return response('', { toolName: 'write_file', input: { path: '/src/App.tsx', content: 'export default function App() { return <h1>Saved</h1>; }' } });
+        throw new APICallError({ message: 'Internal server error', url: 'https://provider.example', requestBodyValues: {}, statusCode: 500, isRetryable: false });
+      },
+    });
+    await run({ max_steps: 2 });
+
+    // The file written before the crash is preserved (step 1 above).
+    expect(database.prepare("SELECT content FROM project_files WHERE path='/src/App.tsx'").get()?.content).toContain('<h1>Saved</h1>');
+
+    // The job is interrupted, not failed — it can be resumed (step 2 above).
+    const job = database.prepare('SELECT status, completed_files, error FROM generation_jobs').get() as any;
+    expect(job.status).toBe('interrupted');
+    expect(JSON.parse(job.completed_files)).toContain('/src/App.tsx');
+    // The user-visible error message is clean — no raw status codes (step 3 above).
+    // status=500 is classified as 'overloaded' → 'temporarily overloaded' message.
+    expect(String(job.error)).not.toMatch(/\b500\b/);
+    expect(String(job.error)).toMatch(/overload/i);
+
+    // The client gets a resumable event so the UI can offer to continue.
+    const interrupted = events.find((e: any) => e.type === 'generation_interrupted');
+    expect(interrupted).toMatchObject({ resumable: true, job: { completedFiles: 1 } });
+  });
+
   it('does not checkpoint files written outside a generation', async () => {
     const { agent, database } = createAgent();
     agent.upsertFile('/src/manual.ts', 'export const x = 1;', 'connection', 1);

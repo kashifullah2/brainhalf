@@ -9,10 +9,13 @@ describe('classifyGenerationError', () => {
     expect(classifyGenerationError(new Error('ThrottlingException: Rate exceeded'))).toMatchObject({ category: 'rate_limited', retryable: true });
   });
 
-  it('treats 502/503/529 and overload text as retryable', () => {
+  it('treats 500/502/503/529 and overload text as retryable', () => {
     expect(classifyGenerationError(new Error('503 Service Unavailable'))).toMatchObject({ category: 'overloaded', retryable: true });
     expect(classifyGenerationError(new Error('Overloaded'))).toMatchObject({ category: 'overloaded', retryable: true });
     expect(classifyGenerationError({ statusCode: 529, message: 'x' })).toMatchObject({ category: 'overloaded', retryable: true });
+    // HTTP 500 "internal error" from a provider must be retryable, not a hard failure.
+    expect(classifyGenerationError({ status: 500, message: 'Internal Server Error' })).toMatchObject({ category: 'overloaded', retryable: true });
+    expect(classifyGenerationError(new Error('500 Internal Server Error'))).toMatchObject({ category: 'overloaded', retryable: true });
   });
 
   it('treats dropped connections as retryable network errors', () => {
