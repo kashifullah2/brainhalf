@@ -26,7 +26,7 @@ export interface GenerationErrorInfo {
 
 const STATUS_PATTERNS: Array<[RegExp, GenerationErrorCategory]> = [
   [/(?:^|\s|\()429(?:\s|$|\))/, 'rate_limited'],
-  [/(?:^|\s|\()(?:502|503|529)(?:\s|$|\))/, 'overloaded'],
+  [/(?:^|\s|\()(?:500|502|503|529)(?:\s|$|\))/, 'overloaded'],
   [/(?:^|\s|\()401(?:\s|$|\))/, 'auth'],
   [/(?:^|\s|\()403(?:\s|$|\))/, 'auth'],
 ];
@@ -42,7 +42,7 @@ export function classifyGenerationError(error: unknown): GenerationErrorInfo {
   if (status === 429 || /rate.?limit|too many requests|quota exceeded|throttl|too much traffic/.test(text)) {
     return { category: 'rate_limited', retryable: true, userMessage: 'The AI model is receiving too much traffic right now.' };
   }
-  if ((status !== undefined && [502, 503, 529].includes(status)) || /overload|capacity|service unavailable|temporarily unavailable|upstream error|bad gateway/.test(text)) {
+  if ((status !== undefined && [500, 502, 503, 529].includes(status)) || /overload|capacity|service unavailable|temporarily unavailable|upstream error|bad gateway/.test(text)) {
     return { category: 'overloaded', retryable: true, userMessage: 'The AI model provider is temporarily overloaded.' };
   }
   if (/fetch failed|econnreset|econnrefused|etimedout|eai_again|socket hang up|network error|connection (?:reset|refused|closed|error)|broken pipe/.test(text)) {
