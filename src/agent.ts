@@ -21,7 +21,7 @@ import { safeFetchText } from './lib/ssrf';
 import { validateRuntimeProviders } from './lib/runtime-config';
 import { BEDROCK_ALIASES, createBedrockClient, providerCredentials, providerModel, selectModelTransport, type ProviderLanguageModel } from './lib/provider-clients';
 import { buildDynamicImportMap as buildDynamicImportMapModule, isHarnessEntry as isHarnessEntryModule } from './lib/preview-import-map';
-import { buildSystemPrompt as buildSystemPromptModule } from './lib/system-prompt';
+import { buildSystemPrompt as buildSystemPromptModule, buildSystemPromptParts as buildSystemPromptPartsModule } from './lib/system-prompt';
 import { ensureHtmlDoctype } from './lib/html-normalize';
 import { BusyLock, IdempotencyStore, WriteEpoch, dedupeAdjacent } from './lib/concurrency';
 import { RateLimiter } from './lib/rate-limit';
@@ -432,7 +432,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   private generationJobs() {
     return new GenerationJobs((sql, ...params) => this.runSql(sql.split('?') as unknown as TemplateStringsArray, ...params));
   }
-  private activeAccounting: { id: string; startedAt: number; inputTokens: number | null; outputTokens: number | null; firstResponseAt: number | null; providerCalls: number; generationMs: number | null; extractionMs: number | null; checksMs: number | null; editChars: number; rewriteChars: number } | null = null;
+  private activeAccounting: { id: string; startedAt: number; inputTokens: number | null; outputTokens: number | null; firstResponseAt: number | null; providerCalls: number; generationMs: number | null; extractionMs: number | null; checksMs: number | null; editChars: number; rewriteChars: number; cacheReadTokens: number; cacheWriteTokens: number } | null = null;
   /**
    * Consecutive truncation auto-retries within one retry chain. Reset whenever
    * a brand-new user prompt starts; the chain only continues across the
@@ -476,11 +476,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    */
   private turnSavedForEpoch = -1;
 
-  private captureUsage(input: unknown, output: unknown) {
+  private captureUsage(input: unknown, output: unknown, inputDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number } | null) {
     const accounting = this.activeAccounting;
     if (!accounting) return;
     if (typeof input === 'number' && Number.isSafeInteger(input) && input >= 0) accounting.inputTokens = input;
     if (typeof output === 'number' && Number.isSafeInteger(output) && output >= 0) accounting.outputTokens = output;
+    if (inputDetails?.cacheReadTokens) accounting.cacheReadTokens += inputDetails.cacheReadTokens;
+    if (inputDetails?.cacheWriteTokens) accounting.cacheWriteTokens += inputDetails.cacheWriteTokens;
   }
 
   private generationSnapshot(): GenerationSession | undefined {
@@ -856,52 +858,93 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     maxFiles: number;
     charBudget?: number;
     header: string;
+    mentioned?: Set<string>;
+    changed?: Set<string>;
   }): string {
     try {
-      // Reading the path list from the covering index and filtering in JS keeps
-      // the scan index-only; the previous `path NOT LIKE '%node_modules%'` was a
-      // leading-wildcard pattern that scanned the whole table on every prompt.
       const pathRows = this.runSql<{ path: string }>`SELECT path FROM project_files`;
-      const selected = pathRows
+      const mentioned = opts.mentioned ?? new Set<string>();
+      const changed = opts.changed ?? new Set<string>();
+
+      // Apply the same filtering as before: pinned files bypass node_modules/main.js exclusions.
+      const allFiltered = pathRows
         .map(r => String(r.path))
         .filter(contextFileAllowed)
         .filter(path => !/^\/src\/assets\/uploads\/[^/]+\.\d+\.js$/.test(path))
-        // `pinned` only keeps a file from being filtered out (a pinned main.js
-        // would otherwise look like a build entry point); ranking is entirely
-        // the caller's business, so the two never interact.
-        .filter(p => opts.pinned.has(p) || (!isNodeModulesPath(p) && !/\bmain\.[^.]+$/.test(p)))
+        .filter(p => opts.pinned.has(p) || (!isNodeModulesPath(p) && !/\bmain\.[^.]+$/.test(p)));
+
+      if (allFiltered.length === 0) return '';
+
+      const isPriority = (p: string) => opts.pinned.has(p) || mentioned.has(p) || changed.has(p);
+
+      // Priority files get full content; others are listed path-only so the model
+      // knows they exist and can read_file them on demand.
+      const priorityPaths = allFiltered
+        .filter(isPriority)
         .sort((a, b) => opts.rank(a) - opts.rank(b))
         .slice(0, opts.maxFiles);
-      if (selected.length === 0) return '';
 
-      const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files WHERE path IN (SELECT value FROM json_each(${JSON.stringify(selected)}))`;
-      rows.sort((left, right) => selected.indexOf(left.path) - selected.indexOf(right.path));
-      if (opts.charBudget === undefined) {
-        const summary = rows
-          .map(r => `File: ${r.path}\n\`\`\`\n${r.content}\n\`\`\``)
-          .join('\n\n');
-        return `\n\n${opts.header}\n${summary}\n`;
-      }
+      const otherPaths = allFiltered
+        .filter(p => !isPriority(p))
+        .sort((a, b) => opts.rank(a) - opts.rank(b))
+        .slice(0, 300);
 
-      let charBudget = opts.charBudget;
-      const summaries: string[] = [];
-      for (const r of rows) {
-        const source = String(r.content || '');
-        const content = source.length > 16_000 ? source.slice(0, 16_000) + '\n[File shortened; use read_file for exact contents]' : source;
-        if (content.length > charBudget) {
-          summaries.push(`File: ${r.path}\n\`\`\`\n${content.slice(0, charBudget)}\n// ... [trimmed for length]\n\`\`\``);
-          break;
+      const parts: string[] = [];
+
+      if (priorityPaths.length > 0) {
+        const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files WHERE path IN (SELECT value FROM json_each(${JSON.stringify(priorityPaths)}))`;
+        rows.sort((left, right) => priorityPaths.indexOf(left.path) - priorityPaths.indexOf(right.path));
+        if (opts.charBudget === undefined) {
+          for (const r of rows) parts.push(`File: ${r.path}\n\`\`\`\n${r.content}\n\`\`\``);
+        } else {
+          let charBudget = opts.charBudget;
+          for (const r of rows) {
+            const source = String(r.content || '');
+            const content = source.length > 16_000 ? source.slice(0, 16_000) + '\n[File shortened; use read_file for exact contents]' : source;
+            if (content.length > charBudget) {
+              parts.push(`File: ${r.path}\n\`\`\`\n${content.slice(0, charBudget)}\n// ... [trimmed for length]\n\`\`\``);
+              break;
+            }
+            charBudget -= content.length;
+            parts.push(`File: ${r.path}\n\`\`\`\n${content}\n\`\`\``);
+            if (charBudget <= 0) break;
+          }
         }
-        charBudget -= content.length;
-        summaries.push(`File: ${r.path}\n\`\`\`\n${content}\n\`\`\``);
-        if (charBudget <= 0) break;
       }
-      if (summaries.length === 0) return '';
-      return `\n\n${opts.header}\n${summaries.join('\n\n')}\n`;
+
+      if (otherPaths.length > 0) {
+        parts.push(`OTHER PROJECT FILES (use read_file to view):\n${otherPaths.join('\n')}`);
+      }
+
+      if (parts.length === 0) return '';
+      return `\n\n${opts.header}\n${parts.join('\n\n')}\n`;
     } catch (e) {
       console.warn('Could not load existing files for context:', e);
       return '';
     }
+  }
+
+  private getLastWrittenPaths(): Set<string> {
+    try {
+      const rows = this.runSql<{ completed_files: string }>`SELECT completed_files FROM generation_jobs WHERE status = 'completed' ORDER BY updated_at DESC LIMIT 1`;
+      if (rows.length > 0 && rows[0].completed_files) {
+        const files: unknown = JSON.parse(rows[0].completed_files);
+        return new Set(Array.isArray(files) ? (files as string[]) : []);
+      }
+    } catch { /* non-fatal */ }
+    return new Set<string>();
+  }
+
+  private getFilesFromPrompt(prompt: string): Set<string> {
+    const mentioned = new Set<string>();
+    try {
+      const paths = this.runSql<{ path: string }>`SELECT path FROM project_files`.map(r => String(r.path));
+      for (const p of paths) {
+        const name = p.split('/').pop() ?? '';
+        if ((name && prompt.includes(name)) || prompt.includes(p)) mentioned.add(p);
+      }
+    } catch { /* non-fatal */ }
+    return mentioned;
   }
 
   /**
@@ -2195,18 +2238,21 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             console.warn('Could not check model handoff:', e);
           }
 
-          const systemPrompt = this.buildSystemPrompt({
-            filesContext: this.buildFilesContext({
-              pinned: new Set(['/src/App.tsx', '/src/App.jsx', '/package.json', '/worker/index.ts', '/brainhalf.verify.json']),
-              rank: path => fileContextRank(path, actualPrompt), maxFiles: contextLimits.maxFiles, charBudget: contextLimits.sourceChars,
-              header: 'CURRENT PROJECT BASELINE FILES (Inspect these files carefully and build upon them):',
-            }),
-            plannerMode, executionTarget,
+          const filesContext = this.buildFilesContext({
+            pinned: new Set(['/src/App.tsx', '/src/App.jsx', '/package.json', '/worker/index.ts', '/brainhalf.verify.json']),
+            rank: path => fileContextRank(path, actualPrompt), maxFiles: contextLimits.maxFiles, charBudget: contextLimits.sourceChars,
+            header: 'CURRENT PROJECT BASELINE FILES (Inspect these files carefully and build upon them):',
+            mentioned: this.getFilesFromPrompt(actualPrompt),
+            changed: this.getLastWrittenPaths(),
+          });
+          const { staticPart, dynamicPart } = this.buildSystemPromptParts({
+            filesContext, plannerMode, executionTarget,
             questionMode, destructiveMode, ambiguousMode,
             isIncrementalEdit, projectMemory, modelHandoff,
           });
+          const systemPrompt = staticPart + dynamicPart;
           generationStarted = true;
-          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode, isIncrementalEdit });
+          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode, isIncrementalEdit }, staticPart);
         }, GENERATION_LOCK_TIMEOUT_MS);
       } catch (genErr) {
         // runGeneration's finally releases when !completed. If we never reached
@@ -2254,6 +2300,20 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     return buildSystemPromptModule(opts);
   }
 
+  private buildSystemPromptParts(opts: {
+    filesContext: string;
+    plannerMode: boolean;
+    executionTarget?: 'managed' | 'export';
+    questionMode?: boolean;
+    destructiveMode?: boolean;
+    ambiguousMode?: boolean;
+    isIncrementalEdit?: boolean;
+    projectMemory?: string;
+    modelHandoff?: string;
+  }): { staticPart: string; dynamicPart: string } {
+    return buildSystemPromptPartsModule(opts);
+  }
+
   /**
    * One generation pass, extracted from onMessage so the busy lock and epoch
    * guards wrap it cleanly. History is read *inside* the lock so a generation
@@ -2296,7 +2356,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     epoch: number,
     plannerMode: boolean,
     resumeChain?: { parentJobId: string; resumeCount: number; initialFiles: string[] } | null,
-    modes?: { destructiveMode?: boolean; questionMode?: boolean; ambiguousMode?: boolean; isIncrementalEdit?: boolean }
+    modes?: { destructiveMode?: boolean; questionMode?: boolean; ambiguousMode?: boolean; isIncrementalEdit?: boolean },
+    staticSystemPart?: string
   ): Promise<void> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
     // only tracks consecutive truncations within one retry chain, which the
@@ -2309,7 +2370,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     const abortController = new AbortController();
     this.currentAbortController = abortController;
     this.activeGeneration = { id: typeof data.idempotencyKey === 'string' ? data.idempotencyKey : crypto.randomUUID(), epoch, model: data.model || DEFAULT_MODEL_ID, prompt: actualPrompt, response: '', startedAt: Date.now(), filesChanged: false, truncated: false };
-    const accounting = { id: crypto.randomUUID(), startedAt: Date.now(), inputTokens: null as number | null, outputTokens: null as number | null, firstResponseAt: null as number | null, providerCalls: 0, generationMs: null as number | null, extractionMs: null as number | null, checksMs: null as number | null, editChars: 0, rewriteChars: 0 };
+    const accounting = { id: crypto.randomUUID(), startedAt: Date.now(), inputTokens: null as number | null, outputTokens: null as number | null, firstResponseAt: null as number | null, providerCalls: 0, generationMs: null as number | null, extractionMs: null as number | null, checksMs: null as number | null, editChars: 0, rewriteChars: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     this.activeAccounting = accounting;
     const measureGeneration = !plannerMode && !isConversationalPrompt(actualPrompt);
     const outcomeScope = { id: accounting.id, projectId: this.name, ownerId: this.senderUserId(connection) || '' };
@@ -2987,6 +3048,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               fetch_api: tool({
                 description: 'Fetch data from an external 3rd-party REST API. Only public https/http URLs; private and internal addresses are refused.',
                 inputSchema: z.object({ url: z.string() }),
+                // Marking the last tool with cacheControl caches all tool definitions up to
+                // this point, saving input tokens on every follow-up turn or retry.
+                providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } },
                 execute: async ({ url }: { url: string }) => {
                   // SSRF guard: the URL is model-chosen from a client-supplied
                   // prompt, so without this it reaches loopback, private ranges
@@ -3219,16 +3283,33 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 if (stageIdx > 0) emitCostEstimate(stageSystemPrompt, currentNativeMessages);
                 const streamOptions: Parameters<typeof streamText>[0] = {
                   model: meteredModel(activeAiModel, () => { accounting.providerCalls++; }),
-                  // Anthropic and Bedrock support prompt caching. The system prompt is
-                  // static per project and often >6k tokens, so caching it saves ~90%
-                  // of those tokens on cache hits (follow-up edits, multi-stage retries,
-                  // retries after timeout). TTL is 5 minutes. Other providers use a
+                  // Anthropic and Bedrock support prompt caching. Split the system prompt
+                  // into a stable prefix (base rules, unchanged per project) and a dynamic
+                  // suffix (file context, memory, mode blocks). Marking the prefix with
+                  // cacheControl means cache hits cover 90%+ of system tokens on follow-up
+                  // edits and multi-stage retries. TTL is 5 minutes. Other providers use a
                   // plain string.
-                  system: model.provider === 'anthropic'
-                    ? ({ role: 'system', content: stageSystemPrompt, providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } } satisfies SystemModelMessage)
-                    : model.provider === 'aws'
-                    ? ({ role: 'system', content: stageSystemPrompt, providerOptions: { bedrock: { cachePoint: { type: 'default' } } } } satisfies SystemModelMessage)
-                    : stageSystemPrompt,
+                  system: ((): SystemModelMessage | SystemModelMessage[] | string => {
+                    if (model.provider === 'anthropic') {
+                      if (staticSystemPart) {
+                        return [
+                          { role: 'system' as const, content: staticSystemPart, providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } },
+                          { role: 'system' as const, content: stageSystemPrompt.slice(staticSystemPart.length) },
+                        ] satisfies SystemModelMessage[];
+                      }
+                      return { role: 'system' as const, content: stageSystemPrompt, providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } } satisfies SystemModelMessage;
+                    }
+                    if (model.provider === 'aws') {
+                      if (staticSystemPart) {
+                        return [
+                          { role: 'system' as const, content: staticSystemPart, providerOptions: { bedrock: { cachePoint: { type: 'default' } } } },
+                          { role: 'system' as const, content: stageSystemPrompt.slice(staticSystemPart.length) },
+                        ] satisfies SystemModelMessage[];
+                      }
+                      return { role: 'system' as const, content: stageSystemPrompt, providerOptions: { bedrock: { cachePoint: { type: 'default' } } } } satisfies SystemModelMessage;
+                    }
+                    return stageSystemPrompt;
+                  })(),
                   messages: currentNativeMessages,
                   // B4/B5: destructive and question modes are tool-less — the model
                   // answers in text only; zero file operations are possible.
@@ -3313,7 +3394,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   const result = streamText(streamOptions);
                   const finalText = await withAbortSignal(result.text, abortController.signal);
                   const usage = await withAbortSignal(result.totalUsage, abortController.signal);
-                  this.captureUsage(usage.inputTokens, usage.outputTokens);
+                  this.captureUsage(usage.inputTokens, usage.outputTokens, usage.inputTokenDetails);
+                  const inTok = usage.inputTokens ?? 0;
+                  const hitTok = usage.inputTokenDetails?.cacheReadTokens ?? 0;
+                  const writeTok = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
+                  const hitPct = (inTok + hitTok) > 0 ? Math.round(hitTok / (inTok + hitTok) * 100) : 0;
+                  console.log(`[gen] input=${inTok} cache_hit=${hitTok}(${hitPct}%) cache_write=${writeTok}`);
                   if (streamErrorCaught) throw streamErrorCaught;
                   if (!this.writeEpoch.accepts(epoch)) return;
                   flushFrame();
@@ -3604,7 +3690,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         if (this.syntaxRepairAttempts > 0) repairTypes.push('syntax');
         if (this.finalCompletenessRepairAttempts > 0) repairTypes.push('completeness');
         const filesWritten = completed ? Object.keys(this.readAllProjectFiles()).length : null;
-        this.runSql`UPDATE generation_usage SET prompt_category=${promptCategory},files_written=${filesWritten},retry_count=${accounting.providerCalls > 1 ? accounting.providerCalls - 1 : 0},repair_types=${repairTypes.length ? repairTypes.join(',') : null},generation_ms=${accounting.generationMs},extraction_ms=${accounting.extractionMs},checks_ms=${accounting.checksMs},edit_chars=${accounting.editChars},rewrite_chars=${accounting.rewriteChars} WHERE id=${accounting.id}`;
+        this.runSql`UPDATE generation_usage SET prompt_category=${promptCategory},files_written=${filesWritten},retry_count=${accounting.providerCalls > 1 ? accounting.providerCalls - 1 : 0},repair_types=${repairTypes.length ? repairTypes.join(',') : null},generation_ms=${accounting.generationMs},extraction_ms=${accounting.extractionMs},checks_ms=${accounting.checksMs},edit_chars=${accounting.editChars},rewrite_chars=${accounting.rewriteChars},cache_read_tokens=${accounting.cacheReadTokens},cache_write_tokens=${accounting.cacheWriteTokens} WHERE id=${accounting.id}`;
       } catch { /* Analytics columns are best-effort */ }
       if (measureGeneration && !repairPending) await this.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });
       if (this.activeAccounting === accounting) this.activeAccounting = null;
@@ -4793,7 +4879,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (!usageUserId || !usageProjectId || usageProjectId !== this.name || !(await isProjectOwner(this.env, usageProjectId, usageUserId))) {
         return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
       }
-      const generations = this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls,prompt_category,files_written,retry_count,repair_types,generation_ms,extraction_ms,checks_ms,edit_chars,rewrite_chars FROM generation_usage ORDER BY started_at DESC LIMIT 20`;
+      const generations = this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls,prompt_category,files_written,retry_count,repair_types,generation_ms,extraction_ms,checks_ms,edit_chars,rewrite_chars,cache_read_tokens,cache_write_tokens FROM generation_usage ORDER BY started_at DESC LIMIT 20`;
       const models = MODEL_ALLOWLIST.filter(m => m.clientSelectable !== false).map(m => ({ name: m.name, provider: m.provider, supportsPromptCaching: m.supportsPromptCaching ?? false }));
       return Response.json({ generations, models }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
     }

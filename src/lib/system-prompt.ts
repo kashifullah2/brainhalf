@@ -7,7 +7,7 @@
  * tested directly instead of only through a live generation.
  */
 
-export function buildSystemPrompt(opts: {
+type SystemPromptOpts = {
   filesContext: string;
   plannerMode: boolean;
   executionTarget?: 'managed' | 'export';
@@ -17,7 +17,9 @@ export function buildSystemPrompt(opts: {
   isIncrementalEdit?: boolean;
   projectMemory?: string;
   modelHandoff?: string;
-}): string {
+};
+
+function _buildParts(opts: SystemPromptOpts): { staticPart: string; dynamicPart: string } {
   const backendRules = opts.executionTarget === 'export' ? `   - This account selected a downloadable app for its own hosting. Preserve existing frameworks and backends. For new full-stack projects use a standalone TypeScript Node server with SQLite or another explicitly configured persistent database, typed API contracts, migrations, password hashing, secure cookie sessions, ownership checks, and real integration tests. Include server/.env.example, typecheck/build/test scripts, and README setup/deployment instructions. Do not require BrainHalf service bindings, injected identity headers, managed authentication, D1 provisioning, or hosted email to run exported code. Third-party features need explicit server-side configuration; document missing credentials without asking for secrets in chat. The browser preview does not run this backend. Do not claim hosted deployment or test execution.
 ` : `   - Use framework-native architecture first. New managed full-stack apps use Cloudflare Workers and D1: /src UI, /worker/index.ts API/business logic, /migrations schema/migrations, and /shared contracts. Build the bundled Worker to dist-worker/index.js and frontend assets to dist/. Set package.json brainhalf.runtime to workers. Preserve existing Node /server projects; their development runtime is a Sandbox, not production Workers hosting.
    - The managed runtime provides real build/test jobs, separate development/production D1, and private development releases. The workspace Publish button automatically builds, verifies and deploys the complete app. Use the Project console for optional advanced checks and service settings. Full-stack requests start with a Workers backend, D1 migration, build script, real backend tests and verification plan already prepared. Adapt this baseline to the requested domain, update its tests and verification plan, and connect every frontend data action to the real API. Do not leave the generic items example in place of requested features. Do not ask users to enable a backend manually; create the required backend source and wiring. Production publishing still requires the user to publish explicitly. A browser-only preview cannot prove backend behavior. Never claim tests ran without revision-specific runtime evidence. CRITICAL: For every full-stack generation you MUST also deliver a complete domain-specific frontend (App.tsx and all required component files). Never finish with the starter template unchanged. The frontend must implement the requested UI, wire all actions to the real backend APIs, and show meaningful app content — not a placeholder.
@@ -316,5 +318,15 @@ MODEL HANDOFF & CONTINUITY NOTICE:
 ${opts.modelHandoff}
 ` : '';
 
-  return `${base}${opts.plannerMode ? planner : ''}${opts.questionMode ? questionBlock : ''}${opts.destructiveMode ? destructiveBlock : ''}${opts.ambiguousMode ? ambiguousBlock : ''}${opts.isIncrementalEdit ? editModeBlock : ''}${memoryBlock}${handoffBlock}\n${opts.filesContext}\n`;
+  const dynamicPart = `${opts.plannerMode ? planner : ''}${opts.questionMode ? questionBlock : ''}${opts.destructiveMode ? destructiveBlock : ''}${opts.ambiguousMode ? ambiguousBlock : ''}${opts.isIncrementalEdit ? editModeBlock : ''}${memoryBlock}${handoffBlock}\n${opts.filesContext}\n`;
+  return { staticPart: base, dynamicPart };
+}
+
+export function buildSystemPrompt(opts: SystemPromptOpts): string {
+  const { staticPart, dynamicPart } = _buildParts(opts);
+  return staticPart + dynamicPart;
+}
+
+export function buildSystemPromptParts(opts: SystemPromptOpts): { staticPart: string; dynamicPart: string } {
+  return _buildParts(opts);
 }

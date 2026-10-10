@@ -143,6 +143,10 @@ export const AGENT_MIGRATIONS: Migration[] = [
     'ALTER TABLE generation_usage ADD COLUMN edit_chars INTEGER',
     'ALTER TABLE generation_usage ADD COLUMN rewrite_chars INTEGER',
   ] },
+  { version: 18, name: 'generation_cache_tokens', statements: [
+    'ALTER TABLE generation_usage ADD COLUMN cache_read_tokens INTEGER',
+    'ALTER TABLE generation_usage ADD COLUMN cache_write_tokens INTEGER',
+  ] },
 
 ];
 
