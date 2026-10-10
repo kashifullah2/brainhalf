@@ -236,9 +236,10 @@ export function shortTitleFromPrompt(prompt: string, maxWords = 6, maxChars = 48
  * pile up against the 50-project limit.
  */
 export function isEmptyDraftProject(project: Project): boolean {
-  if (project.status !== 'draft') return false;
-  const messages = getProjectMessages(project.id);
-  return !messages || messages.length === 0;
+  // status is promoted to 'ready' by saveProjectMessages once a project has
+  // real messages, so the status field alone is a reliable empty-draft signal
+  // even after a reload when the memory cache is cold.
+  return project.status === 'draft';
 }
 
 export function setProjectSubmissionKey(projectId: string, submissionKey: string) {

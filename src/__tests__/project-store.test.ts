@@ -304,7 +304,9 @@ describe('Project Store & LocalStorage State Management', () => {
     it('ignores a draft once it has messages', () => {
       const proj = createProject('Untitled Project');
       saveProjectMessages(proj.id, [{ role: 'user', content: 'Build a shop' }]);
-      expect(isEmptyDraftProject(proj)).toBe(false);
+      // saveProjectMessages promotes status to 'ready'; re-read the updated project.
+      const updated = getProjects().find(p => p.id === proj.id)!;
+      expect(isEmptyDraftProject(updated)).toBe(false);
     });
     it('ignores non-draft projects even without messages', () => {
       const proj = createProject('Some App');
