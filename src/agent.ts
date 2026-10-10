@@ -16,7 +16,7 @@ import { createTypeScriptStarter } from './lib/project-starters';
 import { prepareModuleSource, buildTranspileErrorModule, findDanglingImports } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
-import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, capTokenLimit, resolveModel, withAbortSignal, modelSupportsThinking, killSwitchRefusal, resolveKillSwitchStatus, type AllowedModel, type KillSwitchStatus } from './lib/models';
+import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, MODEL_ALLOWLIST, capTokenLimit, resolveModel, withAbortSignal, modelSupportsThinking, killSwitchRefusal, resolveKillSwitchStatus, type AllowedModel, type KillSwitchStatus } from './lib/models';
 import { safeFetchText } from './lib/ssrf';
 import { validateRuntimeProviders } from './lib/runtime-config';
 import { BEDROCK_ALIASES, createBedrockClient, providerCredentials, providerModel, selectModelTransport, type ProviderLanguageModel } from './lib/provider-clients';
@@ -432,7 +432,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   private generationJobs() {
     return new GenerationJobs((sql, ...params) => this.runSql(sql.split('?') as unknown as TemplateStringsArray, ...params));
   }
-  private activeAccounting: { id: string; inputTokens: number | null; outputTokens: number | null; firstResponseAt: number | null; providerCalls: number } | null = null;
+  private activeAccounting: { id: string; startedAt: number; inputTokens: number | null; outputTokens: number | null; firstResponseAt: number | null; providerCalls: number; generationMs: number | null; extractionMs: number | null; checksMs: number | null } | null = null;
   /**
    * Consecutive truncation auto-retries within one retry chain. Reset whenever
    * a brand-new user prompt starts; the chain only continues across the
@@ -2290,7 +2290,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     const abortController = new AbortController();
     this.currentAbortController = abortController;
     this.activeGeneration = { id: typeof data.idempotencyKey === 'string' ? data.idempotencyKey : crypto.randomUUID(), epoch, model: data.model || DEFAULT_MODEL_ID, prompt: actualPrompt, response: '', startedAt: Date.now(), filesChanged: false, truncated: false };
-    const accounting = { id: crypto.randomUUID(), startedAt: Date.now(), inputTokens: null as number | null, outputTokens: null as number | null, firstResponseAt: null as number | null, providerCalls: 0 };
+    const accounting = { id: crypto.randomUUID(), startedAt: Date.now(), inputTokens: null as number | null, outputTokens: null as number | null, firstResponseAt: null as number | null, providerCalls: 0, generationMs: null as number | null, extractionMs: null as number | null, checksMs: null as number | null };
     this.activeAccounting = accounting;
     const measureGeneration = !plannerMode && !isConversationalPrompt(actualPrompt);
     const outcomeScope = { id: accounting.id, projectId: this.name, ownerId: this.senderUserId(connection) || '' };
@@ -3293,9 +3293,14 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   const stageNewPaths = new Set([...toolWrittenPaths].filter(p => !stageToolWrittenPaths.has(p)));
                   if (!text.trim() && (plannerMode || isConversationalPrompt(actualPrompt)) && stageNewPaths.size === 0) throw new Error('The model returned no response. Please retry.');
 
+                  const extractionStart = Date.now();
                   const extraction = this.extractAndSaveFiles(text, connection, epoch, plannerMode || !!modes?.destructiveMode || !!modes?.questionMode || !!modes?.ambiguousMode, deferTerminal);
                   extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...stageNewPaths])];
                   extraction.writtenCount = extraction.writtenPaths.length;
+                  if (isLastStage) {
+                    accounting.generationMs = extractionStart - accounting.startedAt;
+                    accounting.extractionMs = Date.now() - extractionStart;
+                  }
 
                   // Continuation stages must not appear as user turns: the
                   // [AUTO-CONTINUE] prefix marks them internal (hidden on
@@ -3327,6 +3332,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       // Only when this generation wrote files — a greeting or text
                       // reply must never trigger a hidden file-repair turn.
                       if (extraction.writtenCount > 0) {
+                        const checksStart = Date.now();
                         try {
                           if (this.verifyFinalCompleteness(connection, deferTerminal)
                             && this.noteRepairQueued(accounting.id, actualPrompt, COMPLETENESS_REPAIR_MARKER)) repairQueuedThisTurn = true;
@@ -3349,6 +3355,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                               && this.noteRepairQueued(accounting.id, actualPrompt, ROUTE_COVERAGE_REPAIR_MARKER)) repairQueuedThisTurn = true;
                           } catch (e) { console.warn('Route coverage check threw:', e); }
                         }
+                        accounting.checksMs = Date.now() - checksStart;
                       }
                     }
                     // Always send stream.done so the client knows the response
@@ -3566,7 +3573,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         if (this.syntaxRepairAttempts > 0) repairTypes.push('syntax');
         if (this.finalCompletenessRepairAttempts > 0) repairTypes.push('completeness');
         const filesWritten = completed ? Object.keys(this.readAllProjectFiles()).length : null;
-        this.runSql`UPDATE generation_usage SET prompt_category=${promptCategory},files_written=${filesWritten},retry_count=${accounting.providerCalls > 1 ? accounting.providerCalls - 1 : 0},repair_types=${repairTypes.length ? repairTypes.join(',') : null} WHERE id=${accounting.id}`;
+        this.runSql`UPDATE generation_usage SET prompt_category=${promptCategory},files_written=${filesWritten},retry_count=${accounting.providerCalls > 1 ? accounting.providerCalls - 1 : 0},repair_types=${repairTypes.length ? repairTypes.join(',') : null},generation_ms=${accounting.generationMs},extraction_ms=${accounting.extractionMs},checks_ms=${accounting.checksMs} WHERE id=${accounting.id}`;
       } catch { /* Analytics columns are best-effort */ }
       if (measureGeneration && !repairPending) await this.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });
       if (this.activeAccounting === accounting) this.activeAccounting = null;
@@ -3898,9 +3905,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       flushFrame();
       // expectFiles is false exactly for tool-less turns (planner, question,
       // destructive, ambiguous): scan the reply for diagnostics, never write.
+      const extractionStart = Date.now();
       const extraction = this.extractAndSaveFiles(outputContent, connection, epoch, !expectFiles, deferTerminal);
       extraction.writtenPaths = [...new Set([...extraction.writtenPaths, ...assetPaths])];
       extraction.writtenCount = extraction.writtenPaths.length;
+      if (accounting) { accounting.generationMs = extractionStart - accounting.startedAt; accounting.extractionMs = Date.now() - extractionStart; }
       this.saveGenerationTurn(actualPrompt, displayContent || (assetPaths.size ? `Updated ${[...assetPaths].join(', ')}.` : ''), epoch);
       const cfRetryQueued = this.handleIncompleteAppGeneration({
         actualPrompt,
@@ -4753,7 +4762,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (!usageUserId || !usageProjectId || usageProjectId !== this.name || !(await isProjectOwner(this.env, usageProjectId, usageUserId))) {
         return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
       }
-      return Response.json({ generations: this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls,prompt_category,files_written,retry_count,repair_types FROM generation_usage ORDER BY started_at DESC LIMIT 50` }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
+      const generations = this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls,prompt_category,files_written,retry_count,repair_types,generation_ms,extraction_ms,checks_ms FROM generation_usage ORDER BY started_at DESC LIMIT 20`;
+      const models = MODEL_ALLOWLIST.filter(m => m.clientSelectable !== false).map(m => ({ name: m.name, provider: m.provider, supportsPromptCaching: m.supportsPromptCaching ?? false }));
+      return Response.json({ generations, models }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
     }
 
     // Purgeable-draft check: has this project ever received a real user message?

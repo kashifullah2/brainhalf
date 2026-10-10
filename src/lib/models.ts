@@ -32,6 +32,8 @@ export interface AllowedModel {
   clientSelectable?: boolean;
   /** When true, the model supports reasoning/thinking via chat_template_kwargs.enable_thinking. */
   supportsThinking?: boolean;
+  /** When true, the provider caches the system-prompt prefix across calls (Anthropic cacheControl / Bedrock cachePoint). */
+  supportsPromptCaching?: boolean;
 }
 
 /**
@@ -76,15 +78,15 @@ const CF_MODELS: AllowedModel[] = [
 ];
 
 const ANTHROPIC_MODELS: AllowedModel[] = [
-  { name: 'claude-sonnet-6', provider: 'anthropic', id: 'claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
-  { name: 'claude-opus-6', provider: 'anthropic', id: 'claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false },
+  { name: 'claude-sonnet-6', provider: 'anthropic', id: 'claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false, supportsPromptCaching: true },
+  { name: 'claude-opus-6', provider: 'anthropic', id: 'claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX, clientSelectable: false, supportsPromptCaching: true },
 ];
 
 const BEDROCK_MODELS: AllowedModel[] = [
-  { name: 'claude-sonnet-6', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'claude-opus-6', provider: 'aws', id: 'us.anthropic.claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'kimi-k3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX },
-  { name: 'minimax-m2.5', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX },
+  { name: 'claude-sonnet-6', provider: 'aws', id: 'us.anthropic.claude-sonnet-4-6', maxTokens: BEDROCK_DEFAULT_MAX, supportsPromptCaching: true },
+  { name: 'claude-opus-6', provider: 'aws', id: 'us.anthropic.claude-opus-4-6', maxTokens: BEDROCK_DEFAULT_MAX, supportsPromptCaching: true },
+  { name: 'kimi-k3', provider: 'aws', id: 'us.moonshotai.kimi-k3', maxTokens: BEDROCK_DEFAULT_MAX, supportsPromptCaching: true },
+  { name: 'minimax-m2.5', provider: 'aws', id: 'minimax.minimax-m2.5', maxTokens: BEDROCK_DEFAULT_MAX, supportsPromptCaching: true },
 ];
 
 const ATRIA_MODELS: AllowedModel[] = [
@@ -175,6 +177,11 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, label: str
 /** Models that support reasoning/thinking via chat_template_kwargs.enable_thinking. */
 export function modelSupportsThinking(model: string): boolean {
   return MODEL_ALLOWLIST.some(m => m.id === model && m.supportsThinking === true);
+}
+
+/** Models that use provider-level prompt caching (Anthropic cacheControl / Bedrock cachePoint). */
+export function modelSupportsPromptCaching(model: string): boolean {
+  return MODEL_ALLOWLIST.some(m => (m.id === model || m.name === model) && m.supportsPromptCaching === true);
 }
 
 const MODEL_DISPLAY_NAMES: Record<string, string> = {

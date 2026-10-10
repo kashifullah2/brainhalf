@@ -134,6 +134,11 @@ export const AGENT_MIGRATIONS: Migration[] = [
       next_id INTEGER NOT NULL DEFAULT 1
     )`,
   ] },
+  { version: 16, name: 'generation_stage_timings', statements: [
+    'ALTER TABLE generation_usage ADD COLUMN generation_ms INTEGER',
+    'ALTER TABLE generation_usage ADD COLUMN extraction_ms INTEGER',
+    'ALTER TABLE generation_usage ADD COLUMN checks_ms INTEGER',
+  ] },
 
 ];
 
