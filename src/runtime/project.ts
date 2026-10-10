@@ -19,11 +19,12 @@ import { REQUEST_MONITOR_SCHEMA, recordAppRequest } from './request-monitor';
 import { COLLECT_ARTIFACT, COLLECT_STATIC_ARTIFACT, validateArtifact, type BuildArtifact } from './artifact';
 import { publicationTarget, assertProductionServices, productionHealthPath, hasWorkerEntry } from './publication';
 import { digest, sourceSnapshot, projectManifest, migrationFiles, assertSafeMigration } from './source';
+import { isBlockedSecretFile } from '../lib/secret-files';
 import { openSecret, sealSecret, validateIntegration, redactSecrets } from './secrets';
 import { contactInput, token, cookie, secureCookie, embeddedPreviewCookie, readJson, readStreamJson } from './integrations';
-import { PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport, type RuntimeUsageKind } from './types';
+import { DEV_JOB_IDLE_TIMEOUT_MS, DEV_JOB_MAX_LIFETIME_MS, DEV_LIVE_FILE_MAX_BYTES, DEV_MAX_CRASH_RESTARTS, PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport, type RuntimeUsageKind } from './types';
 
-interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean; installRetried?: boolean; devServerPids?: { vite: string; backend: string } }
+interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean; installRetried?: boolean; devServerPids?: { vite: string; backend: string }; devCrashRestarts?: number; devLastActiveAt?: number; devFirstPreviewAt?: number }
 interface StoredIntegration { sealed: string; updatedAt: number }
 interface DatabaseRecoveryPoint { id: string; label: string; bookmark: string; databaseId: string; createdAt: number; migrations: MigrationReceipt[] }
 const authPath = (value: string) => /^\/__brainhalf\/auth(?:\?mode=(?:verify|reset|magic)#token=[A-Za-z0-9_-]{43})?$/.test(value);
@@ -570,10 +571,14 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       const body = await readJson(request) as { path: string; content: string };
       if (typeof body.path !== 'string' || typeof body.content !== 'string') throw new RuntimeError('Invalid request body.', 400);
       const safePath = body.path.replace(/^\/+/, '');
-      if (!safePath || safePath.includes('..') || /^(?:node_modules|\.git|dist)\//.test(safePath)) throw new RuntimeError('Path not allowed.', 400);
+      if (!safePath || safePath.includes('..') || /(?:^|\/)\.{2}(?:\/|$)/.test(safePath) || /^(?:node_modules|\.git|dist)\//.test(safePath)) throw new RuntimeError('Path not allowed.', 400);
+      if (isBlockedSecretFile(safePath)) throw new RuntimeError('Writing secret files is not allowed.', 400);
+      if (body.content.length > DEV_LIVE_FILE_MAX_BYTES) throw new RuntimeError(`File too large (max ${DEV_LIVE_FILE_MAX_BYTES / 1024} KB).`, 413);
       const job = await this.ctx.storage.get<StoredJob>('current');
       if (!job || job.status !== 'running' || !job.previewReady || !['preview', 'dev'].includes(job.kind)) throw new RuntimeError('No running dev server to push to.', 409);
       await this.sandbox(job).writeFile(`/workspace/project/${safePath}`, body.content);
+      job.devLastActiveAt = Date.now();
+      await this.saveJob(job);
       return Response.json({ ok: true });
     }
     throw new RuntimeError('That page or action was not found. Try refreshing, or go back to your project.', 404);
@@ -718,6 +723,11 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     const source = await this.env.ARTIFACTS.get(job.sourceKey);
     if (!source) throw new RuntimeError('Saved source snapshot is missing.', 503);
     const snapshot = await source.json<SourceSnapshot>();
+    // Dev step 4 manages its own lifetime/idle/crash policy; call before assertRunning.
+    if (job.kind === 'dev' && job.step === 4 && job.devServerPids) {
+      await this.advanceDevStep4(job, snapshot);
+      return;
+    }
     await this.assertRunning(job);
     if (job.step === 0) {
       const entries = Object.entries(snapshot.files);
@@ -736,7 +746,6 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       job.step = 1; job.message = 'Installing dependencies'; await this.saveJob(job); return;
     }
     if (job.step <= 4) {
-      if (job.kind === 'dev' && job.step === 4) { await this.advanceDevStep4(job, snapshot); return; }
       const process = await box.getProcess(job.processIds[job.processIds.length - 1]);
       if (!process) throw new RuntimeError('The container was replaced. Source is saved; start a new job to recover.');
       const state = await process.status();
@@ -887,6 +896,17 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     job.releaseId = release.id; await this.finish(job, `${job.environment === 'production' ? 'Production' : 'Development'} release ready`);
   }
   private async advanceDevStep4(job: StoredJob, snapshot: SourceSnapshot) {
+    // Hard lifetime cap — stop gracefully instead of erroring.
+    if (Date.now() - job.createdAt > DEV_JOB_MAX_LIFETIME_MS) {
+      this.log(job.id, 'Dev job reached the 30-minute lifetime limit. Stopping.');
+      await this.stop(job.id); return;
+    }
+    // Idle timeout — ignores heartbeat and HMR traffic; only reset by file pushes.
+    if (job.devLastActiveAt && Date.now() - job.devLastActiveAt > DEV_JOB_IDLE_TIMEOUT_MS) {
+      this.log(job.id, 'Dev server stopped after 5 minutes of inactivity.');
+      await this.stop(job.id); return;
+    }
+
     const box = this.sandbox(job);
     const { vite: vitePid, backend: backendPid } = job.devServerPids!;
     const [viteProc, backendProc] = await Promise.all([box.getProcess(vitePid), box.getProcess(backendPid)]);
@@ -894,19 +914,27 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     const viteCrashed = !viteProc || viteState?.state !== 'running';
     const backendCrashed = !backendProc || backendState?.state !== 'running';
     if (viteCrashed || backendCrashed) {
+      const crashLogs: string[] = [];
       if (viteCrashed && viteProc) {
-        try { const out = await viteProc.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes }); this.log(job.id, `Dev Vite server exited.\n${out.stdout}\n${out.stderr}`); } catch { /* best effort */ }
+        try { const out = await viteProc.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes }); crashLogs.push(`Vite exited (${out.exitCode}):\n${out.stdout}\n${out.stderr}`); } catch { /* best effort */ }
       }
       if (backendCrashed && backendProc) {
-        try { const out = await backendProc.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes }); this.log(job.id, `Dev backend exited.\n${out.stdout}\n${out.stderr}`); } catch { /* best effort */ }
+        try { const out = await backendProc.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes }); crashLogs.push(`Backend exited:\n${out.stdout}\n${out.stderr}`); } catch { /* best effort */ }
       }
+      const restarts = (job.devCrashRestarts ?? 0) + 1;
+      if (restarts > DEV_MAX_CRASH_RESTARTS) {
+        if (crashLogs.length) this.log(job.id, crashLogs.join('\n\n'));
+        throw new RuntimeError(`Dev server crashed ${restarts} times. Check the build log for details.`);
+      }
+      if (crashLogs.length) this.log(job.id, crashLogs.join('\n\n'));
       await this.assertRunning(job);
       await this.startProcess(job, ['npm', 'run', 'server'], { PORT: '3001', APP_ORIGIN: this.url('development') });
       const newBackendPid = job.processIds[job.processIds.length - 1];
       await this.startProcess(job, ['npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '3000', '--strictPort'], { __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: new URL(this.url('development')).hostname });
       const newVitePid = job.processIds[job.processIds.length - 1];
       job.devServerPids = { vite: newVitePid, backend: newBackendPid };
-      job.previewReady = false; job.message = 'Dev server restarting after crash';
+      job.devCrashRestarts = restarts;
+      job.previewReady = false; job.message = `Dev server restarting (attempt ${restarts}/${DEV_MAX_CRASH_RESTARTS})`;
       await this.saveJob(job); return;
     }
     if (!job.previewReady) {
@@ -918,6 +946,10 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         await this.assertRunning(job); await this.saveJob(job); return;
       }
       job.previewReady = true; job.message = 'Dev server running';
+      if (!job.devFirstPreviewAt) {
+        job.devFirstPreviewAt = Date.now();
+        this.log(job.id, `[dev] first preview ready after ${job.devFirstPreviewAt - (job.startedAt ?? job.createdAt)}ms`);
+      }
       await this.assertRunning(job); await this.saveJob(job);
     }
   }
@@ -1185,6 +1217,11 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     if (url.pathname.startsWith('/api/auth/') || url.pathname === '/api/contact') return this.integrationRequest(request, environment);
     const current = await this.ctx.storage.get<StoredJob>('current');
     if (environment === 'development' && current?.node && (current.kind === 'preview' || current.kind === 'dev') && current.status === 'running' && current.step === 4) {
+      // Dev proxy requires a valid preview session so only the workspace owner can reach it.
+      if (current.kind === 'dev') {
+        const previewSession = await this.session(cookie(request, '__Host-bh_preview'), 'preview', environment);
+        if (!previewSession) throw new RuntimeError('Preview session required. Open the preview from your workspace.', 401);
+      }
       const headers = new Headers(request.headers);
       for (const key of [...headers.keys()]) if (/^(?:x-bh-|x-brainhalf-|x-auth-|cf-access-)/i.test(key) || key === 'authorization') headers.delete(key);
       const appCookies = headers.get('cookie')?.split(';').filter(value => !/^(?:__Host-bh_|bh_session)/.test(value.trim())).join(';');

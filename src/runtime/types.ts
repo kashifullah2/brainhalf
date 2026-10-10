@@ -71,6 +71,11 @@ export const PILOT_LIMITS = {
   uploadBytes: 5_242_880, uploadFiles: 100, parallelUploads: 2,
 } as const;
 
+export const DEV_JOB_MAX_LIFETIME_MS = 30 * 60_000;  // hard ceiling per dev job
+export const DEV_JOB_IDLE_TIMEOUT_MS = 5 * 60_000;   // stop when no file push for 5 min
+export const DEV_MAX_CRASH_RESTARTS = 3;              // cap before surfacing the log
+export const DEV_LIVE_FILE_MAX_BYTES = 512 * 1024;    // 512 KB per /live-files push
+
 export class RuntimeError extends Error {
   constructor(message: string, public status = 400) { super(message); this.name = 'RuntimeError'; }
 }

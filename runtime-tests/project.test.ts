@@ -11,7 +11,7 @@ import { digest } from '../src/runtime/source';
 import { readJson, token } from '../src/runtime/integrations';
 import { CloudflareAPI } from '../src/runtime/cloudflare-api';
 import { STARTER_VERIFICATION } from '../src/runtime/verification';
-import { OWNER_RUNTIME_LIMITS } from '../src/runtime/types';
+import { DEV_JOB_IDLE_TIMEOUT_MS, DEV_JOB_MAX_LIFETIME_MS, DEV_MAX_CRASH_RESTARTS, DEV_LIVE_FILE_MAX_BYTES, OWNER_RUNTIME_LIMITS } from '../src/runtime/types';
 import { isHostedLimitError } from '../src/lib/hosted-limit';
 import { ManagedStore } from '../src/runtime/managed-store';
 import { launch, connect, sessions } from '@cloudflare/playwright';
@@ -908,7 +908,7 @@ describe('Durable pilot quotas', () => {
     const c = context(); const pilot = new PilotCoordinator(c.ctx, {} as any);
     const results = await Promise.all(Array.from({ length: 5 }, (_, i) => pilot.acquire(String(i), 'sandbox', 'project')));
     expect(results.filter(result => result.ok)).toHaveLength(2);
-    expect(results.filter(result => !result.ok)).toEqual(Array(3).fill({ ok: false, status: 429, error: 'All pilot sandbox slots are busy. Try again shortly.' }));
+    expect(results.filter(result => !result.ok)).toEqual(Array(3).fill({ ok: false, status: 429, error: 'All sandbox slots are in use — another project is building or running a dev server. It will free up automatically; try again in a minute.' }));
     await pilot.release('0'); await expect(pilot.acquire('next', 'sandbox', 'project')).resolves.toEqual({ ok: true });
   });
 });
@@ -1148,4 +1148,188 @@ it('retries durable publication outcome delivery without counting a failed deliv
   expect(p.map.has('outcome:job:publish_passed')).toBe(false);
   await (p.object as any).drainOutcomes();
   expect(p.env.PLATFORM.fetch).toHaveBeenCalledTimes(2);
+});
+
+// ── Dev job hardening ────────────────────────────────────────────────────────
+
+function devJob(overrides: Record<string, unknown> = {}) {
+  const now = Date.now();
+  return {
+    id: 'dev', kind: 'dev', node: true, static: false, status: 'running',
+    revision: 'rev', environment: 'development',
+    createdAt: now, startedAt: now, leaseUntil: now + 45_000,
+    sourceKey: 'source', step: 4, sandboxId: 'box',
+    processIds: ['backend', 'vite'],
+    devServerPids: { vite: 'vite', backend: 'backend' },
+    message: 'Dev server running', previewReady: true,
+    ...overrides,
+  };
+}
+
+function runningProcess(port?: number) {
+  return {
+    status: async () => ({ state: 'running' }),
+    output: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
+    waitForPort: vi.fn(async () => {}),
+    kill: vi.fn(),
+  };
+}
+
+describe('Dev job hardening', () => {
+  // ── Item 1: Lifetime cap ──────────────────────────────────────────────────
+  it('stops a dev job that has exceeded the 30-minute lifetime', async () => {
+    const p = await project();
+    p.env.ARTIFACTS = { get: async () => ({ json: async () => ({ files: {}, revision: 'rev' }) }) };
+    const vite = runningProcess(); const backend = runningProcess();
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'vite' ? vite : backend);
+    const now = Date.now();
+    const job = devJob({ createdAt: now - DEV_JOB_MAX_LIFETIME_MS - 1000 });
+    await p.ctx.storage.put('current', structuredClone(job));
+    await (p.object as any).advance(structuredClone(job));
+    expect(p.map.get('current').status).toBe('stopped');
+  });
+
+  // ── Item 1: Idle timeout ──────────────────────────────────────────────────
+  it('stops a dev job that has been idle beyond the idle timeout', async () => {
+    const p = await project();
+    p.env.ARTIFACTS = { get: async () => ({ json: async () => ({ files: {}, revision: 'rev' }) }) };
+    const vite = runningProcess(); const backend = runningProcess();
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'vite' ? vite : backend);
+    const now = Date.now();
+    const job = devJob({ devLastActiveAt: now - DEV_JOB_IDLE_TIMEOUT_MS - 1000 });
+    await p.ctx.storage.put('current', structuredClone(job));
+    await (p.object as any).advance(structuredClone(job));
+    expect(p.map.get('current').status).toBe('stopped');
+  });
+
+  it('does not stop a dev job with recent file-push activity', async () => {
+    const p = await project();
+    p.env.ARTIFACTS = { get: async () => ({ json: async () => ({ files: {}, revision: 'rev' }) }) };
+    const vite = runningProcess(); const backend = runningProcess();
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'vite' ? vite : backend);
+    const job = devJob({ devLastActiveAt: Date.now() - 60_000 }); // 1 min ago — within idle window
+    await p.ctx.storage.put('current', structuredClone(job));
+    await (p.object as any).advance(structuredClone(job));
+    expect(p.map.get('current').status).toBe('running');
+  });
+
+  // ── Item 2: Crash restart cap ─────────────────────────────────────────────
+  it('fails a dev job that has crashed more than DEV_MAX_CRASH_RESTARTS times', async () => {
+    const p = await project();
+    p.env.ARTIFACTS = { get: async () => ({ json: async () => ({ files: { 'package.json': JSON.stringify({ scripts: { server: 'tsx', dev: 'vite' } }) }, revision: 'rev' }) }) };
+    const dead = { status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 1, stdout: '', stderr: 'EADDRINUSE' }), waitForPort: vi.fn(), kill: vi.fn() };
+    const alive = runningProcess();
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'vite' ? dead : alive);
+    sandbox.exec.mockResolvedValue({ id: 'new-proc', output: vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' })), kill: vi.fn() });
+    const job = devJob({ devCrashRestarts: DEV_MAX_CRASH_RESTARTS }); // already at the cap
+    await p.ctx.storage.put('current', structuredClone(job));
+    // runAdvance is what catches the throw and marks the job failed.
+    await (p.object as any).runAdvance(structuredClone(job));
+    const current = p.map.get('current');
+    expect(current.status).toBe('failed');
+    const logs = p.db.prepare('SELECT text FROM logs').all().map((r: any) => r.text).join('\n');
+    expect(logs).toContain('EADDRINUSE');
+  });
+
+  it('restarts dev servers on crash while below the restart cap and increments the counter', async () => {
+    const p = await project();
+    p.env.ARTIFACTS = { get: async () => ({ json: async () => ({ files: { 'package.json': JSON.stringify({ scripts: { server: 'tsx', dev: 'vite' } }) }, revision: 'rev' }) }) };
+    const dead = { status: async () => ({ state: 'exited' }), output: async () => ({ exitCode: 1, stdout: '', stderr: 'crash' }), waitForPort: vi.fn(), kill: vi.fn() };
+    const alive = runningProcess();
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'vite' ? dead : alive);
+    const newProc = { id: 'new-proc', output: vi.fn(async () => ({ exitCode: 0, stdout: '', stderr: '' })), kill: vi.fn() };
+    sandbox.exec.mockResolvedValue(newProc);
+    const job = devJob({ devCrashRestarts: 1, previewReady: false });
+    await p.ctx.storage.put('current', structuredClone(job));
+    await (p.object as any).advance(structuredClone(job));
+    const current = p.map.get('current');
+    expect(current.status).toBe('running');
+    expect(current.devCrashRestarts).toBe(2);
+    expect(current.previewReady).toBe(false);
+  });
+
+  // ── Item 3: /live-files validation ────────────────────────────────────────
+  it('rejects path traversal in /live-files', async () => {
+    const p = await project();
+    const job = devJob();
+    await p.ctx.storage.put('current', structuredClone(job));
+    const bad = await p.call('/live-files', 'POST', { path: '../etc/passwd', content: 'x' });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ error: expect.stringContaining('not allowed') });
+  });
+
+  it('rejects secret file paths in /live-files', async () => {
+    const p = await project();
+    await p.ctx.storage.put('current', devJob());
+    const bad = await p.call('/live-files', 'POST', { path: '.env.local', content: 'SECRET=x' });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ error: expect.stringContaining('not allowed') });
+  });
+
+  it('rejects oversized file content in /live-files', async () => {
+    const p = await project();
+    await p.ctx.storage.put('current', devJob());
+    const big = await p.call('/live-files', 'POST', { path: 'src/App.tsx', content: 'x'.repeat(DEV_LIVE_FILE_MAX_BYTES + 1) });
+    expect(big.status).toBe(413);
+  });
+
+  it('accepts a valid file push and updates devLastActiveAt', async () => {
+    const p = await project();
+    await p.ctx.storage.put('current', devJob());
+    const before = Date.now();
+    const ok = await p.call('/live-files', 'POST', { path: 'src/App.tsx', content: '<App />' });
+    expect(ok.status).toBe(200);
+    expect(sandbox.writeFile).toHaveBeenCalledWith('/workspace/project/src/App.tsx', '<App />');
+    expect(p.map.get('current').devLastActiveAt).toBeGreaterThanOrEqual(before);
+  });
+
+  // ── Item 4: Preview proxy requires session ───────────────────────────────
+  it('returns 401 when accessing dev proxy without a preview session cookie', async () => {
+    const p = await project();
+    const job = devJob({ step: 4, previewReady: true });
+    await p.ctx.storage.put('current', structuredClone(job));
+    const response = await p.object.appRequest(
+      new Request('https://dev-' + 'a'.repeat(32) + '.apps.example.com/', {
+        headers: { Origin: 'https://dev-' + 'a'.repeat(32) + '.apps.example.com' },
+      }),
+      'development',
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it('proxies to sandbox port 3000 when a valid preview session is present', async () => {
+    const p = await project();
+    const job = devJob({ step: 4, previewReady: true });
+    await p.ctx.storage.put('current', structuredClone(job));
+    const previewCookie = await (p.object as any).createSession('preview', 'development', {}, 600);
+    sandbox.getProcess.mockResolvedValue(null); // not needed for proxy path
+    const proxied = new Response('<h1>App</h1>', { status: 200 });
+    const originalSandbox = (p.object as any).sandbox(job);
+    const containerFetch = vi.fn(async () => proxied);
+    vi.spyOn(p.object as any, 'sandbox').mockReturnValue({ ...originalSandbox, containerFetch });
+    const response = await p.object.appRequest(
+      new Request('https://dev-' + 'a'.repeat(32) + '.apps.example.com/', {
+        headers: { Cookie: `__Host-bh_preview=${previewCookie}` },
+      }),
+      'development',
+    );
+    expect(containerFetch).toHaveBeenCalled();
+    expect(response.status).toBe(200);
+  });
+
+  // ── Item 6: Time-to-first-preview log ────────────────────────────────────
+  it('logs time to first preview when previewReady first becomes true', async () => {
+    const p = await project();
+    p.env.ARTIFACTS = { get: async () => ({ json: async () => ({ files: {}, revision: 'rev' }) }) };
+    const vite = runningProcess(); const backend = runningProcess();
+    sandbox.getProcess.mockImplementation(async (id: string) => id === 'vite' ? vite : backend);
+    const job = devJob({ previewReady: false });
+    await p.ctx.storage.put('current', structuredClone(job));
+    await (p.object as any).advance(structuredClone(job));
+    const current = p.map.get('current');
+    expect(current.previewReady).toBe(true);
+    expect(current.devFirstPreviewAt).toBeDefined();
+    const logs = p.db.prepare('SELECT text FROM logs').all().map((r: any) => r.text).join('\n');
+    expect(logs).toMatch(/\[dev\] first preview ready after \d+ms/);
+  });
 });

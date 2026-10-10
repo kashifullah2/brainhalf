@@ -174,7 +174,7 @@ export class PilotCoordinator extends DurableObject<RuntimeEnv> {
         if (lease.expires <= now) await txn.delete(key);
         else if (lease.kind === kind && key !== `lease:${id}`) active++;
       }
-      if (active >= (kind === 'sandbox' ? PILOT_LIMITS.sandboxes : PILOT_LIMITS.browsers)) throw new RuntimeError(`All pilot ${kind} slots are busy. Try again shortly.`, 429);
+      if (active >= (kind === 'sandbox' ? PILOT_LIMITS.sandboxes : PILOT_LIMITS.browsers)) throw new RuntimeError(kind === 'sandbox' ? 'All sandbox slots are in use — another project is building or running a dev server. It will free up automatically; try again in a minute.' : 'All browser slots are in use. Try again shortly.', 429);
       const day = new Date(now).toISOString().slice(0, 10);
       const key = `usage:${projectId}`;
       const usage = await txn.get<{ day: string; count: number }>(key);
