@@ -35,6 +35,7 @@ import { checkPreviewAccess, isPublicPreviewRead, PREVIEW_ACCESS_HEADER } from '
 import { validSessionSecret } from './lib/runtime-config';
 import { isolatedPreviewHtml, previewFiles, previewSecurityHeaders } from './lib/preview-isolation';
 import type { BindingFetcher, DispatchBinding, DurableBinding } from './lib/bindings';
+import { writeAuthEvent } from './lib/cf-analytics';
 
 export { ChatAgent, AuthRegistry };
 
@@ -56,6 +57,7 @@ export interface PlatformEnv {
   PRODUCT_METRICS_OWNER_IDS?: string;
   /** Set to "true" in .dev.vars / wrangler dev to enable localhost CORS origins. */
   IS_DEV?: string;
+  ANALYTICS?: { writeDataPoint(event: { blobs?: string[]; doubles?: number[]; indexes?: string[] }): void };
   [key: string]: unknown;
 }
 
@@ -459,6 +461,10 @@ export default {
         case '/api/auth/google/callback':
         case '/api/auth/google/complete':
           response = await handleGoogleAuth(request, env);
+          if (response.ok && url.pathname === '/api/auth/google/complete') {
+            const userId = response.headers.get('x-auth-user-id') ?? 'unknown';
+            writeAuthEvent(env.ANALYTICS, { userId, method: 'google', status: 'ok' });
+          }
           break;
         case '/api/auth/signup':
         case '/api/auth/forgot-password':
@@ -468,10 +474,15 @@ export default {
         case '/api/contact':
           response = await handleEmailRequest(request, env);
           break;
-        case '/api/auth/login':
+        case '/api/auth/login': {
           try { response = await handleLogin(request, env); }
           catch { response = authUnavailable(); }
+          if (response.ok) {
+            const userId = response.headers.get('x-auth-user-id') ?? 'unknown';
+            writeAuthEvent(env.ANALYTICS, { userId, method: 'email', status: 'ok' });
+          }
           break;
+        }
         case '/api/auth/logout':
           response = await handleLogout(request, env);
           break;

@@ -1,6 +1,7 @@
 import { AUTH_CACHE_TTL, BACKEND_READY_POSITIVE_TTL, BACKEND_READY_NEGATIVE_TTL, DISCONNECT_STOP_DELAY } from './lib/timeouts';
 import { isEmptyAssistantResponse } from './lib/assistant-response';
 import { recordProductOutcome, type OutcomeEvent } from './lib/product-outcomes';
+import { writeGenerationEvent } from './lib/cf-analytics';
 import { prepareCapabilities, sdkCapabilities, imageMessages, cfImageMessages, acceptsImageInput, runCapabilityLoop, capabilitiesFromTools, type AgentCapabilities } from './lib/agent-capabilities';
 import type { BuilderAttachment } from './lib/builder-attachments';
 import { BuilderService } from './lib/builder-service';
@@ -382,6 +383,7 @@ export interface ChatAgentEnv {
   REQUIRED_MODEL_PROVIDERS?: string;
   BRAINHALF_SERVICES?: { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> };
   BRAINHALF_SERVICE_TOKEN?: string;
+  ANALYTICS?: { writeDataPoint(event: { blobs?: string[]; doubles?: number[]; indexes?: string[] }): void };
   [key: string]: unknown;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -3715,6 +3717,28 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         const filesWritten = completed ? Object.keys(this.readAllProjectFiles()).length : null;
         this.runSql`UPDATE generation_usage SET prompt_category=${promptCategory},files_written=${filesWritten},retry_count=${accounting.providerCalls > 1 ? accounting.providerCalls - 1 : 0},repair_types=${repairTypes.length ? repairTypes.join(',') : null},generation_ms=${accounting.generationMs},extraction_ms=${accounting.extractionMs},checks_ms=${accounting.checksMs},edit_chars=${accounting.editChars},rewrite_chars=${accounting.rewriteChars},cache_read_tokens=${accounting.cacheReadTokens},cache_write_tokens=${accounting.cacheWriteTokens} WHERE id=${accounting.id}`;
       } catch { /* Analytics columns are best-effort */ }
+      if (!repairPending) {
+        const aeStatus = completed ? 'completed' : abortController.signal.aborted ? 'stopped' : 'failed';
+        const repairTypes: string[] = [];
+        if (this.truncationRetries > 0) repairTypes.push('truncation');
+        if (this.syntaxRepairAttempts > 0) repairTypes.push('syntax');
+        if (this.finalCompletenessRepairAttempts > 0) repairTypes.push('completeness');
+        const aeCategory = plannerMode ? 'planner' : modes?.questionMode ? 'question' : modes?.destructiveMode ? 'destructive' : modes?.ambiguousMode ? 'ambiguous' : modes?.isIncrementalEdit ? 'edit' : 'build';
+        writeGenerationEvent(this.env.ANALYTICS, {
+          userId: outcomeScope.ownerId,
+          modelId: String(data.model || DEFAULT_MODEL_ID).slice(0, 200),
+          status: aeStatus,
+          promptCategory: aeCategory,
+          repairTypes,
+          ttftMs: accounting.firstResponseAt != null ? accounting.firstResponseAt - accounting.startedAt : -1,
+          totalMs: accounting.generationMs ?? (Date.now() - accounting.startedAt),
+          inputTokens: accounting.inputTokens ?? 0,
+          outputTokens: accounting.outputTokens ?? 0,
+          filesWritten: completed ? Object.keys(this.readAllProjectFiles()).length : 0,
+          repairCount: this.truncationRetries + this.syntaxRepairAttempts + this.finalCompletenessRepairAttempts,
+          providerCalls: accounting.providerCalls,
+        });
+      }
       if (measureGeneration && !repairPending) await this.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });
       if (this.activeAccounting === accounting) this.activeAccounting = null;
       if (this.activeGeneration?.epoch === epoch) this.activeGeneration = null;

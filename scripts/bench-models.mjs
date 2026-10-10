@@ -48,10 +48,9 @@ async function apiFetch(path, opts = {}) {
   return res.json();
 }
 
-async function createProject() {
-  const data = await apiFetch('/api/projects/create', { method: 'POST', body: JSON.stringify({ name: `bench-${Date.now()}` }) });
-  if (!data.projectId) throw new Error('createProject: no projectId in response');
-  return data.projectId;
+function createProject() {
+  // Projects are claimed on first WS connection — no server create step needed.
+  return `proj-${crypto.randomUUID()}`;
 }
 
 async function deleteProject(id) {
@@ -137,13 +136,13 @@ async function main() {
   console.log(`Target: ${BASE_URL}\n`);
 
   const session = await apiFetch('/api/auth/session').catch(e => { throw new Error(`Auth failed: ${e.message}`); });
-  console.log(`Signed in as: ${session.user?.email ?? session.user?.id ?? '?'}\n`);
+  console.log(`Signed in as: ${session.userId ?? '?'}\n`);
 
   const results = [];
 
   for (const model of CF_MODELS) {
     process.stdout.write(`  ${model.name.padEnd(20)} `);
-    const projectId = await createProject().catch(e => { throw new Error(`create project: ${e.message}`); });
+    const projectId = createProject();
     const t0 = performance.now();
     try {
       const r = await runGeneration(projectId, model.id);

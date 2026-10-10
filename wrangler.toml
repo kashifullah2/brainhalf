@@ -70,6 +70,10 @@ new_sqlite_classes = [ "ChatAgent" ]
 tag = "v2"
 new_sqlite_classes = [ "AuthRegistry" ]
 
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "brainhalf_events"
+
 [[r2_buckets]]
 binding = "PROJECT_BACKUPS"
 bucket_name = "brainhalf-project-backups"

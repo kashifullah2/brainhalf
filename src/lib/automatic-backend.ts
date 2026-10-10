@@ -101,7 +101,7 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
       if (pending.current === files) pending.current = null;
       if (snapshot.revision === attempted.current && !status.jobs.some(job => job.revision === snapshot.revision && ['failed', 'stopped'].includes(job.status))) return;
       setFault(false); setNotice('Starting dev server…');
-      await runtimeRequest(projectId, '/jobs', 'development', { method: 'POST', body: JSON.stringify({ kind: 'dev', files }) });
+      await runtimeRequest(projectId, '/jobs', 'development', { method: 'POST', body: JSON.stringify({ kind: 'preview', files }) });
       if (current === epoch.current) { attempted.current = snapshot.revision; refresh(); }
     } catch (cause) {
       if (current === epoch.current) { setFault(true); setNotice(toPlainBackendError(cause)); }

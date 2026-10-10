@@ -64,7 +64,8 @@ const CF_MODELS: AllowedModel[] = [
   { name: '@cf/deepseek-ai/deepseek-v4-pro-0813', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-v4-pro-0813', maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
   { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
-  { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: 32768 },
+  // Disabled: times out (2 min+) on real generation requests; re-enable when model becomes stable.
+  { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: 32768, clientSelectable: false },
   { name: '@cf/meta/llama-4-scout-17b-16e-instruct', provider: 'cloudflare', id: '@cf/meta/llama-4-scout-17b-16e-instruct', maxTokens: CF_DEFAULT_MAX },
   // Disabled: returns empty response on CF Workers AI; re-enable when model becomes available.
   { name: '@cf/meta/llama-4-maverick-17b-128e-instruct', provider: 'cloudflare', id: '@cf/meta/llama-4-maverick-17b-128e-instruct', maxTokens: CF_DEFAULT_MAX, clientSelectable: false },
