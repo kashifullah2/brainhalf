@@ -1776,6 +1776,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       message={backend.message}
                       startedAt={backend.buildStartedAt}
                     />
+                  ) : isFullStackProject(filesRef.current) && (backend.failed || backend.fault) ? (
+                    // Backend failed or faulted — the DesignPreviewStrip above already
+                    // shows the error and action buttons. Show a neutral placeholder so the
+                    // design-preview iframe never loads and displays BACKEND_NOT_RUNNING.
+                    <div className="studio-preview-empty" role="status" />
                   ) : previewSessionReady ? <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
@@ -2262,6 +2267,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       message={backend.message}
                       startedAt={backend.buildStartedAt}
                     />
+                  ) : isFullStackProject(filesRef.current) && (backend.failed || backend.fault) ? (
+                    // Backend failed or faulted — the DesignPreviewStrip above already
+                    // shows the error and action buttons. Show a neutral placeholder so the
+                    // design-preview iframe never loads and displays BACKEND_NOT_RUNNING.
+                    <div className="studio-preview-empty" role="status" />
                   ) : previewSessionReady ? <iframe
                     ref={iframeRef}
                     key={`edge-preview-${activeProjectId}-${edgeRefreshCounter}`}
