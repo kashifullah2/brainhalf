@@ -155,6 +155,19 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     const response = await worker.fetch(request, envWith(mockRegistry(), { ChatAgent: { idFromName: () => 'project', get: () => ({ fetch: agent }) }, RUNTIME: { fetch: runtime } }), {} as any);
     expect(response.status).toBe(502); expect(agent).toHaveBeenCalledOnce();
   });
+  it('returns 403 when user B tries to POST /live-files into user A\'s project', async () => {
+    // Session belongs to user-1, but the project is owned by user-a.
+    const registry = mockRegistry({ userId: 'user-1', ownerId: 'user-a' });
+    const runtime = vi.fn(async () => Response.json({ ok: true }));
+    const { request } = await authenticatedRequest(
+      'https://brainhalf.com/api/projects/proj-user-a/runtime/live-files',
+      { method: 'POST', body: JSON.stringify({ path: 'src/App.tsx', content: 'stolen' }), headers: { 'Content-Type': 'application/json', origin: 'https://brainhalf.com' } },
+    );
+    const response = await worker.fetch(request, envWith(registry, { RUNTIME: { fetch: runtime } }), {} as any);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: 'You do not own this project' });
+    expect(runtime).not.toHaveBeenCalled();
+  });
   it('serves dashboard navigation with the app shell and private indexing headers', async () => {
     // Mirror the production assets binding: .html URLs 307 to the pretty path.
     // Fetching '/shell.html' would surface that redirect to the browser, and
