@@ -75,8 +75,10 @@ export class RuntimeControl extends WorkerEntrypoint<RuntimeEnv> {
         // Owner-level reconciliation: the main Worker knows which projects
         // still exist; drop slot registrations left behind by deleted
         // projects so they stop counting against the hosted-app limit.
-        const body = await request.json().catch(() => ({})) as { keep?: unknown };
-        const keep = new Set((Array.isArray(body.keep) ? body.keep : []).filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id)));
+        let body: { keep?: unknown };
+        try { body = await request.json() as { keep?: unknown }; } catch { throw new RuntimeError('Invalid sweep payload', 400); }
+        if (!Array.isArray(body?.keep)) throw new RuntimeError('A keep array of project IDs is required', 400);
+        const keep = new Set(body.keep.filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id)));
         const released = await this.env.PILOT.getByName('pilot').releaseUnknown(scope.ownerId, keep);
         return Response.json({ ok: true, released });
       }
