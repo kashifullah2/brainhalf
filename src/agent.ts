@@ -43,7 +43,7 @@ import { AiBudget, AiBudgetError, meteredModel } from './lib/ai-budget';
 import { sourceSnapshot } from './runtime/source';
 import { GenerationUserError, classifyGenerationError, errorMessage } from './lib/generation-errors';
 import { FlipFlopGuard, RepairLog } from './lib/repair-budget';
-import { checkShrinkage, isShrinkIntentional, isConfigWriteBlocked, logWritePath, SHRINK_OK_MARKER } from './lib/write-guard';
+import { checkShrinkage, isShrinkIntentional, isConfigWriteBlocked, logWritePath, SHRINK_OK_MARKER, estimateUnchangedFraction } from './lib/write-guard';
 import { extractApiFetches, extractWorkerRoutes, findUncoveredFetches } from './lib/api-coverage';
 
 // Transient provider failures (rate limits, overload, dropped connections)
@@ -432,7 +432,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   private generationJobs() {
     return new GenerationJobs((sql, ...params) => this.runSql(sql.split('?') as unknown as TemplateStringsArray, ...params));
   }
-  private activeAccounting: { id: string; startedAt: number; inputTokens: number | null; outputTokens: number | null; firstResponseAt: number | null; providerCalls: number; generationMs: number | null; extractionMs: number | null; checksMs: number | null } | null = null;
+  private activeAccounting: { id: string; startedAt: number; inputTokens: number | null; outputTokens: number | null; firstResponseAt: number | null; providerCalls: number; generationMs: number | null; extractionMs: number | null; checksMs: number | null; editChars: number; rewriteChars: number } | null = null;
   /**
    * Consecutive truncation auto-retries within one retry chain. Reset whenever
    * a brand-new user prompt starts; the chain only continues across the
@@ -2290,7 +2290,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     const abortController = new AbortController();
     this.currentAbortController = abortController;
     this.activeGeneration = { id: typeof data.idempotencyKey === 'string' ? data.idempotencyKey : crypto.randomUUID(), epoch, model: data.model || DEFAULT_MODEL_ID, prompt: actualPrompt, response: '', startedAt: Date.now(), filesChanged: false, truncated: false };
-    const accounting = { id: crypto.randomUUID(), startedAt: Date.now(), inputTokens: null as number | null, outputTokens: null as number | null, firstResponseAt: null as number | null, providerCalls: 0, generationMs: null as number | null, extractionMs: null as number | null, checksMs: null as number | null };
+    const accounting = { id: crypto.randomUUID(), startedAt: Date.now(), inputTokens: null as number | null, outputTokens: null as number | null, firstResponseAt: null as number | null, providerCalls: 0, generationMs: null as number | null, extractionMs: null as number | null, checksMs: null as number | null, editChars: 0, rewriteChars: 0 };
     this.activeAccounting = accounting;
     const measureGeneration = !plannerMode && !isConversationalPrompt(actualPrompt);
     const outcomeScope = { id: accounting.id, projectId: this.name, ownerId: this.senderUserId(connection) || '' };
@@ -2731,25 +2731,33 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 }
               }),
               write_file: tool({
-                description: 'Create a new file with complete contents. For an intentional whole-file rewrite, first read the complete existing file. Use edit_file for localized changes.',
+                description: 'Create a new file or fully rewrite one when more than ~40% of its content changes. Use edit_file for targeted changes to existing files.',
                 inputSchema: z.object({ path: z.string(), content: z.string() }),
                 execute: async ({ path, content }: { path: string; content: string }) => {
                   {
                     const cleanPath = normalizePath(path);
                     const existingRow = this.runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`[0];
                     if (existingRow && typeof existingRow.content === 'string') {
-                      const lines = existingRow.content.split('\n').length;
-                      const alwaysBlocked = lines > 200 || cleanPath === '/worker/index.ts';
-                      if (alwaysBlocked || modes?.isIncrementalEdit) {
-                        return { success: false, error: `This file has ${lines} lines. Use edit_file with targeted search/replace pairs instead of rewriting the entire file. Call read_file first, then edit_file.` };
+                      if (cleanPath === '/worker/index.ts' || modes?.isIncrementalEdit) {
+                        return { success: false, error: `Use edit_file with targeted search/replace pairs instead of rewriting the file. Call read_file first, then edit_file.` };
+                      }
+                      const existingContent = existingRow.content;
+                      const lines = existingContent.split('\n').length;
+                      if (lines >= 30) {
+                        const unchangedPct = Math.round(estimateUnchangedFraction(existingContent, content) * 100);
+                        if (unchangedPct >= 60) {
+                          return { success: false, error: `${unchangedPct}% of this file is unchanged. Use edit_file with targeted search/replace pairs — call read_file first, then edit_file.` };
+                        }
                       }
                     }
                   }
-                  return saveToolFile(path, content);
+                  const result = await saveToolFile(path, content);
+                  if (result.success) accounting.rewriteChars += content.length;
+                  return result;
                 },
               }),
               edit_file: tool({
-                description: 'Apply small exact replacements to an inspected file. Each search must match exactly once. The entire edit is rejected on a stale read, ambiguous match or syntax error.',
+                description: 'Apply exact str_replace edits to an inspected file when <40% of its content changes. Read the file first. Each search must match exactly once; fails on stale read, ambiguous match or syntax error.',
                 inputSchema: z.object({ path: z.string(), edits: z.array(z.object({ search: z.string().min(1), replace: z.string() })).min(1).max(30) }),
                 execute: async ({ path, edits }: { path: string; edits: Array<{ search: string; replace: string }> }) => {
                   const cleanPath = normalizePath(path);
@@ -2768,7 +2776,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     return { success: false, error: `This edit shrinks ${cleanPath} by ${shrinkPct}%. If removing content intentionally, include ${SHRINK_OK_MARKER} in a comment and resend; otherwise check the replacement is complete.` };
                   }
                   logWritePath('tool:edit_file', cleanPath, 'accepted');
-                  return await saveToolFile(cleanPath, result);
+                  const writeResult = await saveToolFile(cleanPath, result);
+                  if (writeResult.success) accounting.editChars += edits.reduce((s, e) => s + e.search.length + e.replace.length, 0);
+                  return writeResult;
                 },
               }),
               batch_edit: tool({
@@ -2810,6 +2820,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     this.backupToR2(this.senderUserId(connection)).catch(console.error);
                     const progress = JSON.stringify({ type: 'file_progress', written: toolWrittenPaths.size, paths: [...toolWrittenPaths] });
                     try { connection.send(progress); } catch (e) { noteSendFailure(e); }
+                    accounting.editChars += files.reduce((s, f) => s + f.edits.reduce((es, e) => es + e.search.length + e.replace.length, 0), 0);
                     return { success: true, paths: [...pending.keys()] };
                   } catch (error) {
                     return { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -3573,7 +3584,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         if (this.syntaxRepairAttempts > 0) repairTypes.push('syntax');
         if (this.finalCompletenessRepairAttempts > 0) repairTypes.push('completeness');
         const filesWritten = completed ? Object.keys(this.readAllProjectFiles()).length : null;
-        this.runSql`UPDATE generation_usage SET prompt_category=${promptCategory},files_written=${filesWritten},retry_count=${accounting.providerCalls > 1 ? accounting.providerCalls - 1 : 0},repair_types=${repairTypes.length ? repairTypes.join(',') : null},generation_ms=${accounting.generationMs},extraction_ms=${accounting.extractionMs},checks_ms=${accounting.checksMs} WHERE id=${accounting.id}`;
+        this.runSql`UPDATE generation_usage SET prompt_category=${promptCategory},files_written=${filesWritten},retry_count=${accounting.providerCalls > 1 ? accounting.providerCalls - 1 : 0},repair_types=${repairTypes.length ? repairTypes.join(',') : null},generation_ms=${accounting.generationMs},extraction_ms=${accounting.extractionMs},checks_ms=${accounting.checksMs},edit_chars=${accounting.editChars},rewrite_chars=${accounting.rewriteChars} WHERE id=${accounting.id}`;
       } catch { /* Analytics columns are best-effort */ }
       if (measureGeneration && !repairPending) await this.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });
       if (this.activeAccounting === accounting) this.activeAccounting = null;
@@ -4762,7 +4773,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (!usageUserId || !usageProjectId || usageProjectId !== this.name || !(await isProjectOwner(this.env, usageProjectId, usageUserId))) {
         return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
       }
-      const generations = this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls,prompt_category,files_written,retry_count,repair_types,generation_ms,extraction_ms,checks_ms FROM generation_usage ORDER BY started_at DESC LIMIT 20`;
+      const generations = this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls,prompt_category,files_written,retry_count,repair_types,generation_ms,extraction_ms,checks_ms,edit_chars,rewrite_chars FROM generation_usage ORDER BY started_at DESC LIMIT 20`;
       const models = MODEL_ALLOWLIST.filter(m => m.clientSelectable !== false).map(m => ({ name: m.name, provider: m.provider, supportsPromptCaching: m.supportsPromptCaching ?? false }));
       return Response.json({ generations, models }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
     }

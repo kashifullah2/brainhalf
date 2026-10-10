@@ -44,6 +44,28 @@ export function isConfigWriteBlocked(path: string, userPrompt: string, buildErro
   return true;
 }
 
+/**
+ * Estimates the fraction of lines unchanged between `original` and `updated`
+ * using a prefix + suffix scan (O(n)). Works well for contiguous edits —
+ * the typical case when deciding whether to use edit_file vs write_file.
+ *
+ * Returns a value in [0, 1]: 1.0 means identical, 0.0 means no shared lines.
+ * Used by write_file to enforce the ~40% change threshold.
+ */
+export function estimateUnchangedFraction(original: string, updated: string): number {
+  const oLines = original.split('\n');
+  const uLines = updated.split('\n');
+  const total = Math.max(oLines.length, uLines.length);
+  if (total === 0) return 0;
+  let prefix = 0;
+  while (prefix < oLines.length && prefix < uLines.length && oLines[prefix] === uLines[prefix]) prefix++;
+  const oRem = oLines.length - prefix;
+  const uRem = uLines.length - prefix;
+  let suffix = 0;
+  while (suffix < oRem && suffix < uRem && oLines[oLines.length - 1 - suffix] === uLines[uLines.length - 1 - suffix]) suffix++;
+  return (prefix + suffix) / total;
+}
+
 export type WritePathTag = 'tool:write_file' | 'tool:edit_file' | 'tool:batch_edit' | 'text-protocol';
 
 export function logWritePath(tag: WritePathTag, path: string, outcome: 'accepted' | 'rejected', reason?: string): void {

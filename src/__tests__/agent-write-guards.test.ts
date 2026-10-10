@@ -203,7 +203,7 @@ describe('P4 file extraction commits deletes and writes as one batch', () => {
   });
 });
 
-import { checkShrinkage, isShrinkIntentional, isConfigWriteBlocked, SHRINK_OK_MARKER } from '../lib/write-guard';
+import { checkShrinkage, isShrinkIntentional, isConfigWriteBlocked, SHRINK_OK_MARKER, estimateUnchangedFraction } from '../lib/write-guard';
 
 describe('write-guard primitives', () => {
   describe('checkShrinkage', () => {
@@ -361,5 +361,39 @@ describe('P4 epoch gate — a superseded generation does not clobber', () => {
     agent.extractAndSaveFiles('<file path="src/stale.tsx">// stale</file>', { id: 'c1' }, staleTicket);
 
     expect(files.has('/src/stale.tsx')).toBe(false);
+  });
+});
+
+describe('estimateUnchangedFraction — 40% write_file redirect threshold', () => {
+  it('returns near 1.0 for a 700-line file with one changed line (triggers write_file redirect)', () => {
+    const base = Array.from({ length: 700 }, (_, i) => `const line${i} = ${i};`);
+    const original = base.join('\n');
+    const updated = [...base.slice(0, 350), 'const line350 = 9999;', ...base.slice(351)].join('\n');
+    expect(estimateUnchangedFraction(original, updated)).toBeGreaterThanOrEqual(0.99);
+  });
+
+  it('fraction ≥ 0.6 means write_file would redirect to edit_file', () => {
+    const base = Array.from({ length: 700 }, (_, i) => `const line${i} = ${i};`);
+    const original = base.join('\n');
+    const updated = [...base.slice(0, 350), 'const line350 = 9999;', ...base.slice(351)].join('\n');
+    // A file with 699/700 unchanged lines is well above the 0.6 threshold
+    expect(estimateUnchangedFraction(original, updated)).toBeGreaterThanOrEqual(0.6);
+  });
+
+  it('returns below 0.6 when more than 40% of lines change (write_file allowed)', () => {
+    // 5 of 10 lines change — 50% changed, 50% unchanged → below 0.6
+    const original = ['A', 'B', 'C', 'D', 'E', 'line5', 'line6', 'line7', 'line8', 'line9'].join('\n');
+    const updated = ['X', 'Y', 'Z', 'W', 'V', 'line5', 'line6', 'line7', 'line8', 'line9'].join('\n');
+    expect(estimateUnchangedFraction(original, updated)).toBeLessThan(0.6);
+  });
+
+  it('returns 0 for completely different content', () => {
+    const original = Array.from({ length: 10 }, (_, i) => `old${i}`).join('\n');
+    const updated = Array.from({ length: 10 }, (_, i) => `new${i}`).join('\n');
+    expect(estimateUnchangedFraction(original, updated)).toBe(0);
+  });
+
+  it('returns 1 for two empty strings (identical content, nothing changed)', () => {
+    expect(estimateUnchangedFraction('', '')).toBe(1);
   });
 });

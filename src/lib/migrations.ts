@@ -139,6 +139,10 @@ export const AGENT_MIGRATIONS: Migration[] = [
     'ALTER TABLE generation_usage ADD COLUMN extraction_ms INTEGER',
     'ALTER TABLE generation_usage ADD COLUMN checks_ms INTEGER',
   ] },
+  { version: 17, name: 'generation_edit_ratio', statements: [
+    'ALTER TABLE generation_usage ADD COLUMN edit_chars INTEGER',
+    'ALTER TABLE generation_usage ADD COLUMN rewrite_chars INTEGER',
+  ] },
 
 ];
 
