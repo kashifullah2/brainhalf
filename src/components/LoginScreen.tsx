@@ -41,13 +41,19 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
   const turnstileTokenRef = useRef<string | null>(null);
   const turnstileWidgetId = useRef<string | null>(null);
 
-  const SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) || '';
+  // Skip in Vite dev — the widget requires a registered domain, and the CF
+  // Worker that verifies the token doesn't run during local development.
+  const SITE_KEY = import.meta.env.DEV ? '' : '0x4AAAAAAFTNs6Qm8S3rmNkF';
+  const SCRIPT_ID = 'cf-turnstile-script';
+  const ONLOAD_CB = '__bhTurnstileReady';
 
-  // Load Turnstile script once; render invisible widget in the container div.
+  // Load Turnstile once per page; render invisible widget into the container div.
+  // Uses render=explicit so CF's script doesn't auto-scan the DOM, and the
+  // onload= param is more reliable than script.onload across re-mounts.
   useEffect(() => {
     if (!SITE_KEY || !turnstileRef.current) return;
-    const scriptId = 'cf-turnstile-script';
-    const render = () => {
+
+    const doRender = () => {
       const w = (window as any).turnstile;
       if (!w || !turnstileRef.current) return;
       turnstileWidgetId.current = w.render(turnstileRef.current, {
@@ -56,19 +62,30 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
         callback: (token: string) => { turnstileTokenRef.current = token; },
         'expired-callback': () => { turnstileTokenRef.current = null; },
         'error-callback': () => { turnstileTokenRef.current = null; },
-      }) ?? null;
+      }) as string;
     };
-    if ((window as any).turnstile) { render(); return; }
-    if (!document.getElementById(scriptId)) {
+
+    // If the script already ran (navigating back to the login screen), render now.
+    if ((window as any).turnstile) {
+      doRender();
+    } else if (!document.getElementById(SCRIPT_ID)) {
+      (window as any)[ONLOAD_CB] = doRender;
       const script = document.createElement('script');
-      script.id = scriptId;
-      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+      script.id = SCRIPT_ID;
+      script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=${ONLOAD_CB}`;
       script.async = true;
-      script.onload = render;
+      script.defer = true;
       document.head.appendChild(script);
+    } else {
+      // Script tag exists but hasn't fired yet — patch the callback.
+      (window as any)[ONLOAD_CB] = doRender;
     }
+
     return () => {
-      if (turnstileWidgetId.current) (window as any).turnstile?.remove(turnstileWidgetId.current);
+      if (turnstileWidgetId.current) {
+        (window as any).turnstile?.remove(turnstileWidgetId.current);
+        turnstileWidgetId.current = null;
+      }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -176,7 +193,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
           </label>
           {error && <div className="studio-auth-error" role="alert">{error}</div>}
           {notice && <div className="account-notice" role="status">{notice}</div>}
-          {SITE_KEY && <div ref={turnstileRef} aria-hidden="true" />}
+          {SITE_KEY && <div ref={turnstileRef} data-sitekey={SITE_KEY} aria-hidden="true" />}
           <button type="submit" className="studio-auth-submit" disabled={!!busy}>{busy === 'email' ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}<ArrowRight size={17} /></button>
           {mode === 'login' && verificationRequired && <div className="studio-auth-resend"><button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
         </form>
