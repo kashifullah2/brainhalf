@@ -38,6 +38,7 @@ import type { BindingFetcher, DispatchBinding, DurableBinding } from './lib/bind
 import { writeAuthEvent } from './lib/cf-analytics';
 import { upsertProjectVector, deleteProjectVector, searchProjects } from './lib/vectorize';
 import { structuredLog } from './lib/structured-log';
+import { verifyTurnstileToken } from './lib/turnstile';
 
 export { ChatAgent, AuthRegistry };
 
@@ -66,6 +67,8 @@ export interface PlatformEnv {
   EMAIL_QUEUE?: { send(msg: unknown): Promise<void> };
   /** Vectorize index for semantic project search. */
   VECTORIZE?: VectorizeIndex;
+  /** Cloudflare Turnstile secret key — when set, bot-protection is enforced on auth write endpoints. */
+  TURNSTILE_SECRET_KEY?: string;
   [key: string]: unknown;
 }
 
@@ -461,6 +464,24 @@ export default {
         const bucket = url.pathname === '/api/auth/ws-ticket' ? 'wsTicket' : 'auth';
         const rate = await checkRateLimit(env, bucket, clientKey(request));
         if (!rate.ok) return withCors(rate.unavailable ? jsonError('Rate-limit service unavailable. Please retry shortly.', 503) : tooManyRequests(rate.retryAfter), origin);
+      }
+
+      // Bot protection: verify Turnstile challenge token on write paths that
+      // are most abused by bots (signup, login, forgot-password).
+      // No-op when TURNSTILE_SECRET_KEY is absent (e.g. local dev).
+      const TURNSTILE_PROTECTED = new Set(['/api/auth/signup', '/api/auth/login', '/api/auth/forgot-password']);
+      if (env.TURNSTILE_SECRET_KEY && TURNSTILE_PROTECTED.has(url.pathname)) {
+        const bodyText = await request.text();
+        let cfToken = '';
+        try {
+          const parsed = JSON.parse(bodyText) as Record<string, unknown>;
+          if (typeof parsed['cf-turnstile-response'] === 'string') cfToken = parsed['cf-turnstile-response'];
+        } catch { /* invalid JSON — let the downstream handler return 400 */ }
+        if (!cfToken || !(await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, clientKey(request)))) {
+          return withCors(jsonError('Please complete the security check', 400), origin);
+        }
+        // Reconstruct the request so downstream handlers can read the body.
+        request = new Request(request, { body: bodyText });
       }
 
       let response: Response;

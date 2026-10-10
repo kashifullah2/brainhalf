@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowRight, X, Eye, EyeOff } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import { login, signup, startGoogleSignIn, AuthError, type SessionUser } from '../lib/auth-client';
@@ -37,6 +37,47 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
   const [showPassword, setShowPassword] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const dialogRef = useModalFocus(true, onClose);
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileTokenRef = useRef<string | null>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
+
+  const SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) || '';
+
+  // Load Turnstile script once; render invisible widget in the container div.
+  useEffect(() => {
+    if (!SITE_KEY || !turnstileRef.current) return;
+    const scriptId = 'cf-turnstile-script';
+    const render = () => {
+      const w = (window as any).turnstile;
+      if (!w || !turnstileRef.current) return;
+      turnstileWidgetId.current = w.render(turnstileRef.current, {
+        sitekey: SITE_KEY,
+        size: 'invisible',
+        callback: (token: string) => { turnstileTokenRef.current = token; },
+        'expired-callback': () => { turnstileTokenRef.current = null; },
+        'error-callback': () => { turnstileTokenRef.current = null; },
+      }) ?? null;
+    };
+    if ((window as any).turnstile) { render(); return; }
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+      script.async = true;
+      script.onload = render;
+      document.head.appendChild(script);
+    }
+    return () => {
+      if (turnstileWidgetId.current) (window as any).turnstile?.remove(turnstileWidgetId.current);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-execute the challenge when the form mode switches so a fresh token is ready.
+  const resetTurnstile = useCallback(() => {
+    turnstileTokenRef.current = null;
+    if (turnstileWidgetId.current) (window as any).turnstile?.reset(turnstileWidgetId.current);
+  }, []);
+
   useEffect(() => { emailRef.current?.focus(); }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -47,8 +88,10 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setBusy('email');
+    const turnstileToken = turnstileTokenRef.current ?? undefined;
+    resetTurnstile();
     try {
-      const result = await (mode === 'login' ? login(email.trim(), password) : signup(email.trim(), password));
+      const result = await (mode === 'login' ? login(email.trim(), password, turnstileToken) : signup(email.trim(), password, turnstileToken));
       if ('verificationRequired' in result) { setNotice(result.message); setMode('login'); setPassword(''); setVerificationRequired(true); }
       else onAuthenticated(result);
     }
@@ -70,7 +113,9 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     if (busy) return;
     setBusy('email'); setError(null);
     try {
-      const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: trimmed }) });
+      const forgotToken = turnstileTokenRef.current ?? undefined;
+      resetTurnstile();
+      const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: trimmed, ...(forgotToken ? { 'cf-turnstile-response': forgotToken } : {}) }) });
       const body = await res.json().catch(() => ({}));
       setNotice(body.message || 'If that account exists, a reset link has been sent.');
     } catch { setNotice('If that account exists, a reset link has been sent.'); }
@@ -131,6 +176,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
           </label>
           {error && <div className="studio-auth-error" role="alert">{error}</div>}
           {notice && <div className="account-notice" role="status">{notice}</div>}
+          {SITE_KEY && <div ref={turnstileRef} aria-hidden="true" />}
           <button type="submit" className="studio-auth-submit" disabled={!!busy}>{busy === 'email' ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}<ArrowRight size={17} /></button>
           {mode === 'login' && verificationRequired && <div className="studio-auth-resend"><button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
         </form>

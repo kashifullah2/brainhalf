@@ -176,14 +176,14 @@ async function restoreOwnedProjects(token: string): Promise<void> {
   } catch {} finally { clearTimeout(timeout); }
 }
 
-export async function signup(email: string, password: string): Promise<SessionUser | { verificationRequired: true; message: string }> {
+export async function signup(email: string, password: string, turnstileToken?: string): Promise<SessionUser | { verificationRequired: true; message: string }> {
   const revision = ++sessionRevision;
   const previousToken = getToken();
   const res = await fetch(`${apiBase()}/api/auth/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {}) }),
   });
   const body = await res.json().catch(() => ({ error: 'Signup failed' }));
   if (res.ok && body?.verificationRequired === true) return { verificationRequired: true, message: body.message || 'Check your email to verify your account, then sign in.' };
@@ -196,14 +196,14 @@ export async function signup(email: string, password: string): Promise<SessionUs
   return user;
 }
 
-export async function login(email: string, password: string): Promise<SessionUser> {
+export async function login(email: string, password: string, turnstileToken?: string): Promise<SessionUser> {
   const revision = ++sessionRevision;
   const previousToken = getToken();
   const res = await fetch(`${apiBase()}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {}) }),
   });
   const body = await res.json().catch(() => ({ error: 'Login failed' }));
   const user = sessionUser(body?.user);
