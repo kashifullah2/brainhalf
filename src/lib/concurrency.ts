@@ -57,7 +57,8 @@ export class BusyLock {
   async run<T>(
     label: string,
     fn: () => Promise<T>,
-    timeoutMs = 5 * 60_000
+    timeoutMs = 5 * 60_000,
+    abortOnTimeout?: AbortController
   ): Promise<{ value: T } | { reason: string }> {
     if (this.held) {
       return { reason: `${this.holder} is still running` };
@@ -79,10 +80,10 @@ export class BusyLock {
       });
       const result = await Promise.race([work, timeout]);
       if (!settled) {
-        // The timeout won and `fn` is still in flight; nobody is awaiting it, so
-        // a later rejection would be an unhandled-rejection crash of the
-        // isolate. Detach it — the caller has already been told the job was
-        // abandoned.
+        // The timeout won and `fn` is still in flight. Abort it so it does not
+        // continue running concurrently with the next generation that acquires
+        // the lock, then detach the promise to avoid an unhandled-rejection crash.
+        abortOnTimeout?.abort(`${label} timed out after ${timeoutMs}ms`);
         work.catch(() => { /* no longer awaited by design */ });
       }
       return result;

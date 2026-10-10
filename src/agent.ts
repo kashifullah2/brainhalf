@@ -2276,7 +2276,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           const systemPrompt = staticPart + dynamicPart;
           generationStarted = true;
           return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode, isIncrementalEdit }, staticPart);
-        }, GENERATION_LOCK_TIMEOUT_MS);
+        }, GENERATION_LOCK_TIMEOUT_MS, this.currentAbortController ?? undefined);
       } catch (genErr) {
         // runGeneration's finally releases when !completed. If we never reached
         // runGeneration (e.g. prepareManagedApp threw), release here instead.

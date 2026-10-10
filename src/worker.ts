@@ -59,8 +59,11 @@ export interface PlatformEnv {
   [key: string]: unknown;
 }
 
-// Cloudflare Workers execute one request at a time per isolate, so this
-// module-level variable is safe as a per-request context for the CORS helper.
+// env.IS_DEV is set at deploy time and is identical for every request in a
+// given Worker deployment, so reading it once per request into this
+// module-level variable is effectively constant (not per-request state).
+// Do NOT store anything request-specific here — Workers isolates are
+// concurrent and multiple requests can be in-flight simultaneously.
 let _isDev = false;
 
 const AUTH_ROUTES = new Set([
@@ -354,8 +357,8 @@ function buildZip(files: [string, string][]): Uint8Array {
 
 export default {
   async fetch(request: Request, env: PlatformEnv, _ctx: ExecutionContext) {
-    // Set per-request dev flag for the CORS helper (module-level, safe because
-    // Workers are single-threaded within an isolate).
+    // Read the deploy-time IS_DEV flag into the module-level ref so corsHeaders
+    // can access it without parameter threading through 100+ call sites.
     _isDev = env.IS_DEV === 'true';
     const url = new URL(request.url);
     // Canonical host consolidation: Google indexed www.brainhalf.com as a

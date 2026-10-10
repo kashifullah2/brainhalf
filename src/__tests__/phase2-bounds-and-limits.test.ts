@@ -145,6 +145,28 @@ describe('BusyLock (a generation must not hold a project forever)', () => {
     ).rejects.toThrow('boom');
     expect(lock.isHeld).toBe(false);
   });
+
+  it('aborts the provided AbortController when the timeout fires', async () => {
+    vi.useFakeTimers();
+    const lock = new BusyLock();
+    const controller = new AbortController();
+    const neverSettles = new Promise<string>(() => { /* deliberately unresolved */ });
+    const pending = lock.run('generate:slow', async () => { await neverSettles; return 'never'; }, 100, controller);
+    vi.advanceTimersByTime(150);
+    const result = await pending;
+    expect('reason' in result).toBe(true);
+    expect(controller.signal.aborted).toBe(true);
+    expect(lock.isHeld).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('does not abort the controller when work completes before the timeout', async () => {
+    const lock = new BusyLock();
+    const controller = new AbortController();
+    const result = await lock.run('generate:fast', async () => 'done', 5_000, controller);
+    expect(result).toEqual({ value: 'done' });
+    expect(controller.signal.aborted).toBe(false);
+  });
 });
 
 describe('InMemoryDataStore (the backend-runner sandbox store)', () => {
