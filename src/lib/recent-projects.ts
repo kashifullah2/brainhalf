@@ -59,7 +59,7 @@ export function selectRecentProjects(entries: RecentProjectEntry[], search: stri
   const query = search.trim().toLocaleLowerCase();
   const statusOrder: Record<ProjectCardStatus, number> = { building: 0, error: 1, draft: 2, deployed: 3 };
   return entries.filter(entry => (status === 'all' || entry.status === status) &&
-    `${entry.title} ${entry.description} ${entry.category}`.toLocaleLowerCase().includes(query))
+    `${entry.title} ${entry.description} ${entry.category} ${entry.project.id}`.toLocaleLowerCase().includes(query))
     .sort((a, b) => {
       const group = PROJECT_DATE_GROUPS.indexOf(a.dateGroup) - PROJECT_DATE_GROUPS.indexOf(b.dateGroup);
       if (group) return group;
