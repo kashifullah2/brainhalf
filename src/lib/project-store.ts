@@ -684,7 +684,10 @@ export async function migrateLocalStorageToIdb(): Promise<void> {
       // Only migrate if IDB doesn't already have a newer copy.
       const existing = await idbGet(store, idbKey);
       if (!existing) await idbSet(store, idbKey, parsed);
-      try { localStorage.removeItem(lsKey); } catch {}
+      // Verify the write actually landed before removing the localStorage copy.
+      // If the read-back fails, keep the localStorage entry so the next session can retry.
+      const readBack = await idbGet(store, idbKey);
+      if (readBack) try { localStorage.removeItem(lsKey); } catch {}
     } catch { /* skip entries that fail to parse or write */ }
   }
 }
