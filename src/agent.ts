@@ -50,6 +50,29 @@ import { extractApiFetches, extractWorkerRoutes, findUncoveredFetches } from './
 // get this many automatic retries per pipeline stage before we give up.
 const GENERATION_TRANSIENT_RETRIES = 3;
 
+// Some OpenAI-compatible providers (Gemini) omit `index` from tool_calls deltas,
+// but the ai-sdk OpenAI parser requires it. Patch each SSE line in-stream.
+function fixToolCallIndex(line: string): string {
+  if (!line.startsWith('data: ')) return line;
+  const payload = line.slice(6).trim();
+  if (payload === '[DONE]') return line;
+  try {
+    const obj = JSON.parse(payload) as {
+      choices?: Array<{ delta?: { tool_calls?: Array<{ index?: number }> } }>;
+    };
+    let patched = false;
+    for (const choice of obj?.choices ?? []) {
+      const calls = choice?.delta?.tool_calls;
+      if (Array.isArray(calls)) {
+        calls.forEach((tc, i) => {
+          if (typeof tc.index !== 'number') { tc.index = i; patched = true; }
+        });
+      }
+    }
+    return patched ? `data: ${JSON.stringify(obj)}` : line;
+  } catch { return line; }
+}
+
 // DO storage key for the last-known kill-switch status, used to fail closed
 // when the registry is unreachable on the next session after a wake cycle.
 const KILL_SWITCH_CACHE_KEY = 'ks_cache';
@@ -3027,7 +3050,28 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             }
             try {
               const { createOpenAI } = await import('@ai-sdk/openai');
-              const custom = createOpenAI({ apiKey: customModel.apiKey, baseURL: customModel.baseUrl, compatibility: 'compatible' } as any);
+              // Wrap fetch to inject missing tool_calls[i].index into SSE stream
+              // (required by the ai-sdk OpenAI parser; Gemini and some other
+              // compatible endpoints omit this field).
+              const patchedFetch: typeof fetch = async (input, init) => {
+                const resp = await fetch(input, init);
+                const ct = resp.headers.get('content-type') ?? '';
+                if (!ct.includes('text/event-stream') || !resp.body) return resp;
+                const decoder = new TextDecoder();
+                const encoder = new TextEncoder();
+                let buf = '';
+                const transform = new TransformStream<Uint8Array, Uint8Array>({
+                  transform(chunk, ctrl) {
+                    buf += decoder.decode(chunk, { stream: true });
+                    const lines = buf.split('\n');
+                    buf = lines.pop() ?? '';
+                    for (const line of lines) ctrl.enqueue(encoder.encode(fixToolCallIndex(line) + '\n'));
+                  },
+                  flush(ctrl) { if (buf) ctrl.enqueue(encoder.encode(fixToolCallIndex(buf) + '\n')); },
+                });
+                return new Response(resp.body.pipeThrough(transform), { status: resp.status, headers: resp.headers });
+              };
+              const custom = createOpenAI({ apiKey: customModel.apiKey, baseURL: customModel.baseUrl, compatibility: 'compatible', fetch: patchedFetch } as any);
               aiModel = custom.chat(customModel.modelId);
               // OpenAI-compatible custom endpoints vary in ceiling; 32k matches
               // the platform default instead of truncating every app at 8k.
@@ -4704,6 +4748,47 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
       }
       return Response.json({ generations: this.runSql`SELECT model,started_at,finished_at,status,input_tokens,output_tokens,source_revision,first_response_at,provider_calls,prompt_category,files_written,retry_count,repair_types FROM generation_usage ORDER BY started_at DESC LIMIT 50` }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
+    }
+
+    // Purgeable-draft check: has this project ever received a real user message?
+    // Called by purgeEmptyDrafts before soft-deleting an apparent blank draft.
+    if (/^\/agents\/chat-agent\/[^/]+\/is-empty$/.test(url.pathname) && request.method === 'GET') {
+      this.ensureSchema();
+      const isEmptyUserId = getRequestUserId(request);
+      const isEmptyProjectId = url.pathname.match(/^\/agents\/chat-agent\/([^/]+)/)?.[1];
+      if (!isEmptyUserId || !isEmptyProjectId || isEmptyProjectId !== this.name || !(await isProjectOwner(this.env, isEmptyProjectId, isEmptyUserId))) {
+        return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
+      }
+      const userMsgCount = Number([...this.sql`SELECT COUNT(*) as n FROM messages WHERE role = 'user'`][0]?.n ?? 0);
+      const realUserMsgs = [...this.sql`SELECT content FROM messages WHERE role = 'user' LIMIT 20`]
+        .filter(r => !isSystemContinuation(String(r.content || ''))).length;
+      const fileCount = Number([...this.sql`SELECT COUNT(*) as n FROM project_files`][0]?.n ?? 0);
+      return Response.json({ empty: realUserMsgs === 0, userMessageCount: userMsgCount, realUserMessageCount: realUserMsgs, fileCount }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
+    }
+
+    // Full project snapshot for initial client load: files + recent messages.
+    // Used as a server-authoritative fallback when the client's IndexedDB is cold
+    // (new device, cleared browser storage, first load after account switch).
+    if (/^\/agents\/chat-agent\/[^/]+\/snapshot$/.test(url.pathname) && request.method === 'GET') {
+      this.ensureSchema();
+      const snapshotUserId = getRequestUserId(request);
+      const snapshotProjectId = url.pathname.match(/^\/agents\/chat-agent\/([^/]+)/)?.[1];
+      if (!snapshotUserId || !snapshotProjectId || snapshotProjectId !== this.name || !(await isProjectOwner(this.env, snapshotProjectId, snapshotUserId))) {
+        return Response.json({ error: 'Not the project owner' }, { status: 403, headers: corsHeaders });
+      }
+      try {
+        const files = this.readAllProjectFiles();
+        const branchId = 'main';
+        const msgRows = [...this.sql`SELECT role, content FROM messages WHERE branch_id = ${branchId} ORDER BY id DESC LIMIT 50`].reverse();
+        const messages = msgRows.map(row => ({
+          role: row.role === 'assistant' ? 'ai' : row.role,
+          content: typeof row.content === 'string' ? (row.role === 'assistant' ? formatToolTranscript(row.content) : row.content) : '',
+          internal: row.role === 'user' && isSystemContinuation(String(row.content || '')),
+        }));
+        return Response.json({ files, messages, fileCount: Object.keys(files).length, messageCount: messages.length, revision: this.getFilesRevision() }, { headers: { ...corsHeaders, 'Cache-Control': 'no-store' } });
+      } catch {
+        return Response.json({ error: 'Snapshot unavailable' }, { status: 503, headers: corsHeaders });
+      }
     }
 
     // Source controls are available only through the authenticated agent route,

@@ -23,7 +23,7 @@ import { normalizePath } from '../lib/utils';
 import { selectAppEntry, selectHtmlEntry, isStarterApp } from '../lib/preview-entry';
 import { previewFiles, PREVIEW_SANDBOX, PREVIEW_ALLOW } from '../lib/preview-isolation';
 import { setPreviewStatus, setPlatformStatus } from '../lib/status-store';
-import { bindProjectStore, recoverProjectFiles } from '../lib/project-store';
+import { bindProjectStore, recoverProjectFiles, formatRelativeTime } from '../lib/project-store';
 import { validateBackendFiles, isFullStackProject } from '../lib/backend-runner';
 import { diagnosePreviewError, plainPreviewError, extractFileFromError, detectLayerFromError, sanitizeErrorForDisplay } from '../lib/preview-diagnostics';
 import { createTypeScriptStarter } from '../lib/project-starters';
@@ -445,9 +445,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // Undo last AI change — quick restore to the most recent "Before agent changes" checkpoint
   const [undoCheckpoint, setUndoCheckpoint] = useState<{ id: string; revision: number } | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
+  // Full version history list — all source_checkpoints (up to 12)
+  const [checkpointList, setCheckpointList] = useState<Array<{ id: string; label: string; createdAt: number; fileCount: number }>>([]);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [restoringCheckpointId, setRestoringCheckpointId] = useState<string | null>(null);
 
-  // On project switch, clear undo state (GitHub state resets inside useGithubSync)
-  useEffect(() => { setUndoCheckpoint(null); }, [activeProjectId]);
+  // On project switch, clear undo/history state
+  useEffect(() => { setUndoCheckpoint(null); setCheckpointList([]); setShowVersionHistory(false); }, [activeProjectId]);
 
   const splitView = false;
 
@@ -814,12 +818,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
       const origin = apiOrigin();
       const base = `${origin}/agents/chat-agent/${encodeURIComponent(activeProjectId)}/checkpoints`;
       const resp = await authFetch(base, { signal: AbortSignal.timeout(8_000), headers: { 'Content-Type': 'application/json' } });
-      const data = await resp.json() as { checkpoints?: Array<{ id: string; label: string }>; revision?: number };
+      const data = await resp.json() as { checkpoints?: Array<{ id: string; label: string; createdAt?: number; fileCount?: number }>; revision?: number };
       if (Array.isArray(data.checkpoints) && typeof data.revision === 'number') {
         const cp = data.checkpoints.find(c => c.label === 'Before agent changes');
         if (cp) setUndoCheckpoint({ id: cp.id, revision: data.revision });
+        setCheckpointList(data.checkpoints.map(c => ({
+          id: c.id,
+          label: c.label,
+          createdAt: typeof c.createdAt === 'number' ? c.createdAt : 0,
+          fileCount: typeof c.fileCount === 'number' ? c.fileCount : 0,
+        })));
       }
-    } catch { /* silent — undo button just won't appear */ }
+    } catch { /* silent — undo/history buttons just won't appear */ }
   }, [activeProjectId, isCurrent, setUndoCheckpoint]);
 
   const quickUndo = useCallback(async () => {
@@ -846,6 +856,32 @@ const Workspace: React.FC<WorkspaceProps> = ({
       setUndoLoading(false);
     }
   }, [undoCheckpoint, activeProjectId, addBuildLog, setUndoCheckpoint, setUndoLoading]);
+
+  const restoreCheckpoint = useCallback(async (checkpointId: string, revision: number) => {
+    if (!activeProjectId || restoringCheckpointId) return;
+    setRestoringCheckpointId(checkpointId);
+    setShowVersionHistory(false);
+    try {
+      const origin = apiOrigin();
+      const base = `${origin}/agents/chat-agent/${encodeURIComponent(activeProjectId)}/checkpoints`;
+      const resp = await authFetch(`${base}/restore`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: checkpointId, revision }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error || 'Restore failed');
+      }
+      addBuildLog('Restored to selected version', 'info');
+      void refreshUndoCheckpoint();
+    } catch (err: any) {
+      addBuildLog(`Restore failed: ${err?.message || err}`, 'error');
+    } finally {
+      setRestoringCheckpointId(null);
+    }
+  }, [activeProjectId, restoringCheckpointId, addBuildLog, refreshUndoCheckpoint]);
 
   /* ---------------- Project lifecycle ---------------- */
   useEffect(() => {
@@ -1917,6 +1953,63 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         : <RotateCcw size={16} strokeWidth={1.75} />}
                       {!compactToolbar && <span>Undo</span>}
                     </button>
+                  )}
+                  {checkpointList.length > 0 && (
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => setShowVersionHistory(v => !v)}
+                        disabled={status === 'Generating'}
+                        className="hover-bright"
+                        title="Restore a previous version"
+                        aria-label="Version history"
+                        style={{
+                          background: 'transparent', border: '1px solid var(--border-subtle, #374151)',
+                          color: 'var(--text-muted)', borderRadius: '4px',
+                          padding: '6px 8px', minHeight: '32px', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'inherit'
+                        }}
+                      >
+                        <GitBranch size={16} strokeWidth={1.75} />
+                        {!compactToolbar && <span>History</span>}
+                      </button>
+                      {showVersionHistory && (
+                        <div
+                          style={{
+                            position: 'absolute', top: '100%', right: 0, marginTop: 4,
+                            background: 'var(--bg-surface, #1f2937)', border: '1px solid var(--border-subtle, #374151)',
+                            borderRadius: 6, zIndex: 100, minWidth: 240, maxHeight: 300, overflowY: 'auto',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                          }}
+                          onMouseLeave={() => setShowVersionHistory(false)}
+                        >
+                          <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle, #374151)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                            Version history
+                          </div>
+                          {checkpointList.map(cp => (
+                            <button
+                              key={cp.id}
+                              onClick={() => void restoreCheckpoint(cp.id, undoCheckpoint?.revision ?? 0)}
+                              disabled={!!restoringCheckpointId}
+                              style={{
+                                display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                width: '100%', padding: '8px 12px', background: 'transparent',
+                                border: 'none', borderBottom: '1px solid var(--border-subtle, #374151)',
+                                color: 'var(--text-primary, #f9fafb)', cursor: 'pointer', textAlign: 'left',
+                                fontSize: 12, fontFamily: 'inherit', gap: 2,
+                              }}
+                            >
+                              <span style={{ fontWeight: 500 }}>
+                                {restoringCheckpointId === cp.id ? <Loader2 size={12} className="lucide-spin" style={{ marginRight: 4 }} /> : null}
+                                {cp.label}
+                              </span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                {cp.fileCount} files · {cp.createdAt ? formatRelativeTime(cp.createdAt) : ''}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

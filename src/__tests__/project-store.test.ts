@@ -347,16 +347,17 @@ describe('Debounced file persistence (editor keystroke path)', () => {
     for (let i = 0; i < 50; i++) {
       saveProjectFilesDebounced('proj-deb-2', { '/src/App.jsx': `line ${i}` });
     }
-    expect(read('proj-deb-2')).toBeNull();
+    expect(read('proj-deb-2')).toBeNull(); // never written to localStorage
 
     vi.advanceTimersByTime(400);
-    expect(JSON.parse(read('proj-deb-2'))).toEqual({ '/src/App.jsx': 'line 49' });
+    // Memory cache always holds the latest value (debounce only affects IDB writes).
+    expect(getProjectFiles('proj-deb-2')).toEqual({ '/src/App.jsx': 'line 49' });
   });
 
   it('writes immediately when flushed', () => {
     saveProjectFilesDebounced('proj-deb-3', { '/src/App.jsx': 'flushed' });
     flushProjectFileWrites();
-    expect(JSON.parse(read('proj-deb-3'))).toEqual({ '/src/App.jsx': 'flushed' });
+    expect(getProjectFiles('proj-deb-3')).toEqual({ '/src/App.jsx': 'flushed' });
   });
 
   it('does not resurrect deleted files with a late debounced write', () => {
@@ -374,7 +375,8 @@ describe('Debounced file persistence (editor keystroke path)', () => {
     saveProjectFiles('proj-deb-5', { '/src/App.jsx': 'generated', '/src/Other.jsx': 'new' });
 
     vi.advanceTimersByTime(400);
-    expect(JSON.parse(read('proj-deb-5'))).toEqual({
+    // The explicit save cancels the pending debounce; memory cache should have the generated value.
+    expect(getProjectFiles('proj-deb-5')).toEqual({
       '/src/App.jsx': 'generated',
       '/src/Other.jsx': 'new'
     });

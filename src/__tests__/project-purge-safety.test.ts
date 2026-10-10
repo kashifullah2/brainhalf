@@ -215,7 +215,7 @@ describe('P2 Dashboard recovery — server-alive projects restored after false-p
   });
 });
 
-describe('P3 purgeEmptyDrafts never calls server DELETE', () => {
+describe('P3 purgeEmptyDrafts calls server is-empty to confirm before purging', () => {
   let cached: Record<string, string>;
 
   beforeEach(() => {
@@ -234,21 +234,20 @@ describe('P3 purgeEmptyDrafts never calls server DELETE', () => {
     vi.unstubAllGlobals();
   });
 
-  it('purgeEmptyDrafts does not call fetch (server DELETE)', async () => {
-    const fetchSpy = vi.fn();
+  it('purgeEmptyDrafts calls the server is-empty endpoint and purges only when the server confirms empty', async () => {
+    // fetch returns { empty: true } for the is-empty check → purge proceeds.
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ empty: true }) });
     vi.stubGlobal('fetch', fetchSpy);
     vi.stubGlobal('indexedDB', undefined);
 
     const store = await import('../lib/project-store');
     store.setProjectAccount('u1');
 
-    // Create a stale empty draft (updatedAt > 24 h ago).
     const proj = store.createProject('Old empty draft');
     const staleAt = Date.now() - 25 * 60 * 60 * 1000;
     const projects = store.getProjects().map(p => p.id === proj.id ? { ...p, updatedAt: staleAt } : p);
     cached[store.projectStorageKey('brainhalf_projects')] = JSON.stringify(projects);
 
-    // Reload to pick up the stale updatedAt.
     vi.resetModules();
     vi.stubGlobal('localStorage', {
       getItem:    (key: string) => cached[key] ?? null,
@@ -265,8 +264,83 @@ describe('P3 purgeEmptyDrafts never calls server DELETE', () => {
 
     await auth.purgeEmptyDrafts();
 
-    // fetch must never have been called — purge is local-only.
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // The server is-empty GET must have been called (not a DELETE).
+    expect(fetchSpy).toHaveBeenCalled();
+    const calls = (fetchSpy as ReturnType<typeof vi.fn>).mock.calls;
+    const isEmptyCall = calls.find((args: unknown[]) => typeof args[0] === 'string' && (args[0] as string).includes('/is-empty'));
+    expect(isEmptyCall).toBeDefined();
+    const deleteCall = calls.find((args: unknown[]) => (args[1] as RequestInit | undefined)?.method === 'DELETE');
+    expect(deleteCall).toBeUndefined(); // purge is local-only — no server DELETE
+
+    // The project should be soft-deleted locally.
+    expect(store2.getProjects().find(p => p.id === proj.id)).toBeUndefined();
+  });
+
+  it('purgeEmptyDrafts skips purge when server reports the project has messages', async () => {
+    // Server says NOT empty — even though local storage shows no messages.
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ empty: false }) });
+    vi.stubGlobal('fetch', fetchSpy);
+    vi.stubGlobal('indexedDB', undefined);
+
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('u1');
+
+    const proj = store.createProject('Draft with server data');
+    const staleAt = Date.now() - 25 * 60 * 60 * 1000;
+    const projects = store.getProjects().map(p => p.id === proj.id ? { ...p, updatedAt: staleAt } : p);
+    cached[store.projectStorageKey('brainhalf_projects')] = JSON.stringify(projects);
+
+    vi.resetModules();
+    vi.stubGlobal('localStorage', {
+      getItem:    (key: string) => cached[key] ?? null,
+      setItem:    (key: string, value: string) => { cached[key] = value; },
+      removeItem: (key: string) => { delete cached[key]; },
+    });
+    vi.stubGlobal('indexedDB', undefined);
+    vi.stubGlobal('fetch', fetchSpy);
+    cached[`bh_session_token`] = 'token';
+
+    const auth = await import('../lib/auth-client');
+    const store2 = await import('../lib/project-store');
+    store2.setProjectAccount('u1');
+
+    await auth.purgeEmptyDrafts();
+
+    // Project must NOT be deleted — server has data.
+    expect(store2.getProjects().find(p => p.id === proj.id)).toBeDefined();
+  });
+
+  it('purgeEmptyDrafts skips purge when the server is unreachable', async () => {
+    const fetchSpy = vi.fn().mockRejectedValue(new Error('Network error'));
+    vi.stubGlobal('fetch', fetchSpy);
+    vi.stubGlobal('indexedDB', undefined);
+
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('u1');
+
+    const proj = store.createProject('Draft, server down');
+    const staleAt = Date.now() - 25 * 60 * 60 * 1000;
+    const projects = store.getProjects().map(p => p.id === proj.id ? { ...p, updatedAt: staleAt } : p);
+    cached[store.projectStorageKey('brainhalf_projects')] = JSON.stringify(projects);
+
+    vi.resetModules();
+    vi.stubGlobal('localStorage', {
+      getItem:    (key: string) => cached[key] ?? null,
+      setItem:    (key: string, value: string) => { cached[key] = value; },
+      removeItem: (key: string) => { delete cached[key]; },
+    });
+    vi.stubGlobal('indexedDB', undefined);
+    vi.stubGlobal('fetch', fetchSpy);
+    cached[`bh_session_token`] = 'token';
+
+    const auth = await import('../lib/auth-client');
+    const store2 = await import('../lib/project-store');
+    store2.setProjectAccount('u1');
+
+    await auth.purgeEmptyDrafts();
+
+    // Network failure → default to NOT purging (safe).
+    expect(store2.getProjects().find(p => p.id === proj.id)).toBeDefined();
   });
 });
 
@@ -480,14 +554,20 @@ describe('P6 flushExpiredPurges — 7-day retention and restored-project safety'
   });
 });
 
-describe('P5 localStorage eviction — quota failures evict old caches and retry', () => {
+describe('P5 localStorage writes disabled — project data goes only to IndexedDB', () => {
   let cached: Record<string, string>;
-  let writeCallCount: number;
 
   beforeEach(() => {
     vi.resetModules();
     cached = {};
-    writeCallCount = 0;
+    vi.stubGlobal('localStorage', {
+      getItem:    (key: string) => cached[key] ?? null,
+      setItem:    (key: string, value: string) => { cached[key] = value; },
+      removeItem: (key: string) => { delete cached[key]; },
+      get length() { return Object.keys(cached).length; },
+      key:        (i: number) => Object.keys(cached)[i] ?? null,
+    });
+    vi.stubGlobal('indexedDB', undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -496,51 +576,245 @@ describe('P5 localStorage eviction — quota failures evict old caches and retry
     vi.unstubAllGlobals();
   });
 
-  it('evicts other projects message caches and retries on quota error', async () => {
-    // Session with two projects: projA (old) and projB (current).
-    // projA has cached messages. projB write will fail once then succeed.
-    let projAMsgKey = '';
-    let failNextWrite = false;
+  it('saveProjectMessages does not write messages to localStorage', async () => {
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('u1');
+    const proj = store.createProject('Test project');
 
+    store.saveProjectMessages(proj.id, [{ role: 'user', content: 'Hello' }]);
+
+    const msgKey = store.projectStorageKey(`brainhalf_messages_${proj.id}`);
+    expect(cached[msgKey]).toBeUndefined();
+  });
+
+  it('saveProjectFiles does not write files to localStorage', async () => {
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('u1');
+    const proj = store.createProject('Test project');
+
+    store.saveProjectFiles(proj.id, { '/src/App.tsx': 'export default function App() {}' });
+
+    const filesKey = store.projectStorageKey(`brainhalf_files_${proj.id}`);
+    expect(cached[filesKey]).toBeUndefined();
+  });
+});
+
+describe('P7 migrateLocalStorageToIdb — moves legacy LS data to IDB', () => {
+  let cached: Record<string, string>;
+  const fakeIdbData: Record<string, Record<string, any>> = { files: {}, messages: {} };
+
+  function localStorageStub() {
+    return {
+      getItem:    (key: string) => cached[key] ?? null,
+      setItem:    (key: string, value: string) => { cached[key] = value; },
+      removeItem: (key: string) => { delete cached[key]; },
+      get length() { return Object.keys(cached).length; },
+      key:        (i: number) => Object.keys(cached)[i] ?? null,
+    };
+  }
+
+  function makeFakeIDB() {
+    const bag = fakeIdbData;
+    const fakeStore = (storeName: string, pendingOps: Promise<void>[]) => ({
+      get(key: string) {
+        const req: any = { result: undefined };
+        const p = Promise.resolve().then(() => { req.result = bag[storeName]?.[key]; req.onsuccess?.(); });
+        pendingOps.push(p);
+        return req;
+      },
+      put(value: any, key: string) {
+        (bag[storeName] ??= {})[key] = value;
+        const req: any = {};
+        const p = Promise.resolve().then(() => req.onsuccess?.());
+        pendingOps.push(p);
+        return req;
+      },
+      delete(key: string) {
+        delete (bag[storeName] ??= {})[key];
+        const req: any = {};
+        const p = Promise.resolve().then(() => req.onsuccess?.());
+        pendingOps.push(p);
+        return req;
+      },
+    });
+    const fakeDb = {
+      objectStoreNames: { contains: () => true },
+      createObjectStore: () => {},
+      transaction(storeName: string) {
+        const pendingOps: Promise<void>[] = [];
+        const store = fakeStore(storeName, pendingOps);
+        const tx: any = { objectStore: () => store };
+        Promise.resolve()
+          .then(() => Promise.all(pendingOps))
+          .then(() => Promise.resolve())
+          .then(() => tx.oncomplete?.());
+        return tx;
+      },
+    };
+    return {
+      open() {
+        const req: any = { result: fakeDb };
+        Promise.resolve().then(() => { req.onupgradeneeded?.(); req.onsuccess?.(); });
+        return req;
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.resetModules();
+    cached = {};
+    fakeIdbData.files = {};
+    fakeIdbData.messages = {};
+    vi.stubGlobal('window', globalThis);
+    vi.stubGlobal('localStorage', localStorageStub());
+    vi.stubGlobal('indexedDB', makeFakeIDB());
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('copies files and messages from localStorage to IDB and removes the LS keys', async () => {
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('u1');
+
+    const projId = 'proj-legacy-001';
+    const lsFilesKey = store.projectStorageKey(`brainhalf_files_${projId}`);
+    const lsMsgKey   = store.projectStorageKey(`brainhalf_messages_${projId}`);
+    const legacyFiles = { '/src/App.tsx': 'export default function App() {}' };
+    const legacyMsgs  = [{ role: 'user', content: 'Build me something' }];
+
+    cached[lsFilesKey] = JSON.stringify(legacyFiles);
+    cached[lsMsgKey]   = JSON.stringify(legacyMsgs);
+
+    await store.migrateLocalStorageToIdb();
+
+    // LS keys should be removed after migration
+    expect(cached[lsFilesKey]).toBeUndefined();
+    expect(cached[lsMsgKey]).toBeUndefined();
+
+    // Data should now live in IDB under the scoped key
+    const scopedKey = store.projectStorageKey(projId);
+    expect(fakeIdbData.files[scopedKey]).toEqual(legacyFiles);
+    expect(fakeIdbData.messages[scopedKey]).toEqual(legacyMsgs);
+  });
+
+  it('does not overwrite IDB data that is already present', async () => {
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('u1');
+
+    const projId    = 'proj-already-in-idb';
+    const lsFilesKey = store.projectStorageKey(`brainhalf_files_${projId}`);
+    const scopedKey  = store.projectStorageKey(projId);
+
+    const idbFiles = { '/src/App.tsx': 'newer IDB version' };
+    const lsFiles  = { '/src/App.tsx': 'older LS version' };
+
+    fakeIdbData.files[scopedKey] = idbFiles; // IDB already has data
+    cached[lsFilesKey] = JSON.stringify(lsFiles);
+
+    await store.migrateLocalStorageToIdb();
+
+    expect(cached[lsFilesKey]).toBeUndefined(); // LS key still cleaned up
+    expect(fakeIdbData.files[scopedKey]).toEqual(idbFiles); // IDB value unchanged
+  });
+});
+
+describe('P8 Server snapshot fallback — getProjectFilesAsync fetches from DO when IDB is empty', () => {
+  let cached: Record<string, string>;
+
+  beforeEach(() => {
+    vi.resetModules();
+    cached = {};
     vi.stubGlobal('localStorage', {
       getItem:    (key: string) => cached[key] ?? null,
-      setItem:    (key: string, value: string) => {
-        writeCallCount++;
-        if (failNextWrite && key.includes('brainhalf_messages_')) {
-          failNextWrite = false; // only fail once to let eviction retry succeed
-          throw new Error('QuotaExceededError');
-        }
-        cached[key] = value;
-      },
+      setItem:    (key: string, value: string) => { cached[key] = value; },
       removeItem: (key: string) => { delete cached[key]; },
     });
+    vi.stubGlobal('indexedDB', undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('returns server files when IDB is empty for a server-known project', async () => {
+    const serverFiles = { '/src/App.tsx': 'export default function App() { return <h1>Hi</h1>; }' };
+    const serverMsgs  = [{ role: 'user', content: 'Build me a hello world app' }];
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ files: serverFiles, messages: serverMsgs, fileCount: 1, messageCount: 1 }),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    cached['bh_session_token'] = 'token';
 
     const store = await import('../lib/project-store');
     store.setProjectAccount('u1');
 
-    // Create projA (older), give it cached messages in localStorage.
-    const projA = store.createProject('Old project A');
-    // Make projA appear older so it gets evicted first
-    const projects = store.getProjects().map(p => p.id === projA.id ? { ...p, updatedAt: Date.now() - 1000 } : p);
-    store.saveProjectMessages(projA.id, [{ role: 'user', content: 'Old message' }]);
-    projAMsgKey = store.projectStorageKey(`brainhalf_messages_${projA.id}`);
-    expect(cached[projAMsgKey]).toBeDefined();
+    const projId = 'proj-server-only-001';
+    // reconcileOwnedProjects populates legacyProjectIds — required for server fallback.
+    store.reconcileOwnedProjects([{ id: projId, name: 'Server project', createdAt: Date.now(), updatedAt: Date.now() } as any]);
 
-    // Create projB (current).
-    const projB = store.createProject('Current project B');
+    const files = await store.getProjectFilesAsync(projId);
 
-    // Next message write will hit quota → triggers eviction of projA's cache → retry.
-    failNextWrite = true;
-    store.saveProjectMessages(projB.id, [{ role: 'user', content: 'New message' }]);
+    expect(files).toEqual(serverFiles);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/snapshot'),
+      expect.anything()
+    );
+    // No server DELETE must occur — this is a read-only fallback.
+    const deleteCalls = (fetchSpy as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (args: unknown[]) => (args[1] as RequestInit | undefined)?.method === 'DELETE'
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
 
-    // projA's messages should be evicted to make room.
-    expect(cached[projAMsgKey]).toBeUndefined();
+  it('returns null without calling the server for projects not known to the server', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
 
-    // projB's messages should be saved after the retry.
-    const projBMsgKey = store.projectStorageKey(`brainhalf_messages_${projB.id}`);
-    expect(cached[projBMsgKey]).toBeDefined();
-    const saved = JSON.parse(cached[projBMsgKey]);
-    expect(saved).toHaveLength(1);
-    expect(saved[0].content).toBe('New message');
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('u1');
+    const proj = store.createProject('Local-only project');
+    // No reconcileOwnedProjects — project is not in legacyProjectIds.
+
+    const files = await store.getProjectFilesAsync(proj.id);
+
+    expect(files).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('getProjectMessagesAsync and getProjectFilesAsync share one snapshot HTTP request', async () => {
+    const serverFiles = { '/src/App.tsx': 'function App() {}' };
+    const serverMsgs  = [{ role: 'user', content: 'Hello' }];
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ files: serverFiles, messages: serverMsgs }),
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    cached['bh_session_token'] = 'token';
+
+    const store = await import('../lib/project-store');
+    store.setProjectAccount('u1');
+    const projId = 'proj-dedup-001';
+    store.reconcileOwnedProjects([{ id: projId, name: 'Dedup test', createdAt: Date.now(), updatedAt: Date.now() } as any]);
+
+    // Fire both async reads concurrently — typical cold-start hydration pattern.
+    const [files, messages] = await Promise.all([
+      store.getProjectFilesAsync(projId),
+      store.getProjectMessagesAsync(projId),
+    ]);
+
+    expect(files).toEqual(serverFiles);
+    expect(messages).toEqual(serverMsgs);
+    // Only one HTTP call despite two concurrent requests (snapshotInFlight dedup).
+    const snapshotCalls = (fetchSpy as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (args: unknown[]) => typeof args[0] === 'string' && (args[0] as string).includes('/snapshot')
+    );
+    expect(snapshotCalls).toHaveLength(1);
   });
 });

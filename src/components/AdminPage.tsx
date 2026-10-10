@@ -33,7 +33,7 @@ import {
 import BrainHalfLogo from './BrainHalfLogo';
 import SiteHeaderActions from './SiteHeaderActions';
 import MobileNav from './MobileNav';
-import { authFetch } from '../lib/auth-client';
+import { authFetch, getUser } from '../lib/auth-client';
 import { PREVIEW_SANDBOX, PREVIEW_ALLOW } from '../lib/preview-isolation';
 import { CLIENT_SELECTABLE_MODELS } from '../lib/models';
 import './AdminPage.css';
@@ -1014,6 +1014,11 @@ export default function AdminPage() {
                 This account is not on the operator allowlist. Add your user ID to the{' '}
                 <code>PRODUCT_METRICS_OWNER_IDS</code> secret and redeploy.
               </p>
+              {getUser()?.id && (
+                <p>
+                  Your user ID: <code>{getUser()!.id}</code>
+                </p>
+              )}
             </div>
           )}
 

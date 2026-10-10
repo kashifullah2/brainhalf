@@ -306,6 +306,7 @@ export async function purgeEmptyDrafts(): Promise<void> {
 
   const confirmed: typeof stale = [];
   for (const draft of stale) {
+    // Local IDB check (fast path — skip the server call when local data shows content)
     try {
       const msgs = await getProjectMessagesAsync(draft.id);
       if (msgs && msgs.length > 0) continue;
@@ -313,6 +314,18 @@ export async function purgeEmptyDrafts(): Promise<void> {
       if (files && Object.keys(files).length > 0) continue;
     } catch {
       continue;
+    }
+    // Server confirmation: only purge if the DO also has no real user messages.
+    // This prevents false-positive purges when the client's IDB was cleared.
+    try {
+      const res = await authFetch(`/agents/chat-agent/${encodeURIComponent(draft.id)}/is-empty`, {
+        signal: AbortSignal.timeout(8_000),
+      }, { clearOnUnauthorized: false });
+      if (!res.ok) continue; // server unreachable or project not found — skip to be safe
+      const body = await res.json().catch(() => null) as { empty?: boolean } | null;
+      if (!body?.empty) continue; // server has data — skip purge
+    } catch {
+      continue; // network error — skip to be safe
     }
     confirmed.push(draft);
   }

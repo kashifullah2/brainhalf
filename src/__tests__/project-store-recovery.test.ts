@@ -45,18 +45,23 @@ describe('Persistence recovery', () => {
     expect(store.getProjectMessages('quota')).toEqual([{ role: 'user', content: 'new' }]);
   });
 
-  it('stops retrying localStorage writes after the first quota failure', async () => {
+  it('data is safe in memory cache regardless of localStorage availability', async () => {
+    // localStorage writes for files and messages are permanently disabled;
+    // data always goes to IndexedDB + memory cache only.
     const store = await import('../lib/project-store');
     store.setProjectAccount('test-account');
-    rejectWrites = true;
-    const warn = vi.mocked(console.warn);
+    rejectWrites = true; // LS writes would fail, but they're never attempted
+
     store.saveProjectFiles('quota-once', { '/src/App.jsx': 'a' });
     store.saveProjectFiles('quota-once', { '/src/App.jsx': 'b' });
     store.saveProjectMessages('quota-once', [{ role: 'user', content: 'hi' }]);
-    // Only the first failing write warns; later writes skip localStorage silently.
+
+    // No localStorage writes are attempted for file/message data → no quota warnings.
+    const warn = vi.mocked(console.warn);
     const quotaWarns = warn.mock.calls.filter(args => String(args[0]).includes('localStorage unavailable'));
-    expect(quotaWarns).toHaveLength(1);
-    // Data is still safe via the memory cache (and IndexedDB).
+    expect(quotaWarns).toHaveLength(0);
+
+    // Data is safe in the memory cache.
     expect(store.getProjectFiles('quota-once')).toEqual({ '/src/App.jsx': 'b' });
     expect(store.getProjectMessages('quota-once')).toEqual([{ role: 'user', content: 'hi' }]);
   });

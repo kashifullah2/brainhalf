@@ -12,7 +12,7 @@ const DashboardPage = lazy(() => import('./components/DashboardPage'));
 import { BrainHalfLogo } from './components/BrainHalfLogo';
 import ConfirmModal from './components/ConfirmModal';
 import { appEvents } from './lib/events';
-import { getActiveProjectId, setActiveProjectId, createProject, setProjectSubmissionKey, shortTitleFromPrompt } from './lib/project-store';
+import { getActiveProjectId, setActiveProjectId, createProject, setProjectSubmissionKey, shortTitleFromPrompt, migrateLocalStorageToIdb } from './lib/project-store';
 import { setOnboardingState } from './lib/project-growth';
 import { authFetch, clearGoogleCompletion, completeGoogleSignIn, detachSession, getToken, logout, prefetchWsTicket, purgeEmptyDrafts, saveGooglePrompt, takeGooglePrompt, verifyStoredSession, type SessionUser } from './lib/auth-client';
 import { runtimeBase } from './lib/project-runtime-client';
@@ -110,6 +110,9 @@ function App() {
       setUser(verified);
       setActiveId(getActiveProjectId());
       setAuthChecked(true);
+      // Migrate any file/message data left in localStorage by older sessions into
+      // IndexedDB (the sole durable store going forward). Fire-and-forget.
+      if (verified) void migrateLocalStorageToIdb();
     };
     void verify();
     // Another tab logged out, or the server rejected a stored token.

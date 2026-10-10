@@ -2,6 +2,7 @@ import { appEvents } from './events';
 import { isSystemContinuation } from './chat-transcript';
 import { stripPoisonedTail } from './assistant-response';
 import { authFetch } from './auth-client';
+import { apiOrigin } from './api-origin';
 
 export interface Project {
   id: string;
@@ -37,11 +38,15 @@ let legacyProjectIds = new Set<string>();
 let deletedProjectIds = new Set<string>();
 const projectSubmissionKeys = new Map<string, string>();
 
-// localStorage is only a fast synchronous cache — IndexedDB is the durable
-// store. Once a write throws (almost always QuotaExceededError), retrying on
-// every save just throws again and spams the console, so remember the failure
-// and skip localStorage writes for the rest of the session. Reads are unaffected.
-let localStorageWriteFailed = false;
+// localStorage writes for project files and messages are disabled. All project
+// data goes to IndexedDB (the durable store). localStorage remains only for
+// metadata: project list, active project ID, and deletion markers.
+const localStorageWriteFailed = true;
+
+// In-flight server snapshot promises, keyed by projectId. Prevents redundant
+// HTTP calls when files and messages are both requested during the same
+// cold-start hydration before IndexedDB has been populated.
+const snapshotInFlight = new Map<string, Promise<{ files: Record<string, string>; messages: any[] } | null>>();
 
 function projectDeleted(projectId: string): boolean {
   if (deletedProjectIds.has(projectId)) return true;
@@ -405,15 +410,15 @@ export async function deleteProjectDurably(id: string): Promise<Project[]> {
   const marker = projectStorageKey(`deleted:project:${id}`);
   const legacyMarker = projectStorageKey(`deleted:${id}`);
   const remaining = deleteProject(id);
+  // Remove any legacy localStorage file/message entries that may have been
+  // written by older sessions before the localStorage-to-IDB migration.
   try {
     localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${id}`));
     localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${id}`));
     localStorage.removeItem(`brainhalf_files_${id}`);
     localStorage.removeItem(`brainhalf_messages_${id}`);
     localStorage.removeItem(`brainhalf_${id}`);
-  } catch {
-    throw new Error('Server deletion succeeded, but browser cleanup failed. Retry to finish cleanup.');
-  }
+  } catch { /* best-effort; IDB cleanup below is the critical path */ }
   const database = await getDb();
   if (!database) {
     if (scope !== accountScope) throw new Error('Account changed during deletion');
@@ -454,6 +459,7 @@ export function softDeleteProject(id: string): Project[] {
   delete memoryCache[`messages_${id}`];
   markStorageWrite(`files_${id}`);
   markStorageWrite(`messages_${id}`);
+  // Remove any legacy localStorage entries from older sessions.
   try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${id}`)); } catch {}
   try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${id}`)); } catch {}
   if (wasActive) setActiveProjectId(projects[0].id);
@@ -609,6 +615,80 @@ export async function idbDelete(storeName: 'files' | 'messages', key: string): P
   }
 }
 
+/**
+ * Fetch files + messages from the Durable Object's /snapshot endpoint and
+ * cache both in IndexedDB. Returns null on auth failure or network error.
+ * Deduplicates concurrent calls via snapshotInFlight.
+ */
+function fetchProjectSnapshot(projectId: string): Promise<{ files: Record<string, string>; messages: any[] } | null> {
+  const existing = snapshotInFlight.get(projectId);
+  if (existing) return existing;
+  const scope = accountScope;
+  const promise = (async () => {
+    try {
+      const origin = typeof window !== 'undefined' ? apiOrigin() : '';
+      const res = await authFetch(`${origin}/agents/chat-agent/${encodeURIComponent(projectId)}/snapshot`, {
+        signal: AbortSignal.timeout(15_000),
+      }, { clearOnUnauthorized: false });
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => null) as { files?: unknown; messages?: unknown } | null;
+      if (!body || typeof body.files !== 'object' || !body.files) return null;
+      const files = body.files as Record<string, string>;
+      const messages = Array.isArray(body.messages) ? body.messages : [];
+      if (scope !== accountScope || projectDeleted(projectId)) return null;
+      // Cache both in IDB so subsequent reads hit the local store.
+      void idbSet('files', projectId, files);
+      void idbSet('messages', projectId, messages);
+      memoryCache[`files_${projectId}`] = files;
+      memoryCache[`messages_${projectId}`] = messages;
+      markStorageWrite(`files_${projectId}`);
+      markStorageWrite(`messages_${projectId}`);
+      return { files, messages };
+    } catch {
+      return null;
+    } finally {
+      snapshotInFlight.delete(projectId);
+    }
+  })();
+  snapshotInFlight.set(projectId, promise);
+  return promise;
+}
+
+/**
+ * One-time migration: reads file and message data written by older sessions into
+ * localStorage, writes it to IndexedDB, then removes the localStorage entries.
+ * Safe to call on every startup — reads are no-ops once the keys are gone.
+ */
+export async function migrateLocalStorageToIdb(): Promise<void> {
+  if (!accountScope.accountId) return;
+  if (typeof localStorage === 'undefined') return;
+  const toMigrate: Array<{ store: 'files' | 'messages'; lsKey: string; idbKey: string }> = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (key.includes(':brainhalf_files_')) {
+        const projectId = key.slice(key.lastIndexOf(':brainhalf_files_') + ':brainhalf_files_'.length);
+        if (projectId) toMigrate.push({ store: 'files', lsKey: key, idbKey: projectId });
+      } else if (key.includes(':brainhalf_messages_')) {
+        const projectId = key.slice(key.lastIndexOf(':brainhalf_messages_') + ':brainhalf_messages_'.length);
+        if (projectId) toMigrate.push({ store: 'messages', lsKey: key, idbKey: projectId });
+      }
+    }
+  } catch { return; }
+  for (const { store, lsKey, idbKey } of toMigrate) {
+    try {
+      const raw = localStorage.getItem(lsKey);
+      if (!raw) { try { localStorage.removeItem(lsKey); } catch {} continue; }
+      const parsed = JSON.parse(raw);
+      // Only migrate if IDB doesn't already have a newer copy.
+      const existing = await idbGet(store, idbKey);
+      if (!existing) await idbSet(store, idbKey, parsed);
+      try { localStorage.removeItem(lsKey); } catch {}
+    } catch { /* skip entries that fail to parse or write */ }
+  }
+}
+
 export function getProjectFiles(projectId: string): Record<string, string> | null {
   if (!accountScope.accountId || projectDeleted(projectId)) return null;
   const cacheKey = `files_${projectId}`;
@@ -646,13 +726,13 @@ export async function getProjectFilesAsync(projectId: string): Promise<Record<st
     return idbResult;
   }
   const cached = getProjectFiles(projectId);
-  if (cached || !legacyProjectIds.has(projectId)) return cached;
-  const legacy = await readLegacy<Record<string, string>>('files', projectId);
-  if (scope !== accountScope || projectDeleted(projectId)) return null;
-  if ((storageRevisions.get(cacheKey) || 0) !== revision) return getProjectFiles(projectId);
-  if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
-    saveProjectFiles(projectId, legacy);
-    return legacy;
+  if (cached) return cached;
+  // IDB and memory cache are both empty. If this is a server-known project,
+  // fetch files directly from the Durable Object — the canonical source of truth.
+  if (legacyProjectIds.has(projectId)) {
+    const snapshot = await fetchProjectSnapshot(projectId);
+    if (scope !== accountScope || projectDeleted(projectId)) return null;
+    if (snapshot?.files && Object.keys(snapshot.files).length > 0) return snapshot.files;
   }
   return null;
 }
@@ -690,20 +770,8 @@ function persistFiles(projectId: string, files: Record<string, string>) {
   }
   memoryCache[`files_${projectId}`] = files;
   markStorageWrite(`files_${projectId}`);
-
-  // 1. Asynchronously persist to high-capacity IndexedDB
+  // IndexedDB is the sole durable store for project file data.
   void idbSet('files', projectId, files);
-
-  // 2. Synchronously cache to localStorage if within quota
-  try {
-    if (!localStorageWriteFailed && typeof localStorage !== 'undefined') {
-      localStorage.setItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`), JSON.stringify(files));
-    }
-  } catch (e) {
-    localStorageWriteFailed = true;
-    try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`)); } catch {}
-    console.warn('localStorage unavailable for files; IndexedDB persistence requested:', e);
-  }
 }
 
 // Monaco calls the change handler on every keystroke. Each call used to
@@ -750,7 +818,6 @@ export function flushProjectFileWrites(): void {
 export function deleteProjectFiles(projectId: string) {
   if (!accountScope.accountId) return;
   void idbSet('files', `deleted:${projectId}`, true);
-  try { localStorage.setItem(projectStorageKey(`deleted:files:${projectId}`), 'true'); } catch {}
   // A write still in the debounce window would otherwise land after the
   // delete and resurrect the files the user just got rid of.
   const pending = pendingFileWrites.get(projectId);
@@ -761,12 +828,9 @@ export function deleteProjectFiles(projectId: string) {
   delete memoryCache[`files_${projectId}`];
   markStorageWrite(`files_${projectId}`);
   void idbDelete('files', projectId);
-
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`));
-    }
-  } catch {}
+  // Remove any legacy localStorage copy so old data can't resurface through
+  // the synchronous getProjectFiles fallback path.
+  try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`)); } catch {}
 }
 
 export function getProjectMessages(projectId: string): any[] | null {
@@ -806,13 +870,14 @@ export async function getProjectMessagesAsync(projectId: string): Promise<any[] 
     return idbResult;
   }
   const cached = getProjectMessages(projectId);
-  if (cached || !legacyProjectIds.has(projectId)) return cached;
-  const legacy = await readLegacy<any[]>('messages', projectId);
-  if (scope !== accountScope || projectDeleted(projectId)) return null;
-  if ((storageRevisions.get(cacheKey) || 0) !== revision) return getProjectMessages(projectId);
-  if (Array.isArray(legacy)) {
-    saveProjectMessages(projectId, legacy);
-    return legacy;
+  if (cached) return cached;
+  // IDB and memory cache are both empty. If this is a server-known project,
+  // fetch from the DO snapshot (the canonical source of truth). The snapshot
+  // call is deduped so getProjectFilesAsync and this both share one HTTP request.
+  if (legacyProjectIds.has(projectId)) {
+    const snapshot = await fetchProjectSnapshot(projectId);
+    if (scope !== accountScope || projectDeleted(projectId)) return null;
+    if (Array.isArray(snapshot?.messages)) return snapshot.messages;
   }
   return null;
 }
@@ -867,41 +932,11 @@ export function saveProjectMessages(projectId: string, messages: any[]) {
   const clean = stripPoisonedTail(messages);
   memoryCache[`messages_${projectId}`] = clean;
   markStorageWrite(`messages_${projectId}`);
-
-  // 1. Asynchronously persist to high-capacity IndexedDB
+  // IndexedDB is the sole durable store for project message data.
   void idbSet('messages', projectId, clean);
 
-  // 2. Synchronously cache to localStorage if within quota; on failure, evict
-  //    other projects' caches to make room and retry before giving up.
-  try {
-    if (!localStorageWriteFailed && typeof localStorage !== 'undefined') {
-      localStorage.setItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`), JSON.stringify(clean));
-    }
-  } catch (e) {
-    let retryOk = false;
-    try {
-      // Evict other projects' message and file caches (oldest first) to free space.
-      const others = getProjects().filter(p => p.id !== projectId).sort((a, b) => a.updatedAt - b.updatedAt);
-      for (const p of others) {
-        try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${p.id}`)); } catch {}
-        try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${p.id}`)); } catch {}
-      }
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`), JSON.stringify(clean));
-        retryOk = true;
-      }
-    } catch {}
-    if (!retryOk) {
-      localStorageWriteFailed = true;
-      try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`)); } catch {}
-      console.warn('localStorage unavailable for messages even after eviction; IndexedDB persistence requested:', e);
-    }
-  }
-
-  // 3. Once a project has real messages, promote it out of 'draft' status so
-  //    isEmptyDraftProject() cannot false-positive on the next session reload.
-  //    Messages may be in IndexedDB only (quota exceeded) — the status lives in
-  //    the small projects-list write which is far less likely to fail.
+  // Once a project has real messages, promote it out of 'draft' status so
+  // isEmptyDraftProject() cannot false-positive on the next session reload.
   if (clean.length > 0) {
     const projects = getProjects();
     const proj = projects.find(p => p.id === projectId);
@@ -914,16 +949,10 @@ export function saveProjectMessages(projectId: string, messages: any[]) {
 export function deleteProjectMessages(projectId: string) {
   if (!accountScope.accountId) return;
   void idbSet('messages', `deleted:${projectId}`, true);
-  try { localStorage.setItem(projectStorageKey(`deleted:messages:${projectId}`), 'true'); } catch {}
   delete memoryCache[`messages_${projectId}`];
   markStorageWrite(`messages_${projectId}`);
   void idbDelete('messages', projectId);
-
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`));
-    }
-  } catch {}
+  try { localStorage.removeItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`)); } catch {}
 }
 
 export function bindProjectStore() {

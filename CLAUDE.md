@@ -64,7 +64,7 @@ About 22 of ~264 Playwright tests require a production backend (Durable Objects,
 
 1. Add entry to `CF_MODELS` (or other provider array) in `src/lib/models.ts`
 2. Add display metadata in `MODEL_DISPLAY` in `src/components/ChatPanel.tsx`
-3. If the model supports thinking/reasoning, add its ID to the `supportsThinking` array in `src/agent.ts` (~line 2703)
+3. If the model supports thinking/reasoning, set `supportsThinking: true` on its entry in `src/lib/models.ts` (checked by `modelSupportsThinking()` at line ~177)
 4. If the model accepts image input, add to `acceptsImageInput()` in `src/lib/models.ts`
 5. Verify the model ID exists on Cloudflare Workers AI catalog before deploying
 
