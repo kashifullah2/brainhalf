@@ -3,7 +3,7 @@ import { routeAgentRequest } from 'agents';
 import { handleGoogleAuth } from './lib/google-auth';
 import { handleManagedGoogle } from './lib/managed-providers';
 export { ManagedProviders } from './lib/managed-providers';
-import { handleEmailRequest } from './lib/email';
+import { handleEmailRequest, sendEmail, type EmailQueueMessage } from './lib/email';
 import type { Ai, ExecutionContext } from '@cloudflare/workers-types';
 import { ChatAgent } from './agent';
 import { AuthRegistry } from './registry';
@@ -60,6 +60,8 @@ export interface PlatformEnv {
   ANALYTICS?: { writeDataPoint(event: { blobs?: string[]; doubles?: number[]; indexes?: string[] }): void };
   /** KV namespace for session caching — reduces Registry DO round-trips on every authenticated request. */
   SESSION_CACHE?: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; delete(key: string): Promise<void> };
+  /** Queue binding for async email delivery with automatic retries. */
+  EMAIL_QUEUE?: { send(msg: unknown): Promise<void> };
   [key: string]: unknown;
 }
 
@@ -1161,7 +1163,21 @@ export default {
     }
 
     return new Response('Not found', { status: 404 });
-  }
+  },
+
+  async queue(batch: { messages: Array<{ body: unknown; ack(): void; retry(): void }> }, env: PlatformEnv): Promise<void> {
+    for (const msg of batch.messages) {
+      try {
+        const email = msg.body as EmailQueueMessage;
+        if (!email?.to || !email?.subject) { msg.ack(); continue; }
+        await sendEmail(env as { RESEND_API_KEY?: string; RESEND_FROM_EMAIL?: string }, email);
+        msg.ack();
+      } catch (err) {
+        console.error('Email queue delivery failed, will retry:', err instanceof Error ? err.message : String(err));
+        msg.retry();
+      }
+    }
+  },
 };
 
 /**

@@ -2,10 +2,21 @@ import { BRAND_IMAGE_BASE64 } from './brand-image';
 import { getRegistry, isAllowedOrigin, type RegistryEnv } from './auth';
 import { isValidEmail, sha256Hex } from './crypto';
 
+/** Shape of a message pushed to the brainhalf-emails Queue. */
+export interface EmailQueueMessage {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+}
+
 interface EmailEnv extends RegistryEnv {
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
   CONTACT_EMAIL?: string;
+  /** Queue binding — when present, email delivery is async with auto-retry. */
+  EMAIL_QUEUE?: { send(msg: EmailQueueMessage): Promise<void> };
 }
 const SITE = 'https://brainhalf.com';
 const escape = (text: string) => text.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
@@ -19,16 +30,16 @@ async function registry(env: RegistryEnv, path: string, body: unknown) {
   return getRegistry(env).fetch(`https://registry${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 }
 
-async function send(env: EmailEnv, to: string, subject: string, text: string, html: string, replyTo?: string): Promise<void> {
+export async function sendEmail(env: Pick<EmailEnv, 'RESEND_API_KEY' | 'RESEND_FROM_EMAIL'>, msg: EmailQueueMessage): Promise<void> {
   let response: Response;
   try {
     response = await fetch('https://api.resend.com/emails', {
     method: 'POST', signal: AbortSignal.timeout(15_000),
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY!.trim()}`, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-    body: JSON.stringify({ from: `BrainHalf <${env.RESEND_FROM_EMAIL!.trim()}>`, to: [to], subject, text,
-      html: `<div style="font-family:Arial,sans-serif;color:#153147;max-width:560px;margin:auto;padding:28px"><img src="cid:brainhalf-logo" width="48" height="48" alt="BrainHalf"><h1 style="font-size:24px">${escape(subject)}</h1>${html}<p style="margin-top:32px;color:#64748b">BrainHalf · Build your next idea</p></div>`,
+    body: JSON.stringify({ from: `BrainHalf <${env.RESEND_FROM_EMAIL!.trim()}>`, to: [msg.to], subject: msg.subject, text: msg.text,
+      html: `<div style="font-family:Arial,sans-serif;color:#153147;max-width:560px;margin:auto;padding:28px"><img src="cid:brainhalf-logo" width="48" height="48" alt="BrainHalf"><h1 style="font-size:24px">${escape(msg.subject)}</h1>${msg.html}<p style="margin-top:32px;color:#64748b">BrainHalf · Build your next idea</p></div>`,
       attachments: [{ filename: 'brainhalf.png', content: BRAND_IMAGE_BASE64, content_id: 'brainhalf-logo' }],
-      ...(replyTo ? { reply_to: replyTo } : {}), }),
+      ...(msg.replyTo ? { reply_to: msg.replyTo } : {}), }),
     });
   } catch (cause) {
     // Network failures and the 15s timeout reject here — without this log the
@@ -43,6 +54,18 @@ async function send(env: EmailEnv, to: string, subject: string, text: string, ht
     throw new Error(`Email delivery unavailable (resend_status=${response.status})`);
   }
   await response.body?.cancel();
+}
+
+/**
+ * Deliver an email — via Queue if available (async, auto-retry), otherwise
+ * synchronously. The Queue path never throws; the sync fallback can.
+ */
+async function deliver(env: EmailEnv, msg: EmailQueueMessage): Promise<void> {
+  if (env.EMAIL_QUEUE) {
+    await env.EMAIL_QUEUE.send(msg);
+    return;
+  }
+  await sendEmail(env, msg);
 }
 
 async function actionEmail(env: EmailEnv, email: string, kind: 'verify' | 'reset') {
@@ -69,7 +92,7 @@ async function actionEmail(env: EmailEnv, email: string, kind: 'verify' | 'reset
   const subject = kind === 'reset' ? 'Reset your BrainHalf password' : 'Verify your BrainHalf email';
   const duration = kind === 'reset' ? '30 minutes' : '24 hours';
   const text = `${subject}\n\nOpen this link: ${url}\n\nThis link expires in ${duration} and works once. If you did not request this, ignore this email.`;
-  await send(env, action.email, subject, text, `<p>Use the button below to continue. This link expires in ${duration} and works once.</p><p><a href="${escape(url)}" style="display:inline-block;padding:14px 22px;background:#176c85;color:white;border-radius:8px;text-decoration:none">${kind === 'reset' ? 'Reset password' : 'Verify email'}</a></p><p>If you did not request this, ignore this email.</p>`);
+  await deliver(env, { to: action.email, subject, text, html: `<p>Use the button below to continue. This link expires in ${duration} and works once.</p><p><a href="${escape(url)}" style="display:inline-block;padding:14px 22px;background:#176c85;color:white;border-radius:8px;text-decoration:none">${kind === 'reset' ? 'Reset password' : 'Verify email'}</a></p><p>If you did not request this, ignore this email.</p>` });
 }
 
 async function readBody(request: Request): Promise<any> {
@@ -111,7 +134,7 @@ export async function handleEmailRequest(request: Request, env: EmailEnv): Promi
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       const message = typeof body.message === 'string' ? body.message.trim() : '';
       if (!name || name.length > 100 || message.length < 10 || message.length > 5000) return reply(400, { error: 'Add your name and a message between 10 and 5,000 characters.' });
-      await send(env, env.CONTACT_EMAIL.trim(), 'New BrainHalf contact message', `From: ${name} (${email})\n\n${message}`, `<p>From: ${escape(name)} (${escape(email)})</p><p style="white-space:pre-wrap">${escape(message)}</p>`, email);
+      await deliver(env, { to: env.CONTACT_EMAIL.trim(), subject: 'New BrainHalf contact message', text: `From: ${name} (${email})\n\n${message}`, html: `<p>From: ${escape(name)} (${escape(email)})</p><p style="white-space:pre-wrap">${escape(message)}</p>`, replyTo: email });
       return reply(200, { ok: true });
     }
     if (path === '/api/auth/signup') {
@@ -130,7 +153,7 @@ export async function handleEmailRequest(request: Request, env: EmailEnv): Promi
           // hash, not the raw address: email is PII and logs are broadly read.
           const emailHash = await sha256Hex(email).catch(() => 'unhashable');
           console.error(`Signup verification email failed for ${emailHash.slice(0, 12)}: ${cause instanceof Error ? cause.message : String(cause)}`);
-          return reply(503, { error: 'Your account was created, but the email could not be delivered. Use “Resend verification email” to try again.' });
+          return reply(503, { error: 'Your account was created, but the email could not be delivered. Use "Resend verification email" to try again.' });
         }
       }
       return reply(202, { verificationRequired: true, message: 'Check your email to verify your account, then sign in.' });

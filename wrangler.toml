@@ -76,6 +76,17 @@ binding = "SESSION_CACHE"
 # Then paste the returned id here.
 id = "a16dadac78e4462b8f572877c4c9225f"
 
+[[queues.producers]]
+binding = "EMAIL_QUEUE"
+queue = "brainhalf-emails"
+
+[[queues.consumers]]
+queue = "brainhalf-emails"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+dead_letter_queue = "brainhalf-emails-dlq"
+
 [[analytics_engine_datasets]]
 binding = "ANALYTICS"
 dataset = "brainhalf_events"

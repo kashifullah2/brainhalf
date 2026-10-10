@@ -309,3 +309,61 @@ it('reports a registry outage during login and unconfirmed revocation during log
   expect(logout.headers.get('set-cookie')).toContain('Max-Age=0');
   expect(await logout.text()).not.toContain('private-registry-detail');
 });
+
+// ── Email Queue path ───────────────────────────────────────────────────────────
+
+it('pushes to EMAIL_QUEUE instead of calling Resend directly when binding is present', async () => {
+  const queued: unknown[] = [];
+  env.EMAIL_QUEUE = { send: vi.fn(async (msg: unknown) => { queued.push(msg); }) };
+  const response = await post('auth/signup', { email: 'queue@example.com', password: 'strong-password' });
+  expect(response.status).toBe(202);
+  // Resend fetch was never called
+  expect(delivery).not.toHaveBeenCalledWith('https://api.resend.com/emails', expect.anything());
+  // One message pushed to the queue
+  expect(queued).toHaveLength(1);
+  const msg = queued[0] as { to: string; subject: string; text: string; html: string };
+  expect(msg.to).toBe('queue@example.com');
+  expect(msg.subject).toBe('Verify your BrainHalf email');
+  expect(msg.text).toContain('#token=');
+});
+
+it('falls back to direct Resend call when EMAIL_QUEUE is absent', async () => {
+  const response = await post('auth/signup', { email: 'direct@example.com', password: 'strong-password' });
+  expect(response.status).toBe(202);
+  expect(delivery).toHaveBeenCalledWith('https://api.resend.com/emails', expect.anything());
+});
+
+it('forgot-password pushes to queue', async () => {
+  await internal('/auth/signup', { email: 'forgot@example.com', password: 'strong-password' });
+  const queued: unknown[] = [];
+  env.EMAIL_QUEUE = { send: vi.fn(async (msg: unknown) => { queued.push(msg); }) };
+  const response = await post('auth/forgot-password', { email: 'forgot@example.com' });
+  expect(response.status).toBe(202);
+  expect(queued).toHaveLength(1);
+  expect((queued[0] as { subject: string }).subject).toBe('Reset your BrainHalf password');
+});
+
+it('queue handler calls sendEmail for each valid message', async () => {
+  const { sendEmail } = await import('../lib/email');
+  const msg = { to: 'x@y.com', subject: 'Test', text: 'hi', html: '<p>hi</p>' };
+  const workerEnv = { ...env, RESEND_API_KEY: 'key', RESEND_FROM_EMAIL: 'from@example.com' };
+  const acked: boolean[] = [];
+  const batch = {
+    messages: [{ body: msg, ack: () => acked.push(true), retry: () => acked.push(false) }],
+  };
+  await worker.queue!(batch as any, workerEnv as any);
+  expect(delivery).toHaveBeenCalledWith('https://api.resend.com/emails', expect.anything());
+  expect(acked).toEqual([true]);
+});
+
+it('queue handler retries on sendEmail failure', async () => {
+  delivery.mockRejectedValueOnce(new Error('transient'));
+  const msg = { to: 'x@y.com', subject: 'Test', text: 'hi', html: '<p>hi</p>' };
+  const workerEnv = { ...env, RESEND_API_KEY: 'key', RESEND_FROM_EMAIL: 'from@example.com' };
+  const retried: boolean[] = [];
+  const batch = {
+    messages: [{ body: msg, ack: () => retried.push(false), retry: () => retried.push(true) }],
+  };
+  await worker.queue!(batch as any, workerEnv as any);
+  expect(retried).toEqual([true]);
+});
