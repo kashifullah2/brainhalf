@@ -212,7 +212,7 @@ const AUTO_RETRY_FULL_APP_MARKER = '[AUTO-RETRY-FULL-APP]';
 const COMPLETENESS_REPAIR_MARKER = '[AUTO-FIX] The build finished but these files are imported by the app and were never written:';
 /** Prefix of the [AUTO-FIX] prompt for syntax-discarded files. */
 const SYNTAX_REPAIR_MARKER = '[AUTO-FIX] These files were discarded because of syntax errors';
-const PHANTOM_HOOK_REPAIR_MARKER = '[AUTO-FIX] These files use useAuth/AuthProvider/AuthContext without defining them:';
+export const PHANTOM_HOOK_REPAIR_MARKER = '[AUTO-FIX] These files use useAuth/AuthProvider/AuthContext without defining them:';
 export const VERIFY_FILE_REPAIR_MARKER = '[AUTO-FIX] brainhalf.verify.json is invalid:';
 const ROUTE_COVERAGE_REPAIR_MARKER = '[AUTO-FIX] The frontend calls these /api/ routes but no matching handler exists in worker/index.ts:';
 const MIN_FULL_APP_RESPONSE_CHARS = 260;
@@ -1316,34 +1316,41 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * Returns true when a repair turn was queued (P0-4): the caller must then
    * hold the completed status until the repair turn resolves.
    */
+  private checkFinalCompleteness(allFiles: Map<string, string>, connection: Connection): string | null {
+    if (allFiles.size === 0) return null;
+    const missing = findDanglingImports(allFiles, new Set<string>());
+    if (missing.length === 0) return null;
+    const candidates = [...new Set(this.missingFileCandidates(missing))];
+    console.warn(`Final completeness check: ${candidates.length} imported file(s) never written: ${candidates.join(', ')}`);
+    if (this.finalCompletenessRepairAttempts < 1) {
+      this.finalCompletenessRepairAttempts++;
+      const list = candidates.slice(0, 8).map(p => `- ${p}`).join('\n');
+      try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The build was missing ${candidates.length} file(s). Generating them now…` })); } catch (e) { noteSendFailure(e); }
+      return (
+        `${COMPLETENESS_REPAIR_MARKER}\n${list}\n\n` +
+        `Generate ONLY these missing files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
+        `Match the existing app's architecture, imports, and styling. Do not modify any other file.`
+      );
+    } else {
+      try {
+        connection.send(JSON.stringify({
+          type: 'error',
+          error: `The app is incomplete: ${candidates.length} file(s) imported by the app were never generated (${candidates.slice(0, 5).join(', ')}${candidates.length > 5 ? ', …' : ''}). Ask the builder to create them.`,
+        }));
+      } catch { }
+    }
+    return null;
+  }
+
   private verifyFinalCompleteness(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
     try {
       const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
       const allFiles = new Map<string, string>();
       for (const r of rows || []) allFiles.set(r.path, r.content || '');
-      if (allFiles.size === 0) return false;
-      const missing = findDanglingImports(allFiles, new Set<string>());
-      if (missing.length === 0) return false;
-      const candidates = [...new Set(this.missingFileCandidates(missing))];
-      console.warn(`Final completeness check: ${candidates.length} imported file(s) never written: ${candidates.join(', ')}`);
-      if (this.finalCompletenessRepairAttempts < 1) {
-        this.finalCompletenessRepairAttempts++;
-        const list = candidates.slice(0, 8).map(p => `- ${p}`).join('\n');
-        const repairPrompt =
-          `${COMPLETENESS_REPAIR_MARKER}\n${list}\n\n` +
-          `Generate ONLY these missing files, each as one complete <file path="/...">FULL FILE CONTENT</file> block. ` +
-          `Match the existing app's architecture, imports, and styling. Do not modify any other file.`;
-        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The build was missing ${candidates.length} file(s). Generating them now…` })); } catch (e) { noteSendFailure(e); }
-        defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch (e) { noteSendFailure(e); } });
-        return true;
-      } else {
-        try {
-          connection.send(JSON.stringify({
-            type: 'error',
-            error: `The app is incomplete: ${candidates.length} file(s) imported by the app were never generated (${candidates.slice(0, 5).join(', ')}${candidates.length > 5 ? ', …' : ''}). Ask the builder to create them.`,
-          }));
-        } catch { }
-      }
+      const prompt = this.checkFinalCompleteness(allFiles, connection);
+      if (!prompt) return false;
+      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: prompt })); } catch (e) { noteSendFailure(e); } });
+      return true;
     } catch (err) {
       console.warn('Final completeness check failed:', err instanceof Error ? err.message : String(err));
     }
@@ -1356,42 +1363,48 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * queue a repair turn that replaces the phantom references with direct
    * session-API calls.
    */
+  private checkNoPhantomAuthHooks(allFiles: Map<string, string>, connection: Connection): string | null {
+    if (allFiles.size === 0) return null;
+    const phantomPattern = /\buseAuth\b|\bAuthProvider\b|\bAuthContext\b/;
+    const definitionPattern = /(?:function\s+useAuth|const\s+useAuth|export\s+(?:default\s+)?(?:function|const)\s+(?:useAuth|AuthProvider)|createContext.*Auth|AuthContext\s*=\s*createContext)/;
+    let anyDefines = false;
+    const consumers: string[] = [];
+    for (const [path, content] of allFiles) {
+      if (!/\.(?:[jt]sx?)$/.test(path)) continue;
+      const stripped = content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      if (definitionPattern.test(stripped)) { anyDefines = true; break; }
+      if (phantomPattern.test(stripped)) consumers.push(path);
+    }
+    if (anyDefines || consumers.length === 0) return null;
+    if (this.phantomHookRepairAttempts >= 1) {
+      try {
+        connection.send(JSON.stringify({
+          type: 'error',
+          error: `${consumers.length} file(s) reference useAuth/AuthProvider/AuthContext but no file defines them (${consumers.slice(0, 3).join(', ')}). Ask the builder to fix this.`,
+        }));
+      } catch {}
+      return null;
+    }
+    this.phantomHookRepairAttempts++;
+    const list = consumers.slice(0, 8).map(p => `- ${p}`).join('\n');
+    try { connection.send(JSON.stringify({ type: 'generation_notice', message: `Found ${consumers.length} file(s) using an undefined auth hook. Repairing…` })); } catch {}
+    return (
+      `${PHANTOM_HOOK_REPAIR_MARKER}\n${list}\n\n` +
+      `These files call useAuth, AuthProvider, or AuthContext but no file in the project defines them — the app will crash. ` +
+      `Replace every phantom reference: use useState + useEffect calling the session API (GET /api/auth/session) directly, ` +
+      `or create and export a real useAuth hook in a new /src/hooks/useAuth.tsx file that all consumers import. ` +
+      `Use targeted <edit> blocks; do not rewrite entire files.`
+    );
+  }
+
   private verifyNoPhantomAuthHooks(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
     try {
       const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
       const allFiles = new Map<string, string>();
       for (const r of rows || []) allFiles.set(r.path, r.content || '');
-      if (allFiles.size === 0) return false;
-      const phantomPattern = /\buseAuth\b|\bAuthProvider\b|\bAuthContext\b/;
-      const definitionPattern = /(?:function\s+useAuth|const\s+useAuth|export\s+(?:default\s+)?(?:function|const)\s+(?:useAuth|AuthProvider)|createContext.*Auth|AuthContext\s*=\s*createContext)/;
-      let anyDefines = false;
-      const consumers: string[] = [];
-      for (const [path, content] of allFiles) {
-        if (!/\.(?:[jt]sx?)$/.test(path)) continue;
-        const stripped = content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-        if (definitionPattern.test(stripped)) { anyDefines = true; break; }
-        if (phantomPattern.test(stripped)) consumers.push(path);
-      }
-      if (anyDefines || consumers.length === 0) return false;
-      if (this.phantomHookRepairAttempts >= 1) {
-        try {
-          connection.send(JSON.stringify({
-            type: 'error',
-            error: `${consumers.length} file(s) reference useAuth/AuthProvider/AuthContext but no file defines them (${consumers.slice(0, 3).join(', ')}). Ask the builder to fix this.`,
-          }));
-        } catch {}
-        return false;
-      }
-      this.phantomHookRepairAttempts++;
-      const list = consumers.slice(0, 8).map(p => `- ${p}`).join('\n');
-      const repairPrompt =
-        `${PHANTOM_HOOK_REPAIR_MARKER}\n${list}\n\n` +
-        `These files call useAuth, AuthProvider, or AuthContext but no file in the project defines them — the app will crash. ` +
-        `Replace every phantom reference: use useState + useEffect calling the session API (GET /api/auth/session) directly, ` +
-        `or create and export a real useAuth hook in a new /src/hooks/useAuth.tsx file that all consumers import. ` +
-        `Use targeted <edit> blocks; do not rewrite entire files.`;
-      try { connection.send(JSON.stringify({ type: 'generation_notice', message: `Found ${consumers.length} file(s) using an undefined auth hook. Repairing…` })); } catch {}
-      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch {} });
+      const prompt = this.checkNoPhantomAuthHooks(allFiles, connection);
+      if (!prompt) return false;
+      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: prompt })); } catch {} });
       return true;
     } catch (err) {
       console.warn('Phantom auth hook check failed:', err instanceof Error ? err.message : String(err));
@@ -1408,54 +1421,53 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * Capped at one repair attempt so a model that cannot produce a valid file
    * does not loop; the user sees a generation notice and can prompt manually.
    */
+  private checkVerificationPlanFile(allFiles: Map<string, string>, connection: Connection): string | null {
+    if (allFiles.size === 0) return null;
+    const hasWorkerBackend = allFiles.has('/worker/index.ts');
+    const verifyRaw = allFiles.get('/brainhalf.verify.json') ?? allFiles.get('brainhalf.verify.json');
+    if (!verifyRaw) {
+      if (!hasWorkerBackend) return null;
+      if (this.verifyFileRepairAttempts >= 1) return null;
+      this.verifyFileRepairAttempts++;
+      try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Generating verification plan for your app…' })); } catch {}
+      return (
+        `${VERIFY_FILE_REPAIR_MARKER} missing\n\n` +
+        `This app has a worker backend (/worker/index.ts) but no brainhalf.verify.json. ` +
+        `Write a complete, valid brainhalf.verify.json that exercises the app\'s actual API routes. ` +
+        `The file MUST satisfy all schema rules: at least 3 steps, one successful POST/PUT/PATCH/DELETE ` +
+        `request step, one database assertion step with rows > 0 and at least one assertion, and for ` +
+        `private apps one anonymous or otherUser access-denial step. ` +
+        `Use <file path="/brainhalf.verify.json">…</file> — do not modify any other file.`
+      );
+    }
+    let validationError: string | null = null;
+    try {
+      verificationPlan({ 'brainhalf.verify.json': verifyRaw });
+    } catch (err) {
+      validationError = err instanceof Error ? err.message : String(err);
+    }
+    if (!validationError) return null;
+    if (this.verifyFileRepairAttempts >= 1) return null;
+    this.verifyFileRepairAttempts++;
+    try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Fixing verification plan…' })); } catch {}
+    return (
+      `${VERIFY_FILE_REPAIR_MARKER} ${validationError}\n\n` +
+      `Fix /brainhalf.verify.json so it passes all schema checks: at least 3 steps, one successful ` +
+      `POST/PUT/PATCH/DELETE request step (method not GET, status < 300), one database assertion step ` +
+      `(type:"database", rows > 0, non-empty assertions[]), and for private apps one anonymous or ` +
+      `otherUser access-denial step (status 401/403/404). Use a targeted <edit> block or rewrite the ` +
+      `file with <file path="/brainhalf.verify.json">…</file>. Do not modify any other file.`
+    );
+  }
+
   private verifyVerificationPlanFile(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
     try {
       const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
       const allFiles = new Map<string, string>();
       for (const r of rows || []) allFiles.set(r.path, r.content || '');
-      if (allFiles.size === 0) return false;
-
-      const hasWorkerBackend = allFiles.has('/worker/index.ts');
-      const verifyRaw = allFiles.get('/brainhalf.verify.json') ?? allFiles.get('brainhalf.verify.json');
-
-      if (!verifyRaw) {
-        // Only require the file when there is a worker backend to test.
-        if (!hasWorkerBackend) return false;
-        if (this.verifyFileRepairAttempts >= 1) return false;
-        this.verifyFileRepairAttempts++;
-        const repairPrompt =
-          `${VERIFY_FILE_REPAIR_MARKER} missing\n\n` +
-          `This app has a worker backend (/worker/index.ts) but no brainhalf.verify.json. ` +
-          `Write a complete, valid brainhalf.verify.json that exercises the app\'s actual API routes. ` +
-          `The file MUST satisfy all schema rules: at least 3 steps, one successful POST/PUT/PATCH/DELETE ` +
-          `request step, one database assertion step with rows > 0 and at least one assertion, and for ` +
-          `private apps one anonymous or otherUser access-denial step. ` +
-          `Use <file path="/brainhalf.verify.json">…</file> — do not modify any other file.`;
-        try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Generating verification plan for your app…' })); } catch {}
-        defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch {} });
-        return true;
-      }
-
-      // File exists — validate it.
-      let validationError: string | null = null;
-      try {
-        verificationPlan({ 'brainhalf.verify.json': verifyRaw });
-      } catch (err) {
-        validationError = err instanceof Error ? err.message : String(err);
-      }
-      if (!validationError) return false;
-
-      if (this.verifyFileRepairAttempts >= 1) return false;
-      this.verifyFileRepairAttempts++;
-      const repairPrompt =
-        `${VERIFY_FILE_REPAIR_MARKER} ${validationError}\n\n` +
-        `Fix /brainhalf.verify.json so it passes all schema checks: at least 3 steps, one successful ` +
-        `POST/PUT/PATCH/DELETE request step (method not GET, status < 300), one database assertion step ` +
-        `(type:"database", rows > 0, non-empty assertions[]), and for private apps one anonymous or ` +
-        `otherUser access-denial step (status 401/403/404). Use a targeted <edit> block or rewrite the ` +
-        `file with <file path="/brainhalf.verify.json">…</file>. Do not modify any other file.`;
-      try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Fixing verification plan…' })); } catch {}
-      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch {} });
+      const prompt = this.checkVerificationPlanFile(allFiles, connection);
+      if (!prompt) return false;
+      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: prompt })); } catch {} });
       return true;
     } catch (err) {
       console.warn('verify.json check failed:', err instanceof Error ? err.message : String(err));
@@ -1468,38 +1480,45 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * have a matching route handler in /worker/index.ts. When uncovered routes
    * are found, queues one bounded repair turn that adds the missing handlers.
    */
+  private checkApiRouteCoverage(allFiles: Map<string, string>, connection: Connection): string | null {
+    if (allFiles.size === 0) return null;
+    const workerContent = allFiles.get('/worker/index.ts') ?? allFiles.get('worker/index.ts');
+    if (!workerContent) return null;
+    const fetches = extractApiFetches(allFiles);
+    if (fetches.length === 0) return null;
+    const routes = extractWorkerRoutes(workerContent);
+    const uncovered = findUncoveredFetches(fetches, routes);
+    if (uncovered.length === 0) return null;
+    console.warn(`Route coverage check: ${uncovered.length} fetch call(s) with no matching route: ${uncovered.join(', ')}`);
+    if (this.apiRouteCoverageRepairAttempts < 1) {
+      this.apiRouteCoverageRepairAttempts++;
+      const list = uncovered.slice(0, 8).map(p => `- ${p}`).join('\n');
+      try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The backend is missing ${uncovered.length} route(s). Adding them now…` })); } catch (e) { noteSendFailure(e); }
+      return (
+        `${ROUTE_COVERAGE_REPAIR_MARKER}\n${list}\n\n` +
+        `Add the missing route handler(s) to /worker/index.ts. ` +
+        `Use the existing auth middleware and D1 pattern already in that file. ` +
+        `Do not modify any other file.`
+      );
+    }
+    try {
+      connection.send(JSON.stringify({
+        type: 'error',
+        error: `The app is incomplete: ${uncovered.length} API call(s) in the frontend have no matching backend route (${uncovered.slice(0, 5).join(', ')}${uncovered.length > 5 ? ', …' : ''}). Ask the builder to add the missing routes.`,
+      }));
+    } catch { }
+    return null;
+  }
+
   private verifyApiRouteCoverage(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
     try {
       const rows = this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`;
       const allFiles = new Map<string, string>();
       for (const r of rows || []) allFiles.set(r.path, r.content || '');
-      if (allFiles.size === 0) return false;
-      const workerContent = allFiles.get('/worker/index.ts') ?? allFiles.get('worker/index.ts');
-      if (!workerContent) return false;
-      const fetches = extractApiFetches(allFiles);
-      if (fetches.length === 0) return false;
-      const routes = extractWorkerRoutes(workerContent);
-      const uncovered = findUncoveredFetches(fetches, routes);
-      if (uncovered.length === 0) return false;
-      console.warn(`Route coverage check: ${uncovered.length} fetch call(s) with no matching route: ${uncovered.join(', ')}`);
-      if (this.apiRouteCoverageRepairAttempts < 1) {
-        this.apiRouteCoverageRepairAttempts++;
-        const list = uncovered.slice(0, 8).map(p => `- ${p}`).join('\n');
-        const repairPrompt =
-          `${ROUTE_COVERAGE_REPAIR_MARKER}\n${list}\n\n` +
-          `Add the missing route handler(s) to /worker/index.ts. ` +
-          `Use the existing auth middleware and D1 pattern already in that file. ` +
-          `Do not modify any other file.`;
-        try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The backend is missing ${uncovered.length} route(s). Adding them now…` })); } catch (e) { noteSendFailure(e); }
-        defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: repairPrompt })); } catch (e) { noteSendFailure(e); } });
-        return true;
-      }
-      try {
-        connection.send(JSON.stringify({
-          type: 'error',
-          error: `The app is incomplete: ${uncovered.length} API call(s) in the frontend have no matching backend route (${uncovered.slice(0, 5).join(', ')}${uncovered.length > 5 ? ', …' : ''}). Ask the builder to add the missing routes.`,
-        }));
-      } catch { }
+      const prompt = this.checkApiRouteCoverage(allFiles, connection);
+      if (!prompt) return false;
+      defer(() => { try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: prompt })); } catch (e) { noteSendFailure(e); } });
+      return true;
     } catch (err) {
       console.warn('Route coverage check failed:', err instanceof Error ? err.message : String(err));
     }
@@ -3345,27 +3364,28 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       if (extraction.writtenCount > 0) {
                         const checksStart = Date.now();
                         try {
-                          if (this.verifyFinalCompleteness(connection, deferTerminal)
-                            && this.noteRepairQueued(accounting.id, actualPrompt, COMPLETENESS_REPAIR_MARKER)) repairQueuedThisTurn = true;
-                        } catch (e) { console.warn('Final completeness check threw:', e); }
-                        if (!repairQueuedThisTurn) {
-                          try {
-                            if (this.verifyNoPhantomAuthHooks(connection, deferTerminal)
-                              && this.noteRepairQueued(accounting.id, actualPrompt, PHANTOM_HOOK_REPAIR_MARKER)) repairQueuedThisTurn = true;
-                          } catch (e) { console.warn('Phantom auth hook check threw:', e); }
-                        }
-                        if (!repairQueuedThisTurn) {
-                          try {
-                            if (this.verifyVerificationPlanFile(connection, deferTerminal)
-                              && this.noteRepairQueued(accounting.id, actualPrompt, VERIFY_FILE_REPAIR_MARKER)) repairQueuedThisTurn = true;
-                          } catch (e) { console.warn('verify.json post-gen check threw:', e); }
-                        }
-                        if (!repairQueuedThisTurn) {
-                          try {
-                            if (this.verifyApiRouteCoverage(connection, deferTerminal)
-                              && this.noteRepairQueued(accounting.id, actualPrompt, ROUTE_COVERAGE_REPAIR_MARKER)) repairQueuedThisTurn = true;
-                          } catch (e) { console.warn('Route coverage check threw:', e); }
-                        }
+                          const allFiles = new Map<string, string>(
+                            (this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`)
+                              .map(r => [r.path, r.content ?? ''] as [string, string])
+                          );
+                          const results = await Promise.all(
+                            [
+                              () => this.checkFinalCompleteness(allFiles, connection),
+                              () => this.checkNoPhantomAuthHooks(allFiles, connection),
+                              () => this.checkVerificationPlanFile(allFiles, connection),
+                              () => this.checkApiRouteCoverage(allFiles, connection),
+                            ].map(fn => { try { return Promise.resolve(fn()); } catch (e) { console.warn('Post-gen check threw:', e); return Promise.resolve(null); } })
+                          );
+                          const failures = results.filter((p): p is string => p !== null);
+                          if (failures.length > 0) {
+                            const combined = failures.join('\n\n---\n\n');
+                            const marker = combined.split('\n')[0];
+                            deferTerminal(() => {
+                              try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: combined })); } catch (e) { noteSendFailure(e); }
+                            });
+                            if (this.noteRepairQueued(accounting.id, actualPrompt, marker)) repairQueuedThisTurn = true;
+                          }
+                        } catch (e) { console.warn('Post-gen checks threw:', e); }
                         accounting.checksMs = Date.now() - checksStart;
                       }
                     }
