@@ -2,6 +2,7 @@ import { AUTH_CACHE_TTL, BACKEND_READY_POSITIVE_TTL, BACKEND_READY_NEGATIVE_TTL,
 import { isEmptyAssistantResponse } from './lib/assistant-response';
 import { recordProductOutcome, type OutcomeEvent } from './lib/product-outcomes';
 import { writeGenerationEvent } from './lib/cf-analytics';
+import { structuredLog } from './lib/structured-log';
 import { prepareCapabilities, sdkCapabilities, imageMessages, cfImageMessages, acceptsImageInput, runCapabilityLoop, capabilitiesFromTools, type AgentCapabilities } from './lib/agent-capabilities';
 import type { BuilderAttachment } from './lib/builder-attachments';
 import { BuilderService } from './lib/builder-service';
@@ -1095,7 +1096,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         customMetadata: { ownerId: ownerId ?? '', backedUpAt: new Date(timestamp).toISOString() }
       });
     } catch (e) {
-      console.error('Failed to backup to R2', e);
+      structuredLog('error', 'r2_backup_failed', { projectId: this.name, cause: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -1170,7 +1171,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       return;
     }
     if (userId === 'FORBIDDEN' || !userId) {
-      console.warn('Rejected unauthenticated WebSocket connection');
+      structuredLog('warn', 'ws_rejected_unauth', { projectId: this.name });
       try { connection.close(4401, 'Unauthorized'); } catch { }
       return;
     }
@@ -1178,7 +1179,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     // number of sockets on one project. Counted before the id is recorded.
     const openForUser = [...this.connectionUserIds.values()].filter((u) => u === userId).length;
     if (openForUser >= MAX_CONNECTIONS_PER_USER) {
-      console.warn(`Rejected ${MAX_CONNECTIONS_PER_USER + 1}th connection for user ${userId}`);
+      structuredLog('warn', 'ws_rejected_conn_limit', { projectId: this.name, userId, openCount: openForUser });
       try { connection.close(4429, 'Too many open connections'); } catch { }
       return;
     }
@@ -3737,6 +3738,15 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           filesWritten: completed ? Object.keys(this.readAllProjectFiles()).length : 0,
           repairCount: this.truncationRetries + this.syntaxRepairAttempts + this.finalCompletenessRepairAttempts,
           providerCalls: accounting.providerCalls,
+        });
+      }
+      if (!repairPending) {
+        const genLogStatus = completed ? 'completed' : abortController.signal.aborted ? 'stopped' : 'failed';
+        structuredLog(completed || abortController.signal.aborted ? 'info' : 'warn', 'generation_outcome', {
+          projectId: outcomeScope.projectId, userId: outcomeScope.ownerId, status: genLogStatus,
+          totalMs: accounting.generationMs ?? (Date.now() - accounting.startedAt),
+          inputTokens: accounting.inputTokens ?? 0, outputTokens: accounting.outputTokens ?? 0,
+          repairCount: this.truncationRetries + this.syntaxRepairAttempts + this.finalCompletenessRepairAttempts,
         });
       }
       if (measureGeneration && !repairPending) await this.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });

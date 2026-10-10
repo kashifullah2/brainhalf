@@ -37,6 +37,7 @@ import { isolatedPreviewHtml, previewFiles, previewSecurityHeaders } from './lib
 import type { BindingFetcher, DispatchBinding, DurableBinding } from './lib/bindings';
 import { writeAuthEvent } from './lib/cf-analytics';
 import { upsertProjectVector, deleteProjectVector, searchProjects } from './lib/vectorize';
+import { structuredLog } from './lib/structured-log';
 
 export { ChatAgent, AuthRegistry };
 
@@ -920,7 +921,7 @@ export default {
         if (!exportResponse.ok) {
           const agentError = (await exportResponse.json().catch(() => ({})) as { error?: unknown }).error;
           await cleanupRemixProject(projectId);
-          console.error('Remix export failed:', sourceId, exportResponse.status, agentError);
+          structuredLog('error', 'remix_export_failed', { sourceId, status: exportResponse.status, agentError: String(agentError ?? '') });
           return withCors(jsonError(remixErrorMessage(agentError), exportResponse.status === 502 || exportResponse.status === 503 ? 502 : exportResponse.status), origin);
         }
         const imported = await env.ChatAgent.get(env.ChatAgent.idFromName(projectId))
@@ -930,12 +931,12 @@ export default {
         if (!imported.ok) {
           const agentError = (await imported.json().catch(() => ({})) as { error?: unknown }).error;
           await cleanupRemixProject(projectId);
-          console.error('Remix import failed:', projectId, imported.status, agentError);
+          structuredLog('error', 'remix_import_failed', { projectId, sourceId, status: imported.status, agentError: String(agentError ?? '') });
           return withCors(jsonError(remixErrorMessage(agentError), imported.status === 502 || imported.status === 503 ? 502 : imported.status), origin);
         }
         return withCors(Response.json({ projectId, name }), origin);
       } catch (error) {
-        console.error('Remix failed:', error);
+        structuredLog('error', 'remix_failed', { sourceId, cause: error instanceof Error ? error.message : String(error) });
         return withCors(jsonError('Remix could not be completed. Please try again.', 502), origin);
       }
     }
@@ -1214,7 +1215,7 @@ export default {
         await sendEmail(env as { RESEND_API_KEY?: string; RESEND_FROM_EMAIL?: string }, email);
         msg.ack();
       } catch (err) {
-        console.error('Email queue delivery failed, will retry:', err instanceof Error ? err.message : String(err));
+        structuredLog('error', 'email_queue_failed', { cause: err instanceof Error ? err.message : String(err) });
         msg.retry();
       }
     }
