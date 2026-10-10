@@ -11,7 +11,7 @@ import { digest } from '../src/runtime/source';
 import { readJson, token } from '../src/runtime/integrations';
 import { CloudflareAPI } from '../src/runtime/cloudflare-api';
 import { STARTER_VERIFICATION } from '../src/runtime/verification';
-import { DEV_JOB_IDLE_TIMEOUT_MS, DEV_JOB_MAX_LIFETIME_MS, DEV_MAX_CRASH_RESTARTS, DEV_LIVE_FILE_MAX_BYTES, OWNER_RUNTIME_LIMITS } from '../src/runtime/types';
+import { DEV_JOB_IDLE_TIMEOUT_MS, DEV_JOB_MAX_LIFETIME_MS, DEV_MAX_CRASH_RESTARTS, DEV_LIVE_FILE_MAX_BYTES, DEV_LIVE_FILE_RATE_PER_MIN, OWNER_RUNTIME_LIMITS } from '../src/runtime/types';
 import { isHostedLimitError } from '../src/lib/hosted-limit';
 import { ManagedStore } from '../src/runtime/managed-store';
 import { launch, connect, sessions } from '@cloudflare/playwright';
@@ -1281,6 +1281,27 @@ describe('Dev job hardening', () => {
     expect(ok.status).toBe(200);
     expect(sandbox.writeFile).toHaveBeenCalledWith('/workspace/project/src/App.tsx', '<App />');
     expect(p.map.get('current').devLastActiveAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it(`allows up to ${DEV_LIVE_FILE_RATE_PER_MIN} pushes per minute and rejects the next one with 429`, async () => {
+    const p = await project();
+    await p.ctx.storage.put('current', devJob());
+    for (let i = 0; i < DEV_LIVE_FILE_RATE_PER_MIN; i++) {
+      const res = await p.call('/live-files', 'POST', { path: `src/file${i}.tsx`, content: 'x' });
+      expect(res.status).toBe(200);
+    }
+    const over = await p.call('/live-files', 'POST', { path: 'src/over.tsx', content: 'x' });
+    expect(over.status).toBe(429);
+    expect(await over.json()).toMatchObject({ error: expect.stringContaining('Too many file pushes') });
+  });
+
+  it('resets the per-minute push counter when the clock ticks to a new minute', async () => {
+    const p = await project();
+    const nowMin = Math.floor(Date.now() / 60_000);
+    await p.ctx.storage.put('current', devJob({ devLiveFileMinute: nowMin - 1, devLiveFileCount: DEV_LIVE_FILE_RATE_PER_MIN }));
+    const res = await p.call('/live-files', 'POST', { path: 'src/App.tsx', content: 'x' });
+    expect(res.status).toBe(200);
+    expect(p.map.get('current').devLiveFileCount).toBe(1);
   });
 
   // ── Item 4: Preview proxy requires session ───────────────────────────────

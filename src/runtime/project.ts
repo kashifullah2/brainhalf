@@ -22,9 +22,9 @@ import { digest, sourceSnapshot, projectManifest, migrationFiles, assertSafeMigr
 import { isBlockedSecretFile } from '../lib/secret-files';
 import { openSecret, sealSecret, validateIntegration, redactSecrets } from './secrets';
 import { contactInput, token, cookie, secureCookie, embeddedPreviewCookie, readJson, readStreamJson } from './integrations';
-import { DEV_JOB_IDLE_TIMEOUT_MS, DEV_JOB_MAX_LIFETIME_MS, DEV_LIVE_FILE_MAX_BYTES, DEV_MAX_CRASH_RESTARTS, PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport, type RuntimeUsageKind } from './types';
+import { DEV_JOB_IDLE_TIMEOUT_MS, DEV_JOB_MAX_LIFETIME_MS, DEV_LIVE_FILE_MAX_BYTES, DEV_LIVE_FILE_RATE_PER_MIN, DEV_MAX_CRASH_RESTARTS, PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport, type RuntimeUsageKind } from './types';
 
-interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean; installRetried?: boolean; devServerPids?: { vite: string; backend: string }; devCrashRestarts?: number; devLastActiveAt?: number; devFirstPreviewAt?: number }
+interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean; installRetried?: boolean; devServerPids?: { vite: string; backend: string }; devCrashRestarts?: number; devLastActiveAt?: number; devFirstPreviewAt?: number; devLiveFileMinute?: number; devLiveFileCount?: number }
 interface StoredIntegration { sealed: string; updatedAt: number }
 interface DatabaseRecoveryPoint { id: string; label: string; bookmark: string; databaseId: string; createdAt: number; migrations: MigrationReceipt[] }
 const authPath = (value: string) => /^\/__brainhalf\/auth(?:\?mode=(?:verify|reset|magic)#token=[A-Za-z0-9_-]{43})?$/.test(value);
@@ -576,6 +576,10 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       if (body.content.length > DEV_LIVE_FILE_MAX_BYTES) throw new RuntimeError(`File too large (max ${DEV_LIVE_FILE_MAX_BYTES / 1024} KB).`, 413);
       const job = await this.ctx.storage.get<StoredJob>('current');
       if (!job || job.status !== 'running' || !job.previewReady || !['preview', 'dev'].includes(job.kind)) throw new RuntimeError('No running dev server to push to.', 409);
+      const nowMin = Math.floor(Date.now() / 60_000);
+      if (job.devLiveFileMinute !== nowMin) { job.devLiveFileMinute = nowMin; job.devLiveFileCount = 0; }
+      if ((job.devLiveFileCount ?? 0) >= DEV_LIVE_FILE_RATE_PER_MIN) throw new RuntimeError('Too many file pushes this minute. Wait a moment before pushing more files.', 429);
+      job.devLiveFileCount = (job.devLiveFileCount ?? 0) + 1;
       await this.sandbox(job).writeFile(`/workspace/project/${safePath}`, body.content);
       job.devLastActiveAt = Date.now();
       await this.saveJob(job);
