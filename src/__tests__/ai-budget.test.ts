@@ -51,6 +51,37 @@ describe('durable account AI allowance', () => {
     expect(() => ledger.reserve('one', 'expired', 100, now + AI_ALLOWANCE.leaseMs + 1)).toThrow('expired');
     expect(ledger.usage(now + AI_ALLOWANCE.leaseMs + 1).activeGenerations).toBe(0);
   });
+  it('startAndReserve on the ledger is atomic and idempotent', () => {
+    const storage = sqliteStorage();
+    const ledger = new AiLedger(storage);
+    ledger.startAndReserve('lease-sar', 'call-sar', 1000);
+    expect(ledger.usage().calls).toBe(1);
+    expect(ledger.usage().activeGenerations).toBe(1);
+    // Idempotent: same IDs are no-ops
+    ledger.startAndReserve('lease-sar', 'call-sar', 1000);
+    expect(ledger.usage().calls).toBe(1);
+    ledger.end('lease-sar');
+    expect(ledger.usage().activeGenerations).toBe(0);
+    // Rolls back atomically: a daily-exhausted reserve undoes the lease insert
+    const storage2 = sqliteStorage();
+    const ledger2 = new AiLedger(storage2);
+    const maxCalls = Math.ceil(AI_ALLOWANCE.dailyOutputTokens / 65536);
+    ledger2.startAndReserve('anchor', 'anchor-call', 65536);
+    for (let i = 0; i < maxCalls - 2; i++) ledger2.reserve('anchor', `filler-${i}`, 65536);
+    expect(() => ledger2.startAndReserve('new-lease', 'new-call', 65536)).toThrow('daily AI allowance');
+    // The new lease must not have been persisted
+    expect(ledger2.usage().activeGenerations).toBe(1);
+  });
+
+  it('startAndReserve via registry completes in one request and enforces concurrency', async () => {
+    const env = { REGISTRY: budgetRegistry() };
+    const slots = Array.from({ length: AI_ALLOWANCE.concurrentGenerations }, () => new AiBudget(env, 'sar-owner'));
+    await Promise.all(slots.map(b => b.startAndReserve(1000)));
+    await expect(new AiBudget(env, 'sar-owner').startAndReserve(1000)).rejects.toThrow('already running');
+    await slots[0].end();
+    await expect(new AiBudget(env, 'sar-owner').startAndReserve(1000)).resolves.toBeUndefined();
+  });
+
   it('distinguishes concurrency-limit from daily-budget exhaustion via error kind', async () => {
     const { AiBudgetError } = await import('../lib/ai-budget');
     type BudgetError = InstanceType<typeof AiBudgetError>;

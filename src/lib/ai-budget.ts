@@ -44,6 +44,26 @@ export class AiLedger {
     });
   }
   end(id: string) { this.storage.sql.exec('DELETE FROM ai_leases WHERE id=?', id); }
+
+  startAndReserve(leaseId: string, callId: string, maxTokens: number, now = Date.now()) {
+    if (!Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > 65536) throw new AiBudgetError('Invalid AI output allowance.', 400);
+    this.storage.transactionSync(() => {
+      this.storage.sql.exec('DELETE FROM ai_leases WHERE expires_at<=?', now);
+      this.storage.sql.exec('DELETE FROM ai_calls WHERE day<?', new Date(now - 2 * 86400_000).toISOString().slice(0, 10));
+      if (!this.storage.sql.exec('SELECT id FROM ai_leases WHERE id=?', leaseId).toArray().length) {
+        const usage = this.usage(now);
+        if (usage.activeGenerations >= AI_ALLOWANCE.concurrentGenerations) throw new AiBudgetError(`${AI_ALLOWANCE.concurrentGenerations} AI generations are already running across your projects. Wait or stop one before retrying.`, 429, 'concurrency');
+        if (usage.calls >= AI_ALLOWANCE.dailyCalls || usage.reservedOutputTokens >= AI_ALLOWANCE.dailyOutputTokens) throw new AiBudgetError('Your daily AI allowance is exhausted. It resets at midnight UTC.', 429, 'daily');
+        this.storage.sql.exec('INSERT INTO ai_leases(id,expires_at) VALUES (?,?)', leaseId, now + AI_ALLOWANCE.leaseMs);
+      }
+      if (!this.storage.sql.exec('SELECT id FROM ai_calls WHERE id=?', callId).toArray().length) {
+        const usage = this.usage(now);
+        if (usage.calls >= AI_ALLOWANCE.dailyCalls || usage.reservedOutputTokens + maxTokens > AI_ALLOWANCE.dailyOutputTokens) throw new AiBudgetError('Your daily AI allowance cannot cover this call. Select a smaller output limit or retry after midnight UTC.', 429, 'daily');
+        const day = new Date(now).toISOString().slice(0, 10);
+        this.storage.sql.exec('INSERT INTO ai_calls(id,day,output_tokens) VALUES (?,?,?)', callId, day, maxTokens);
+      }
+    });
+  }
 }
 
 interface BudgetEnv { REGISTRY?: { idFromName(name: string): unknown; get(id: any): { fetch(request: Request): Promise<Response> } } }
@@ -67,9 +87,7 @@ export class AiBudget {
   async reserve(maxTokens: number) { this.signal?.throwIfAborted(); await this.request('reserve', { lease: this.id, id: crypto.randomUUID(), maxTokens }); this.signal?.throwIfAborted(); }
   async startAndReserve(maxTokens: number) {
     this.signal?.throwIfAborted();
-    await this.request('start', { id: this.id });
-    this.signal?.throwIfAborted();
-    await this.request('reserve', { lease: this.id, id: crypto.randomUUID(), maxTokens });
+    await this.request('start-and-reserve', { id: this.id, callId: crypto.randomUUID(), maxTokens });
     this.signal?.throwIfAborted();
   }
   async end() { await this.request('end', { id: this.id }); }

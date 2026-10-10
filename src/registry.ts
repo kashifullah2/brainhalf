@@ -348,12 +348,13 @@ export class AuthRegistry {
         const ledger = new AiLedger(this.state.storage);
         if (path === '/ai/usage' && method === 'GET') return Response.json(ledger.usage());
         if (method !== 'POST') return this.json(405, { error: 'Method not allowed' });
-        const body = await request.json() as { id?: unknown; lease?: unknown; maxTokens?: unknown };
+        const body = await request.json() as { id?: unknown; lease?: unknown; maxTokens?: unknown; callId?: unknown };
         if (!body || typeof body.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(body.id)) return this.json(400, { error: 'Invalid AI reservation' });
         if (await this.isAdminUnlimited()) return this.json(200, { ok: true });
         if (path === '/ai/start') ledger.start(body.id);
         else if (path === '/ai/end') ledger.end(body.id);
         else if (path === '/ai/reserve' && typeof body.lease === 'string' && typeof body.maxTokens === 'number') ledger.reserve(body.lease, body.id, body.maxTokens);
+        else if (path === '/ai/start-and-reserve' && typeof body.callId === 'string' && typeof body.maxTokens === 'number' && /^[A-Za-z0-9_-]{1,128}$/.test(body.callId)) ledger.startAndReserve(body.id, body.callId, body.maxTokens);
         else return this.json(400, { error: 'Invalid AI reservation' });
         return this.json(200, { ok: true });
       }
