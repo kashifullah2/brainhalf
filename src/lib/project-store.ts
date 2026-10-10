@@ -508,6 +508,29 @@ function markStorageWrite(key: string) {
 const DB_NAME = 'BrainHalfStorage';
 const DB_VERSION = 1;
 let dbPromise: Promise<IDBDatabase> | null = null;
+let idbAvailabilityChecked = false;
+
+/**
+ * Probes IndexedDB availability and emits 'idb-unavailable' if the open
+ * fails. Safe to call multiple times — only probes once per session.
+ */
+export async function checkIdbAvailability(): Promise<boolean> {
+  if (idbAvailabilityChecked) return true;
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+    appEvents.emit('idb-unavailable');
+    return false;
+  }
+  try {
+    const db = getDb();
+    if (!db) { appEvents.emit('idb-unavailable'); return false; }
+    await db;
+    idbAvailabilityChecked = true;
+    return true;
+  } catch {
+    appEvents.emit('idb-unavailable');
+    return false;
+  }
+}
 
 function getDb(): Promise<IDBDatabase> | null {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return null;

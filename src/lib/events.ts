@@ -39,6 +39,7 @@ type AppEventMap = {
   'request-workspace-context': { requestId: string };
   'sync-files': { files: FileMap; replaceAll?: boolean };
   'trigger-auto-reply': { message: string };
+  'idb-unavailable': undefined;
   'workspace-files-changed': { projectId: string; files: FileMap };
   'workspace-files-synced': { projectId: string; revision: number };
   'workspace-session-ready': { projectId: string };

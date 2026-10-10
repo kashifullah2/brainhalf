@@ -364,6 +364,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   const [projectDeletedFlag, setProjectDeletedFlag] = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [idbUnavailable, setIdbUnavailable] = useState(false);
+  useEffect(() => appEvents.on('idb-unavailable', () => setIdbUnavailable(true)), []);
   useEffect(() => { setProjectDeletedFlag(false); }, [activeProjectId]);
   useEffect(() =>
     appEvents.on('runtime-status', event => {
@@ -1732,6 +1734,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     </button>
                   </div>
                 )}
+                {idbUnavailable && (
+                  <div className="preview-health-strip has-fault" role="alert" style={{ background: 'var(--bg-warn, #2a1f0a)', borderColor: 'var(--border-warn, #5c3d10)' }}>
+                    <AlertCircle size={15} />
+                    <div className="preview-health-strip-body">
+                      <strong>Storage unavailable</strong> · Your browser's local storage is blocked or full. Changes will not be saved between sessions. Try a different browser or disable private-browsing mode.
+                    </div>
+                  </div>
+                )}
                 {projectDeletedFlag && (
                   <div className="preview-health-strip has-fault" role="alert" style={{ background: 'var(--bg-error, #2a1215)', borderColor: 'var(--border-error, #5c2127)' }}>
                     <AlertCircle size={15} />
@@ -2203,6 +2213,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   <button onClick={() => void backend.open()}>
                     Open <ArrowUpRight size={12} strokeWidth={1.75} />
                   </button>
+                </div>
+              )}
+              {idbUnavailable && (
+                <div className="preview-health-strip has-fault" role="alert" style={{ background: 'var(--bg-warn, #2a1f0a)', borderColor: 'var(--border-warn, #5c3d10)' }}>
+                  <AlertCircle size={15} />
+                  <div className="preview-health-strip-body">
+                    <strong>Storage unavailable</strong> · Changes will not be saved between sessions. Disable private-browsing mode or try a different browser.
+                  </div>
                 </div>
               )}
               {projectDeletedFlag && (
