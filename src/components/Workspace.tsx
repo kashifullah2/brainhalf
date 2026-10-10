@@ -1566,7 +1566,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         onViewportMode={handleViewportMode}
         onRefreshPreview={reloadPreview}
         onOpenPreview={handlePopoutPreview}
-        previewReady={hasGeneratedApp && status !== 'Generating' && previewLoadState !== 'error'}
+        previewReady={hasGeneratedApp && status !== 'Generating'}
         openPreviewReady={hasGeneratedApp && status !== 'Generating'}
         shareCopied={shareCopied}
         onShare={async () => {
