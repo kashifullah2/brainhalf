@@ -49,7 +49,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     setBusy('email');
     try {
       const result = await (mode === 'login' ? login(email.trim(), password) : signup(email.trim(), password));
-      if ('verificationRequired' in result) { setNotice(result.message); setMode('login'); setPassword(''); }
+      if ('verificationRequired' in result) { setNotice(result.message); setMode('login'); setPassword(''); setVerificationRequired(true); }
       else onAuthenticated(result);
     }
     catch (err) {
