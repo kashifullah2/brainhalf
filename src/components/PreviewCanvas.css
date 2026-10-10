@@ -28,6 +28,10 @@
 .live-preview-failed strong { color: var(--text-primary); font-size: 15px; font-weight: 600; letter-spacing: -0.2px; }
 .live-preview-failed span { font-size: 13px; line-height: 1.6; max-width: 340px; }
 .live-preview-failed button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 13px; font-weight: 600; padding: 9px 16px; cursor: pointer; }
+.dev-preview-stopped { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; width: 100%; height: 100%; background: var(--bg-card); color: var(--text-secondary); font-size: 13px; text-align: center; }
+.dev-preview-stopped p { margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.dev-preview-stopped button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-panel); color: var(--text-primary); font: inherit; font-size: 13px; font-weight: 600; padding: 9px 18px; cursor: pointer; }
+.dev-preview-stopped button:hover { background: var(--bg-hover, rgba(54,89,217,0.08)); border-color: var(--accent-primary); color: var(--accent-primary); }
 .preview-health-strip { min-height: 36px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; background: var(--bg-panel); border-top: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 12px; }
 .preview-building-pill { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 20; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--bg-panel); border: 1px solid var(--border-subtle); box-shadow: 0 6px 20px rgba(10, 20, 30, 0.18); color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
 .preview-building-pill svg { color: var(--accent-primary); flex: none; }

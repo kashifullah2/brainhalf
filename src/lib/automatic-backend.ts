@@ -211,10 +211,11 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   // Excludes failed state so the pill and the error strip never both render.
   const isBuilding = (busy || Boolean(activeJob)) && !ready && !failed;
   const canPush = Boolean(latestJob?.kind === 'dev' && latestJob.previewReady && latestJob.status === 'running');
+  const devStopped = Boolean(latestJob?.kind === 'dev' && latestJob.status === 'stopped');
   const pushFile = useCallback(async (path: string, content: string) => {
     await runtimeRequest(projectId, '/live-files', 'development', { method: 'POST', body: JSON.stringify({ path, content }) });
   }, [projectId]);
-  return { start, open, message, ready, fault, failed, liveUrl, isBuilding, pushFile, canPush,
+  return { start, open, message, ready, fault, failed, liveUrl, isBuilding, pushFile, canPush, devStopped,
     canStart: Boolean(available && !busy && !activeJob && !ready),
     canUpdate: Boolean(available && !busy && ready && (!activeJob || ((latestJob?.kind === 'preview' || latestJob?.kind === 'dev') && latestJob.previewReady && latestJob.status === 'running'))),
     latestJobId: latestJob?.id,

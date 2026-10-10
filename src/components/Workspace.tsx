@@ -1762,6 +1762,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
                   ) : backend.liveUrl ? (
                     <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
+                  ) : backend.devStopped ? (
+                    <div className="dev-preview-stopped" role="status">
+                      <p>Preview stopped</p>
+                      <button type="button" onClick={() => backend.start(filesRef.current, true)}>Restart preview</button>
+                    </div>
                   ) : backend.isBuilding && isFullStackProject(filesRef.current) && status !== 'Generating' ? (
                     // Show a rich build progress card instead of the auth-gated edge
                     // preview while the backend pipeline is running (npm install → build
@@ -2243,6 +2248,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
                   ) : backend.liveUrl ? (
                     <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
+                  ) : backend.devStopped ? (
+                    <div className="dev-preview-stopped" role="status">
+                      <p>Preview stopped</p>
+                      <button type="button" onClick={() => backend.start(filesRef.current, true)}>Restart preview</button>
+                    </div>
                   ) : backend.isBuilding && isFullStackProject(filesRef.current) && status !== 'Generating' ? (
                     // Show a rich build progress card instead of the auth-gated edge
                     // preview while the backend pipeline is running (npm install → build
