@@ -727,13 +727,11 @@ export async function getProjectFilesAsync(projectId: string): Promise<Record<st
   }
   const cached = getProjectFiles(projectId);
   if (cached) return cached;
-  // IDB and memory cache are both empty. If this is a server-known project,
-  // fetch files directly from the Durable Object — the canonical source of truth.
-  if (legacyProjectIds.has(projectId)) {
-    const snapshot = await fetchProjectSnapshot(projectId);
-    if (scope !== accountScope || projectDeleted(projectId)) return null;
-    if (snapshot?.files && Object.keys(snapshot.files).length > 0) return snapshot.files;
-  }
+  // IDB, memory cache, and localStorage are all empty. Fetch from the
+  // Durable Object — the canonical source of truth for project data.
+  const snapshot = await fetchProjectSnapshot(projectId);
+  if (scope !== accountScope || projectDeleted(projectId)) return null;
+  if (snapshot?.files && Object.keys(snapshot.files).length > 0) return snapshot.files;
   return null;
 }
 
@@ -871,14 +869,12 @@ export async function getProjectMessagesAsync(projectId: string): Promise<any[] 
   }
   const cached = getProjectMessages(projectId);
   if (cached) return cached;
-  // IDB and memory cache are both empty. If this is a server-known project,
-  // fetch from the DO snapshot (the canonical source of truth). The snapshot
-  // call is deduped so getProjectFilesAsync and this both share one HTTP request.
-  if (legacyProjectIds.has(projectId)) {
-    const snapshot = await fetchProjectSnapshot(projectId);
-    if (scope !== accountScope || projectDeleted(projectId)) return null;
-    if (Array.isArray(snapshot?.messages)) return snapshot.messages;
-  }
+  // IDB, memory cache, and localStorage are all empty. Fetch from the
+  // Durable Object — the canonical source of truth. The snapshot call is
+  // deduped so getProjectFilesAsync and this both share one HTTP request.
+  const snapshot = await fetchProjectSnapshot(projectId);
+  if (scope !== accountScope || projectDeleted(projectId)) return null;
+  if (Array.isArray(snapshot?.messages)) return snapshot.messages;
   return null;
 }
 
