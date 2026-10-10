@@ -3362,6 +3362,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     });
                     if (!repairQueuedThisTurn) {
                       completed = true;
+                      if (extraction.writtenCount > 0) {
+                        try { this.saveCheckpoint('After generation'); } catch { /* non-fatal */ }
+                      }
                     }
                   } else {
                     currentNativeMessages.push({ role: 'assistant', content: text });
@@ -3918,6 +3921,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
         try { this.broadcast(doneMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
       });
+      if (!cfRepairMarker && extraction.writtenCount > 0) {
+        try { this.saveCheckpoint('After generation'); } catch { /* non-fatal */ }
+      }
       return { ok: true, repairMarker: cfRepairMarker };
     } catch (e) {
       if ((typeof epoch === 'number' && !this.writeEpoch.accepts(epoch)) || this.currentAbortController?.signal.aborted) {
