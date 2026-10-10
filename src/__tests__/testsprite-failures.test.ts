@@ -137,6 +137,22 @@ describe('Audit: generation_interrupted resets generation state', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Audit finding: replace_all: true with empty files object wipes workspace
+// A client with corrupted or uninitialized state can emit
+// { type: 'sync_files', replace_all: true, files: {} }, causing DELETE FROM
+// project_files followed by zero inserts — erasing the project and overwriting
+// R2 with an empty backup.
+// ---------------------------------------------------------------------------
+describe('Audit: replace_all with empty files is rejected', () => {
+  const agentSource = readFileSync(resolve(root, 'agent.ts'), 'utf8');
+
+  it('agent.ts guards replace_all against an empty syncFiles object', () => {
+    const match = agentSource.match(/replace_all[\s\S]{0,200}Object\.keys\(syncFiles\)\.length\s*===\s*0/);
+    expect(match, 'replace_all must be blocked when syncFiles has 0 entries').toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Issue 5: Signup ends on verification screen without clear guidance
 // After email signup, the form switched to login mode but never showed the
 // "Resend verification email" link and the verification message was not shown

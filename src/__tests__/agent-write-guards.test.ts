@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { FlipFlopGuard, RepairLog } from '../lib/repair-budget';
 
 /**
@@ -438,5 +439,26 @@ describe('Audit: abortGeneration broadcasts before epoch bump', () => {
     // No currentAbortController set — nothing in-flight
     (agent as any).abortGeneration();
     expect(broadcasts).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit finding: disconnectStopTimer leaks across socket reconnects
+// When a client disconnects during a generation, onClose schedules an abort
+// in DISCONNECT_STOP_DELAY ms. If the client reconnects before that timer
+// fires, onConnect must clear it — otherwise the timer still ticks and fires
+// when a later disconnect happens at just the right moment.
+// ---------------------------------------------------------------------------
+describe('Audit: disconnectStopTimer cleared on reconnect', () => {
+  it('agent.ts clears disconnectStopTimer inside onConnect', () => {
+    const agentSrc = readFileSync(
+      new URL('../../src/agent.ts', import.meta.url).pathname,
+      'utf8'
+    );
+    // The timer must be cleared within the onConnect body — check that
+    // clearTimeout appears between the onConnect signature and the first
+    // `sendHistoryMessage` call (which is always in onConnect).
+    const match = agentSrc.match(/async onConnect\(connection[\s\S]{0,600}?clearTimeout\(this\.disconnectStopTimer\)[\s\S]{0,4000}?sendHistoryMessage/);
+    expect(match, 'clearTimeout(this.disconnectStopTimer) must appear in onConnect before sendHistoryMessage').toBeTruthy();
   });
 });

@@ -1152,6 +1152,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   }
 
   async onConnect(connection: Connection, ctx?: { request: Request }) {
+    // A reconnect must cancel any pending abort that was scheduled when the
+    // previous socket closed. Without this the timer fires after DISCONNECT_STOP_DELAY
+    // even though a client is now connected.
+    if (this.disconnectStopTimer) {
+      clearTimeout(this.disconnectStopTimer);
+      this.disconnectStopTimer = undefined;
+    }
     if (this.erasing) { try { connection.close(4404, 'Project deleted'); } catch {} return; }
     // Fail closed: no verified user id on the upgrade request means the
     // connection bypassed the Worker's auth gate.
@@ -1886,6 +1893,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           return;
         }
         try {
+          // A replace_all with no files is almost certainly corrupted client
+          // state — it would DELETE every file and write nothing, destroying
+          // the project and overwriting R2 with an empty backup.
+          if (data.replace_all && Object.keys(syncFiles).length === 0) {
+            try { connection.send(JSON.stringify({ type: 'error', error: 'Refusing replace_all with empty file set' })); } catch (e) { noteSendFailure(e); }
+            return;
+          }
           // FIX: `replace_all` previously ran DELETE and then a bare loop of
           // inserts. A failure partway through left the workspace empty — the
           // old project deleted, the new one only half written. One transaction.
