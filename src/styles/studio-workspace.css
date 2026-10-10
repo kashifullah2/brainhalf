@@ -94,7 +94,7 @@
 /* Two work surfaces share one quiet frame. */
 .studio-workspace .workspace-area { padding: 12px; height: 100%; max-height: 100dvh; box-sizing: border-box; flex: 1; min-height: 0; gap: 0; background: var(--bg-canvas); overflow: hidden; display: flex; }
 .studio-workspace .chat-panel-container { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-card); box-shadow: var(--shadow-panel); transition: none; height: 100%; box-sizing: border-box; overflow: hidden; }
-.studio-workspace .workspace-panel-container { border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: var(--shadow-panel); height: 100%; box-sizing: border-box; overflow: hidden; }
+.studio-workspace .workspace-panel-container { border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: var(--shadow-panel); height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
 .studio-workspace .panel-resize-handle { width: 14px; min-width: 14px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; opacity: 1; color: var(--text-secondary); cursor: col-resize; touch-action: none; }
 .studio-workspace .panel-resize-handle::before { display: none; }
 .studio-workspace .panel-resize-handle > svg { flex: none; padding: 10px 1px; box-sizing: content-box; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--bg-surface); opacity: .85; color: var(--text-secondary); }
