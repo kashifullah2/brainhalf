@@ -1,6 +1,6 @@
 import { AiBudget, meteredModel } from './ai-budget';
 import { transform } from 'sucrase';
-import { authorizeProject, isAllowedOrigin, USER_ID_HEADER, type RegistryEnv } from './auth';
+import { authorizeProject, getRegistry, isAllowedOrigin, USER_ID_HEADER, type RegistryEnv } from './auth';
 import { atriaConfiguration, bedrockBearer, credential, validateRuntimeProviders } from './runtime-config';
 import { BEDROCK_ALIASES, createBedrockClient } from './provider-clients';
 import { errorMessage } from './generation-errors';
@@ -663,28 +663,36 @@ export async function handleModelTest(
       // platform env rather than a minimal test harness.
       const ownership = await authorizeProject(env as RegistryEnv, testProjectId, identity.userId, `${resolved.name} ${level} test`);
       if (!ownership.ok) throw new Error(`Preview project could not be authorized (${ownership.status})`);
-      const doId = env.ChatAgent.idFromName(testProjectId);
-      const doObj = env.ChatAgent.get(doId);
-      // The Durable Object fails closed on every HTTP path, so this internal
-      // hand-off has to identify itself the same way the Worker does for a
-      // user request. Without it the sync answered 401 and the preview the
-      // result links to was never populated — silently, inside this catch.
-      const syncHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (identity?.userId) syncHeaders[USER_ID_HEADER] = identity.userId;
-      const syncRes = await doObj.fetch(new Request(`https://brainhalf.com/preview/${testProjectId}/api/sync`, {
-        method: 'POST',
-        headers: syncHeaders,
-        body: JSON.stringify({
-          files: {
-            '/src/App.jsx': extractedCode,
-            '/src/styles.css': '/* Auto-generated preview styles */\nbody { margin: 0; font-family: system-ui, sans-serif; background: #0b0f19; color: #f8fafc; }'
-          }
-        })
-      }));
-      if (!syncRes.ok) {
-        throw new Error(`Preview files could not be saved (${syncRes.status})`);
+      try {
+        const doId = env.ChatAgent.idFromName(testProjectId);
+        const doObj = env.ChatAgent.get(doId);
+        // The Durable Object fails closed on every HTTP path, so this internal
+        // hand-off has to identify itself the same way the Worker does for a
+        // user request. Without it the sync answered 401 and the preview the
+        // result links to was never populated — silently, inside this catch.
+        const syncHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (identity?.userId) syncHeaders[USER_ID_HEADER] = identity.userId;
+        const syncRes = await doObj.fetch(new Request(`https://brainhalf.com/preview/${testProjectId}/api/sync`, {
+          method: 'POST',
+          headers: syncHeaders,
+          body: JSON.stringify({
+            files: {
+              '/src/App.jsx': extractedCode,
+              '/src/styles.css': '/* Auto-generated preview styles */\nbody { margin: 0; font-family: system-ui, sans-serif; background: #0b0f19; color: #f8fafc; }'
+            }
+          })
+        }));
+        if (!syncRes.ok) {
+          throw new Error(`Preview files could not be saved (${syncRes.status})`);
+        }
+        previewUrl = `/preview/${testProjectId}/index.html`;
+      } finally {
+        // Delete the ephemeral test project so it does not permanently count
+        // against the user's project quota (MAX_PROJECTS_PER_USER = 50).
+        await getRegistry(env as RegistryEnv)
+          .fetch(new Request(`https://registry/projects/${encodeURIComponent(testProjectId)}?userId=${encodeURIComponent(identity.userId)}`, { method: 'DELETE' }))
+          .catch(() => {});
       }
-      previewUrl = `/preview/${testProjectId}/index.html`;
     }
   } catch (syncErr) {
     console.warn('Failed to auto-sync to Edge Preview DO:', syncErr);

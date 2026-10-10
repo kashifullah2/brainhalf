@@ -410,3 +410,68 @@ describe('Model registry drift detection', () => {
     ).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Audit finding: model benchmark tests permanently consume project quota
+// Every handleModelTest run calls authorizeProject (POST /projects/claim),
+// registering a persistent row in project_owners. Once the user reaches
+// MAX_PROJECTS_PER_USER (50), all claims return 409 and further tests fail
+// with "Preview project could not be authorized" forever.
+//
+// Fix: delete the test project in a finally block after the preview sync.
+// ---------------------------------------------------------------------------
+describe('Audit: model benchmark test project is cleaned up after each run', () => {
+  const VALID_JSX = `<file path="/src/App.jsx">
+export default function App() {
+  return <div>Counter: 0</div>;
+}
+</file>`;
+
+  function makeTestEnv(claimedProjects: string[], deletedProjects: string[]) {
+    const registryFetch = async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      // AiBudget routes (budget must succeed for AI to run)
+      if (url.pathname.startsWith('/ai/')) return Response.json({ ok: true });
+      if (url.pathname === '/projects/claim') {
+        const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as { projectId?: string };
+        if (body.projectId) claimedProjects.push(body.projectId);
+        return Response.json({ ok: true });
+      }
+      if (url.pathname.startsWith('/projects/test-') && (init?.method === 'DELETE' || (input instanceof Request && input.method === 'DELETE'))) {
+        const id = url.pathname.split('/').pop()!;
+        deletedProjects.push(id);
+        return Response.json({ ok: true });
+      }
+      return Response.json({ error: 'not found' }, { status: 404 });
+    };
+    const registry: any = { idFromName: () => 'auth', get: () => ({ fetch: registryFetch }) };
+
+    const agentFetch = async (_req: Request) => Response.json({ ok: true, revision: 1 });
+    const chatAgent: any = { idFromName: (id: string) => id, get: () => ({ fetch: agentFetch }) };
+
+    const aiRun = async () => ({ response: VALID_JSX });
+
+    return {
+      AI: { run: aiRun },
+      REGISTRY: registry,
+      ChatAgent: chatAgent,
+      SESSION_SECRET: 'test-secret-at-least-32-chars-long',
+      REQUIRED_MODEL_PROVIDERS: 'cloudflare',
+    };
+  }
+
+  it('deletes the ephemeral test project after a successful run', async () => {
+    const claimed: string[] = [];
+    const deleted: string[] = [];
+    const env = makeTestEnv(claimed, deleted);
+    const request = new Request('https://brainhalf.com/api/test/simple?model=@cf/openai/gpt-oss-120b', {
+      headers: { 'x-auth-user-id': 'user-benchmark-1' },
+    });
+    const res = await handleModelTest(request, env, 'simple', { userId: 'user-benchmark-1' });
+    expect(res.status).toBeLessThan(503);
+    expect(claimed.length).toBeGreaterThanOrEqual(1);
+    const testProjectId = claimed[0];
+    expect(testProjectId).toMatch(/^test-/);
+    expect(deleted).toContain(testProjectId);
+  });
+});
