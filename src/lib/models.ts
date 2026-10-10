@@ -50,7 +50,7 @@ export const MAX_OUTPUT_TOKENS = 65536;
  */
 export const AI_TIMEOUT_MS = 10 * 60 * 1000;
 export const MODEL_TEST_TIMEOUT_MS = 5 * 60 * 1000;
-export const DEFAULT_MODEL_ID = '@cf/deepseek-ai/deepseek-v4-pro-0813';
+export const DEFAULT_MODEL_ID = '@cf/deepseek-ai/deepseek-v4-flash-0731';
 
 // Sonnet 4.6 and Kimi K3 both support 64k output tokens. The old 8,192 cap
 // truncated every multi-file app mid-file, driving the truncation-retry loop
@@ -61,7 +61,7 @@ const CF_DEFAULT_MAX = 65536;
 
 const CF_MODELS: AllowedModel[] = [
   { name: DEFAULT_MODEL_ID, provider: 'cloudflare', id: DEFAULT_MODEL_ID, maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
-  { name: '@cf/deepseek-ai/deepseek-v4-flash-0731', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-v4-flash-0731', maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
+  { name: '@cf/deepseek-ai/deepseek-v4-pro-0813', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-v4-pro-0813', maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
   { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
   { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: 32768 },
@@ -185,8 +185,8 @@ export function modelSupportsPromptCaching(model: string): boolean {
 }
 
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  [DEFAULT_MODEL_ID]: 'DeepSeek V4 Pro',
-  '@cf/deepseek-ai/deepseek-v4-flash-0731': 'DeepSeek V4 Flash',
+  [DEFAULT_MODEL_ID]: 'DeepSeek V4 Flash',
+  '@cf/deepseek-ai/deepseek-v4-pro-0813': 'DeepSeek V4 Pro',
   '@cf/openai/gpt-oss-120b': 'GPT-OSS 120B',
   '@cf/moonshotai/kimi-k2.7-code': 'Kimi K2.7 Code',
   '@cf/qwen/qwen3.8-27b': 'Qwen 3.8 27B',

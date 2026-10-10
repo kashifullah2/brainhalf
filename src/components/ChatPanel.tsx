@@ -129,8 +129,8 @@ export function resolveAvailableModels(
  * An allowlist entry without an entry here still renders, labelled by its id.
  */
 const MODEL_DISPLAY: Record<string, Omit<ModelDef, 'id' | 'provider'>> = {
-  [DEFAULT_MODEL_ID]: { name: 'DeepSeek V4 Pro', category: 'recommended', badge: 'Cloudflare' },
-  '@cf/deepseek-ai/deepseek-v4-flash-0731': { name: 'DeepSeek V4 Flash', category: 'fast', badge: 'Fast' },
+  [DEFAULT_MODEL_ID]: { name: 'DeepSeek V4 Flash', category: 'recommended', badge: 'Fast' },
+  '@cf/deepseek-ai/deepseek-v4-pro-0813': { name: 'DeepSeek V4 Pro', category: 'reasoning', badge: 'Heavyweight' },
   '@cf/openai/gpt-oss-120b': { name: 'GPT-OSS 120B', category: 'reasoning', badge: 'Heavyweight' },
   '@cf/moonshotai/kimi-k2.7-code': { name: 'Kimi K2.7 Code', category: 'coding', badge: '200k' },
   '@cf/qwen/qwen3.8-27b': { name: 'Qwen 3.8 27B', category: 'fast', badge: 'Fast' },

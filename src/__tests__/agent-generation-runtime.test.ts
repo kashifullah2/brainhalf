@@ -489,7 +489,7 @@ describe('Workers AI stream completion and cancellation', () => {
     expect(database.prepare("SELECT content FROM messages WHERE role = 'assistant'").get()?.content).toBe(first + rest);
   });
 
-  it('uses DeepSeek V4 Pro when no model is supplied and persists its streamed application', async () => {
+  it('uses DeepSeek V4 Flash when no model is supplied and persists its streamed application', async () => {
     const { agent, run, database, events } = createAgent();
     const content = '<file path="/src/App.jsx">export default function App() { return <h1>DeepSeek app</h1>; }</file>';
     const binding = vi.fn(async (_model: string) => new ReadableStream({ start(controller) {
@@ -498,7 +498,7 @@ describe('Workers AI stream completion and cancellation', () => {
     } }));
     agent.env = { REGISTRY: budgetRegistry(), REQUIRED_MODEL_PROVIDERS: 'cloudflare', AI: { run: binding } };
     await run({ model: undefined });
-    expect(binding.mock.calls[0]?.[0]).toBe('@cf/deepseek-ai/deepseek-v4-pro-0813');
+    expect(binding.mock.calls[0]?.[0]).toBe('@cf/deepseek-ai/deepseek-v4-flash-0731');
     expect(database.prepare('SELECT content FROM project_files WHERE path = ?').get('/src/App.jsx')?.content).toContain('DeepSeek app');
     expect(events.some(event => event.type === 'error')).toBe(false);
     expect(events[events.length - 1]).toEqual({ type: 'stream', chunk: { response: '', done: true } });
@@ -583,7 +583,7 @@ describe('Uploaded assets reach both agent provider paths', () => {
     const binding = vi.fn().mockResolvedValueOnce({ choices: [{ message: { tool_calls: [{ id: 'asset', type: 'function', function: { name: 'use_attachment', arguments: JSON.stringify({ id: file.id }) } }] } }] }).mockResolvedValueOnce({ choices: [{ message: { content: '<file path="/src/App.jsx">export default () => <h1>Uploaded file app</h1>;</file>' } }] });
     agent.env = { REGISTRY: budgetRegistry(), REQUIRED_MODEL_PROVIDERS: 'cloudflare', AI: { run: binding } };
     await run({ model: undefined, attachmentIds: [file.id] }, 'Add my uploaded file');
-    expect(binding.mock.calls.every(call => call[0] === '@cf/deepseek-ai/deepseek-v4-pro-0813')).toBe(true);
+    expect(binding.mock.calls.every(call => call[0] === '@cf/deepseek-ai/deepseek-v4-flash-0731')).toBe(true);
     expect(database.prepare('SELECT content FROM project_files WHERE path=?').get(`/src/assets/uploads/${file.id}.0.js`)?.content).toContain(file.dataUrl);
     expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/src/App.jsx')?.content).toContain('Uploaded file app');
     expect(events.filter(event => event.type === 'error')).toEqual([]);
@@ -613,7 +613,7 @@ describe('Project tool parity and recovery from prose-only builds', () => {
     expect(binding.mock.calls[0][1].tools.map((entry: any) => entry.function.name)).toEqual(expect.arrayContaining(['list_files', 'read_file', 'write_file', 'edit_file', 'check_syntax']));
     expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/src/App.tsx')?.content).toBe(frontend);
     expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/server/index.ts')?.content).toBe(backend);
-    expect(binding.mock.calls.every(([model]) => model === '@cf/deepseek-ai/deepseek-v4-pro-0813')).toBe(true);
+    expect(binding.mock.calls.every(([model]) => model === '@cf/deepseek-ai/deepseek-v4-flash-0731')).toBe(true);
     expect(events.filter(event => event.type === 'error' || event.type === 'trigger-auto-reply')).toEqual([]);
   });
 
