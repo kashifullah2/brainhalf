@@ -111,6 +111,32 @@ describe('Issue 4: command palette is intentionally absent', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Audit finding: generation_interrupted never resets isGenerating
+// When the server sends { type: 'generation_interrupted' }, the handler must
+// clear isGenerating/isGeneratingRef, flush pending tokens, and finish the
+// generation clock — otherwise the UI stays permanently frozen.
+// ---------------------------------------------------------------------------
+describe('Audit: generation_interrupted resets generation state', () => {
+  const chatPanel = readFileSync(resolve(root, 'components/ChatPanel.tsx'), 'utf8');
+
+  it('setIsGenerating(false) appears in the generation_interrupted branch', () => {
+    // Find the generation_interrupted handler and verify it contains the reset.
+    const match = chatPanel.match(/generation_interrupted[\s\S]{0,800}setIsGenerating\(false\)/);
+    expect(match, 'setIsGenerating(false) must be called when generation_interrupted is received').toBeTruthy();
+  });
+
+  it('isGeneratingRef.current = false appears in the generation_interrupted branch', () => {
+    const match = chatPanel.match(/generation_interrupted[\s\S]{0,800}isGeneratingRef\.current\s*=\s*false/);
+    expect(match, 'isGeneratingRef.current must be reset to false when generation_interrupted is received').toBeTruthy();
+  });
+
+  it('cancelTokenFlush is called in the generation_interrupted branch', () => {
+    const match = chatPanel.match(/generation_interrupted[\s\S]{0,800}cancelTokenFlush\(\)/);
+    expect(match, 'cancelTokenFlush() must be called to drain buffered tokens when generation_interrupted is received').toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Issue 5: Signup ends on verification screen without clear guidance
 // After email signup, the form switched to login mode but never showed the
 // "Resend verification email" link and the verification message was not shown

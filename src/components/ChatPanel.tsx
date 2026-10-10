@@ -1390,9 +1390,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             setMessages(current);
             saveProjectMessages(activeProjectId, current);
           } else if (data.type === 'generation_interrupted') {
-            // The server saved every completed file and marked the job
-            // resumable. Offer one-click resume instead of the dead-end
-            // "No response received" card.
+            // Exit generating state immediately — the server has stopped. Must
+            // happen before the resumable-job update so the UI unlocks.
+            if (isGeneratingRef.current) generationClockRef.current?.finish('failed');
+            cancelTokenFlush();
+            setIsGenerating(false);
+            isGeneratingRef.current = false;
+            appEvents.emit('generation-status', { status: 'Ready', projectId: activeProjectId });
             if (data.resumable === true) {
               const rj = toResumableJobInfo(data.job);
               resumableJobRef.current = rj;
