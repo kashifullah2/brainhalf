@@ -58,6 +58,8 @@ export interface PlatformEnv {
   /** Set to "true" in .dev.vars / wrangler dev to enable localhost CORS origins. */
   IS_DEV?: string;
   ANALYTICS?: { writeDataPoint(event: { blobs?: string[]; doubles?: number[]; indexes?: string[] }): void };
+  /** KV namespace for session caching — reduces Registry DO round-trips on every authenticated request. */
+  SESSION_CACHE?: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; delete(key: string): Promise<void> };
   [key: string]: unknown;
 }
 

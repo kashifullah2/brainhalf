@@ -239,6 +239,73 @@ describe('P1 Auth — denial responses', () => {
   });
 });
 
+describe('P1 Auth — KV session cache', () => {
+  function makeKv(initial: Record<string, string> = {}) {
+    const store = new Map<string, string>(Object.entries(initial));
+    return {
+      kv: {
+        get: vi.fn(async (key: string) => store.get(key) ?? null),
+        put: vi.fn(async (key: string, value: string) => { store.set(key, value); }),
+        delete: vi.fn(async (key: string) => { store.delete(key); }),
+      },
+      store,
+    };
+  }
+
+  it('returns cached user without hitting the Registry on a KV hit', async () => {
+    const { token } = await issueToken(SECRET, USER_ID);
+    const tokenId = await sha256Hex(token);
+    const { kv } = makeKv({ [`session:${tokenId}`]: JSON.stringify({ userId: USER_ID, email: 'a@b.com' }) });
+    const registry = await registryFor(token);
+    const req = new Request('https://brainhalf.com/api/', { headers: { authorization: `Bearer ${token}` } });
+    const user = await verifySession(req, { SESSION_SECRET: SECRET, REGISTRY: registry as any, SESSION_CACHE: kv } as any);
+    expect(user).toEqual({ userId: USER_ID, email: 'a@b.com' });
+    expect(registry.get).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Registry on KV miss, then writes the cache entry', async () => {
+    const { token } = await issueToken(SECRET, USER_ID);
+    const tokenId = await sha256Hex(token);
+    const { kv, store } = makeKv();
+    const registry = await registryFor(token);
+    const req = new Request('https://brainhalf.com/api/', { headers: { authorization: `Bearer ${token}` } });
+    const user = await verifySession(req, { SESSION_SECRET: SECRET, REGISTRY: registry as any, SESSION_CACHE: kv } as any);
+    expect(user).toEqual({ userId: USER_ID });
+    expect(registry.get).toHaveBeenCalled();
+    // Flush the fire-and-forget cache write
+    await new Promise(r => setTimeout(r, 0));
+    expect(store.has(`session:${tokenId}`)).toBe(true);
+  });
+
+  it('rejects a cached entry whose userId does not match the token claim', async () => {
+    const { token } = await issueToken(SECRET, USER_ID);
+    const tokenId = await sha256Hex(token);
+    const { kv } = makeKv({ [`session:${tokenId}`]: JSON.stringify({ userId: 'attacker', email: '' }) });
+    const registry = await registryFor(token);
+    const req = new Request('https://brainhalf.com/api/', { headers: { authorization: `Bearer ${token}` } });
+    const user = await verifySession(req, { SESSION_SECRET: SECRET, REGISTRY: registry as any, SESSION_CACHE: kv } as any);
+    // Falls through to Registry, which confirms the real userId
+    expect(user).toEqual({ userId: USER_ID });
+  });
+
+  it('falls through to Registry when KV throws', async () => {
+    const { token } = await issueToken(SECRET, USER_ID);
+    const badKv = { get: vi.fn(async () => { throw new Error('KV error'); }), put: vi.fn(), delete: vi.fn() };
+    const registry = await registryFor(token);
+    const req = new Request('https://brainhalf.com/api/', { headers: { authorization: `Bearer ${token}` } });
+    const user = await verifySession(req, { SESSION_SECRET: SECRET, REGISTRY: registry as any, SESSION_CACHE: badKv } as any);
+    expect(user).toEqual({ userId: USER_ID });
+  });
+
+  it('works identically when SESSION_CACHE is absent (backward compatible)', async () => {
+    const { token } = await issueToken(SECRET, USER_ID);
+    const registry = await registryFor(token);
+    const req = new Request('https://brainhalf.com/api/', { headers: { authorization: `Bearer ${token}` } });
+    const user = await verifySession(req, envWith(registry));
+    expect(user).toEqual({ userId: USER_ID });
+  });
+});
+
 describe('authorizeProject — claim error propagation', () => {
   /** Registry stub whose /projects/claim answers with a canned status/body. */
   function claimRegistry(status: number, body: unknown) {

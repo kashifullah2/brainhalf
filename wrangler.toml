@@ -70,6 +70,12 @@ new_sqlite_classes = [ "ChatAgent" ]
 tag = "v2"
 new_sqlite_classes = [ "AuthRegistry" ]
 
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+# Run: npx wrangler kv namespace create SESSION_CACHE
+# Then paste the returned id here.
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
 [[analytics_engine_datasets]]
 binding = "ANALYTICS"
 dataset = "brainhalf_events"

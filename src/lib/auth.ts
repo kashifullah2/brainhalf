@@ -43,8 +43,17 @@ export interface AuthenticatedUser {
   email?: string;
 }
 
+export interface KVNamespace {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 export interface RegistryEnv {
   REGISTRY: DurableBinding;
+  /** Optional KV namespace for session caching — speeds up verifySession by
+   *  avoiding a Registry DO round-trip on every authenticated request. */
+  SESSION_CACHE?: KVNamespace;
 }
 
 /** Origin allowlist — re-exported from ./allowed-origins so the Worker and the
@@ -118,6 +127,15 @@ export function forbidden(message: string = 'Forbidden'): Response {
  * Verify a request's session token end to end: signature, expiry, and
  * revocation. Returns the authenticated user or null — never throws.
  */
+/** KV cache TTL for valid sessions — short enough that logout propagates
+ *  within this window globally, long enough to save most DO round-trips. */
+const SESSION_CACHE_TTL_SECONDS = 300; // 5 minutes
+
+/** KV key for a verified session entry. */
+function sessionCacheKey(tokenId: string): string {
+  return `session:${tokenId}`;
+}
+
 export async function verifySession(
   request: Request,
   env: RegistryEnv
@@ -133,11 +151,38 @@ export async function verifySession(
     const verified = await verifyTokenSignature(token, secret);
     if (!verified) return null;
 
+    // Fast path: KV cache hit avoids a Registry DO round-trip (~5-50ms saved).
+    // The 5-minute TTL means a logged-out session can still be used for up to
+    // 5 minutes from locations that cached it — acceptable since logout also
+    // clears the client cookie immediately.
+    if (env.SESSION_CACHE) {
+      try {
+        const cached = await env.SESSION_CACHE.get(sessionCacheKey(verified.tokenId));
+        if (cached) {
+          const parsed = JSON.parse(cached) as { userId?: string; email?: string };
+          if (parsed.userId === verified.userId) {
+            return { userId: verified.userId, email: parsed.email };
+          }
+        }
+      } catch { /* KV unavailable — fall through to DO */ }
+    }
+
+    // Authoritative check: Registry DO holds the revocation list.
     const registry = getRegistry(env);
     const res = await registry.fetch(`https://registry/sessions/${encodeURIComponent(verified.tokenId)}`);
     if (!res.ok) return null;
     const body = (await res.json()) as { userId?: string; email?: string };
     if (!body.userId || body.userId !== verified.userId) return null;
+
+    // Populate the KV cache for subsequent requests in the 5-minute window.
+    if (env.SESSION_CACHE) {
+      const kv = env.SESSION_CACHE;
+      const entry = JSON.stringify({ userId: body.userId, email: body.email ?? '' });
+      Promise.resolve()
+        .then(() => kv.put(sessionCacheKey(verified.tokenId), entry, { expirationTtl: SESSION_CACHE_TTL_SECONDS }))
+        .catch(() => { /* best-effort */ });
+    }
+
     return { userId: verified.userId, email: body.email };
   } catch (err) {
     // Fail closed: if we cannot confirm the session, we do not trust it.
@@ -376,6 +421,13 @@ export async function handleLogout(request: Request, env: RegistryEnv): Promise<
     } catch (err) {
       revoked = false;
       console.error('Logout failed:', err);
+    }
+    // Eagerly evict from KV so the 5-minute cache window does not outlast logout.
+    if (env.SESSION_CACHE) {
+      const secret = getSessionSecret(env);
+      verifyTokenSignature(token, secret)
+        .then(verified => { if (verified) env.SESSION_CACHE!.delete(sessionCacheKey(verified.tokenId)).catch(() => {}); })
+        .catch(() => {});
     }
   }
   // Clear the cookie regardless of the token's state.
