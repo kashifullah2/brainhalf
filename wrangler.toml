@@ -74,7 +74,7 @@ new_sqlite_classes = [ "AuthRegistry" ]
 binding = "SESSION_CACHE"
 # Run: npx wrangler kv namespace create SESSION_CACHE
 # Then paste the returned id here.
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "a16dadac78e4462b8f572877c4c9225f"
 
 [[analytics_engine_datasets]]
 binding = "ANALYTICS"
