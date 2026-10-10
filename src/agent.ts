@@ -415,6 +415,15 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   }
 
   private abortGeneration() {
+    // Broadcast a terminal event to all clients BEFORE bumping the epoch.
+    // Without this, runGeneration's finally block finds writeEpoch.accepts()
+    // false and suppresses all terminal messages — clients wait forever in
+    // isGenerating === true.
+    if (this.currentAbortController) {
+      try {
+        this.broadcast(JSON.stringify({ type: 'generation_interrupted', resumable: false, job: null }));
+      } catch { /* best effort */ }
+    }
     this.writeEpoch.begin();
     this.currentAbortController?.abort();
     this.activeGeneration = null;

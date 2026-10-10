@@ -397,3 +397,46 @@ describe('estimateUnchangedFraction — 40% write_file redirect threshold', () =
     expect(estimateUnchangedFraction('', '')).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Audit finding: abortGeneration() bumps writeEpoch before runGeneration's
+// finally block fires, suppressing all terminal WebSocket events (the
+// epoch-acceptance guard returns false). Connected clients receive no bytes
+// and wait forever in isGenerating === true.
+//
+// Fix: broadcast { type: 'generation_interrupted', resumable: false } to all
+// connections BEFORE bumping the epoch, so clients exit the generating state
+// even when the DO aborts due to a heartbeat/auth failure.
+// ---------------------------------------------------------------------------
+describe('Audit: abortGeneration broadcasts before epoch bump', () => {
+  function makeAbortAgent() {
+    const agent: any = Object.create(ChatAgent.prototype);
+    agent.writeEpoch = new WriteEpoch();
+    agent.currentAbortController = null;
+    agent.activeGeneration = null;
+    const broadcasts: string[] = [];
+    agent.broadcast = (msg: string) => { broadcasts.push(msg); };
+    agent.name = 'test-project';
+    return { agent, broadcasts };
+  }
+
+  it('broadcasts generation_interrupted before bumping the epoch', () => {
+    const { agent, broadcasts } = makeAbortAgent();
+    agent.currentAbortController = new AbortController();
+    const epochBefore = agent.writeEpoch.value;
+    (agent as any).abortGeneration();
+    expect(agent.writeEpoch.value).toBeGreaterThan(epochBefore);
+    // A terminal message must have been broadcast before epoch advanced
+    expect(broadcasts.length).toBeGreaterThanOrEqual(1);
+    const parsed = JSON.parse(broadcasts[0]);
+    expect(parsed.type).toBe('generation_interrupted');
+    expect(parsed.resumable).toBe(false);
+  });
+
+  it('does not broadcast when no generation is in flight (abort is a no-op)', () => {
+    const { agent, broadcasts } = makeAbortAgent();
+    // No currentAbortController set — nothing in-flight
+    (agent as any).abortGeneration();
+    expect(broadcasts).toHaveLength(0);
+  });
+});
