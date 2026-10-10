@@ -691,25 +691,7 @@ export async function migrateLocalStorageToIdb(): Promise<void> {
 
 export function getProjectFiles(projectId: string): Record<string, string> | null {
   if (!accountScope.accountId || projectDeleted(projectId)) return null;
-  const cacheKey = `files_${projectId}`;
-  if (memoryCache[cacheKey]) {
-    return memoryCache[cacheKey];
-  }
-
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        memoryCache[cacheKey] = parsed;
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.error('Error reading project files:', e);
-  }
-  return null;
+  return memoryCache[`files_${projectId}`] ?? null;
 }
 
 export async function getProjectFilesAsync(projectId: string): Promise<Record<string, string> | null> {
@@ -742,8 +724,7 @@ async function readLegacy<T>(store: 'files' | 'messages', projectId: string): Pr
   try { if (localStorage.getItem(projectStorageKey(`deleted:${store}:${projectId}`))) return null; } catch {}
   const stored = await readIdbKey<T>(store, projectId);
   if (scope !== accountScope) return null;
-  if (stored) return stored;
-  try { return JSON.parse(localStorage.getItem(`brainhalf_${store}_${projectId}`) || 'null'); } catch { return null; }
+  return stored ?? null;
 }
 
 export function saveProjectFiles(projectId: string, files: Record<string, string>) {
@@ -826,32 +807,13 @@ export function deleteProjectFiles(projectId: string) {
   delete memoryCache[`files_${projectId}`];
   markStorageWrite(`files_${projectId}`);
   void idbDelete('files', projectId);
-  // Remove any legacy localStorage copy so old data can't resurface through
-  // the synchronous getProjectFiles fallback path.
+  // Clean up any legacy localStorage copy left over from before the IDB-only migration.
   try { localStorage.removeItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`)); } catch {}
 }
 
 export function getProjectMessages(projectId: string): any[] | null {
   if (!accountScope.accountId || projectDeleted(projectId)) return null;
-  const cacheKey = `messages_${projectId}`;
-  if (memoryCache[cacheKey]) {
-    return memoryCache[cacheKey];
-  }
-
-  try {
-    if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem(projectStorageKey(`${PROJECT_MESSAGES_PREFIX}${projectId}`));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        memoryCache[cacheKey] = parsed;
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.error('Error reading project messages:', e);
-  }
-  return null;
+  return memoryCache[`messages_${projectId}`] ?? null;
 }
 
 export async function getProjectMessagesAsync(projectId: string): Promise<any[] | null> {
@@ -890,10 +852,6 @@ export async function recoverProjectFiles(projectId: string): Promise<Record<str
   if (result && typeof result === 'object' && !Array.isArray(result)) return result;
   const legacy = await readIdbKey<Record<string, string>>('files', projectId);
   if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) return legacy;
-  try {
-    const raw = localStorage.getItem(projectStorageKey(`${PROJECT_FILES_PREFIX}${projectId}`));
-    if (raw) { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed; }
-  } catch {}
   return null;
 }
 

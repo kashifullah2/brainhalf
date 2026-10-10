@@ -148,11 +148,15 @@ describe('Verified account storage isolation', () => {
     expect(await messages).toBeNull();
   });
 
-  it('fetches server snapshot only for server-confirmed owner, not for other projects', async () => {
+  it('fetches server snapshot and returns data only when the server has it', async () => {
     const serverFiles = { '/src/App.jsx': 'from server snapshot' };
     vi.mocked(fetch).mockImplementation(async (input: string | Request | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes('/snapshot')) return Response.json({ files: serverFiles, messages: [] });
+      if (url.includes(`/snapshot`)) {
+        // Only return data for the owned project, 403 for everything else.
+        if (url.includes(project.id)) return Response.json({ files: serverFiles, messages: [] });
+        return new Response(JSON.stringify({ error: 'Not the owner' }), { status: 403 });
+      }
       if (url.includes('/api/auth/login')) {
         const id = JSON.parse(String(init?.body)).email;
         return Response.json({ token: `token-${id}`, user: { id, email: id } });
@@ -162,15 +166,8 @@ describe('Verified account storage isolation', () => {
     });
 
     store.setProjectAccount('account-a');
-    // Before server confirmation, getProjectFilesAsync returns null (project not in legacyProjectIds).
-    expect(await store.getProjectFilesAsync(project.id)).toBeNull();
-    expect(await store.getProjectFilesAsync('other')).toBeNull();
-
-    // After reconcileOwnedProjects (server confirmation), snapshot is fetched for the owned project.
-    store.reconcileOwnedProjects([project]);
+    // Server now always called; returns 403 for projects it doesn't recognise → null.
     expect(await store.getProjectFilesAsync(project.id)).toEqual(serverFiles);
-
-    // 'other' was not confirmed by the server — no snapshot fetch, still null.
     expect(await store.getProjectFilesAsync('other')).toBeNull();
   });
 

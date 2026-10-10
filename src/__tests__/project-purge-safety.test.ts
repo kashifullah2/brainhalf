@@ -773,19 +773,24 @@ describe('P8 Server snapshot fallback — getProjectFilesAsync fetches from DO w
     expect(deleteCalls).toHaveLength(0);
   });
 
-  it('returns null without calling the server for projects not known to the server', async () => {
-    const fetchSpy = vi.fn();
+  it('returns null when the server has no data for the project', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'Not the owner' }), { status: 403 })
+    );
     vi.stubGlobal('fetch', fetchSpy);
 
     const store = await import('../lib/project-store');
     store.setProjectAccount('u1');
     const proj = store.createProject('Local-only project');
-    // No reconcileOwnedProjects — project is not in legacyProjectIds.
 
     const files = await store.getProjectFilesAsync(proj.id);
 
+    // Server is always tried now (DO is authoritative), but 403 → null.
     expect(files).toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/snapshot'),
+      expect.anything()
+    );
   });
 
   it('getProjectMessagesAsync and getProjectFilesAsync share one snapshot HTTP request', async () => {
