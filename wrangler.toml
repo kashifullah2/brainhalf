@@ -95,6 +95,12 @@ dataset = "brainhalf_events"
 binding = "VECTORIZE"
 index_name = "brainhalf-projects"
 
+[triggers]
+crons = [
+  "*/30 * * * *",  # Sweep stale hosted slots across all owners
+  "0 2 * * *",     # Nightly Vectorize backfill for gallery apps
+]
+
 [[r2_buckets]]
 binding = "PROJECT_BACKUPS"
 bucket_name = "brainhalf-project-backups"

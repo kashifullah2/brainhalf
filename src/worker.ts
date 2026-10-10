@@ -4,7 +4,7 @@ import { handleGoogleAuth } from './lib/google-auth';
 import { handleManagedGoogle } from './lib/managed-providers';
 export { ManagedProviders } from './lib/managed-providers';
 import { handleEmailRequest, sendEmail, type EmailQueueMessage } from './lib/email';
-import type { Ai, ExecutionContext, VectorizeIndex } from '@cloudflare/workers-types';
+import type { Ai, ExecutionContext, ScheduledEvent, VectorizeIndex } from '@cloudflare/workers-types';
 import { ChatAgent } from './agent';
 import { AuthRegistry } from './registry';
 import { handleModelTest } from './lib/model-tester';
@@ -1241,7 +1241,61 @@ export default {
       }
     }
   },
+
+  async scheduled(event: ScheduledEvent, env: PlatformEnv, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runScheduled(event.cron, env));
+  },
 };
+
+async function runScheduled(cron: string, env: PlatformEnv): Promise<void> {
+  // Every 30 minutes: sweep hosted slots left by deleted projects so they
+  // do not block previews or count against publishing limits.
+  if (cron === '*/30 * * * *') {
+    try {
+      if (!env.PILOT || !env.REGISTRY) return;
+      const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
+      const res = await registry.fetch('https://registry/admin/projects');
+      if (!res.ok) { structuredLog('warn', 'cron_slot_sweep_registry_error', { status: res.status }); return; }
+      const body = await res.json() as { projects?: Array<{ id: string; ownerId: string; deleted?: boolean }> };
+      // Group live (non-deleted) project IDs by owner so each owner's pilot
+      // slot can be swept independently.
+      const byOwner = new Map<string, Set<string>>();
+      for (const p of body.projects ?? []) {
+        if (p.deleted) continue;
+        if (!byOwner.has(p.ownerId)) byOwner.set(p.ownerId, new Set());
+        byOwner.get(p.ownerId)!.add(p.id);
+      }
+      const pilot = env.PILOT as unknown as { getByName(n: string): { releaseUnknown(ownerId: string, keep: ReadonlySet<string>): Promise<number> } };
+      let total = 0;
+      for (const [ownerId, keep] of byOwner) {
+        total += await pilot.getByName('pilot').releaseUnknown(ownerId, keep);
+      }
+      structuredLog('info', 'cron_slot_sweep_done', { owners: byOwner.size, released: total });
+    } catch (err) {
+      structuredLog('error', 'cron_slot_sweep_failed', { cause: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // Nightly at 02:00 UTC: backfill Vectorize embeddings for any gallery app
+  // published before Vectorize was enabled (or whose embedding has gone stale).
+  if (cron === '0 2 * * *') {
+    try {
+      if (!env.REGISTRY || !env.VECTORIZE || !env.AI) return;
+      const res = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/gallery');
+      if (!res.ok) { structuredLog('warn', 'cron_vectorize_backfill_registry_error', { status: res.status }); return; }
+      const data = await res.json() as { apps?: Array<{ id: string; name?: string; description?: string }> };
+      const apps = data.apps ?? [];
+      let upserted = 0;
+      for (const app of apps) {
+        await upsertProjectVector(env, app.id, app.name ?? '', app.description ?? '');
+        upserted++;
+      }
+      structuredLog('info', 'cron_vectorize_backfill_done', { upserted });
+    } catch (err) {
+      structuredLog('error', 'cron_vectorize_backfill_failed', { cause: err instanceof Error ? err.message : String(err) });
+    }
+  }
+}
 
 /**
  * A project the user is connecting to is *claimed* on first authenticated
