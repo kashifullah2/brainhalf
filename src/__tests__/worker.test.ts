@@ -900,6 +900,32 @@ describe('Gallery remix orchestration', () => {
     expect(denied.status).toBe(404);
     expect(agents.fetch).not.toHaveBeenCalled();
   });
+
+  it('injects the caller userId into the export request so ChatAgent auth gate passes', async () => {
+    // Simulate ChatAgent's real auth gate: reject 401 when x-auth-user-id/_uid is absent.
+    const capturedExport: Request[] = [];
+    const fetch = vi.fn(async (request: Request) => {
+      if (new URL(request.url).pathname === '/internal/remix-export') {
+        capturedExport.push(request);
+        const uid = new URL(request.url).searchParams.get('_uid') || request.headers.get('x-auth-user-id');
+        if (!uid) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+        return Response.json({ files: { '/src/App.tsx': 'export default function App() {}' } });
+      }
+      if (new URL(request.url).pathname === '/internal/remix-import') {
+        return Response.json({ ok: true, revision: 3 });
+      }
+      return new Response('unexpected', { status: 500 });
+    });
+    const deleted: string[] = [];
+    const agents = { binding: { idFromName: (id: string) => id, get: () => ({ fetch }) }, fetch };
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/projects/source-app/remix', { method: 'POST' });
+    const response = await worker.fetch(request, envWith(remixRegistry(deleted), { ChatAgent: agents.binding }), {} as any);
+    expect(response.status).toBe(200);
+    expect(deleted).toHaveLength(0);
+    expect(capturedExport).toHaveLength(1);
+    const exportUid = new URL(capturedExport[0].url).searchParams.get('_uid') || capturedExport[0].headers.get('x-auth-user-id');
+    expect(exportUid).toBe('user-1');
+  });
 });
 
 describe('P1 Preview security headers — sandbox CSP on every response', () => {

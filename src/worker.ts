@@ -857,7 +857,7 @@ export default {
         if (!created.ok) return withCors(created, origin);
         const { projectId, name } = await created.json() as { projectId: string; name: string };
         const exportResponse = await env.ChatAgent.get(env.ChatAgent.idFromName(sourceId))
-          .fetch(new Request('https://agent/internal/remix-export', { headers: { 'x-bh-project': sourceId } }));
+          .fetch(injectUserId(new Request('https://agent/internal/remix-export', { headers: { 'x-bh-project': sourceId } }), user.userId));
         if (!exportResponse.ok) {
           const agentError = (await exportResponse.json().catch(() => ({})) as { error?: unknown }).error;
           await cleanupRemixProject(projectId);
