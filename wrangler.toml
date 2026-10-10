@@ -91,6 +91,10 @@ dead_letter_queue = "brainhalf-emails-dlq"
 binding = "ANALYTICS"
 dataset = "brainhalf_events"
 
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "brainhalf-projects"
+
 [[r2_buckets]]
 binding = "PROJECT_BACKUPS"
 bucket_name = "brainhalf-project-backups"

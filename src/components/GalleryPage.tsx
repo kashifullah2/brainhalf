@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Copy, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { ArrowUpRight, Copy, Loader2, Search } from 'lucide-react';
 import { authFetch, getToken } from '../lib/auth-client';
 import { apiOrigin } from '../lib/api-origin';
 import { safeCatch } from '../lib/safe-catch';
@@ -99,21 +99,43 @@ export default function GalleryPage({ initialApps = null }: { initialApps?: Gall
   const [error, setError] = useState('');
   const [remixing, setRemixing] = useState<string | null>(null);
   const [remixError, setRemixError] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
   // Auth controls appear only after hydration so prerendered markup matches.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  useEffect(() => {
+
+  const loadGallery = useCallback((q = '') => {
     const controller = new AbortController();
-    fetch(`${apiOrigin()}/api/gallery`, { signal: controller.signal })
+    const qs = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+    if (q.trim()) setSearching(true);
+    fetch(`${apiOrigin()}/api/gallery${qs}`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error('The gallery could not be loaded.');
         const data = await response.json() as { apps?: unknown };
         if (!Array.isArray(data.apps)) throw new Error('The gallery could not be loaded.');
         setApps(data.apps as GalleryApp[]);
+        setError('');
       })
-      .catch(safeCatch(controller.signal, setError, 'The gallery could not be loaded.'));
-    return () => controller.abort();
+      .catch(safeCatch(controller.signal, setError, 'The gallery could not be loaded.'))
+      .finally(() => setSearching(false));
+    return controller;
   }, []);
+
+  useEffect(() => {
+    const controller = loadGallery();
+    return () => controller.abort();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce search — 350ms idle before firing
+  useEffect(() => {
+    if (!query.trim()) {
+      const controller = loadGallery();
+      return () => controller.abort();
+    }
+    const timer = setTimeout(() => loadGallery(query), 350);
+    return () => clearTimeout(timer);
+  }, [query, loadGallery]);
   const remix = async (id: string) => {
     if (remixing) return;
     setRemixing(id);
@@ -143,9 +165,27 @@ export default function GalleryPage({ initialApps = null }: { initialApps?: Gall
         {page && <div className="public-content-meta"><span>Updated <time dateTime={page.dateModified}>{formatContentDate(page.dateModified)}</time></span></div>}
       </div>
       <section className="gallery-grid-section" aria-label="Showcased apps">
+        <div className="gallery-search">
+          <Search size={16} className="gallery-search-icon" aria-hidden="true" />
+          <input
+            type="search"
+            className="gallery-search-input"
+            placeholder="Search apps…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            aria-label="Search gallery apps"
+          />
+          {searching && <Loader2 size={14} className="gallery-search-spin" aria-label="Searching…" />}
+        </div>
         {error && apps === null && <p role="alert" className="gallery-empty">{error}</p>}
         {!error && apps === null && <p className="gallery-empty">Loading apps…</p>}
-        {!error && apps !== null && apps.length === 0 && <div className="gallery-empty"><p>No apps in the gallery yet.</p><p>Publish your app and turn on “List in gallery” in the project console to feature it here.</p></div>}
+        {!error && apps !== null && apps.length === 0 && (
+          <div className="gallery-empty">
+            {query.trim()
+              ? <p>No apps matched your search. Try different keywords.</p>
+              : <><p>No apps in the gallery yet.</p><p>Publish your app and turn on "List in gallery" in the project console to feature it here.</p></>}
+          </div>
+        )}
         <div className="gallery-grid">
           {(apps || []).map(app => <article key={app.id} className="gallery-card">
             <CardPreview appId={app.id} appName={app.name} />

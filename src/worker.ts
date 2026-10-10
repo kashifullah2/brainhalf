@@ -4,7 +4,7 @@ import { handleGoogleAuth } from './lib/google-auth';
 import { handleManagedGoogle } from './lib/managed-providers';
 export { ManagedProviders } from './lib/managed-providers';
 import { handleEmailRequest, sendEmail, type EmailQueueMessage } from './lib/email';
-import type { Ai, ExecutionContext } from '@cloudflare/workers-types';
+import type { Ai, ExecutionContext, VectorizeIndex } from '@cloudflare/workers-types';
 import { ChatAgent } from './agent';
 import { AuthRegistry } from './registry';
 import { handleModelTest } from './lib/model-tester';
@@ -36,6 +36,7 @@ import { validSessionSecret } from './lib/runtime-config';
 import { isolatedPreviewHtml, previewFiles, previewSecurityHeaders } from './lib/preview-isolation';
 import type { BindingFetcher, DispatchBinding, DurableBinding } from './lib/bindings';
 import { writeAuthEvent } from './lib/cf-analytics';
+import { upsertProjectVector, deleteProjectVector, searchProjects } from './lib/vectorize';
 
 export { ChatAgent, AuthRegistry };
 
@@ -62,6 +63,8 @@ export interface PlatformEnv {
   SESSION_CACHE?: { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; delete(key: string): Promise<void> };
   /** Queue binding for async email delivery with automatic retries. */
   EMAIL_QUEUE?: { send(msg: unknown): Promise<void> };
+  /** Vectorize index for semantic project search. */
+  VECTORIZE?: VectorizeIndex;
   [key: string]: unknown;
 }
 
@@ -814,12 +817,30 @@ export default {
     }
 
     // Public gallery listing — no session; the registry only returns showcased apps.
+    // Supports optional ?q= for semantic search via Vectorize.
     if (url.pathname === '/api/gallery' && request.method === 'GET') {
+      const q = url.searchParams.get('q')?.trim() || '';
       try {
-        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/gallery');
-        const listing = new Response(response.body, response);
-        listing.headers.set('Cache-Control', 'public, max-age=60');
-        return withCors(listing, origin);
+        const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
+        const response = await registry.fetch('https://registry/gallery');
+        if (!q) {
+          const listing = new Response(response.body, response);
+          listing.headers.set('Cache-Control', 'public, max-age=60');
+          return withCors(listing, origin);
+        }
+        // Semantic search: rank the gallery by Vectorize similarity
+        const data = await response.json() as { apps?: Array<{ id: string; [key: string]: unknown }> };
+        const allApps = Array.isArray(data.apps) ? data.apps : [];
+        const rankedIds = await searchProjects(env, q, 60);
+        if (!rankedIds.length) {
+          // Vectorize unavailable — return full unfiltered list
+          return withCors(Response.json({ apps: allApps }), origin);
+        }
+        const rankMap = new Map(rankedIds.map((id, i) => [id, i]));
+        const ranked = allApps
+          .filter(a => rankMap.has(a.id))
+          .sort((a, b) => (rankMap.get(a.id) ?? 99) - (rankMap.get(b.id) ?? 99));
+        return withCors(Response.json({ apps: ranked }), origin);
       } catch { return withCors(jsonError('The gallery is temporarily unavailable', 502), origin); }
     }
 
@@ -828,13 +849,33 @@ export default {
       if (request.method !== 'GET' && request.method !== 'PUT') return withCors(jsonError('Method not allowed', 405), origin);
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
-      const query = new URLSearchParams({ projectId: showcaseMatch[1], userId: user.userId });
+      const showcaseProjectId = showcaseMatch[1];
+      const query = new URLSearchParams({ projectId: showcaseProjectId, userId: user.userId });
       try {
+        const putBody = request.method === 'PUT' ? await request.json() : undefined;
         const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/projects/showcase?${query}`, {
           method: request.method,
           headers: { 'Content-Type': 'application/json' },
-          body: request.method === 'PUT' ? JSON.stringify(await request.json()) : undefined,
+          body: putBody !== undefined ? JSON.stringify(putBody) : undefined,
         });
+        // Sync Vectorize index as a non-blocking side effect after a showcase toggle
+        if (request.method === 'PUT' && response.ok) {
+          const result = await response.clone().json() as { showcase?: boolean };
+          if (result.showcase) {
+            void (async () => {
+              try {
+                const galleryRes = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/gallery');
+                if (galleryRes.ok) {
+                  const gallery = await galleryRes.json() as { apps?: Array<{ id: string; name?: string; description?: string }> };
+                  const entry = (gallery.apps || []).find(a => a.id === showcaseProjectId);
+                  await upsertProjectVector(env, showcaseProjectId, entry?.name || '', entry?.description || '');
+                }
+              } catch { /* non-critical */ }
+            })();
+          } else {
+            void deleteProjectVector(env, showcaseProjectId);
+          }
+        }
         return withCors(response, origin);
       } catch (error) {
         if (error instanceof SyntaxError) return withCors(jsonError('Invalid JSON', 400), origin);
