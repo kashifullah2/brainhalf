@@ -53,6 +53,7 @@ const sectionHelp: Record<Section, string> = {
 const JOB_LABELS: Record<JobKind, string> = {
   build: 'Build',
   preview: 'Test app',
+  dev: 'Dev server',
   verify: 'Checks',
   deploy: 'Go live',
   migrate: 'Database change',

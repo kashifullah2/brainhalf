@@ -84,9 +84,14 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
       const snapshot = await sourceSnapshot(files);
       if (current !== epoch.current) return;
       const active = status.jobs.find(job => ['queued', 'running', 'stopping'].includes(job.status));
-      if (snapshot.revision === status.activeRelease?.revision || (active?.environment === 'development' && active.kind === 'preview' && active.revision === snapshot.revision)) { if (pending.current === files) pending.current = null; return; }
+      if (snapshot.revision === status.activeRelease?.revision || (active?.environment === 'development' && (active.kind === 'preview' || active.kind === 'dev') && active.revision === snapshot.revision)) { if (pending.current === files) pending.current = null; return; }
       if (active) {
-        if (active.environment === 'development' && active.kind === 'preview' && active.previewReady) {
+        if (active.environment === 'development' && active.kind === 'dev' && active.previewReady) {
+          // Dev job is running with HMR — individual files are pushed via pushFile; no stop/restart needed.
+          if (pending.current === files) pending.current = null;
+          return;
+        }
+        if (active.environment === 'development' && (active.kind === 'preview' || active.kind === 'dev') && active.previewReady) {
           setNotice('Updating the running development app…');
           await runtimeRequest(projectId, '/stop', 'development', { method: 'POST', body: JSON.stringify({ expectedJobId: active.id }) });
           if (current === epoch.current) refresh();
@@ -95,8 +100,8 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
       }
       if (pending.current === files) pending.current = null;
       if (snapshot.revision === attempted.current && !status.jobs.some(job => job.revision === snapshot.revision && ['failed', 'stopped'].includes(job.status))) return;
-      setFault(false); setNotice('Building your app and starting its backend…');
-      await runtimeRequest(projectId, '/jobs', 'development', { method: 'POST', body: JSON.stringify({ kind: 'preview', files }) });
+      setFault(false); setNotice('Starting dev server…');
+      await runtimeRequest(projectId, '/jobs', 'development', { method: 'POST', body: JSON.stringify({ kind: 'dev', files }) });
       if (current === epoch.current) { attempted.current = snapshot.revision; refresh(); }
     } catch (cause) {
       if (current === epoch.current) { setFault(true); setNotice(toPlainBackendError(cause)); }
@@ -198,16 +203,20 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
   // When the preview is running, a failed verify/publish job message must not
   // bleed into the "Live app preview" strip — those failures belong in the
   // publish panel. Only preview/build failures affect the preview strip.
-  const previewRelevantMessage = showJobMessage && (!ready || latestJob.kind === 'preview' || latestJob.kind === 'build');
-  const message = openError || (fault ? notice : previewRelevantMessage ? latestJob.message : ready ? 'App preview is running. Update it to use your latest changes.' : (failureMessage || notice));
+  const previewRelevantMessage = showJobMessage && (!ready || latestJob.kind === 'preview' || latestJob.kind === 'dev' || latestJob.kind === 'build');
+  const message = openError || (fault ? notice : previewRelevantMessage ? latestJob.message : ready ? 'Dev server running. Files are pushed as they are written.' : (failureMessage || notice));
   const available = runtime.status?.enabled && runtime.status.availability?.state === 'ready';
   // True while the backend is being built/deployed but not yet live — drives
   // the non-blocking building pill that replaces the old "Start app preview" prompt.
   // Excludes failed state so the pill and the error strip never both render.
   const isBuilding = (busy || Boolean(activeJob)) && !ready && !failed;
-  return { start, open, message, ready, fault, failed, liveUrl, isBuilding,
+  const canPush = Boolean(latestJob?.kind === 'dev' && latestJob.previewReady && latestJob.status === 'running');
+  const pushFile = useCallback(async (path: string, content: string) => {
+    await runtimeRequest(projectId, '/live-files', 'development', { method: 'POST', body: JSON.stringify({ path, content }) });
+  }, [projectId]);
+  return { start, open, message, ready, fault, failed, liveUrl, isBuilding, pushFile, canPush,
     canStart: Boolean(available && !busy && !activeJob && !ready),
-    canUpdate: Boolean(available && !busy && ready && (!activeJob || (latestJob?.kind === 'preview' && latestJob.previewReady && latestJob.status === 'running'))),
+    canUpdate: Boolean(available && !busy && ready && (!activeJob || ((latestJob?.kind === 'preview' || latestJob?.kind === 'dev') && latestJob.previewReady && latestJob.status === 'running'))),
     latestJobId: latestJob?.id,
     // Build start time — used by BackendBuildProgress to show elapsed time.
     buildStartedAt: latestJob?.startedAt ?? latestJob?.createdAt,

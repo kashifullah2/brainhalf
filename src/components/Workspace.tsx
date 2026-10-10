@@ -264,6 +264,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [publishOpen, setPublishOpen] = useState(false);
   const backend = useAutomaticBackend(activeProjectId, runtime);
   const startBackend = backend.start;
+  const pushFileToDevRef = useRef<((path: string, content: string) => Promise<void>) | null>(null);
+  pushFileToDevRef.current = backend.canPush ? backend.pushFile : null;
 
   // Show a "ready to publish" nudge for 8 seconds the first time the backend
   // goes live after a build. Resets on project change.
@@ -1093,6 +1095,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         commitFiles(next, { sync: false });
         addBuildLog(`Compiled: ${cleanPath}`, 'success');
         addConsoleLog(`[transpiler] Compiled ${cleanPath}`);
+        pushFileToDevRef.current?.(cleanPath, content).catch(() => {});
 
       } else {
         // Streaming chunks arrive many times per second per file. Update the ref

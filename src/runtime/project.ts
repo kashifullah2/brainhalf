@@ -23,7 +23,7 @@ import { openSecret, sealSecret, validateIntegration, redactSecrets } from './se
 import { contactInput, token, cookie, secureCookie, embeddedPreviewCookie, readJson, readStreamJson } from './integrations';
 import { PILOT_LIMITS, RuntimeError, environmentFrom, runtimeHost, type ProjectScope, type ProjectEnvironment, type RuntimeJob, type DatabaseResource, type MigrationReceipt, type ProjectRelease, type IntegrationConfig, type IntegrationProvider, type IntegrationStatus, type RuntimeStatus, type SourceSnapshot, type VerificationReport, type RuntimeUsageKind } from './types';
 
-interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean; installRetried?: boolean }
+interface StoredJob extends RuntimeJob { step: number; sandboxId: string; sourceKey: string; artifactKey?: string; node?: boolean; static?: boolean; installRetried?: boolean; devServerPids?: { vite: string; backend: string } }
 interface StoredIntegration { sealed: string; updatedAt: number }
 interface DatabaseRecoveryPoint { id: string; label: string; bookmark: string; databaseId: string; createdAt: number; migrations: MigrationReceipt[] }
 const authPath = (value: string) => /^\/__brainhalf\/auth(?:\?mode=(?:verify|reset|magic)#token=[A-Za-z0-9_-]{43})?$/.test(value);
@@ -203,7 +203,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       const current = await this.ctx.storage.get<StoredJob>('current');
       // An installation failure never hosted an app. Terminal status is only
       // saved after sandbox cleanup succeeds; keep the source and job history.
-      const unusedAttempt = (job: StoredJob) => ['build', 'preview'].includes(job.kind)
+      const unusedAttempt = (job: StoredJob) => ['build', 'preview', 'dev'].includes(job.kind)
         && ['failed', 'stopped'].includes(job.status) && Number.isFinite(job.finishedAt)
         && Number.isInteger(job.step) && job.step >= 0 && job.step <= 1 && !job.previewReady && !job.artifactKey;
       const unusedJobs = [...jobs.values()].every(unusedAttempt) && (!current || unusedAttempt(current));
@@ -519,9 +519,10 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     }
     if (path === '/jobs' && request.method === 'POST') {
       const body = await readJson(request, 5_000_000) as { kind: RuntimeJob['kind']; files: Record<string, string>; retryJobId?: string };
-      if (!['build', 'preview', 'verify', 'deploy', 'migrate', 'publish'].includes(body.kind)) throw new RuntimeError('Unknown job kind.');
+      if (!['build', 'preview', 'dev', 'verify', 'deploy', 'migrate', 'publish'].includes(body.kind)) throw new RuntimeError('Unknown job kind.');
       if (body.kind === 'publish' && environment !== 'production') throw new RuntimeError('Publish creates a production release.');
       if (body.kind === 'verify' && environment !== 'development') throw new RuntimeError('Run destructive verification against development only.');
+      if (body.kind === 'dev' && environment !== 'development') throw new RuntimeError('Dev preview runs against development only.');
       let inputFiles = body.files;
       if (body.retryJobId) {
         const previous = await this.ctx.storage.get<StoredJob>(`job:${body.retryJobId}`);
@@ -542,7 +543,8 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       }
       const staticApp = body.kind === 'publish' && publicationTarget(snapshot.files) === 'static';
       const node = !staticApp && !isWorkers;
-      if (node && !['build', 'preview'].includes(body.kind)) throw new RuntimeError('This Node project supports Sandbox builds and development preview. Use the Workers starter for D1 and production releases.');
+      if (node && !['build', 'preview', 'dev'].includes(body.kind)) throw new RuntimeError('This Node project supports Sandbox builds and development preview. Use the Workers starter for D1 and production releases.');
+      if (body.kind === 'dev' && !node) throw new RuntimeError('Dev preview is only supported for Node projects.');
       if (!manifest.scripts.build) throw new RuntimeError('Add a build script to package.json.');
       if ((body.kind === 'verify' || (body.kind === 'publish' && !staticApp)) && !manifest.scripts.test) throw new RuntimeError('Verification requires a test script.');
       if (body.kind === 'verify' || body.kind === 'publish') verificationPlan(snapshot.files);
@@ -563,6 +565,16 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         catch (error) { await this.pilot().release(job.id); throw error; }
       });
       return Response.json({ job }, { status: 202 });
+    }
+    if (path === '/live-files' && request.method === 'POST') {
+      const body = await readJson(request) as { path: string; content: string };
+      if (typeof body.path !== 'string' || typeof body.content !== 'string') throw new RuntimeError('Invalid request body.', 400);
+      const safePath = body.path.replace(/^\/+/, '');
+      if (!safePath || safePath.includes('..') || /^(?:node_modules|\.git|dist)\//.test(safePath)) throw new RuntimeError('Path not allowed.', 400);
+      const job = await this.ctx.storage.get<StoredJob>('current');
+      if (!job || job.status !== 'running' || !job.previewReady || !['preview', 'dev'].includes(job.kind)) throw new RuntimeError('No running dev server to push to.', 409);
+      await this.sandbox(job).writeFile(`/workspace/project/${safePath}`, body.content);
+      return Response.json({ ok: true });
     }
     throw new RuntimeError('That page or action was not found. Try refreshing, or go back to your project.', 404);
   }
@@ -724,6 +736,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       job.step = 1; job.message = 'Installing dependencies'; await this.saveJob(job); return;
     }
     if (job.step <= 4) {
+      if (job.kind === 'dev' && job.step === 4) { await this.advanceDevStep4(job, snapshot); return; }
       const process = await box.getProcess(job.processIds[job.processIds.length - 1]);
       if (!process) throw new RuntimeError('The container was replaced. Source is saved; start a new job to recover.');
       const state = await process.status();
@@ -778,8 +791,20 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         }
         throw new RuntimeError(`${job.message} failed (exit ${output.exitCode}).${commandFailureSummary(output.stdout, output.stderr)}`);
       }
-      if (job.step === 1) { await this.startProcess(job, ['npm', 'run', 'build']); job.step = 2; job.message = 'Building application'; await this.saveJob(job); return; }
-      if (job.step === 2 && job.kind !== 'preview' && projectManifest(snapshot.files).scripts.test) { await this.startProcess(job, ['npm', 'test']); job.step = 3; job.message = 'Running project tests'; await this.saveJob(job); return; }
+      if (job.step === 1) {
+        if (job.kind === 'dev') {
+          const scripts = projectManifest(snapshot.files).scripts;
+          if (!scripts.server || !scripts.dev) throw new RuntimeError('Dev preview requires a server script (PORT env) and a dev script (Vite) in package.json.');
+          await this.startProcess(job, ['npm', 'run', 'server'], { PORT: '3001', APP_ORIGIN: this.url('development') });
+          const backendPid = job.processIds[job.processIds.length - 1];
+          await this.startProcess(job, ['npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '3000', '--strictPort'], { __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: new URL(this.url('development')).hostname });
+          const vitePid = job.processIds[job.processIds.length - 1];
+          job.devServerPids = { vite: vitePid, backend: backendPid };
+          job.step = 4; job.message = 'Starting dev servers'; await this.saveJob(job); return;
+        }
+        await this.startProcess(job, ['npm', 'run', 'build']); job.step = 2; job.message = 'Building application'; await this.saveJob(job); return;
+      }
+      if (job.step === 2 && job.kind !== 'preview' && job.kind !== 'dev' && projectManifest(snapshot.files).scripts.test) { await this.startProcess(job, ['npm', 'test']); job.step = 3; job.message = 'Running project tests'; await this.saveJob(job); return; }
       if (job.node) {
         if (job.step === 4) throw new RuntimeError('Node preview server exited. Start a new preview job.');
         if (job.kind === 'preview') {
@@ -860,6 +885,41 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       await txn.delete(`pending-release:${job.id}`);
     });
     job.releaseId = release.id; await this.finish(job, `${job.environment === 'production' ? 'Production' : 'Development'} release ready`);
+  }
+  private async advanceDevStep4(job: StoredJob, snapshot: SourceSnapshot) {
+    const box = this.sandbox(job);
+    const { vite: vitePid, backend: backendPid } = job.devServerPids!;
+    const [viteProc, backendProc] = await Promise.all([box.getProcess(vitePid), box.getProcess(backendPid)]);
+    const [viteState, backendState] = await Promise.all([viteProc?.status(), backendProc?.status()]);
+    const viteCrashed = !viteProc || viteState?.state !== 'running';
+    const backendCrashed = !backendProc || backendState?.state !== 'running';
+    if (viteCrashed || backendCrashed) {
+      if (viteCrashed && viteProc) {
+        try { const out = await viteProc.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes }); this.log(job.id, `Dev Vite server exited.\n${out.stdout}\n${out.stderr}`); } catch { /* best effort */ }
+      }
+      if (backendCrashed && backendProc) {
+        try { const out = await backendProc.output({ encoding: 'utf8', maxBytes: PILOT_LIMITS.logBytes }); this.log(job.id, `Dev backend exited.\n${out.stdout}\n${out.stderr}`); } catch { /* best effort */ }
+      }
+      await this.assertRunning(job);
+      await this.startProcess(job, ['npm', 'run', 'server'], { PORT: '3001', APP_ORIGIN: this.url('development') });
+      const newBackendPid = job.processIds[job.processIds.length - 1];
+      await this.startProcess(job, ['npm', 'run', 'dev', '--', '--host', '0.0.0.0', '--port', '3000', '--strictPort'], { __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: new URL(this.url('development')).hostname });
+      const newVitePid = job.processIds[job.processIds.length - 1];
+      job.devServerPids = { vite: newVitePid, backend: newBackendPid };
+      job.previewReady = false; job.message = 'Dev server restarting after crash';
+      await this.saveJob(job); return;
+    }
+    if (!job.previewReady) {
+      try {
+        await viteProc!.waitForPort(3000, { timeout: 10_000 });
+        await backendProc!.waitForPort(3001, { timeout: 10_000 });
+      } catch {
+        job.message = 'Waiting for dev servers to accept connections';
+        await this.assertRunning(job); await this.saveJob(job); return;
+      }
+      job.previewReady = true; job.message = 'Dev server running';
+      await this.assertRunning(job); await this.saveJob(job);
+    }
   }
   private async startProcess(job: StoredJob, argv: [string, ...string[]], environment: Record<string, string> = {}) {
     await this.assertRunning(job);
@@ -1124,7 +1184,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     }
     if (url.pathname.startsWith('/api/auth/') || url.pathname === '/api/contact') return this.integrationRequest(request, environment);
     const current = await this.ctx.storage.get<StoredJob>('current');
-    if (environment === 'development' && current?.node && current.kind === 'preview' && current.status === 'running' && current.step === 4) {
+    if (environment === 'development' && current?.node && (current.kind === 'preview' || current.kind === 'dev') && current.status === 'running' && current.step === 4) {
       const headers = new Headers(request.headers);
       for (const key of [...headers.keys()]) if (/^(?:x-bh-|x-brainhalf-|x-auth-|cf-access-)/i.test(key) || key === 'authorization') headers.delete(key);
       const appCookies = headers.get('cookie')?.split(';').filter(value => !/^(?:__Host-bh_|bh_session)/.test(value.trim())).join(';');

@@ -2,7 +2,7 @@ import { MAX_HOSTED_APP_SPACES } from '../lib/limits';
 
 export type ProjectEnvironment = 'development' | 'production';
 export type IntegrationProvider = 'resend' | 'google' | 'github';
-export type JobKind = 'build' | 'preview' | 'verify' | 'deploy' | 'migrate' | 'publish';
+export type JobKind = 'build' | 'preview' | 'dev' | 'verify' | 'deploy' | 'migrate' | 'publish';
 export type JobStatus = 'queued' | 'running' | 'passed' | 'failed' | 'stopping' | 'stopped';
 export type SourceFiles = Record<string, string>;
 export interface ProjectScope { projectId: string; ownerId: string; unlimited?: boolean }
