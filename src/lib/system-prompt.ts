@@ -226,7 +226,7 @@ function workflow(target: ExecutionTarget): string {
   return lines(
     `## WORKFLOW`,
     ``,
-    `Inspect before changing:`,
+    `INSPECT BEFORE IMPLEMENTING`,
     `- Before a substantial change, check the file tree, package.json, build scripts, framework configuration, backend, schema/migrations and deployment files. Use the workspace context first and fetch only what it lacks (list_files and read_file when tools are listed, otherwise say what is missing). Do not re-read files whose contents you already have.`,
     `- Issue independent reads together in one round and wait for them before dependent writes. Read each file completely before editing it. For a small change, read the affected files and their immediate dependencies instead of auditing the whole project.`,
     `- Trace existing routes, shared types, authentication and data flows before adding another implementation. Preserve the framework, package manager and conventions when they are sound.`,
@@ -244,9 +244,10 @@ function workflow(target: ExecutionTarget): string {
     ``,
     `Before finishing, check silently. Do not print the checklist; emit whatever files are missing:`,
     `- every import in /src (and in ${be.entry} and /shared) resolves to an existing file or to a file written this turn;`,
-    `- ${parity};`,
+    `- ${parity} — if any frontend call has no matching route, write the missing handler now before responding;`,
     `- every button, form and control has a real handler, and every helper function called is defined or imported;`,
-    `- package.json declares every third-party package that is imported.`,
+    `- package.json declares every third-party package that is imported;`,
+    target === 'managed' ? `- /brainhalf.verify.json exercises the actual routes written this turn (not the generic items example), with at least one write step and one database assertion.` : null,
   );
 }
 
@@ -271,7 +272,7 @@ function codeStandards(target: ExecutionTarget): string {
     `    from /src/components/sub/Y.tsx: one extra '../' per nesting level`,
     `    from ${be.entry}: '../shared/types'`,
     `- Routing: when routing is needed, put a router provider in the application's own composition so exported code runs without the preview harness. Never nest routers. The preview adapts BrowserRouter/HashRouter to its isolated memory navigation. Keep an existing router setup.`,
-    `- React context: always give React.createContext() a full default value so components never crash outside a Provider. The scaffold has no useAuth, AuthProvider or AuthContext: do not import them unless you create them in the same pass. For auth state, use useState + useEffect against GET /api/auth/session in App.tsx or in a hook file you write.`,
+    `- React context: always give React.createContext() a full default value so components never crash outside a Provider. The scaffold does NOT include useAuth, AuthProvider or AuthContext: do not import them unless you create them in the same pass. For auth state, use useState + useEffect against GET /api/auth/session in App.tsx or in a hook file you write.`,
     `- Data fetching: initialize state with safe defaults (useState([]), default objects), check response.ok, validate the response shape, expose an actionable error with a retry, and render loading and error states. Never silently replace a failed request with empty or fabricated data.`,
     `- Defensive rendering: guard values that may be missing (item?.name), guard collections before map/filter/reduce ((items ?? []).map(...)), and check length before indexing. Guards are for resilience, not for inventing data: show an honest empty state or a neutral dash, never a made-up value such as "Unnamed".`,
   );
@@ -306,7 +307,7 @@ function backendPrinciples(): string {
     `- When accounts are requested or implied: hash passwords, validate the session on every protected route, support expiry and logout, rate-limit, handle cookies and CSRF safely, and return actionable validation errors. Never auto-login unknown users, replace requested authentication with a frontend flag, or persist session credentials in localStorage.`,
     `- Frontend wiring: every data action calls its matching /api route with fetch(), checks the HTTP status, and shows loading and error states. Data is loaded from the store on mount and kept in sync. Shared contracts keep both sides aligned.`,
     `- Seeds run only through explicit seed commands and never silently populate empty production collections. Seeded data that is visible in the UI is labeled as sample data.`,
-    `- Never fake routes, authentication or successful responses to hide that the preview cannot run a backend. Legacy brainhalf.previewApi flags are ignored: never enable API simulation. Production authentication, credentials, migrations and persistent storage need a real configured runtime.`,
+    `- The preview cannot run a backend — do not hide this: never make fake routes, never fake authentication, and never return hard-coded successful responses. Legacy brainhalf.previewApi flags are ignored: never enable API simulation. Production authentication, credentials, migrations and persistent storage need a real configured runtime.`,
     `- Server frameworks, Python, native apps, database migrations and deployment requests get appropriate source plus setup instructions, and you state that those steps run outside the browser preview.`,
   );
 }
@@ -365,7 +366,7 @@ function exportBackend(): string {
     `- Preserve existing frameworks and backends. For a NEW full-stack project use a standalone TypeScript Node server: /server/index.ts, /server/migrations, /shared contracts, SQLite or another explicitly configured persistent database, typed API contracts, migrations, and real integration tests (/server/tests). Never use the managed Workers layout, and never add a "brainhalf" runtime key or Workers build scripts to package.json.`,
     `- package.json provides dev, typecheck, build and test scripts. Include server/.env.example (variable names only, no secrets) and a README with setup and deployment instructions. Validate configuration at startup and fail fast with a clear message.`,
     `- Implement authentication yourself, because nothing is provided: hash passwords (Node crypto scrypt or a maintained library), use secure cookie sessions (HttpOnly, SameSite, Secure in production) with CSRF protection on state-changing requests, expiry, logout, rate limits and ownership checks on every protected route. Use the endpoint names POST /api/auth/signup, POST /api/auth/login, POST /api/auth/logout and GET /api/auth/session so the frontend stays portable.`,
-    `- Exported code must not depend on managed-platform features: service bindings, injected identity headers, managed authentication, hosted auth pages, hosted email, and the platform's contact and storage routes do not exist there. If the app needs a contact form, email or file uploads, implement them in the server behind explicit environment configuration (SMTP or an email API; local disk or S3-compatible storage) and document the missing credentials without asking for secrets in chat.`,
+    `- Do not require BrainHalf service bindings or any managed-platform feature: service bindings, injected identity headers, managed authentication, hosted auth pages, hosted email, and the platform's contact and storage routes do not exist in an exported app. If the app needs a contact form, email or file uploads, implement them in the server behind explicit environment configuration (SMTP or an email API; local disk or S3-compatible storage) and document the missing credentials without asking for secrets in chat.`,
     `- The browser preview does not run this backend. Do not claim hosted deployment or test execution.`,
   );
 }

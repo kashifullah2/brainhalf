@@ -8,6 +8,27 @@
 
 const PARAM_SEGMENT = /\/:[a-zA-Z_][a-zA-Z0-9_]*/g;
 
+/**
+ * Routes served by the BrainHalf platform dispatcher in front of the worker.
+ * The AI is explicitly told to call these but never re-implement them, so
+ * they must not count as missing handlers in the coverage check.
+ */
+export const PLATFORM_PROVIDED_ROUTES = new Set<string>([
+  '/api/auth/config',
+  '/api/auth/session',
+  '/api/auth/signup',
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/auth/forgot-password',
+  '/api/auth/resend-verification',
+  '/api/auth/magic-link',
+  '/api/auth/google/start',
+  '/api/auth/github/start',
+  '/api/contact',
+  '/api/storage',
+  '/api/storage/:param',
+]);
+
 /** Replace named route params with a canonical placeholder for comparison. */
 export function normalizeApiPath(path: string): string {
   return path.replace(PARAM_SEGMENT, '/:param').replace(/\/\*$/, '');
@@ -76,8 +97,15 @@ function isCoveredByRoute(fetchPath: string, route: string): boolean {
 /**
  * Return the fetch paths that have no matching route.
  * A wildcard route (/api/*) is treated as covering everything.
+ * Platform-provided routes are excluded — the worker never implements them.
  */
 export function findUncoveredFetches(fetches: string[], routes: string[]): string[] {
   if (routes.some(r => /\/api\/\*/.test(r) || r === '/api/')) return [];
-  return fetches.filter(f => !routes.some(r => isCoveredByRoute(f, r)));
+  return fetches.filter(f => {
+    const normalized = normalizeApiPath(f);
+    if (PLATFORM_PROVIDED_ROUTES.has(normalized)) return false;
+    // /api/auth/* variants (e.g. /api/auth/:param from fetch(`/api/auth/${token}`))
+    if (normalized.startsWith('/api/auth/')) return false;
+    return !routes.some(r => isCoveredByRoute(f, r));
+  });
 }

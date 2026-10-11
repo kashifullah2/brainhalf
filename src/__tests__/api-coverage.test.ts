@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractApiFetches, extractWorkerRoutes, findUncoveredFetches, normalizeApiPath } from '../lib/api-coverage';
+import { extractApiFetches, extractWorkerRoutes, findUncoveredFetches, normalizeApiPath, PLATFORM_PROVIDED_ROUTES } from '../lib/api-coverage';
 
 describe('normalizeApiPath', () => {
   it('replaces named :param segments', () => {
@@ -108,5 +108,38 @@ describe('findUncoveredFetches', () => {
 
   it('returns all fetches when route list is empty', () => {
     expect(findUncoveredFetches(['/api/notes'], [])).toEqual(['/api/notes']);
+  });
+
+  it('never flags platform-provided auth routes as missing', () => {
+    // The worker intentionally has no handlers for these — platform serves them.
+    const platformFetches = [
+      '/api/auth/session', '/api/auth/logout', '/api/auth/config',
+      '/api/auth/signup', '/api/auth/login', '/api/auth/forgot-password',
+      '/api/auth/resend-verification', '/api/auth/magic-link',
+      '/api/auth/google/start', '/api/auth/github/start',
+    ];
+    expect(findUncoveredFetches(platformFetches, [])).toEqual([]);
+  });
+
+  it('never flags /api/contact or /api/storage as missing', () => {
+    expect(findUncoveredFetches(['/api/contact', '/api/storage', '/api/storage/:param'], [])).toEqual([]);
+  });
+
+  it('never flags /api/auth/:param template-literal fetches as missing', () => {
+    // fetch(`/api/auth/${token}`) → /api/auth/:param
+    expect(findUncoveredFetches(['/api/auth/:param'], [])).toEqual([]);
+  });
+
+  it('still flags genuinely missing app routes even when platform routes are present', () => {
+    const fetches = ['/api/auth/session', '/api/game', '/api/game/new'];
+    const uncovered = findUncoveredFetches(fetches, []);
+    expect(uncovered).toEqual(['/api/game', '/api/game/new']);
+  });
+
+  it('PLATFORM_PROVIDED_ROUTES covers all managed auth paths', () => {
+    expect(PLATFORM_PROVIDED_ROUTES.has('/api/auth/session')).toBe(true);
+    expect(PLATFORM_PROVIDED_ROUTES.has('/api/auth/logout')).toBe(true);
+    expect(PLATFORM_PROVIDED_ROUTES.has('/api/contact')).toBe(true);
+    expect(PLATFORM_PROVIDED_ROUTES.has('/api/storage')).toBe(true);
   });
 });
