@@ -17,6 +17,13 @@ export function checkShrinkage(path: string, content: string, existing: string):
   if (!existing || content.length === 0) return 0;
   const isLargeFile = existing.split('\n').length > 200;
   const isProtectedPath = path === '/worker/index.ts' || isLargeFile;
+  // A tiny replacement of a substantial file is always suspicious — even if
+  // the existing file is itself under 200 lines or 100 bytes, a replacement
+  // that drops to under 100 bytes when the original was over 500 is a
+  // placeholder/stub, not a real edit.
+  if (content.length < 100 && existing.length > 500) {
+    return Math.round((1 - content.length / existing.length) * 100);
+  }
   if (!isProtectedPath && existing.length < 100) return 0;
   if (content.length >= existing.length * 0.7) return 0;
   return Math.round((1 - content.length / existing.length) * 100);

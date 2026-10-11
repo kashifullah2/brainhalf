@@ -86,6 +86,7 @@ describe('deploy config drift (public/_headers vs worker)', () => {
       'Referrer-Policy',
       'Cross-Origin-Resource-Policy',
       'Cross-Origin-Opener-Policy',
+      'Cross-Origin-Embedder-Policy',
       'Permissions-Policy',
     ]) {
       expect(file[key], `${key} must match between _headers and the worker`).toBe(worker[key]);

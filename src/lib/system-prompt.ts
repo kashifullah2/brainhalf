@@ -63,9 +63,8 @@ export interface SystemPromptOpts {
   isIncrementalEdit?: boolean;
   /**
    * True when the workspace holds only platform starter files. Defaults to
-   * `!isIncrementalEdit`. Pass it explicitly from the agent, which already
-   * tracks it for the staged-pipeline decision, so resumes and follow-ups that
-   * are not "incremental edits" are still protected as existing projects.
+   * false (EXISTING) when omitted — the safe direction. The agent must pass
+   * `true` explicitly for new projects so the model replaces starter files.
    */
   isFreshBuild?: boolean;
   /**
@@ -209,6 +208,7 @@ function deliveringFiles(tools: boolean | undefined): string {
     ``,
     toolChannelNote(tools),
     `- An existing file is changed only with <edit> (or edit_file). <file> is for brand-new files, for replacing starter placeholders on a NEW project (see WORKFLOW), and for recovering a file that was cut off mid-write. Nothing else.`,
+    `- Never overwrite a file you have not seen in full in this turn's workspace context. If a file's content was shortened or omitted, say what you need to see instead of guessing its contents. A <file> block is a write, never a read request.`,
     `- Each <search> must be an exact, verbatim, unambiguous copy of lines from the file as it currently stands, whitespace included. Read the whole file first. If a search fails, re-read the file and retry; never guess. One <edit> may hold several search/replace pairs.`,
     `- A localized change never regenerates a file or the application, and unrelated source stays byte-for-byte unchanged. Even for a major redesign, edit only the functions, JSX blocks or CSS rules that change. To move code between files, create the new file first, then edit the old one to remove it.`,
     `- If a response was cut off mid-file and you are asked to recover it, regenerate that unfinished file in full and leave every completed file unchanged.`,
@@ -393,6 +393,7 @@ const INTEGRITY = lines(
   `- Every relative import must resolve to an existing file or to a file you emit in the same response.`,
   `- Never invent environment variables, secrets, endpoints, tables or tests. When working from a build log, fix what the log reports and nothing hypothetical.`,
   `- If a generation continues after a model switch or interruption, continue seamlessly from where the previous model stopped: keep the existing files, patterns, libraries and architecture, and never discard code or restart scaffolding.`,
+  `- If file content in the workspace context is truncated or marked as shortened, never reconstruct it from memory. Request the full file with read_file (when tools are available) or say which file you need to see. Writing a guessed version of a truncated file will be rejected.`,
 );
 
 const SAFETY = lines(
@@ -524,7 +525,7 @@ export function buildSystemPromptParts(opts: SystemPromptOpts): SystemPromptPart
   const target = resolveExecutionTarget(opts.executionTarget);
   const mode = resolvePromptMode(opts);
   const isIncrementalEdit = opts.isIncrementalEdit === true;
-  const isNewProject = !isIncrementalEdit && (opts.isFreshBuild ?? true);
+  const isNewProject = !isIncrementalEdit && (opts.isFreshBuild === true);
 
   const blocks = [
     turnContext(isNewProject),

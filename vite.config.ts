@@ -353,6 +353,10 @@ export default defineConfig({
   optimizeDeps: { entries: ['index.html'], include: ['@monaco-editor/react', 'monaco-editor'] },
   server: {
     cors: false,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
     // Test artifacts are written while e2e specs run; without these ignores the
     // dev server hot-reloads mid-test and invalidates modules (?t=), which makes
     // specs flaky and lets dynamic imports land on duplicate module instances.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isReadOnlyProjectView } from '../components/Workspace';
+import { isReadOnlyProjectView } from '../lib/read-only';
 
 describe('isReadOnlyProjectView', () => {
   it('is true only when the read-only marker matches the active project', () => {

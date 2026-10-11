@@ -44,6 +44,8 @@ import WebContainerPreview from './WebContainerPreview';
 import BuilderOverlay from './BuilderOverlay';
 import BackendBuildProgress from './BackendBuildProgress';
 const TerminalPanel = lazy(() => import('./Terminal'));
+import { isReadOnlyProjectView } from '../lib/read-only';
+export { isReadOnlyProjectView } from '../lib/read-only';
 
 type GenerationStatus = 'Idle' | 'Generating' | 'Connecting' | 'Ready' | 'Error' | 'Stopped';
 type WorkspaceTab = 'code' | 'preview' | 'console' | 'logs' | 'terminal';
@@ -385,8 +387,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     finally { setRecoveryBusy(false); }
   }, [activeProjectId]);
 
-  // Switched to Lovable-style Instant Preview by bypassing WebContainers
-  const wcEnabled = false; // webContainerSupported();
+  const wcEnabled = webContainerSupported();
   const wc = useWebContainer(activeProjectId, files);
 
   const fileProgressKey = `bh_fileprogress_${activeProjectId}`;
@@ -462,6 +463,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const theme = useTheme();
   const [readOnlyProjectId, setReadOnlyProjectId] = useState<string | null>(null);
   const isReadOnlyProject = isReadOnlyProjectView(readOnlyProjectId, activeProjectId);
+  const isReadOnlyProjectRef = useRef(isReadOnlyProject);
+  useEffect(() => { isReadOnlyProjectRef.current = isReadOnlyProject; }, [isReadOnlyProject]);
+  // Clear the read-only marker when switching projects so each visit re-checks ownership.
+  useEffect(() => { setReadOnlyProjectId(null); }, [activeProjectId]);
 
   const [tipIndex, setTipIndex] = useState(0);
   useEffect(() => {
@@ -696,6 +701,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
    */
   const commitFiles = useCallback((next: FileMap, opts: { replaceAll?: boolean; persist?: boolean; debounce?: boolean; sync?: boolean } = {}) => {
     if (!isCurrent()) return;
+    if (isReadOnlyProjectRef.current) return;
     const { replaceAll = false, persist = true, debounce = false, sync = true } = opts;
     filesRef.current = next;
     setFiles(next);
@@ -903,7 +909,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       setPreviewLoadError('');
       if (generated) appEvents.emit('preview-state', { projectId: activeProjectId, state: 'loading' });
       setActiveFile(prev => (next[prev] !== undefined ? prev : selectAppEntry(next) || Object.keys(next)[0] || '/src/App.jsx'));
-      saveProjectFiles(activeProjectId, next);
+      if (!isReadOnlyProjectRef.current) saveProjectFiles(activeProjectId, next);
       appEvents.emit('sync-files', { files: next, replaceAll: isNewProject });
     });
 
@@ -921,7 +927,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         previewLoadTimerRef.current = null;
       }
       setActiveFile('/src/App.jsx');
-      saveProjectFiles(activeProjectId, fresh);
+      if (!isReadOnlyProjectRef.current) saveProjectFiles(activeProjectId, fresh);
       appEvents.emit('sync-files', { files: fresh, replaceAll: true });
       addBuildLog('Workspace reset to the TypeScript React starter', 'warn');
     };
@@ -1161,7 +1167,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       const generated = hasGeneratedAppCode(newFiles);
       filesRef.current = newFiles;
       setFiles(newFiles);
-      saveProjectFiles(activeProjectId, newFiles);
+      if (!isReadOnlyProjectRef.current) saveProjectFiles(activeProjectId, newFiles);
       setStatus(generated ? 'Connecting' : 'Idle');
       if (generated) markPreviewState('loading');
       else {
@@ -1178,7 +1184,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       if (projectId !== activeProjectId || !changedFiles) return;
       filesRef.current = changedFiles;
       setFiles(changedFiles);
-      saveProjectFiles(activeProjectId, changedFiles);
+      if (!isReadOnlyProjectRef.current) saveProjectFiles(activeProjectId, changedFiles);
       handleRefreshRef.current?.();
     };
 
@@ -2326,12 +2332,5 @@ const Workspace: React.FC<WorkspaceProps> = ({
     </div>
   );
 };
-
-/** True when the project is open read-only (ownership was denied). Guards both
- *  the Monaco editor option and the commit path so a read-only project can
- *  never accept or persist edits. */
-export function isReadOnlyProjectView(readOnlyProjectId: string | null, activeProjectId: string): boolean {
-  return readOnlyProjectId !== null && readOnlyProjectId === activeProjectId;
-}
 
 export default Workspace;

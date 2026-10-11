@@ -293,6 +293,7 @@ export function shellSecurityHeaders(): Record<string, string> {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
     'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': 'credentialless',
     // microphone=(self) lets the shell delegate the permission to preview iframes
     // via allow="microphone". camera stays blocked at the top level until camera
     // apps are actively supported.

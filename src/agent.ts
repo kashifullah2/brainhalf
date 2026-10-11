@@ -912,7 +912,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           let charBudget = opts.charBudget;
           for (const r of rows) {
             const source = String(r.content || '');
-            const content = source.length > 16_000 ? source.slice(0, 16_000) + '\n[File shortened; use read_file for exact contents]' : source;
+            const content = source.length > 16_000 ? source.slice(0, 16_000) + '\n[File shortened — do not overwrite this file without seeing it in full]' : source;
             if (content.length > charBudget) {
               parts.push(`File: ${r.path}\n\`\`\`\n${content.slice(0, charBudget)}\n// ... [trimmed for length]\n\`\`\``);
               break;
@@ -2212,14 +2212,15 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           }
           const contextLimits = generationContextLimits(generationControls(data).fastMode);
 
-          // State awareness: determine whether this is an incremental edit to an existing project
+          // State awareness: determine whether the project has real (non-starter) content.
+          // Check all files, not just App.tsx — a backend-heavy project may have
+          // worker/index.ts and migrations but a tiny or missing App.tsx.
           const existingAppRow = this.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = '/src/App.tsx' OR path = '/src/App.jsx' LIMIT 1`[0];
-          const isIncrementalEdit = Boolean(
-            existingAppRow &&
-            !isStarterApp(existingAppRow.content) &&
-            existingAppRow.content.length > 200 &&
-            !actualPrompt.startsWith('[AUTO-CONTINUE]')
-          );
+          const hasNonStarterApp = Boolean(existingAppRow && !isStarterApp(existingAppRow.content) && existingAppRow.content.length > 200);
+          const hasNonStarterFiles = hasNonStarterApp
+            || this.runSql<{ cnt: number }>`SELECT COUNT(*) as cnt FROM project_files WHERE path NOT IN ('/src/App.tsx', '/src/App.jsx', '/src/main.tsx', '/index.html', '/package.json', '/tsconfig.json', '/vite.config.ts', '/src/components/AppBoundary.tsx') AND length(content) > 100`[0]?.cnt > 0;
+          const isFreshBuild = !hasNonStarterFiles;
+          const isIncrementalEdit = hasNonStarterFiles && !actualPrompt.startsWith('[AUTO-CONTINUE]');
 
           // Persistent memory summary of active components and backend endpoints
           let projectMemory = '';
@@ -2274,11 +2275,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           const { staticPart, dynamicPart } = this.buildSystemPromptParts({
             filesContext, plannerMode, executionTarget,
             questionMode, destructiveMode, ambiguousMode,
-            isIncrementalEdit, projectMemory, modelHandoff,
+            isIncrementalEdit, isFreshBuild, projectMemory, modelHandoff,
           });
           const systemPrompt = staticPart + dynamicPart;
           generationStarted = true;
-          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode, isIncrementalEdit }, staticPart);
+          return this.runGeneration(connection, data, systemPrompt, actualPrompt, epoch, plannerMode, resumeChain, { destructiveMode, questionMode, ambiguousMode, isIncrementalEdit, isFreshBuild }, staticPart);
         }, GENERATION_LOCK_TIMEOUT_MS, this.currentAbortController ?? undefined);
       } catch (genErr) {
         // runGeneration's finally releases when !completed. If we never reached
@@ -2320,6 +2321,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     destructiveMode?: boolean;
     ambiguousMode?: boolean;
     isIncrementalEdit?: boolean;
+    isFreshBuild?: boolean;
+    toolsAvailable?: boolean;
     projectMemory?: string;
     modelHandoff?: string;
   }): string {
@@ -2334,6 +2337,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     destructiveMode?: boolean;
     ambiguousMode?: boolean;
     isIncrementalEdit?: boolean;
+    isFreshBuild?: boolean;
+    toolsAvailable?: boolean;
     projectMemory?: string;
     modelHandoff?: string;
   }): { staticPart: string; dynamicPart: string } {
@@ -2382,7 +2387,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     epoch: number,
     plannerMode: boolean,
     resumeChain?: { parentJobId: string; resumeCount: number; initialFiles: string[] } | null,
-    modes?: { destructiveMode?: boolean; questionMode?: boolean; ambiguousMode?: boolean; isIncrementalEdit?: boolean },
+    modes?: { destructiveMode?: boolean; questionMode?: boolean; ambiguousMode?: boolean; isIncrementalEdit?: boolean; isFreshBuild?: boolean },
     staticSystemPart?: string
   ): Promise<void> {
     // A brand-new user prompt breaks any truncation-retry streak: the counter
@@ -2720,7 +2725,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 const shrinkPct = checkShrinkage(cleanPath, normalizedContent, existing);
                 if (shrinkPct > 0 && !isShrinkIntentional(actualPrompt ?? '') && !normalizedContent.includes(SHRINK_OK_MARKER)) {
                   logWritePath('tool:write_file', cleanPath, 'rejected', `shrunk ${shrinkPct}%`);
-                  return { success: false, error: `This write shrinks ${cleanPath} by ${shrinkPct}% (${normalizedContent.length} bytes vs ${existing.length} bytes). If intentional, include ${SHRINK_OK_MARKER} in the file and resend; otherwise resend the complete file content.` };
+                  return { success: false, error: `This write shrinks ${cleanPath} by ${shrinkPct}% (${normalizedContent.length} bytes vs ${existing.length} bytes). Use edit_file to change specific sections instead of rewriting the whole file. If intentional removal, include ${SHRINK_OK_MARKER}.` };
                 }
               }
               logWritePath('tool:write_file', cleanPath, 'accepted');
@@ -3227,8 +3232,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // prompts, resumes, or edits to an existing app triples the model
           // calls, shows misleading "Step 1 of 3" notices, and the stage
           // instructions contradict the tool-less mode blocks.
-          const existingAppForStaging = this.runSql`SELECT content FROM project_files WHERE path = '/src/App.tsx'`[0]?.content ?? '';
-          const isFreshBuild = !existingAppForStaging || isStarterApp(existingAppForStaging);
+          const isFreshBuild = modes?.isFreshBuild === true;
           // shouldUseStagedPipeline is unit-tested (prompt-mode.test.ts); the
           // VITEST guard stays at the call site so tests can exercise the logic.
           const isStaged = shouldUseStagedPipeline({ plannerMode, modes, resumeChain, isFreshBuild, actualPrompt, fileOutputRetry })
@@ -3258,8 +3262,18 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             // Atria-Dawn-Preview is fast enough to generate a full app in one
             // pass without the tool loop. Skipping read_file / write_file /
             // check_syntax round-trips cuts generation from ~30 min to ~3 min.
+            // On existing projects, direct generation must NOT say "write ALL
+            // files" — that contradicts the EXISTING project rules and causes
+            // full rewrites. Instead, remind the model it can only see workspace
+            // context and must use <edit> for existing files.
             const directGeneration = model.provider === 'atria';
-            if (directGeneration) systemPrompt += '\nDIRECT GENERATION: Tool use is disabled. Return the complete implementation as <file path="/...">content</file> blocks in a single response. Write ALL files needed for a working app. Do not emit function calls or plan to inspect files.';
+            if (directGeneration) {
+              if (isFreshBuild) {
+                systemPrompt += '\nDIRECT GENERATION: Tool use is disabled. Return the complete implementation as <file path="/...">content</file> blocks in a single response. Write ALL files needed for a working app. Do not emit function calls or plan to inspect files.';
+              } else {
+                systemPrompt += '\nDIRECT GENERATION: Tool use is disabled. You can only see the workspace context above. Change existing files with <edit> blocks (search/replace). Create only genuinely new files with <file> blocks. Never rewrite a file you cannot see in full — say what is missing instead. Do not emit function calls.';
+              }
+            }
 
             for (let stageIdx = 0; stageIdx < pipelineStages.length; stageIdx++) {
               const stage = pipelineStages[stageIdx];
@@ -4341,7 +4355,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     return { writes, sawFileTag, wasTruncated };
   }
 
-  private extractAndSaveFiles(text: string, connection: Connection, epoch?: number, readOnly = false, defer: (event: () => void) => void = event => event()): ExtractionSummary {
+  private extractAndSaveFiles(text: string, connection: Connection, epoch?: number, extractOnly = false, defer: (event: () => void) => void = event => event()): ExtractionSummary {
     const summary: ExtractionSummary = {
       writtenCount: 0,
       deletedCount: 0,
@@ -4385,9 +4399,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
     // B4/B5 hardening: question, destructive, ambiguous and planner turns are
     // tool-less — but the <file> text protocol is a second output channel that
-    // bypasses the withheld tools. In read-only turns, scan for diagnostics
+    // bypasses the withheld tools. In extract-only turns, scan for diagnostics
     // (sawCodeLikeOutput) without writing anything to the project.
-    if (readOnly) return summary;
+    if (extractOnly) return summary;
 
     const pendingWrites: Map<string, string> = new Map();
     const pendingDeletes: Set<string> = new Set();
@@ -4522,7 +4536,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (pct === 0) continue;
       pendingWrites.delete(path);
       logWritePath('text-protocol', path, 'rejected', `shrunk ${pct}%`);
-      brokenFiles.push({ path, error: `Replacement is ${pct}% shorter (${content.length} vs ${existing.length} bytes); likely truncated. Resend the complete file, or include ${SHRINK_OK_MARKER} if removal was intentional.` });
+      brokenFiles.push({ path, error: `Replacement is ${pct}% shorter (${content.length} vs ${existing.length} bytes); likely truncated. Use <edit> to change specific sections instead of rewriting the whole file. If removal was intentional, include ${SHRINK_OK_MARKER}.` });
       this.repairLog?.add(this.name, 'shrinkage', `${path}: ${existing.length} → ${content.length} bytes (${pct}% shorter)`);
     }
 

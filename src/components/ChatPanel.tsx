@@ -1621,6 +1621,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               if (isMounted) window.dispatchEvent(new CustomEvent('bh-session-expired'));
               return;
             }
+            // User is still logged in — this is an ownership denial, not session expiry.
+            appEvents.emit('project-ownership-denied', { projectId: activeProjectId });
             appEvents.emit('generation-status', {
               status: 'Error',
               error: 'This project could not be opened. Your selected project has been kept; retry or choose another project from the dashboard.',

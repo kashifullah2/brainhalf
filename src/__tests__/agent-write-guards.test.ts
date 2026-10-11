@@ -241,6 +241,26 @@ describe('write-guard primitives', () => {
     it('allows writes to new files (no existing)', () => {
       expect(checkShrinkage('/src/App.tsx', 'content', '')).toBe(0);
     });
+
+    it('rejects a tiny placeholder replacing a substantial file', () => {
+      const existing = 'x'.repeat(600);
+      const stub = 'export default {};'; // 18 bytes
+      expect(checkShrinkage('/src/utils.ts', stub, existing)).toBeGreaterThan(0);
+    });
+
+    it('rejects a one-line file replacing a 500+ byte file even if under 200 lines', () => {
+      const existing = Array.from({ length: 30 }, (_, i) => `const x${i} = ${i};`).join('\n'); // ~30 lines, ~500+ bytes
+      const stub = 'export {};'; // ~10 bytes
+      if (existing.length > 500) {
+        expect(checkShrinkage('/src/helper.ts', stub, existing)).toBeGreaterThan(0);
+      }
+    });
+
+    it('still allows small-to-small file rewrites', () => {
+      const existing = 'export const x = 1;'; // ~20 bytes
+      const updated = 'export const y = 2;'; // ~20 bytes
+      expect(checkShrinkage('/src/tiny.ts', updated, existing)).toBe(0);
+    });
   });
 
   describe('isShrinkIntentional', () => {
