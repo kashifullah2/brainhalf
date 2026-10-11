@@ -274,7 +274,7 @@ export function shellSecurityHeaders(): Record<string, string> {
     // iframe, which has its own CSP), and headless-Chrome checks of the public
     // pages — including GTM/AdSense — report zero violations without
     // 'unsafe-eval', data:, or blob: script sources.
-    `script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google`,
+    `script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://esm.sh https://challenges.cloudflare.com https://static.cloudflareinsights.com https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://securepubads.g.doubleclick.net https://tpc.googlesyndication.com https://*.adtrafficquality.google`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net`,
     `img-src 'self' data: https: blob:`,
     `font-src 'self' data: https://fonts.gstatic.com`,
@@ -477,7 +477,10 @@ export default {
           const parsed = JSON.parse(bodyText) as Record<string, unknown>;
           if (typeof parsed['cf-turnstile-response'] === 'string') cfToken = parsed['cf-turnstile-response'];
         } catch { /* invalid JSON — let the downstream handler return 400 */ }
-        if (!cfToken || !(await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, clientKey(request)))) {
+        // Only reject if a token was sent but is invalid. Missing tokens are
+        // allowed through so users with blocked scripts can still log in
+        // (rate limiting remains the primary bot defence).
+        if (cfToken && !(await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, clientKey(request)))) {
           return withCors(jsonError('Please complete the security check', 400), origin);
         }
         // Reconstruct the request so downstream handlers can read the body.

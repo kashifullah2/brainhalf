@@ -59,7 +59,7 @@ export default function PublishPopover({ projectId, files, onClose, onCustomDoma
   const ready = !!status?.enabled && status.availability?.state === 'ready';
   const busy = submitting || publishing || actionBusy;
   const currentIsLive = !!revision && release?.revision === revision;
-  const liveUrl = status?.productionUrl || '';
+  const liveUrl = status?.productionUrl || (release ? `${window.location.origin}/p/${encodeURIComponent(projectId)}/` : '');
   const runtimeDomain = liveUrl.replace(/https?:\/\/[^.]+\./, '') || 'apps.brainhalf.com';
 
   useEffect(() => {

@@ -2243,7 +2243,7 @@ export default function AdminPage() {
                   </div>
                   <div className="modal-head-actions">
                     <a
-                      href={`https://${previewProject.id}.apps.brainhalf.com`}
+                      href={`/api/admin/projects/${encodeURIComponent(previewProject.id)}/preview/index.html`}
                       target="_blank"
                       rel="noreferrer"
                       className="admin-icon-btn"

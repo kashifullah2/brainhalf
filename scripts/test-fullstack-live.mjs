@@ -15,9 +15,15 @@
  *   BH_MODEL="@cf/moonshotai/kimi-k2.7-code"  override the model
  */
 
+// Node's undici defaults to a 10s connect timeout which is too short for
+// some network paths. Override it globally for the duration of this script.
+import { setGlobalDispatcher, Agent } from 'undici';
+setGlobalDispatcher(new Agent({ connectTimeout: 60_000 }));
+
 const BASE_URL = (process.env.BH_URL ?? 'https://brainhalf.com').replace(/\/$/, '');
 const TOKEN = process.env.BH_TOKEN ?? '';
 const MODEL = process.env.BH_MODEL ?? '@cf/deepseek-ai/deepseek-v4-flash-0731';
+const KEEP = process.env.BH_KEEP === '1';
 
 if (!TOKEN) {
   console.error('Error: BH_TOKEN env var not set.');
@@ -27,7 +33,7 @@ if (!TOKEN) {
 
 const HEADERS = { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}`, Origin: 'https://brainhalf.com' };
 
-const PROMPT = `Build a full-stack note-taking app with a PUBLIC backend (no authentication, no sign-in):
+const PROMPT = process.env.BH_PROMPT ?? `Build a full-stack note-taking app with a PUBLIC backend (no authentication, no sign-in):
 - Frontend: React with a text input and a list of notes
 - Backend: Hono worker with exactly these routes:
   * GET /api/notes → returns { notes: Array<{id: string, text: string}> }
@@ -44,13 +50,27 @@ function log(msg, tag = '') {
   console.log(`[${ts}]${tag ? ' ' + tag : ''} ${msg}`);
 }
 
-async function apiFetch(path, opts = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, { ...opts, headers: { ...HEADERS, ...opts.headers } });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`${path} → HTTP ${res.status}: ${text.slice(0, 300)}`);
+async function apiFetch(path, opts = {}, retries = 3) {
+  let lastErr;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(`${BASE_URL}${path}`, { ...opts, headers: { ...HEADERS, ...opts.headers } });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`${path} → HTTP ${res.status}: ${text.slice(0, 300)}`);
+      }
+      return res.json();
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries && (e.message === 'fetch failed' || e.message?.includes('connect'))) {
+        log(`${path} attempt ${attempt} failed (${e.cause?.message ?? e.message}), retrying…`, 'NET');
+        await new Promise(r => setTimeout(r, 3000 * attempt));
+        continue;
+      }
+      throw e;
+    }
   }
-  return res.json();
+  throw lastErr;
 }
 
 async function getWsTicket() {
@@ -142,18 +162,32 @@ function runGeneration(projectId) {
 // ── Start the dev backend ─────────────────────────────────────────────────────
 
 async function startDevBackend(projectId, files) {
-  // Try 'preview' first (works for both Node + Workers projects); fall back to
-  // 'dev' if preview is rejected (e.g. Node-only project).
-  const res = await fetch(`${BASE_URL}/api/projects/${projectId}/runtime/jobs?environment=development`, {
-    method: 'POST',
-    headers: HEADERS,
-    body: JSON.stringify({ kind: 'preview', files }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Start dev backend failed: HTTP ${res.status}: ${text.slice(0, 200)}`);
+  const body = JSON.stringify({ kind: 'preview', files });
+  log(`Submitting ${Object.keys(files).length} files (${body.length} bytes)`, 'RUNTIME');
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/projects/${projectId}/runtime/jobs?environment=development`, {
+        method: 'POST',
+        headers: HEADERS,
+        body,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Start dev backend failed: HTTP ${res.status}: ${text.slice(0, 200)}`);
+      }
+      return res.json().catch(() => ({}));
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 3 && (e.message === 'fetch failed' || e.cause?.message?.includes('connect'))) {
+        log(`Retry ${attempt}: ${e.cause?.message ?? e.message}`, 'RUNTIME');
+        await new Promise(r => setTimeout(r, 3000 * attempt));
+        continue;
+      }
+      throw e;
+    }
   }
-  return res.json().catch(() => ({}));
+  throw lastErr;
 }
 
 // ── Runtime polling ───────────────────────────────────────────────────────────
@@ -320,22 +354,30 @@ async function main() {
     log(`Worker entry (full):\n${workerEntry}`, 'WORKER');
   }
 
-  // ─ 2. Start dev backend ────────────────────────────────────────────────────
-  log('Starting dev backend…', 'RUNTIME');
-  try {
-    await startDevBackend(projectId, genResult.files);
-    log('Dev job submitted.', 'RUNTIME');
-  } catch (err) {
-    log(`Failed to start backend: ${err.message}`, 'ERROR');
-    await deleteProject(projectId);
-    process.exit(1);
-  }
+  // ─ 2 & 3. Start backend + poll (retry once on workspace disconnection) ───────
+  let backendResult = { ok: false, error: 'not started' };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    log(`Starting dev backend (attempt ${attempt})…`, 'RUNTIME');
+    try {
+      await startDevBackend(projectId, genResult.files);
+      log('Dev job submitted.', 'RUNTIME');
+    } catch (err) {
+      log(`Failed to start backend: ${err.message}`, 'ERROR');
+      if (err.cause) log(`Cause: ${err.cause?.message ?? err.cause}`, 'ERROR');
+      await deleteProject(projectId);
+      process.exit(1);
+    }
 
-  // ─ 3. Poll for backend ready ───────────────────────────────────────────────
-  log('Waiting for backend…', 'RUNTIME');
-  const backendResult = await pollBackend(projectId);
+    log('Waiting for backend…', 'RUNTIME');
+    backendResult = await pollBackend(projectId);
+    if (backendResult.ok) break;
 
-  if (!backendResult.ok) {
+    const isDisconnect = /disconnect|workspace/i.test(backendResult.error ?? '');
+    if (attempt < 2 && isDisconnect) {
+      log(`Workspace disconnected — waiting 10s then retrying…`, 'RUNTIME');
+      await new Promise(r => setTimeout(r, 10_000));
+      continue;
+    }
     log(`Backend failed: ${backendResult.error}`, 'ERROR');
     await deleteProject(projectId);
     process.exit(1);
@@ -363,9 +405,14 @@ async function main() {
   console.log(`  Generation: ${(genResult.totalMs / 1000).toFixed(1)}s  files: ${fileNames.length}`);
   console.log('═'.repeat(64));
 
-  log('Cleaning up project…', 'PROJ');
-  await deleteProject(projectId);
-  log('Done.', 'PROJ');
+  if (KEEP) {
+    log(`Project kept alive: ${BASE_URL}/?project=${projectId}`, 'PROJ');
+    if (checkResult.previewBase) log(`Live preview: ${checkResult.previewBase}`, 'PROJ');
+  } else {
+    log('Cleaning up project…', 'PROJ');
+    await deleteProject(projectId);
+    log('Done.', 'PROJ');
+  }
 
   if (!checkResult.ok) process.exit(1);
 }

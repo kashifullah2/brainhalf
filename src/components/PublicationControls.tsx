@@ -248,6 +248,7 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
   }, [projectId, release, status?.productionUrl]);
 
   const runtimeDomain = (runtime.status as (typeof runtime.status & { productionUrl?: string }))?.productionUrl?.replace(/https?:\/\/[^.]+\./, '') || 'apps.brainhalf.com';
+  const liveUrl = status?.productionUrl || (release ? `${window.location.origin}/p/${encodeURIComponent(projectId)}/` : '');
 
   if (slugStep === 'picking' || slugStep === 'saving') {
     const slugValid = APP_SLUG_RE.test(slugInput.trim()) && !slugError;
@@ -310,11 +311,11 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
       <p role="alert" className="publication-error">Publishing stopped: {job.message} {release ? 'Your live app is unchanged.' : 'Nothing was published.'}</p>
       <PublicationFailure key={job.id} projectId={projectId} job={job} canRepair={!busy && !generating && !active} />
     </>}
-    {release && status?.productionUrl && <div className="publication-live">
+    {release && liveUrl && <div className="publication-live">
       <strong>{currentIsLive ? 'This version is live' : 'Your published version'}</strong>
-      <a href={status.productionUrl} target="_blank" rel="noopener noreferrer">{status.productionUrl}<ExternalLink size={15} /></a>
-      <button type="button" className="button-secondary" onClick={() => { void navigator.clipboard.writeText(status.productionUrl).then(() => setCopied(true)).catch(() => setError('Copy the public URL shown above. Clipboard access is unavailable.')); }}><Copy size={14} />{copied ? 'Copied' : 'Copy public link'}</button>
-      <VisibilityToggle projectId={projectId} productionUrl={status?.productionUrl} />
+      <a href={liveUrl} target="_blank" rel="noopener noreferrer">{liveUrl}<ExternalLink size={15} /></a>
+      <button type="button" className="button-secondary" onClick={() => { void navigator.clipboard.writeText(liveUrl).then(() => setCopied(true)).catch(() => setError('Copy the public URL shown above. Clipboard access is unavailable.')); }}><Copy size={14} />{copied ? 'Copied' : 'Copy public link'}</button>
+      <VisibilityToggle projectId={projectId} productionUrl={liveUrl} />
       {!currentIsLive && <p>Publish again to put your latest changes online.</p>}
       {!confirmOffline ? <button type="button" className="button-ghost" disabled={busy || !!active} onClick={() => setConfirmOffline(true)}>Take app offline</button> : <div className="publication-offline-confirm">
         <p>Your app will stop working for visitors. Your saved information and versions stay safe — you can publish again any time.</p>

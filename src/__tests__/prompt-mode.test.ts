@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldAutoPlannerMode, isQuestionPrompt, isDestructivePrompt, isAmbiguousPrompt, shouldUseStagedPipeline } from '../lib/prompt-mode';
+import { shouldAutoPlannerMode, isQuestionPrompt, isDestructivePrompt, isAmbiguousPrompt, isConversationalPrompt, shouldUseStagedPipeline } from '../lib/prompt-mode';
 import { BUSINESS_APPS, businessValidationPrompt } from '../lib/business-apps';
 
 describe('prompt mode heuristics', () => {
@@ -28,17 +28,18 @@ describe('prompt mode heuristics', () => {
 
 describe('B5: question prompt detection', () => {
   it('detects plain-text questions that must not touch files', () => {
-    // QA: these regenerated the entire project. They must be chat-only.
     expect(isQuestionPrompt('Write a haiku about the sea.')).toBe(true);
     expect(isQuestionPrompt('Explain recursion simply.')).toBe(true);
     expect(isQuestionPrompt('What is the capital of France?')).toBe(true);
     expect(isQuestionPrompt('How does photosynthesis work?')).toBe(true);
     expect(isQuestionPrompt('Tell me a joke')).toBe(true);
     expect(isQuestionPrompt('Why is the sky blue?')).toBe(true);
+    expect(isQuestionPrompt('Do you support TypeScript?')).toBe(true);
+    expect(isQuestionPrompt('Can you explain how auth works?')).toBe(true);
+    expect(isQuestionPrompt('How does the delete button work?')).toBe(true);
   });
 
   it('does not hijack build requests as questions', () => {
-    // False positives here would silently refuse to build.
     expect(isQuestionPrompt('Build a landing page for my bakery')).toBe(false);
     expect(isQuestionPrompt('Add a dark mode toggle to settings')).toBe(false);
     expect(isQuestionPrompt('Create a todo app')).toBe(false);
@@ -46,6 +47,11 @@ describe('B5: question prompt detection', () => {
     expect(isQuestionPrompt('Write a blog post component for my site')).toBe(false);
     expect(isQuestionPrompt('build a minimal HTML button')).toBe(false);
     expect(isQuestionPrompt('Delete all files in this project')).toBe(false);
+    // Modal verbs with build intent must NOT be questions
+    expect(isQuestionPrompt('Can you build me a portfolio site?')).toBe(false);
+    expect(isQuestionPrompt('Could you add dark mode?')).toBe(false);
+    expect(isQuestionPrompt('Can you make a game?')).toBe(false);
+    expect(isQuestionPrompt('Can you fix the navbar?')).toBe(false);
   });
 });
 
@@ -55,6 +61,12 @@ describe('B4: destructive prompt detection', () => {
     expect(isDestructivePrompt('Remove every file')).toBe(true);
     expect(isDestructivePrompt('Wipe the entire codebase')).toBe(true);
     expect(isDestructivePrompt('Clear all files and start over')).toBe(true);
+    // Previously false negatives now caught
+    expect(isDestructivePrompt('delete everything')).toBe(true);
+    expect(isDestructivePrompt('scrap everything and start fresh')).toBe(true);
+    expect(isDestructivePrompt('nuke the entire project')).toBe(true);
+    expect(isDestructivePrompt('trash all files')).toBe(true);
+    expect(isDestructivePrompt('erase it all')).toBe(true);
   });
 
   it('does not flag targeted edits as destructive', () => {
@@ -62,6 +74,10 @@ describe('B4: destructive prompt detection', () => {
     expect(isDestructivePrompt('Remove the contact page')).toBe(false);
     expect(isDestructivePrompt('Write a haiku about the sea.')).toBe(false);
     expect(isDestructivePrompt('Build a landing page')).toBe(false);
+    // Previously false positives now fixed
+    expect(isDestructivePrompt('remove all unused code')).toBe(false);
+    expect(isDestructivePrompt('delete all dead code')).toBe(false);
+    expect(isDestructivePrompt('remove the header, add all pages to the project nav')).toBe(false);
   });
 });
 
@@ -82,10 +98,32 @@ describe('isAmbiguousPrompt', () => {
     expect(isAmbiguousPrompt('add a dark mode toggle')).toBe(false);
   });
 
+  it('treats descriptive something-clauses as concrete', () => {
+    expect(isAmbiguousPrompt('make something that tracks my expenses')).toBe(false);
+    expect(isAmbiguousPrompt('build something to manage inventory')).toBe(false);
+  });
+
   it('does not flag questions, chat, or destructive prompts', () => {
     expect(isAmbiguousPrompt('write a haiku about the sea')).toBe(false);
     expect(isAmbiguousPrompt('hello')).toBe(false);
     expect(isAmbiguousPrompt('delete all files')).toBe(false);
+  });
+});
+
+describe('conversational gate', () => {
+  it('catches greetings and acknowledgements', () => {
+    expect(isConversationalPrompt('hi')).toBe(true);
+    expect(isConversationalPrompt('thanks a lot')).toBe(true);
+    expect(isConversationalPrompt('ok')).toBe(true);
+    expect(isConversationalPrompt('sure')).toBe(true);
+    expect(isConversationalPrompt('got it')).toBe(true);
+    expect(isConversationalPrompt('cool')).toBe(true);
+    expect(isConversationalPrompt('yes')).toBe(true);
+    expect(isConversationalPrompt('no')).toBe(true);
+  });
+  it('does not catch real requests', () => {
+    expect(isConversationalPrompt('ok now build a dashboard')).toBe(false);
+    expect(isConversationalPrompt('thanks, now add dark mode')).toBe(false);
   });
 });
 

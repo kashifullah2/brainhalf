@@ -40,6 +40,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
   const turnstileRef = useRef<HTMLDivElement>(null);
   const turnstileTokenRef = useRef<string | null>(null);
   const turnstileWidgetId = useRef<string | null>(null);
+  const turnstilePending = useRef<{ resolve: (t: string) => void; reject: (e: Error) => void } | null>(null);
 
   // Skip in Vite dev — the widget requires a registered domain, and the CF
   // Worker that verifies the token doesn't run during local development.
@@ -47,25 +48,35 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
   const SCRIPT_ID = 'cf-turnstile-script';
   const ONLOAD_CB = '__bhTurnstileReady';
 
-  // Load Turnstile once per page; render invisible widget into the container div.
-  // Uses render=explicit so CF's script doesn't auto-scan the DOM, and the
-  // onload= param is more reliable than script.onload across re-mounts.
+  // Load the Turnstile script and render the widget in explicit-execute mode.
+  // We do NOT auto-execute on render — instead we call execute() right before
+  // each form submission, so the token is always fresh and never stale.
   useEffect(() => {
     if (!SITE_KEY || !turnstileRef.current) return;
 
     const doRender = () => {
       const w = (window as any).turnstile;
-      if (!w || !turnstileRef.current) return;
+      if (!w || !turnstileRef.current || turnstileWidgetId.current) return;
       turnstileWidgetId.current = w.render(turnstileRef.current, {
         sitekey: SITE_KEY,
         size: 'invisible',
-        callback: (token: string) => { turnstileTokenRef.current = token; },
+        execution: 'execute',
+        callback: (token: string) => {
+          turnstileTokenRef.current = token;
+          const p = turnstilePending.current;
+          turnstilePending.current = null;
+          p?.resolve(token);
+        },
         'expired-callback': () => { turnstileTokenRef.current = null; },
-        'error-callback': () => { turnstileTokenRef.current = null; },
+        'error-callback': () => {
+          turnstileTokenRef.current = null;
+          const p = turnstilePending.current;
+          turnstilePending.current = null;
+          p?.reject(new Error('challenge failed'));
+        },
       }) as string;
     };
 
-    // If the script already ran (navigating back to the login screen), render now.
     if ((window as any).turnstile) {
       doRender();
     } else if (!document.getElementById(SCRIPT_ID)) {
@@ -77,7 +88,6 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
       script.defer = true;
       document.head.appendChild(script);
     } else {
-      // Script tag exists but hasn't fired yet — patch the callback.
       (window as any)[ONLOAD_CB] = doRender;
     }
 
@@ -89,11 +99,36 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-execute the challenge when the form mode switches so a fresh token is ready.
   const resetTurnstile = useCallback(() => {
     turnstileTokenRef.current = null;
     if (turnstileWidgetId.current) (window as any).turnstile?.reset(turnstileWidgetId.current);
   }, []);
+
+  // Call execute() and wait for the token via the render callback (up to 30 s).
+  // Returns undefined when Turnstile is unavailable or blocked — the server
+  // accepts requests without a token and falls back to rate-limiting.
+  const executeTurnstile = useCallback(async (): Promise<string | undefined> => {
+    if (!SITE_KEY) return undefined;
+    const w = (window as any).turnstile;
+    if (!w || !turnstileWidgetId.current) return undefined;
+    try {
+      const token = await new Promise<string>((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (!settled) { settled = true; turnstilePending.current = null; reject(new Error('timeout')); }
+        }, 30_000);
+        turnstilePending.current = {
+          resolve: (t) => { if (!settled) { settled = true; clearTimeout(timer); resolve(t); } },
+          reject: (e) => { if (!settled) { settled = true; clearTimeout(timer); reject(e); } },
+        };
+        // execute() is void — the token arrives via the callback set in render()
+        w.execute(turnstileWidgetId.current);
+      });
+      return token;
+    } catch {
+      return undefined;
+    }
+  }, [SITE_KEY]);
 
   useEffect(() => { emailRef.current?.focus(); }, []);
 
@@ -105,7 +140,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setBusy('email');
-    const turnstileToken = turnstileTokenRef.current ?? undefined;
+    const turnstileToken = await executeTurnstile();
     resetTurnstile();
     try {
       const result = await (mode === 'login' ? login(email.trim(), password, turnstileToken) : signup(email.trim(), password, turnstileToken));
@@ -129,9 +164,10 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError('Enter your email address first.'); return; }
     if (busy) return;
     setBusy('email'); setError(null);
+    let forgotToken: string | undefined;
+    try { forgotToken = await executeTurnstile(); } catch { /* forgot-password degrades gracefully without token */ }
+    resetTurnstile();
     try {
-      const forgotToken = turnstileTokenRef.current ?? undefined;
-      resetTurnstile();
       const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: trimmed, ...(forgotToken ? { 'cf-turnstile-response': forgotToken } : {}) }) });
       const body = await res.json().catch(() => ({}));
       setNotice(body.message || 'If that account exists, a reset link has been sent.');

@@ -20,7 +20,11 @@ function fixture() {
 const textUpload = (text = 'Private product requirements') => ({ name: 'brief.md', mime: 'text/markdown', size: new TextEncoder().encode(text).length, text, dataUrl: `data:text/markdown;base64,${btoa(text)}` });
 function mockMcp() {
   const calls: string[] = [];
-  vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init: RequestInit) => {
+  vi.stubGlobal('fetch', vi.fn(async (url: unknown, init: RequestInit) => {
+    const href = String(url);
+    if (href.includes('dns-query') || href.includes('dns.google')) {
+      return Response.json({ Status: 0, Answer: [{ type: 1, data: '93.184.216.34' }] });
+    }
     if (init.method === 'GET' || init.method === 'DELETE') return new Response(null, { status: 405 });
     const body = JSON.parse(String(init.body)); calls.push(body.method);
     if (body.id === undefined) return new Response(null, { status: 202 });
