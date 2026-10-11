@@ -125,9 +125,10 @@ describe('findUncoveredFetches', () => {
     expect(findUncoveredFetches(['/api/contact', '/api/storage', '/api/storage/:param'], [])).toEqual([]);
   });
 
-  it('never flags /api/auth/:param template-literal fetches as missing', () => {
-    // fetch(`/api/auth/${token}`) → /api/auth/:param
-    expect(findUncoveredFetches(['/api/auth/:param'], [])).toEqual([]);
+  it('flags /api/auth/:param when it is not in the explicit platform set', () => {
+    // A custom auth endpoint the app implements itself should still be checked.
+    // Only the explicit PLATFORM_PROVIDED_ROUTES set is excluded.
+    expect(findUncoveredFetches(['/api/auth/:param'], [])).toEqual(['/api/auth/:param']);
   });
 
   it('still flags genuinely missing app routes even when platform routes are present', () => {

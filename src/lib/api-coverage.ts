@@ -102,10 +102,7 @@ function isCoveredByRoute(fetchPath: string, route: string): boolean {
 export function findUncoveredFetches(fetches: string[], routes: string[]): string[] {
   if (routes.some(r => /\/api\/\*/.test(r) || r === '/api/')) return [];
   return fetches.filter(f => {
-    const normalized = normalizeApiPath(f);
-    if (PLATFORM_PROVIDED_ROUTES.has(normalized)) return false;
-    // /api/auth/* variants (e.g. /api/auth/:param from fetch(`/api/auth/${token}`))
-    if (normalized.startsWith('/api/auth/')) return false;
+    if (PLATFORM_PROVIDED_ROUTES.has(normalizeApiPath(f))) return false;
     return !routes.some(r => isCoveredByRoute(f, r));
   });
 }

@@ -217,6 +217,7 @@ const SYNTAX_REPAIR_MARKER = '[AUTO-FIX] These files were discarded because of s
 export const PHANTOM_HOOK_REPAIR_MARKER = '[AUTO-FIX] These files use useAuth/AuthProvider/AuthContext without defining them:';
 export const VERIFY_FILE_REPAIR_MARKER = '[AUTO-FIX] brainhalf.verify.json is invalid:';
 const ROUTE_COVERAGE_REPAIR_MARKER = '[AUTO-FIX] The frontend calls these /api/ routes but no matching handler exists in worker/index.ts:';
+const APP_ENTRY_REPAIR_MARKER = '[AUTO-FIX] The generation finished but the app entry file is still the starter placeholder:';
 const MIN_FULL_APP_RESPONSE_CHARS = 260;
 const MIN_FULL_APP_RESPONSE_LINES = 5;
 
@@ -466,8 +467,27 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   private phantomHookRepairAttempts = 0;
   private verifyFileRepairAttempts = 0;
   private apiRouteCoverageRepairAttempts = 0;
+  private appEntryRepairAttempts = 0;
   private flipFlopGuard = new FlipFlopGuard();
   private repairLog = new RepairLog();
+
+  /**
+   * A brand-new user prompt breaks every auto-repair streak: counters only
+   * track consecutive repairs within one retry chain, which the server
+   * recognizes via its own continuation prompts. Every bounded repair counter
+   * must be reset here — a counter left out stays exhausted for the rest of
+   * the agent's lifetime and its check silently stops repairing.
+   */
+  private resetRepairCounters(): void {
+    this.truncationRetries = 0;
+    this.syntaxRepairAttempts = 0;
+    this.finalCompletenessRepairAttempts = 0;
+    this.phantomHookRepairAttempts = 0;
+    this.verifyFileRepairAttempts = 0;
+    this.apiRouteCoverageRepairAttempts = 0;
+    this.appEntryRepairAttempts = 0;
+    this.flipFlopGuard?.clear();
+  }
   /** Last-known kill-switch snapshot; survives within a DO instance lifetime. */
   private killSwitchCache: KillSwitchStatus | null = null;
   /**
@@ -938,7 +958,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
 
   private getLastWrittenPaths(): Set<string> {
     try {
-      const rows = this.runSql<{ completed_files: string }>`SELECT completed_files FROM generation_jobs WHERE status = 'completed' ORDER BY updated_at DESC LIMIT 1`;
+      const rows = this.runSql<{ completed_files: string }>`SELECT completed_files FROM generation_jobs WHERE status = 'complete' ORDER BY updated_at DESC LIMIT 1`;
       if (rows.length > 0 && rows[0].completed_files) {
         const files: unknown = JSON.parse(rows[0].completed_files);
         return new Set(Array.isArray(files) ? (files as string[]) : []);
@@ -1251,7 +1271,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // Connection drops and transient provider errors (not user stops) auto-resume
           // on reconnect: the user didn't ask to stop, so don't make them click.
           // Bounded by MAX_RESUMES.
-          autoResume: !!resumable.error && /connection dropped|internal error|temporarily overloaded|too much traffic|took too long to respond/i.test(resumable.error),
+          autoResume: !!resumable.error && /connection dropped|internal error|temporarily overloaded|too much traffic|took too long to respond|ran out of time/i.test(resumable.error),
         };
       }
     } catch { /* resumable state is auxiliary */ }
@@ -1402,6 +1422,31 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       } catch { }
     }
     return null;
+  }
+
+  /**
+   * R-3: When a fresh build writes files but leaves the App entry as the
+   * starter placeholder (or absent entirely), the app is functionally blank.
+   * `checkFinalCompleteness` can't catch this because nothing *imports*
+   * App.tsx — it's the root. Queue one bounded repair turn demanding the entry.
+   */
+  private checkMissingAppEntry(allFiles: Map<string, string>, connection: Connection): string | null {
+    if (allFiles.size === 0) return null;
+    const appTsx = allFiles.get('/src/App.tsx') ?? allFiles.get('/src/App.jsx');
+    // Only flag when the entry is a starter placeholder or completely absent.
+    // A non-starter entry is fine regardless of what else changed.
+    if (appTsx && !isStarterApp(appTsx)) return null;
+    if (this.appEntryRepairAttempts >= 1) return null;
+    this.appEntryRepairAttempts++;
+    const which = allFiles.has('/src/App.tsx') ? '/src/App.tsx' : '/src/App.jsx';
+    const reason = appTsx ? 'still contains the starter placeholder' : 'was never written';
+    try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Completing the app entry file…' })); } catch { }
+    return (
+      `${APP_ENTRY_REPAIR_MARKER} ${which} ${reason}.\n\n` +
+      `Write a complete, working ${which} that implements the user\'s requested app. ` +
+      `Use the other files already written as context (components, types, routes). ` +
+      `Do not modify any other file.`
+    );
   }
 
   private verifyFinalCompleteness(connection: Connection, defer: (event: () => void) => void = event => event()): boolean {
@@ -1559,7 +1604,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       return (
         `${ROUTE_COVERAGE_REPAIR_MARKER}\n${list}\n\n` +
         `Add the missing route handler(s) to /worker/index.ts. ` +
-        `Use the existing auth middleware and D1 pattern already in that file. ` +
+        `Follow the routing, database and auth patterns already present in that file. ` +
+        `Never add handlers for platform-provided routes (/api/auth/*, /api/contact, /api/storage) — the platform serves them in front of the worker. ` +
         `Do not modify any other file.`
       );
     }
@@ -2390,10 +2436,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     modes?: { destructiveMode?: boolean; questionMode?: boolean; ambiguousMode?: boolean; isIncrementalEdit?: boolean; isFreshBuild?: boolean },
     staticSystemPart?: string
   ): Promise<void> {
-    // A brand-new user prompt breaks any truncation-retry streak: the counter
-    // only tracks consecutive truncations within one retry chain, which the
-    // server recognizes via its own continuation prompts.
-    if (!isSystemContinuation(actualPrompt)) { this.truncationRetries = 0; this.syntaxRepairAttempts = 0; this.finalCompletenessRepairAttempts = 0; this.phantomHookRepairAttempts = 0; this.apiRouteCoverageRepairAttempts = 0; this.flipFlopGuard?.clear(); }
+    if (!isSystemContinuation(actualPrompt)) this.resetRepairCounters();
     const controls = generationControls(data);
     const generationTimeoutMs = controls.timeoutMs;
     const maxSteps = controls.maxSteps;
@@ -3496,6 +3539,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                           );
                           const results = await Promise.all(
                             [
+                              () => this.checkMissingAppEntry(allFiles, connection),
                               () => this.checkFinalCompleteness(allFiles, connection),
                               () => this.checkNoPhantomAuthHooks(allFiles, connection),
                               () => this.checkVerificationPlanFile(allFiles, connection),
@@ -3551,7 +3595,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   // A custom endpoint rejecting the tool payload (400s naming
                   // tools/functions/schema) is not a transient failure — drop
                   // the tools and retry the stage once with plain text output.
-                  if (customModel && !customToolsDisabled && !displayContent && !abortController.signal.aborted
+                  // Gate on no streamed text AND no tool writes this stage — tool summary
+                  // markup sets displayContent even before any real output, poisoning the
+                  // original !displayContent check after the first tool call.
+                  if (customModel && !customToolsDisabled && !streamedText && toolWrittenPaths.size === stageToolWrittenPaths.size && !abortController.signal.aborted
                     && /\btools?\b|\bfunctions?\b|schema|400|bad request|invalid (?:param|argument|request)/i.test(errMessage)) {
                     customToolsDisabled = true;
                     console.warn(`Custom model ${customModel.name} rejected tool calling; retrying stage "${stage.stageId}" without tools`);
@@ -3800,7 +3847,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 // Live interruptions from connection drops or transient provider
                 // errors auto-resume on the client (bounded by MAX_RESUMES) —
                 // the user didn't ask to stop, so don't make them click.
-                autoResume: !!jobError && /connection dropped|internal error|temporarily overloaded|too much traffic|took too long to respond/i.test(jobError),
+                autoResume: !!jobError && /connection dropped|internal error|temporarily overloaded|too much traffic|took too long to respond|ran out of time/i.test(jobError),
               } : null,
               resumable,
             });

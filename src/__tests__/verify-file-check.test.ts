@@ -204,3 +204,32 @@ describe('verifyVerificationPlanFile: structural coverage', () => {
     expect(VERIFY_FILE_REPAIR_MARKER.length).toBeGreaterThan(10);
   });
 });
+
+describe('resetRepairCounters', () => {
+  it('resets every bounded repair counter so a new user prompt re-arms all checks', () => {
+    const { agent } = makeAgent({});
+    agent.truncationRetries = 3;
+    agent.syntaxRepairAttempts = 1;
+    agent.finalCompletenessRepairAttempts = 1;
+    agent.phantomHookRepairAttempts = 1;
+    agent.verifyFileRepairAttempts = 1;
+    agent.apiRouteCoverageRepairAttempts = 1;
+    agent.resetRepairCounters();
+    expect(agent.truncationRetries).toBe(0);
+    expect(agent.syntaxRepairAttempts).toBe(0);
+    expect(agent.finalCompletenessRepairAttempts).toBe(0);
+    expect(agent.phantomHookRepairAttempts).toBe(0);
+    expect(agent.verifyFileRepairAttempts).toBe(0);
+    expect(agent.apiRouteCoverageRepairAttempts).toBe(0);
+  });
+
+  it('re-arms the verify-file check after a reset (regression: counter was never reset)', () => {
+    const files = { '/worker/index.ts': 'export default { fetch() {} };' };
+    const { agent, connection } = makeAgent(files);
+    expect(runCheck(agent, connection)).toBe(true);
+    // Counter exhausted — no further repairs until a new user prompt resets it.
+    expect(runCheck(agent, connection)).toBe(false);
+    agent.resetRepairCounters();
+    expect(runCheck(agent, connection)).toBe(true);
+  });
+});
