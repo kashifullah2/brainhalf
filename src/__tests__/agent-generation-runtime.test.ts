@@ -15,7 +15,7 @@ vi.mock('@ai-sdk/openai', () => ({ createOpenAI: () => ({ chat: () => providerSt
 import { BUILDER_SCHEMA } from '../lib/builder-service';
 import { ChatAgent } from '../agent';
 import { BusyLock, IdempotencyStore, WriteEpoch } from '../lib/concurrency';
-import { AI_TIMEOUT_MS } from '../lib/models';
+import { AI_TIMEOUT_MS, STREAM_FIRST_CHUNK_TIMEOUT_MS } from '../lib/models';
 
 const databases: DatabaseSync[] = [];
 
@@ -439,9 +439,11 @@ describe('Agent generation against the installed AI SDK', () => {
     const { run, events, agent } = createAgent();
     providerState.model = new MockLanguageModelV4({ doStream: () => new Promise(() => {}) });
     const pending = run();
-    await vi.advanceTimersByTimeAsync(AI_TIMEOUT_MS);
+    // The idle watchdog fires at STREAM_FIRST_CHUNK_TIMEOUT_MS (120s) for a
+    // stream that never delivers a first chunk — no need to wait the full AI_TIMEOUT_MS.
+    await vi.advanceTimersByTimeAsync(STREAM_FIRST_CHUNK_TIMEOUT_MS + 100);
     await pending;
-    expect(events.find(event => event.type === 'error')?.error).toMatch(/exceeded.*retry/i);
+    expect(events.find(event => event.type === 'error')?.error).toMatch(/stalled|ran out of time|exceeded.*retry/i);
     expect(agent.currentAbortController).toBeNull();
   });
 });

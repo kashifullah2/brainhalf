@@ -50,6 +50,10 @@ export const MAX_OUTPUT_TOKENS = 65536;
  */
 export const AI_TIMEOUT_MS = 10 * 60 * 1000;
 export const MODEL_TEST_TIMEOUT_MS = 5 * 60 * 1000;
+/** 120s deadline for the first chunk from a provider stream — hung upstream detection. */
+export const STREAM_FIRST_CHUNK_TIMEOUT_MS = 120_000;
+/** 60s steady-state idle timeout — resets on every data chunk from the stream. */
+export const STREAM_IDLE_TIMEOUT_MS = 60_000;
 export const DEFAULT_MODEL_ID = '@cf/deepseek-ai/deepseek-v4-flash-0731';
 
 // Sonnet 4.6 and Kimi K3 both support 64k output tokens. The old 8,192 cap

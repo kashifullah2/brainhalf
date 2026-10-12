@@ -18,7 +18,7 @@ import { createTypeScriptStarter } from './lib/project-starters';
 import { prepareModuleSource, buildTranspileErrorModule, findDanglingImports } from './lib/preview-module-transform';
 import { executeBackendRequest, InMemoryDataStore } from './lib/backend-runner';
 import { getRequestUserId, getRegistry, isProjectOwner, USER_ID_HEADER, USER_ID_QUERY_PARAM, SESSION_HASH_QUERY_PARAM } from './lib/auth';
-import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, MODEL_ALLOWLIST, capTokenLimit, resolveModel, withAbortSignal, modelSupportsThinking, killSwitchRefusal, resolveKillSwitchStatus, type AllowedModel, type KillSwitchStatus } from './lib/models';
+import { AI_TIMEOUT_MS, DEFAULT_MODEL_ID, MAX_OUTPUT_TOKENS, MODEL_ALLOWLIST, STREAM_FIRST_CHUNK_TIMEOUT_MS, STREAM_IDLE_TIMEOUT_MS, capTokenLimit, resolveModel, withAbortSignal, modelSupportsThinking, killSwitchRefusal, resolveKillSwitchStatus, type AllowedModel, type KillSwitchStatus } from './lib/models';
 import { safeFetchText } from './lib/ssrf';
 import { validateRuntimeProviders } from './lib/runtime-config';
 import { BEDROCK_ALIASES, createBedrockClient, providerCredentials, providerModel, selectModelTransport, type ProviderLanguageModel } from './lib/provider-clients';
@@ -347,6 +347,15 @@ const GENERATION_LIMITER = new RateLimiter({
  * falling back to `dflt` when it is missing or not a number. Used for get_files
  * limit/offset, which must never be trusted to be finite or in range.
  */
+/**
+ * Strip <think>...</think> reasoning blocks before passing model output to the
+ * file extractor. Models like MiniMax M2.7 always emit thinking tokens in the
+ * same stream as content; they must not be parsed as file blocks.
+ */
+function stripThinkingBlocks(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trimStart();
+}
+
 function clampInt(value: unknown, min: number, max: number, dflt: number): number {
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n)) return dflt;
@@ -2578,7 +2587,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           // pipeline (token caps, logging) works unchanged.
           let resolved: AllowedModel;
           if (customModel) {
-            resolved = { id: customModel.modelId, name: customModel.name, provider: 'custom', maxTokens: 32768, clientSelectable: false };
+            resolved = { id: customModel.modelId, name: customModel.name, provider: 'custom', maxTokens: MAX_OUTPUT_TOKENS, clientSelectable: false };
           } else {
             const allowlisted = resolveModel(requestedModel, data.provider);
             if (!allowlisted) {
@@ -3241,9 +3250,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
               };
               const custom = createOpenAI({ apiKey: customModel.apiKey, baseURL: customModel.baseUrl, compatibility: 'compatible', fetch: patchedFetch } as any);
               aiModel = custom.chat(customModel.modelId);
-              // OpenAI-compatible custom endpoints vary in ceiling; 32k matches
-              // the platform default instead of truncating every app at 8k.
-              maxTokensForModel = 32768;
+              maxTokensForModel = MAX_OUTPUT_TOKENS;
             } catch (err) {
               sendError(err instanceof Error ? err.message : 'Custom model is not configured');
               return;
@@ -3364,6 +3371,22 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                 };
                 
                 if (stageIdx > 0) emitCostEstimate(stageSystemPrompt, currentNativeMessages);
+                // F-4: per-stage idle watchdog — abort the stream if no chunk
+                // arrives within the deadline. First chunk gets 120s (hanging
+                // upstream); subsequent chunks get 60s (stalled stream body).
+                let idleTimerFirstChunk = true;
+                let idleTimer: ReturnType<typeof setTimeout> | undefined;
+                const resetIdleTimer = () => {
+                  clearTimeout(idleTimer);
+                  const ms = idleTimerFirstChunk ? STREAM_FIRST_CHUNK_TIMEOUT_MS : STREAM_IDLE_TIMEOUT_MS;
+                  idleTimer = setTimeout(() => {
+                    if (!abortController.signal.aborted) {
+                      abortController.abort(new Error('The model stream stalled; ran out of time'));
+                    }
+                  }, ms);
+                };
+                resetIdleTimer();
+
                 const streamOptions: Parameters<typeof streamText>[0] = {
                   model: meteredModel(activeAiModel, () => { accounting.providerCalls++; }),
                   // Anthropic and Bedrock support prompt caching. Split the system prompt
@@ -3434,6 +3457,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                       abortController.abort();
                       return;
                     }
+                    idleTimerFirstChunk = false;
+                    resetIdleTimer();
                     // The ai-sdk has shipped three spellings of a text chunk
                     // (textDelta, text, delta); accept all of them.
                     const chunk = (event?.chunk ?? event) as {
@@ -3476,6 +3501,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   connection.send(JSON.stringify({ type: 'generation_notice', message: stage.notice, stage: stage.stageId, requestId: data.idempotencyKey }));
                   const result = streamText(streamOptions);
                   const finalText = await withAbortSignal(result.text, abortController.signal);
+                  clearTimeout(idleTimer);
                   const usage = await withAbortSignal(result.totalUsage, abortController.signal);
                   this.captureUsage(usage.inputTokens, usage.outputTokens, usage.inputTokenDetails);
                   const inTok = usage.inputTokens ?? 0;
@@ -3486,7 +3512,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   if (streamErrorCaught) throw streamErrorCaught;
                   if (!this.writeEpoch.accepts(epoch)) return;
                   flushFrame();
-                  const text = streamedText || finalText;
+                  const text = stripThinkingBlocks(streamedText || finalText);
                   if (!streamedText) sendDisplay(transcript.push(finalText));
                   sendDisplay(transcript.push('', true));
                   const stageNewPaths = new Set([...toolWrittenPaths].filter(p => !stageToolWrittenPaths.has(p)));
@@ -3583,6 +3609,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                   stageCompleted = true;
                   break;
                 } catch (streamErr) {
+                  clearTimeout(idleTimer);
                   flushFrame();
                   const effectiveErr: unknown = streamErrorCaught || streamErr;
                   const errMessage = errorMessage(effectiveErr);
