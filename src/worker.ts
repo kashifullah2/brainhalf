@@ -478,10 +478,11 @@ export default {
           const parsed = JSON.parse(bodyText) as Record<string, unknown>;
           if (typeof parsed['cf-turnstile-response'] === 'string') cfToken = parsed['cf-turnstile-response'];
         } catch { /* invalid JSON — let the downstream handler return 400 */ }
-        // Only reject if a token was sent but is invalid. Missing tokens are
-        // allowed through so users with blocked scripts can still log in
-        // (rate limiting remains the primary bot defence).
-        if (cfToken && !(await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, clientKey(request)))) {
+        // Fail closed: when the secret is configured a valid token is required.
+        // A missing token is treated the same as an invalid one — bots that
+        // strip the widget also strip the token, so allowing missing tokens
+        // makes the widget decorative for automated clients.
+        if (!cfToken || !(await verifyTurnstileToken(cfToken, env.TURNSTILE_SECRET_KEY, clientKey(request)))) {
           return withCors(jsonError('Please complete the security check', 400), origin);
         }
         // Reconstruct the request so downstream handlers can read the body.
@@ -1258,7 +1259,7 @@ async function runScheduled(cron: string, env: PlatformEnv): Promise<void> {
     try {
       if (!env.PILOT || !env.REGISTRY) return;
       const registry = env.REGISTRY.get(env.REGISTRY.idFromName('auth'));
-      const res = await registry.fetch('https://registry/admin/projects');
+      const res = await registry.fetch('https://registry/admin/project-id-index');
       if (!res.ok) { structuredLog('warn', 'cron_slot_sweep_registry_error', { status: res.status }); return; }
       const body = await res.json() as { projects?: Array<{ id: string; ownerId: string; deleted?: boolean }> };
       // Group live (non-deleted) project IDs by owner so each owner's pilot
@@ -1290,11 +1291,17 @@ async function runScheduled(cron: string, env: PlatformEnv): Promise<void> {
       const data = await res.json() as { apps?: Array<{ id: string; name?: string; description?: string }> };
       const apps = data.apps ?? [];
       let upserted = 0;
+      let skipped = 0;
       for (const app of apps) {
-        await upsertProjectVector(env, app.id, app.name ?? '', app.description ?? '');
-        upserted++;
+        try {
+          await upsertProjectVector(env, app.id, app.name ?? '', app.description ?? '');
+          upserted++;
+        } catch (itemErr) {
+          skipped++;
+          structuredLog('warn', 'cron_vectorize_item_failed', { id: app.id, cause: itemErr instanceof Error ? itemErr.message : String(itemErr) });
+        }
       }
-      structuredLog('info', 'cron_vectorize_backfill_done', { upserted });
+      structuredLog('info', 'cron_vectorize_backfill_done', { upserted, skipped });
     } catch (err) {
       structuredLog('error', 'cron_vectorize_backfill_failed', { cause: err instanceof Error ? err.message : String(err) });
     }

@@ -574,15 +574,26 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       if (!safePath || safePath.includes('..') || /(?:^|\/)\.{2}(?:\/|$)/.test(safePath) || /^(?:node_modules|\.git|dist)\//.test(safePath)) throw new RuntimeError('Path not allowed.', 400);
       if (isBlockedSecretFile(safePath)) throw new RuntimeError('Writing secret files is not allowed.', 400);
       if (body.content.length > DEV_LIVE_FILE_MAX_BYTES) throw new RuntimeError(`File too large (max ${DEV_LIVE_FILE_MAX_BYTES / 1024} KB).`, 413);
-      const job = await this.ctx.storage.get<StoredJob>('current');
-      if (!job || job.status !== 'running' || !job.previewReady || !['preview', 'dev'].includes(job.kind)) throw new RuntimeError('No running dev server to push to.', 409);
-      const nowMin = Math.floor(Date.now() / 60_000);
-      if (job.devLiveFileMinute !== nowMin) { job.devLiveFileMinute = nowMin; job.devLiveFileCount = 0; }
-      if ((job.devLiveFileCount ?? 0) >= DEV_LIVE_FILE_RATE_PER_MIN) throw new RuntimeError('Too many file pushes this minute. Wait a moment before pushing more files.', 429);
-      job.devLiveFileCount = (job.devLiveFileCount ?? 0) + 1;
-      await this.sandbox(job).writeFile(`/workspace/project/${safePath}`, body.content);
-      job.devLastActiveAt = Date.now();
-      await this.saveJob(job);
+      // Atomic rate-check + increment: read, check, and write all happen inside
+      // one storage transaction with no non-storage awaits between them. This
+      // prevents two concurrent pushes from both reading count=N and both
+      // deciding they are under the cap (the previous TOCTOU race).
+      let checkedJob!: StoredJob;
+      await this.ctx.storage.transaction(async txn => {
+        const job = await txn.get<StoredJob>('current');
+        if (!job || job.status !== 'running' || !job.previewReady || !['preview', 'dev'].includes(job.kind)) throw new RuntimeError('No running dev server to push to.', 409);
+        const nowMin = Math.floor(Date.now() / 60_000);
+        if (job.devLiveFileMinute !== nowMin) { job.devLiveFileMinute = nowMin; job.devLiveFileCount = 0; }
+        if ((job.devLiveFileCount ?? 0) >= DEV_LIVE_FILE_RATE_PER_MIN) throw new RuntimeError('Too many file pushes this minute. Wait a moment before pushing more files.', 429);
+        job.devLiveFileCount = (job.devLiveFileCount ?? 0) + 1;
+        job.updatedAt = Date.now();
+        await txn.put('current', job);
+        checkedJob = job;
+      });
+      // Sandbox write happens after the counter is safely committed.
+      await this.sandbox(checkedJob).writeFile(`/workspace/project/${safePath}`, body.content);
+      checkedJob.devLastActiveAt = Date.now();
+      await this.saveJob(checkedJob);
       return Response.json({ ok: true });
     }
     throw new RuntimeError('That page or action was not found. Try refreshing, or go back to your project.', 404);

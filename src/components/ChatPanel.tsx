@@ -397,7 +397,7 @@ interface ChatPanelProps {
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', width, initialPrompt, onInitialPromptConsumed }) => {
-  const { isCurrent, getProjectFiles, getProjectMessages, getProjectMessagesAsync, saveProjectMessages, deleteProjectMessages, getProjectFilesAsync, saveProjectFiles, getProjects, updateProjectName } = React.useMemo(bindProjectStore, []);
+  const { isCurrent, getProjectFiles, getProjectMessages, getProjectMessagesAsync, saveProjectMessages, deleteProjectMessages, saveProjectFiles, getProjects, updateProjectName } = React.useMemo(bindProjectStore, []);
   const [input, setInput] = useState('');
   // Empty-send guidance: the Send button stays clickable so an empty tap can
   // explain what to do, instead of sitting dead with no feedback.
@@ -715,6 +715,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   // File parsing & workspace state
   const bufferRef = useRef('');
   const aiMessageRef = useRef('');
+  // Cache the last parse result to avoid re-parsing unchanged prefix on every RAF tick.
+  const lastParsedLengthRef = useRef(0);
+  const lastParsedSegmentsRef = useRef<ReturnType<typeof parseMessageSegments>['segments']>([]);
   const currentFilesRef = useRef<Record<string, string>>(getProjectFiles(activeProjectId) || {});
   const currentGenIdRef = useRef(0);
   const generationModelIdRef = useRef<string | null>(null);
@@ -1164,8 +1167,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   if (!pendingTokensRef.current) return;
                   pendingTokensRef.current = '';
 
-                  // Parse files and edits into file map without leaking raw wrapper tags
-                  const { segments } = parseMessageSegments(bufferRef.current, false);
+                  // Re-parse only when the buffer grew; otherwise reuse cached result.
+                  if (bufferRef.current.length !== lastParsedLengthRef.current) {
+                    const { segments } = parseMessageSegments(bufferRef.current, false);
+                    lastParsedLengthRef.current = bufferRef.current.length;
+                    lastParsedSegmentsRef.current = segments;
+                  }
+                  const segments = lastParsedSegmentsRef.current;
 
                   // Notify workspace of active file being generated or patched.
                   // Single reverse scan avoids repeated array allocations.
@@ -1293,7 +1301,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               rafHandleRef.current = null;
             }
             pendingTokensRef.current = '';
-            bufferRef.current = '';
+            bufferRef.current = ''; lastParsedLengthRef.current = 0; lastParsedSegmentsRef.current = [];
             aiMessageRef.current = '';
             const cleared = [...messagesRef.current];
             if (cleared.length && cleared[cleared.length - 1]?.role === 'ai') {
@@ -1439,17 +1447,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               detail: `Deleted ${data.path}...`,
               projectId: activeProjectId,
             });
-          } else if (data.type === 'request_sync') {
-            if (syncMode !== 'legacy') return;
-            const files = await getProjectFilesAsync(activeProjectId);
-            if (!isMounted || !isCurrent()) return;
-            if (files && Object.keys(files).length > 0 && ws?.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'sync_files',
-                replace_all: true,
-                files
-              }));
-            }
           } else if (data.type === 'files_synced' && Number.isSafeInteger(data.revision) && data.revision >= 0) {
             serverRevision = data.revision;
             writeInFlight = false;
@@ -1938,7 +1935,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       ? messagesRef.current.slice(0, editingMessageIndex)
       : null;
     if (historyBeforeEdit) setEditingMessageIndex(null);
-    bufferRef.current = '';
+    bufferRef.current = ''; lastParsedLengthRef.current = 0; lastParsedSegmentsRef.current = [];
     aiMessageRef.current = '';
 
     const newMsgs: Message[] = [
@@ -2118,7 +2115,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     resumableJobRef.current = null;
     setResumableJob(null);
-    bufferRef.current = '';
+    bufferRef.current = ''; lastParsedLengthRef.current = 0; lastParsedSegmentsRef.current = [];
     aiMessageRef.current = '';
     generationTouchedFilesRef.current = false;
     setElapsedSeconds(0);

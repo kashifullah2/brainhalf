@@ -2520,6 +2520,9 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       if (this.activeJobId === accounting.id) this.activeJobId = null;
       try { this.runSql`UPDATE generation_usage SET finished_at=${Date.now()},status=${'stopped'} WHERE id=${accounting.id}`; } catch (e) { console.warn('Failed to record generation stop:', e); }
       if (this.activeGeneration?.epoch === epoch) this.activeGeneration = null;
+      // L-3: superseded before the outer try/finally, so its resolveCompletenessRepair
+      // never fires. Resolve here so the parent repair turn is not left open.
+      this.resolveCompletenessRepair(actualPrompt, accounting.id, false, null, true);
       return;
     }
 
@@ -3073,6 +3076,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
                     }
                     if (env?.AI) {
                       if (abortController.signal.aborted || !this.writeEpoch.accepts(epoch)) return { success: false, error: 'Generation stopped' };
+                      // F-8: check kill-switch before delegating to a sub-model.
+                      const subStatus = await getKillSwitchStatus();
+                      if (subStatus !== null) {
+                        const subRefusal = getDisabledMsg(subStatus);
+                        if (subRefusal) return { success: false, error: subRefusal };
+                      }
                       // Budget was reserved once at generation start; no per-call reserve needed.
                       accounting.providerCalls++;
                       const response = await withAbortSignal<any>(env.AI.run(cfEntry.id, { prompt, max_tokens: capTokenLimit(8192, cfEntry) }, { signal: abortController.signal }), abortController.signal);
@@ -4435,6 +4444,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     if (cursor < text.length) segments.push({ start: cursor, text: text.slice(cursor) });
 
     for (const segment of segments) {
+      if (!segment.text.trim()) continue;
       const fileRegex = /<file\s+path=["']([^"']+)["']>([\s\S]*?)(?:<\/file>|(?=<(?:file|edit|delete)\s+path=)|$)/gi;
       let match;
       while ((match = fileRegex.exec(segment.text)) !== null) {
@@ -4988,7 +4998,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       // source and POST to /api/sync.
       const origin = safeOrigin(request.headers.get('origin'));
       const sameOrigin = origin != null && origin === url.origin;
-      const isDevOrigin = origin != null && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      const isDevOrigin = this.env?.IS_DEV === 'true' && origin != null && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
       const allow = sameOrigin || isDevOrigin ? (origin as string) : url.origin;
       return {
         'Access-Control-Allow-Origin': allow,

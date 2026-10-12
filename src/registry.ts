@@ -447,6 +447,17 @@ export class AuthRegistry {
           })),
         });
       }
+      // N-2: lightweight unbounded index for the cron slot sweep. The
+      // /admin/projects UI endpoint caps at 500 rows; this one returns every
+      // project id so the sweep never silently skips older deleted rows.
+      if (path === '/admin/project-id-index' && method === 'GET') {
+        const rows = this.sql.exec(
+          `SELECT project_id, user_id, deleted_at FROM project_owners`
+        ).toArray() as Array<{ project_id: string; user_id: string; deleted_at: number | null }>;
+        return this.json(200, {
+          projects: rows.map(r => ({ id: r.project_id, ownerId: r.user_id, deleted: r.deleted_at != null })),
+        });
+      }
       // Operator hard delete: fully erase a project from scratch. Unlike the
       // user-facing DELETE (which tombstones and cleans up async), this runs
       // the storage cleanup SYNCHRONOUSLY first — runtime slot, agent DO,
@@ -519,6 +530,11 @@ export class AuthRegistry {
           return this.json(500, { error: 'Project cleanup failed; the account was not deleted.', failedSteps });
         }
         const email = exists[0].email;
+        // N-1: collect session token hashes before deletion so we can evict the
+        // KV cache immediately rather than waiting for the 5-minute TTL to expire.
+        const sessionHashes = (this.sql.exec(
+          'SELECT token_hash FROM sessions WHERE user_id = ?', userId
+        ).toArray() as Array<{ token_hash: string }>).map(r => r.token_hash);
         this.state.storage.transactionSync(() => {
           this.sql.exec('CREATE TABLE IF NOT EXISTS project_cleanup (project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, step INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, completed_at INTEGER)');
           for (const projectId of deletedProjects) {
@@ -534,6 +550,11 @@ export class AuthRegistry {
           this.sql.exec('DELETE FROM users WHERE id = ?', userId);
         });
         this.galleryCache = null;
+        // N-1: evict all session KV entries so the 5-minute cache window does not
+        // outlive admin-triggered account deletion.
+        if (this.env.SESSION_CACHE && sessionHashes.length > 0) {
+          Promise.allSettled(sessionHashes.map(h => this.env.SESSION_CACHE.delete(`session:${h}`))).catch(() => {});
+        }
         return this.json(200, { ok: true, deletedUser: email, deletedProjects: deletedProjects.length });
       }
       // Admin custom models: list, add, delete, and test.
@@ -679,15 +700,15 @@ export class AuthRegistry {
         const id = safeDecode(path.slice('/internal/custom-model/'.length)) ?? '';
         if (!id.startsWith('cm_')) return this.json(400, { error: 'Invalid request' });
         const rows = this.sql.exec(
-          'SELECT base_url, model_id, api_key_encrypted FROM custom_models WHERE id = ?', id
-        ).toArray() as Array<{ base_url: string; model_id: string; api_key_encrypted: string }>;
+          'SELECT name, base_url, model_id, api_key_encrypted FROM custom_models WHERE id = ?', id
+        ).toArray() as Array<{ name: string; base_url: string; model_id: string; api_key_encrypted: string }>;
         if (!rows.length) return this.json(404, { error: 'Model not found' });
         const secret = (this.env as Record<string, unknown>).MODEL_KEY_SECRET as string | undefined;
         if (!secret) return this.json(500, { error: 'MODEL_KEY_SECRET is not configured. Set it as a Worker secret to enable custom model storage.' });
         const { decryptValue } = await import('./lib/crypto');
         const apiKey = await decryptValue(secret, rows[0].api_key_encrypted);
         if (!apiKey) return this.json(500, { error: 'Could not decrypt the API key.' });
-        return this.json(200, { id, baseUrl: rows[0].base_url, modelId: rows[0].model_id, apiKey });
+        return this.json(200, { id, name: rows[0].name, baseUrl: rows[0].base_url, modelId: rows[0].model_id, apiKey });
       }
       if (path === '/oauth/store' && method === 'POST') {
         const body = await json<{ key?: string; kind?: string; data?: unknown; ttl?: number }>();

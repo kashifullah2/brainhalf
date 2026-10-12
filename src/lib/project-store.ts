@@ -655,14 +655,17 @@ function fetchProjectSnapshot(projectId: string): Promise<{ files: Record<string
         signal: AbortSignal.timeout(15_000),
       }, { clearOnUnauthorized: false });
       if (!res.ok) return null;
-      const body = await res.json().catch(() => null) as { files?: unknown; messages?: unknown } | null;
+      const body = await res.json().catch(() => null) as { files?: unknown; messages?: unknown; revision?: unknown } | null;
       if (!body || typeof body.files !== 'object' || !body.files) return null;
       const files = body.files as Record<string, string>;
       const messages = Array.isArray(body.messages) ? body.messages : [];
+      const revision = typeof body.revision === 'number' ? body.revision : null;
       if (scope !== accountScope || projectDeleted(projectId)) return null;
       // Cache both in IDB so subsequent reads hit the local store.
       void idbSet('files', projectId, files);
       void idbSet('messages', projectId, messages);
+      // Store the server revision so future cold-starts can detect stale IDB data.
+      if (revision !== null) void idbSet('files', `revision:${projectId}`, revision);
       memoryCache[`files_${projectId}`] = files;
       memoryCache[`messages_${projectId}`] = messages;
       markStorageWrite(`files_${projectId}`);
@@ -732,6 +735,12 @@ export async function getProjectFilesAsync(projectId: string): Promise<Record<st
   if ((storageRevisions.get(cacheKey) || 0) !== revision) return getProjectFiles(projectId);
   if (idbResult) {
     memoryCache[cacheKey] = idbResult;
+    // N-6: always revalidate from the server in the background. The WS
+    // snapshot-v2 protocol will reconcile if the server has a newer revision,
+    // and fetchProjectSnapshot updates the memory cache so the next read wins.
+    if (!snapshotInFlight.has(projectId)) {
+      void fetchProjectSnapshot(projectId);
+    }
     return idbResult;
   }
   const cached = getProjectFiles(projectId);

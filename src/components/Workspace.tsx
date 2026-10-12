@@ -1021,12 +1021,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
           setStatus('Ready');
           setPreviewStatus(activeProjectId, 'Ready');
         } else {
-          // No render has confirmed the final files yet (e.g. a mid-generation
-          // module error was the last word). Force one clean reload so the
-          // result is authoritative instead of depending on a file sync that
-          // already happened and cannot repeat.
+          // No render has confirmed the final files yet. Mark loading now; the
+          // actual reload fires in handleFilesRefreshed (after the snapshot
+          // arrives) so the iframe always loads the fully-written file set.
           markPreviewState('loading');
-          if (completedGeneration) reloadPreview();
         }
         if (completedGeneration) startBackend(filesRef.current);
         addBuildLog(
@@ -1164,10 +1162,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
     const handleFilesRefreshed = (newFiles: FileMap) => {
       if (!newFiles) return;
-      const generated = hasGeneratedAppCode(newFiles);
-      filesRef.current = newFiles;
-      setFiles(newFiles);
-      if (!isReadOnlyProjectRef.current) saveProjectFiles(activeProjectId, newFiles);
+      // Merge: snapshot fills in files missing locally; local state wins for
+      // paths that arrived via streaming after the snapshot was taken.
+      const merged = { ...newFiles, ...filesRef.current };
+      const generated = hasGeneratedAppCode(merged);
+      filesRef.current = merged;
+      setFiles(merged);
+      if (!isReadOnlyProjectRef.current) saveProjectFiles(activeProjectId, merged);
       setStatus(generated ? 'Connecting' : 'Idle');
       if (generated) markPreviewState('loading');
       else {
@@ -1177,7 +1178,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       reloadPreview();
       // Auto-start the backend when opening an existing full-stack project so
       // the live preview is always available without a manual "Start" click.
-      if (generated && isFullStackProject(newFiles)) startBackend(newFiles);
+      if (generated && isFullStackProject(merged)) startBackend(merged);
     };
 
     const handleWorkspaceFilesChanged = ({ projectId, files: changedFiles }: { projectId: string; files: FileMap }) => {
@@ -1344,10 +1345,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
       }
 
       if (type === 'request-preview-files') {
+        const snapshot = previewFiles(filesRef.current, true);
         iframeRef.current?.contentWindow?.postMessage(
-          { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
+          { type: 'sync-files', projectId: activeProjectId, files: snapshot },
           previewTargetOrigin
         );
+        // Sync the ref so future delta calculations start from this known state.
+        syncedPreviewFilesRef.current = snapshot;
       }
       if (type === 'request-preview-revision') {
         iframeRef.current?.contentWindow?.postMessage({ type: 'preview-revision', revision: syncedRevisionRef.current }, previewTargetOrigin);
@@ -1697,7 +1701,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
                     <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'BUILD UNFINISHED' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
                     <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The app's screens weren't finished." : 'A place for your next idea.'}</h2>
-                    <p>{status === 'Error' ? (statusError || "The last request couldn't finish. Open the conversation to retry or choose another model.") : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder set up the behind-the-scenes parts but ran out of space before writing the screens you see. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
+                    <p>{status === 'Error' ? (statusError || "The last request couldn't finish. Open the conversation to retry or choose another model.") : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder created the backend structure but didn’t finish writing the visual screens. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
                     {(status === 'Generating' || status === 'Connecting')
                       ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Getting your preview ready'}</div>
                       : status === 'Error' || status === 'Stopped'
@@ -2160,7 +2164,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   <div className="studio-empty-window" aria-hidden="true"><div><i /><i /><i /></div>{status === 'Error' ? <AlertCircle size={32} strokeWidth={1.5} /> : <Code2 size={32} strokeWidth={1.5} />}</div>
                   <span className="studio-eyebrow-label">{status === 'Error' ? "LET'S GET YOU BACK ON TRACK" : status === 'Stopped' ? 'BUILD PAUSED' : (status === 'Ready' && generationEverAttempted) ? 'BUILD UNFINISHED' : 'FROM YOUR IDEA TO YOUR FIRST VERSION'}</span>
                   <h2>{status === 'Error' ? "Your app hasn't been built yet." : status === 'Stopped' ? "Continue when you're ready." : status === 'Generating' ? 'Your idea is taking shape.' : status === 'Connecting' ? 'Preparing your preview.' : (status === 'Ready' && generationEverAttempted) ? "The app's screens weren't finished." : 'A place for your next idea.'}</h2>
-                  <p>{status === 'Error' ? (statusError || "The last request couldn't finish. Open the conversation to retry or choose another model.") : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder set up the behind-the-scenes parts but ran out of space before writing the screens you see. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
+                  <p>{status === 'Error' ? (statusError || "The last request couldn't finish. Open the conversation to retry or choose another model.") : status === 'Stopped' ? 'Your conversation is saved. Send a message to pick up where you left off.' : status === 'Generating' ? "The builder is working on your first version. The preview will appear here as it takes shape." : status === 'Connecting' ? "Your files are ready. We’re getting your preview ready now." : (status === 'Ready' && generationEverAttempted) ? 'The builder created the backend structure but didn’t finish writing the visual screens. Ask it to build the app’s screens.' : 'Describe what you want to make in the chat. Make it together, then try it right here.'}</p>
                   {(status === 'Generating' || status === 'Connecting')
                     ? <div className="studio-preview-empty-note"><Loader2 className="lucide-spin" size={16} />{status === 'Generating' ? GENERATION_TIPS[tipIndex] : 'Getting your preview ready'}</div>
                     : status === 'Error' || status === 'Stopped'

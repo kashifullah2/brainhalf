@@ -31,6 +31,22 @@ export type ModelTestEnv = Record<string, unknown> & {
   ChatAgent?: DurableBinding;
 };
 
+/**
+ * Map a raw provider error message to a safe string that cannot leak API keys,
+ * account IDs, or credentials in the public 502 response body.
+ */
+function sanitizeTestError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (/\b(401|403|unauthorized|forbidden|invalid.{0,20}key|authentication failed|invalid.{0,20}token)\b/.test(lower)) return 'Authentication failed';
+  if (/\b(429|rate.{0,10}limit|quota|too many requests)\b/.test(lower)) return 'Rate limit exceeded';
+  if (/\b(timeout|timed out|deadline|aborted)\b/.test(lower)) return 'Request timed out';
+  const httpMatch = raw.match(/\b([45]\d{2})\b/);
+  if (httpMatch) return `Model returned HTTP ${httpMatch[1]}`;
+  // Strip any URL-like or credential-like content before returning a truncated message.
+  const stripped = raw.replace(/https?:\/\/\S+/g, '[url]').replace(/\b[A-Za-z0-9/+]{40,}\b/g, '[redacted]').slice(0, 120);
+  return stripped || 'Model request failed';
+}
+
 /** Workers AI test responses arrive as a byte/object stream or an async iterable. */
 type ModelTestStreamResponse = {
   response?: string;
@@ -620,7 +636,7 @@ export async function handleModelTest(
       tokens: estimatedTokens,
       tokensPerSec,
       syntaxValid: false,
-      error: errorMsg || 'Model returned empty response with 0 tokens',
+      error: sanitizeTestError(errorMsg || 'Model returned empty response with 0 tokens'),
       rawOutput: outputContent.substring(0, 300)
     };
     // A model-side failure is not a 200: report 502 so callers cannot read a
