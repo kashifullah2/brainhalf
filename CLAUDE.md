@@ -5,7 +5,8 @@ AI app builder on Cloudflare Workers. React 19 + Vite 8 SPA with Durable Objects
 ## Architecture
 
 - **`src/worker.ts`** — Main Cloudflare Worker: routes, auth, project access control, WebSocket upgrade
-- **`src/agent.ts`** — `ChatAgent` Durable Object (~4000 lines): AI generation pipeline, tool loop, file extraction, streaming
+- **`src/agent.ts`** — `ChatAgent` Durable Object (~2662 lines): WebSocket lifecycle, onMessage routing, auth, file serving, project management. Delegates AI generation to `GenerationPipeline`.
+- **`src/lib/generation-pipeline.ts`** — `GenerationPipeline` class (~1907 lines): full AI generation path — CF Workers AI retry loop, kill-switch, tool loop, repair counters, completeness/phantom-hook/route-coverage checks, file extraction, streaming.
 - **`src/registry.ts`** — `AuthRegistry` Durable Object: user accounts, project ownership, publication, model status (admin kill-switch)
 - **`src/runtime/`** — Separate Worker (`brainhalf-runtime`): builds and hosts user-generated apps via Workers for Platforms
 - **`src/components/`** — React UI: workspace, chat panel, preview, publication controls
@@ -16,6 +17,7 @@ AI app builder on Cloudflare Workers. React 19 + Vite 8 SPA with Durable Objects
 - **`src/lib/models.ts`** — Single source of truth for allowed AI models. Adding a model = entry here + display in `ChatPanel.tsx` + thinking support in `agent.ts`
 - **`src/lib/auth.ts`** — Session verification, project ownership checks, login/signup helpers
 - **`src/lib/project-runtime-client.ts`** — Frontend polling for runtime status (dev + production)
+- **`src/lib/api-coverage.ts`** — `extractWorkerRoutes` / `extractApiFetches` / `findUncoveredFetches`. Route checker only recognises chained-router `.get('/api/...', handler)` syntax — NOT the if/else `url.pathname` dispatch style used by the baseline `workers-starter.ts` template.
 - **`src/runtime/source.ts`** — `assertSafeMigration`, `sourceSnapshot`, file hashing
 
 ## Commands
@@ -71,6 +73,8 @@ About 22 of ~264 Playwright tests require a production backend (Durable Objects,
 ## Durable Object hibernation
 
 ChatAgent uses WebSocket Hibernation. In-memory Maps (like `connectionUserIds`) are wiped on every hibernate/wake cycle. Always persist critical state via `connection.setState()` and recover from `connection.state` in `onMessage`. See `agent.ts` for the pattern.
+
+`GenerationPipeline` is re-created on every wake (lazy getter `get pipeline()`). Its fields start at their declared defaults. Fields that must survive hibernation are persisted to D1 SQL and lazily restored on first access — e.g. `pendingCompletenessRepair` reads from `pending_repair` table when the in-memory field is `null`. Do not rely on pipeline field values surviving across a hibernate/wake cycle unless they are backed by SQL.
 
 ## Test patterns
 

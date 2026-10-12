@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { ChatAgent } from '../agent';
+import { GenerationPipeline } from '../lib/generation-pipeline';
 
 vi.mock('cloudflare:workers', () => ({ tracing: { enterSpan: async (_name: string, callback: any) => callback({ setAttribute: () => {} }) } }));
 vi.mock('agents', () => ({ Agent: class {} }));
@@ -13,22 +13,24 @@ describe('CF Workers AI kill-switch mid-retry', () => {
     controllers.push(abortController);
 
     const aiRunCalls: number[] = [];
-    const agent: any = Object.create(ChatAgent.prototype);
-    agent.env = {
-      AI: {
-        run: vi.fn((_model: string, input: Record<string, any>) => {
-          aiRunCalls.push(input.max_tokens ?? input.max_completion_tokens);
-          throw new Error('max_tokens limit exceeded for this model');
-        }),
+    const pipeline: any = Object.create(GenerationPipeline.prototype);
+    pipeline.ctx = {
+      env: {
+        AI: {
+          run: vi.fn((_model: string, input: Record<string, any>) => {
+            aiRunCalls.push(input.max_tokens ?? input.max_completion_tokens);
+            throw new Error('max_tokens limit exceeded for this model');
+          }),
+        },
       },
+      broadcast: vi.fn(),
+      writeEpoch: { accepts: () => true },
     };
-    agent.activeAccounting = { providerCalls: 0, firstResponseAt: null };
-    agent.activeGeneration = { id: 'gen-1' };
-    agent.writeEpoch = { accepts: () => true };
-    agent.currentAbortController = abortController;
-    agent.erasing = false;
-    agent.broadcast = vi.fn();
-    agent.rememberGenerationText = vi.fn();
+    pipeline.activeAccounting = { providerCalls: 0, firstResponseAt: null };
+    pipeline.activeGeneration = { id: 'gen-1' };
+    pipeline.currentAbortController = abortController;
+    pipeline.rememberGenerationText = vi.fn();
+    pipeline.captureUsage = vi.fn();
 
     const sentMessages: string[] = [];
     const connection: any = {
@@ -43,7 +45,7 @@ describe('CF Workers AI kill-switch mid-retry', () => {
       return null;
     });
 
-    const result = await agent.runCloudflareWorkersAI(
+    const result = await pipeline.runCloudflareWorkersAI(
       '@cf/deepseek-ai/deepseek-v4-flash-0731',
       'You are a helpful assistant.',
       [{ role: 'user' as const, content: 'Hello' }],
@@ -71,26 +73,28 @@ describe('CF Workers AI kill-switch mid-retry', () => {
     controllers.push(abortController);
 
     const aiRunCalls: number[] = [];
-    const agent: any = Object.create(ChatAgent.prototype);
-    agent.env = {
-      AI: {
-        run: vi.fn((_model: string, input: Record<string, any>) => {
-          aiRunCalls.push(input.max_tokens ?? input.max_completion_tokens);
-          throw new Error('max_tokens limit exceeded for this model');
-        }),
+    const pipeline: any = Object.create(GenerationPipeline.prototype);
+    pipeline.ctx = {
+      env: {
+        AI: {
+          run: vi.fn((_model: string, input: Record<string, any>) => {
+            aiRunCalls.push(input.max_tokens ?? input.max_completion_tokens);
+            throw new Error('max_tokens limit exceeded for this model');
+          }),
+        },
       },
+      broadcast: vi.fn(),
+      writeEpoch: { accepts: () => true },
     };
-    agent.activeAccounting = { providerCalls: 0, firstResponseAt: null };
-    agent.activeGeneration = { id: 'gen-1' };
-    agent.writeEpoch = { accepts: () => true };
-    agent.currentAbortController = abortController;
-    agent.erasing = false;
-    agent.broadcast = vi.fn();
-    agent.rememberGenerationText = vi.fn();
+    pipeline.activeAccounting = { providerCalls: 0, firstResponseAt: null };
+    pipeline.activeGeneration = { id: 'gen-1' };
+    pipeline.currentAbortController = abortController;
+    pipeline.rememberGenerationText = vi.fn();
+    pipeline.captureUsage = vi.fn();
 
     const connection: any = { send: vi.fn(), id: 'conn-1' };
 
-    await expect(agent.runCloudflareWorkersAI(
+    await expect(pipeline.runCloudflareWorkersAI(
       '@cf/deepseek-ai/deepseek-v4-flash-0731',
       'You are a helpful assistant.',
       [{ role: 'user' as const, content: 'Hello' }],

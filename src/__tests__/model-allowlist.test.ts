@@ -236,34 +236,35 @@ describe('P2 /api/test/* endpoint hardening', () => {
 
 describe('Kill-switch and disabled_models structural coverage', () => {
   const agentSource = readFileSync(resolve(__dirname, '../agent.ts'), 'utf-8');
+  const pipelineSource = readFileSync(resolve(__dirname, '../lib/generation-pipeline.ts'), 'utf-8');
 
   it('the kill-switch check follows every resolveModel call in the generation path', () => {
-    const resolveIdx = agentSource.indexOf("const allowlisted = resolveModel(requestedModel, data.provider)");
-    const killSwitchIdx = agentSource.indexOf("// Admin kill-switch — fail closed.");
-    expect(resolveIdx, 'resolveModel call must exist in agent.ts').toBeGreaterThan(-1);
-    expect(killSwitchIdx, 'kill-switch comment must exist in agent.ts').toBeGreaterThan(-1);
+    const resolveIdx = pipelineSource.indexOf("const allowlisted = resolveModel(requestedModel, data.provider)");
+    const killSwitchIdx = pipelineSource.indexOf("// Admin kill-switch — fail closed.");
+    expect(resolveIdx, 'resolveModel call must exist in pipeline').toBeGreaterThan(-1);
+    expect(killSwitchIdx, 'kill-switch comment must exist in pipeline').toBeGreaterThan(-1);
     expect(killSwitchIdx, 'kill-switch must follow allowlist resolution').toBeGreaterThan(resolveIdx);
   });
 
   it('the kill-switch uses resolveKillSwitchStatus and killSwitchRefusal from models.ts', () => {
-    expect(agentSource).toContain('resolveKillSwitchStatus(');
-    expect(agentSource).toContain('killSwitchRefusal(');
-    expect(agentSource).toContain("KILL_SWITCH_CACHE_KEY");
-    expect(agentSource).toContain("ctx.storage.put?.(KILL_SWITCH_CACHE_KEY");
-    expect(agentSource).toContain("ctx.storage.get?.<KillSwitchStatus>(KILL_SWITCH_CACHE_KEY)");
+    expect(pipelineSource).toContain('resolveKillSwitchStatus(');
+    expect(pipelineSource).toContain('killSwitchRefusal(');
+    expect(pipelineSource).toContain("KILL_SWITCH_CACHE_KEY");
+    expect(pipelineSource).toContain("ctx.storage.put?.(KILL_SWITCH_CACHE_KEY");
+    expect(pipelineSource).toContain("ctx.storage.get?.<KillSwitchStatus>(KILL_SWITCH_CACHE_KEY)");
   });
 
   it('resume_generation reuses the same validation path (no separate model resolution)', () => {
-    // The resume block (data.type === 'resume_generation') sets data.prompt
-    // and falls through; it never calls resolveModel itself. The shared
-    // requestedModel = data.model at line 2258 handles both paths.
+    // resume_generation handling is in onMessage (agent.ts); model resolution is
+    // in pipeline.run() (generation-pipeline.ts). Verify both exist and that
+    // the resume_generation handler in agent.ts never calls resolveModel itself.
+    expect(agentSource).toContain("if (data.type === 'resume_generation')");
+    expect(pipelineSource).toContain("const requestedModel = data.model || DEFAULT_MODEL_ID");
+    // Verify no standalone resolveModel call inside the resume_generation block in agent.ts.
     const resumeBlock = agentSource.indexOf("if (data.type === 'resume_generation')");
-    const sharedModelLine = agentSource.indexOf("const requestedModel = data.model || DEFAULT_MODEL_ID");
-    expect(resumeBlock, 'resume_generation block must exist').toBeGreaterThan(-1);
-    expect(sharedModelLine, 'shared requestedModel must exist').toBeGreaterThan(-1);
-    // The resume block must appear BEFORE the shared model resolution so it
-    // falls through into it, not around it.
-    expect(sharedModelLine, 'model validation must come after the resume block').toBeGreaterThan(resumeBlock);
+    const resumeBlockEnd = agentSource.indexOf('\n      }', resumeBlock + 1);
+    const resumeSection = agentSource.slice(resumeBlock, resumeBlockEnd > resumeBlock ? resumeBlockEnd : resumeBlock + 500);
+    expect(resumeSection).not.toContain('resolveModel(');
   });
 
   it('the repair path sends a normal WS message that enters the same onMessage handler', () => {
@@ -333,16 +334,16 @@ describe('Kill-switch and disabled_models structural coverage', () => {
   });
 
   it('the CF Workers AI retry loop checks the kill-switch before each attempt via onKillSwitch', () => {
-    const loopStart = agentSource.indexOf('for (const tokenLimit of ladder)');
+    const loopStart = pipelineSource.indexOf('for (const tokenLimit of ladder)');
     expect(loopStart, 'token-ladder retry loop must exist').toBeGreaterThan(-1);
-    const loopBody = agentSource.slice(loopStart, loopStart + 600);
+    const loopBody = pipelineSource.slice(loopStart, loopStart + 600);
     expect(loopBody, 'onKillSwitch check must be inside the retry loop').toContain('onKillSwitch');
   });
 
   it('the runCloudflareWorkersAI call site passes a kill-switch callback that sets midGenerationKillSwitch', () => {
-    const cfCallIdx = agentSource.indexOf('this.runCloudflareWorkersAI(');
+    const cfCallIdx = pipelineSource.indexOf('this.runCloudflareWorkersAI(');
     expect(cfCallIdx).toBeGreaterThan(-1);
-    const callBlock = agentSource.slice(cfCallIdx, cfCallIdx + 1000);
+    const callBlock = pipelineSource.slice(cfCallIdx, cfCallIdx + 1000);
     expect(callBlock).toContain('getKillSwitchStatus');
     expect(callBlock).toContain('getDisabledMsg');
     expect(callBlock).toContain('midGenerationKillSwitch');
