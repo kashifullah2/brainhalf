@@ -147,6 +147,11 @@ export const AGENT_MIGRATIONS: Migration[] = [
     'ALTER TABLE generation_usage ADD COLUMN cache_read_tokens INTEGER',
     'ALTER TABLE generation_usage ADD COLUMN cache_write_tokens INTEGER',
   ] },
+  // L-2: persist pendingCompletenessRepair across DO hibernation so a repair
+  // chain survives an eviction between the queued generation and its execution.
+  { version: 19, name: 'pending_repair', statements: [
+    'CREATE TABLE IF NOT EXISTS pending_repair (id INTEGER PRIMARY KEY CHECK (id = 1), parent_job_id TEXT NOT NULL, marker TEXT NOT NULL)',
+  ] },
 
 ];
 

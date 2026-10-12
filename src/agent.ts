@@ -1651,6 +1651,13 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    */
   private noteRepairQueued(jobId: string, actualPrompt: string, marker: string | null): boolean {
     if (!marker) return false;
+    // L-2: reload from SQLite on first use after a DO hibernation/wake cycle.
+    if (this.pendingCompletenessRepair === null) {
+      try {
+        const rows = this.runSql<{ parent_job_id: string; marker: string }>`SELECT parent_job_id, marker FROM pending_repair WHERE id = 1`;
+        if (rows[0]) this.pendingCompletenessRepair = { parentJobId: rows[0].parent_job_id, marker: rows[0].marker };
+      } catch { /* table not yet created — schema migration pending */ }
+    }
     const pending = this.pendingCompletenessRepair;
     if (pending && pending.parentJobId === jobId) return true;
     if (pending && actualPrompt.startsWith(pending.marker)) {
@@ -1658,6 +1665,10 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     } else {
       this.pendingCompletenessRepair = { parentJobId: jobId, marker };
     }
+    try {
+      const { parentJobId: pjid, marker: m } = this.pendingCompletenessRepair;
+      this.runSql`INSERT OR REPLACE INTO pending_repair (id, parent_job_id, marker) VALUES (1, ${pjid}, ${m})`;
+    } catch { /* auxiliary */ }
     return true;
   }
 
@@ -1668,9 +1679,17 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
    * prompt carries the queued repair's marker can resolve it.
    */
   private resolveCompletenessRepair(actualPrompt: string, accountingId: string, completed: boolean, jobOutcome: { kind: 'failed' | 'interrupted'; error: string } | null, aborted: boolean): void {
+    // L-2: reload from SQLite when in-memory state was lost to hibernation.
+    if (this.pendingCompletenessRepair === null) {
+      try {
+        const rows = this.runSql<{ parent_job_id: string; marker: string }>`SELECT parent_job_id, marker FROM pending_repair WHERE id = 1`;
+        if (rows[0]) this.pendingCompletenessRepair = { parentJobId: rows[0].parent_job_id, marker: rows[0].marker };
+      } catch { /* table not yet created */ }
+    }
     const pending = this.pendingCompletenessRepair;
     if (!pending || pending.parentJobId === accountingId || !actualPrompt.startsWith(pending.marker)) return;
     this.pendingCompletenessRepair = null;
+    try { this.runSql`DELETE FROM pending_repair WHERE id = 1`; } catch { /* auxiliary */ }
     try {
       const jobs = this.generationJobs();
       if (completed) {
