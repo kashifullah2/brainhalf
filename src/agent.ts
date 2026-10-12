@@ -4185,8 +4185,40 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       // P0-4: track the queued repair marker so the caller can hold the
       // completed status until the repair turn resolves. Always send
       // stream.done so the client knows the response stream has ended.
+      // Post-generation checks: parity with the SDK path. Run on every
+      // file-writing turn so the CF path gets the same safety nets.
+      let postGenMarker: string | null = null;
+      if (expectFiles && extraction.writtenCount > 0) {
+        const checksStart = Date.now();
+        try {
+          const allFiles = new Map<string, string>(
+            (this.runSql<{ path: string; content: string }>`SELECT path, content FROM project_files`)
+              .map(r => [r.path, r.content ?? ''] as [string, string])
+          );
+          const results = await Promise.all(
+            [
+              () => this.checkMissingAppEntry(allFiles, connection),
+              () => this.checkFinalCompleteness(allFiles, connection),
+              () => this.checkNoPhantomAuthHooks(allFiles, connection),
+              () => this.checkVerificationPlanFile(allFiles, connection),
+              () => this.checkApiRouteCoverage(allFiles, connection),
+            ].map(fn => { try { return Promise.resolve(fn()); } catch (e) { console.warn('Post-gen check threw:', e); return Promise.resolve(null); } })
+          );
+          const failures = results.filter((p): p is string => p !== null);
+          if (failures.length > 0) {
+            const combined = failures.join('\n\n---\n\n');
+            postGenMarker = combined.split('\n')[0];
+            deferTerminal(() => {
+              try { connection.send(JSON.stringify({ type: 'trigger-auto-reply', message: combined })); } catch (e) { noteSendFailure(e); }
+            });
+          }
+        } catch (e) { console.warn('Post-gen checks threw:', e); }
+        if (accounting) accounting.checksMs = Date.now() - checksStart;
+      }
+
       const cfRepairMarker = extraction.triggerQueued && extraction.triggerMarker ? extraction.triggerMarker
-        : cfRetryQueued ? AUTO_RETRY_FULL_APP_MARKER : null;
+        : cfRetryQueued ? AUTO_RETRY_FULL_APP_MARKER
+        : postGenMarker;
       const doneMsg = JSON.stringify({ type: 'stream', chunk: { response: '', done: true } });
       deferTerminal(() => {
         try { connection.send(doneMsg); } catch (e) { noteSendFailure(e); }
