@@ -78,3 +78,11 @@ export type WritePathTag = 'tool:write_file' | 'tool:edit_file' | 'tool:batch_ed
 export function logWritePath(tag: WritePathTag, path: string, outcome: 'accepted' | 'rejected', reason?: string): void {
   console.log(`[write_guard] ${tag}: ${path} → ${outcome}${reason ? ` (${reason})` : ''}`);
 }
+
+export function isBackendWritePath(cleanPath: string): boolean {
+  return /^\/(?:worker|migrations|shared|server)\//i.test(cleanPath);
+}
+
+export function isAppFirstBackendPath(cleanPath: string): boolean {
+  return /^\/(?:worker|server)\//i.test(cleanPath);
+}

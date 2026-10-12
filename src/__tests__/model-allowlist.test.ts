@@ -331,6 +331,22 @@ describe('Kill-switch and disabled_models structural coverage', () => {
     );
     expect(result).toBeNull();
   });
+
+  it('the CF Workers AI retry loop checks the kill-switch before each attempt via onKillSwitch', () => {
+    const loopStart = agentSource.indexOf('for (const tokenLimit of ladder)');
+    expect(loopStart, 'token-ladder retry loop must exist').toBeGreaterThan(-1);
+    const loopBody = agentSource.slice(loopStart, loopStart + 600);
+    expect(loopBody, 'onKillSwitch check must be inside the retry loop').toContain('onKillSwitch');
+  });
+
+  it('the runCloudflareWorkersAI call site passes a kill-switch callback that sets midGenerationKillSwitch', () => {
+    const cfCallIdx = agentSource.indexOf('this.runCloudflareWorkersAI(');
+    expect(cfCallIdx).toBeGreaterThan(-1);
+    const callBlock = agentSource.slice(cfCallIdx, cfCallIdx + 1000);
+    expect(callBlock).toContain('getKillSwitchStatus');
+    expect(callBlock).toContain('getDisabledMsg');
+    expect(callBlock).toContain('midGenerationKillSwitch');
+  });
 });
 
 describe('Model registry drift detection', () => {

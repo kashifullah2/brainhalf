@@ -12,11 +12,13 @@ vi.mock('agents', () => ({ Agent: class Agent {} }));
 
 import {
   ChatAgent,
-  TRUNCATION_RETRY_MESSAGE,
-  findUnterminatedBlock,
   isAppFirstBackendPath,
   isBackendWritePath,
 } from '../agent';
+import {
+  TRUNCATION_RETRY_MESSAGE,
+  findUnterminatedBlock,
+} from '../lib/file-extractor';
 import { WriteEpoch } from '../lib/concurrency';
 import { FlipFlopGuard, RepairLog } from '../lib/repair-budget';
 

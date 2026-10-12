@@ -255,6 +255,7 @@ export async function resolveKillSwitchStatus(
 }
 
 /** Models whose image inputs are verified against their provider interface. */
+// Checked: minimax-m2.5 is text-only on Bedrock (no vision). Source: AWS Bedrock model card.
 export function acceptsImageInput(model: string): boolean {
   return [
     '@cf/moonshotai/kimi-k2.7-code',
@@ -263,5 +264,6 @@ export function acceptsImageInput(model: string): boolean {
     '@cf/google/gemma-3-27b-it',
     'claude-sonnet-6',
     'claude-opus-6',
+    'kimi-k3',
   ].includes(model);
 }

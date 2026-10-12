@@ -152,6 +152,25 @@ export const AGENT_MIGRATIONS: Migration[] = [
   { version: 19, name: 'pending_repair', statements: [
     'CREATE TABLE IF NOT EXISTS pending_repair (id INTEGER PRIMARY KEY CHECK (id = 1), parent_job_id TEXT NOT NULL, marker TEXT NOT NULL)',
   ] },
+  { version: 20, name: 'active_generation_state', statements: [
+    `CREATE TABLE IF NOT EXISTS active_generation_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      generation_session_id TEXT NOT NULL,
+      job_id TEXT NOT NULL,
+      accounting_id TEXT NOT NULL,
+      budget_id TEXT NOT NULL,
+      budget_owner TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      turn_saved_for_epoch INTEGER NOT NULL DEFAULT -1,
+      truncation_retries INTEGER NOT NULL DEFAULT 0,
+      syntax_repair_attempts INTEGER NOT NULL DEFAULT 0,
+      final_completeness_repair_attempts INTEGER NOT NULL DEFAULT 0,
+      phantom_hook_repair_attempts INTEGER NOT NULL DEFAULT 0,
+      verify_file_repair_attempts INTEGER NOT NULL DEFAULT 0,
+      api_route_coverage_repair_attempts INTEGER NOT NULL DEFAULT 0,
+      app_entry_repair_attempts INTEGER NOT NULL DEFAULT 0
+    )`,
+  ] },
 
 ];
 
