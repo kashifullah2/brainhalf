@@ -69,6 +69,13 @@ export interface PlatformEnv {
   VECTORIZE?: VectorizeIndex;
   /** Cloudflare Turnstile secret key — when set, bot-protection is enforced on auth write endpoints. */
   TURNSTILE_SECRET_KEY?: string;
+  /** Firebase config for user-generated apps (public values, not secrets). */
+  FIREBASE_API_KEY?: string;
+  FIREBASE_AUTH_DOMAIN?: string;
+  FIREBASE_PROJECT_ID?: string;
+  FIREBASE_STORAGE_BUCKET?: string;
+  FIREBASE_MESSAGING_SENDER_ID?: string;
+  FIREBASE_APP_ID?: string;
   [key: string]: unknown;
 }
 

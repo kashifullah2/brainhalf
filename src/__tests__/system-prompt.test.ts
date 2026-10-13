@@ -73,15 +73,52 @@ describe('system prompt', () => {
     expect(prompt).toContain('Switched from model-A to model-B');
   });
 
-  it('teaches the brainhalf.verify.json schema for managed targets', () => {
+  it('teaches Firebase setup for managed targets', () => {
     const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
-    expect(prompt).toContain('brainhalf.verify.json');
-    expect(prompt).toContain('"version":1');
+    expect(prompt).toContain('firebase');
+    expect(prompt).toContain('firebase/app');
+    expect(prompt).toContain('firebase/auth');
+    expect(prompt).toContain('firebase/firestore');
   });
 
-  it('does not include brainhalf.verify.json guidance in the export backend rules', () => {
-    const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false, executionTarget: 'export' });
-    expect(prompt).not.toContain('brainhalf.verify.json');
+  it('injects firebase config block in dynamic part when firebaseConfig is provided', () => {
+    const { dynamicPart } = buildSystemPromptParts({
+      filesContext: '',
+      plannerMode: false,
+      projectId: 'proj-abc-123',
+      firebaseConfig: {
+        apiKey: 'AIzaSyTEST',
+        authDomain: 'test.firebaseapp.com',
+        projectId: 'test-project',
+        storageBucket: 'test-project.appspot.com',
+        messagingSenderId: '123456',
+        appId: '1:123456:web:abc',
+      },
+    });
+    expect(dynamicPart).toContain('AIzaSyTEST');
+    expect(dynamicPart).toContain('test.firebaseapp.com');
+    expect(dynamicPart).toContain('bh_proj_abc_123');
+  });
+
+  it('omits firebase config block for export targets', () => {
+    const { dynamicPart } = buildSystemPromptParts({
+      filesContext: '',
+      plannerMode: false,
+      executionTarget: 'export',
+      projectId: 'proj-abc',
+      firebaseConfig: {
+        apiKey: 'AIzaSyTEST', authDomain: 'test.firebaseapp.com', projectId: 'test',
+        storageBucket: 'test.appspot.com', messagingSenderId: '123', appId: '1:123:web:abc',
+      },
+    });
+    expect(dynamicPart).not.toContain('AIzaSyTEST');
+  });
+
+  it('does not include brainhalf.verify.json guidance in the managed or export backend rules', () => {
+    const managedPrompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
+    const exportPrompt = buildSystemPrompt({ filesContext: '', plannerMode: false, executionTarget: 'export' });
+    expect(managedPrompt).not.toContain('brainhalf.verify.json');
+    expect(exportPrompt).not.toContain('brainhalf.verify.json');
   });
 
   it('teaches plain-language communication for non-technical users', () => {

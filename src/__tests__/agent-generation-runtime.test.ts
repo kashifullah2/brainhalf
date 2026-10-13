@@ -198,8 +198,9 @@ describe('Agent generation against the installed AI SDK', () => {
     expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/worker/index.ts')?.content).toContain('env.DB');
     expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/brainhalf.verify.json')?.content).toContain('Prove database persistence');
     const systemPrompt = agent.runGeneration.mock.calls[0][2];
-    expect(systemPrompt).toContain('/worker/index.ts');
-    expect(systemPrompt).toContain('every signed-in user');
+    expect(systemPrompt).toContain('firebase');
+    expect(systemPrompt).toContain('firebase/auth');
+    expect(systemPrompt).toContain('firebase/firestore');
     expect(events.some(event => event.type === 'file_updated' && event.path === '/worker/index.ts')).toBe(true);
   });
   it('does not prepare backend files or call a model when managed hosting is unavailable', async () => {

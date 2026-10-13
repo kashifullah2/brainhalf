@@ -48,7 +48,7 @@ describe('TypeScript project generation', () => {
   });
   it('requires inspection, typed contracts and real persistence in agent instructions', () => {
     const prompt = buildSystemPrompt({ filesContext: '', plannerMode: false });
-    for (const rule of ['INSPECT BEFORE IMPLEMENTING', 'edit_file', 'strict TypeScript', 'schema/migrations', 'parameterized queries', 'never make fake routes']) expect(prompt).toContain(rule);
+    for (const rule of ['INSPECT BEFORE IMPLEMENTING', 'edit_file', 'strict TypeScript', 'schema/migrations', 'parameterized SQL queries', 'never make fake routes']) expect(prompt).toContain(rule);
     expect(prompt).not.toContain('combine routes and in-memory data');
   });
   it('preserves working frontend code, scripts and framework config', () => {

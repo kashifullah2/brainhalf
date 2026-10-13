@@ -7,6 +7,14 @@ compatibility_flags = [ "nodejs_compat" ]
 REQUIRED_MODEL_PROVIDERS = "cloudflare"
 # Set to "true" only in .dev.vars for local development; never in production.
 IS_DEV = "false"
+# Firebase config for user-generated apps (public values — not secrets).
+# Create a project at console.firebase.google.com, then paste the config here.
+FIREBASE_API_KEY = "AIzaSyAxKIqV68TvV-MkJf3YSn8Fh5bmjnFGf44"
+FIREBASE_AUTH_DOMAIN = "brainhalf.firebaseapp.com"
+FIREBASE_PROJECT_ID = "brainhalf"
+FIREBASE_STORAGE_BUCKET = "brainhalf.firebasestorage.app"
+FIREBASE_MESSAGING_SENDER_ID = "848435852451"
+FIREBASE_APP_ID = "1:848435852451:web:d1a0515864bd30beedbb16"
 # ADMIN_EMAILS is a Worker secret (not a [vars] entry) so operator email
 # addresses are never committed to the repository. Set it with:
 #   wrangler secret put ADMIN_EMAILS

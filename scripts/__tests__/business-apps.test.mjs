@@ -12,8 +12,8 @@ test('six domain acceptance prompts require persistent data, real identity and i
   assert.deepEqual(BUSINESS_APPS.map(app => app.id), ['inventory', 'farm', 'booking', 'crm', 'tasks', 'portal']);
   for (const app of BUSINESS_APPS) {
     const prompt = businessValidationPrompt(app, 'Acceptance app');
-    assert.match(prompt, /managed authentication/); assert.match(prompt, /direct D1 assertions/);
-    assert.match(prompt, /other users get 404/i); assert.match(prompt, /brainhalf.verify.json/);
+    assert.match(prompt, /Firebase/); assert.match(prompt, /Firestore/i);
+    assert.match(prompt, /APP_NS/); assert.match(prompt, /Firebase Auth|firebase\/auth/i);
     assert.ok(Object.keys(app.invalid).length); assert.ok(Object.keys(app.update).length);
   }
 });

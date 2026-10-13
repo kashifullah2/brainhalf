@@ -1709,7 +1709,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       : status === 'Error' || status === 'Stopped'
                       ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                       : (status === 'Ready' && generationEverAttempted)
-                      ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask the builder to finish the screens</button>
+                      ? <button type="button" className="studio-empty-action" onClick={() => { openChat(); appEvents.emit('insert-prompt-draft', { prompt: 'Finish building all the visual screens — every component that is partial or missing needs its complete UI implemented now.' }); }}><MessageSquare size={16} />Ask the builder to finish the screens</button>
                       : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app</button>
                     }
                     {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}
@@ -2172,7 +2172,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     : status === 'Error' || status === 'Stopped'
                     ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Open chat</button>
                     : (status === 'Ready' && generationEverAttempted)
-                    ? <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Ask the builder to finish the screens</button>
+                    ? <button type="button" className="studio-empty-action" onClick={() => { openChat(); appEvents.emit('insert-prompt-draft', { prompt: 'Finish building all the visual screens — every component that is partial or missing needs its complete UI implemented now.' }); }}><MessageSquare size={16} />Ask the builder to finish the screens</button>
                     : <button type="button" className="studio-empty-action" onClick={openChat}><MessageSquare size={16} />Describe your app</button>
                   }
                   {Object.keys(files).length > 0 && <BuildProgress files={Object.keys(files)} progress={fileProgress} building={status === 'Generating'} agentTouched={generationTouchedRef.current} />}

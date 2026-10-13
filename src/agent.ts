@@ -1975,10 +1975,23 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
             mentioned: this.getFilesFromPrompt(actualPrompt),
             changed: this.getLastWrittenPaths(),
           });
+          const fbApiKey = typeof this.env.FIREBASE_API_KEY === 'string' ? this.env.FIREBASE_API_KEY.trim() : '';
+          const firebaseConfig = fbApiKey
+            ? {
+                apiKey: fbApiKey,
+                authDomain: typeof this.env.FIREBASE_AUTH_DOMAIN === 'string' ? this.env.FIREBASE_AUTH_DOMAIN : '',
+                projectId: typeof this.env.FIREBASE_PROJECT_ID === 'string' ? this.env.FIREBASE_PROJECT_ID : '',
+                storageBucket: typeof this.env.FIREBASE_STORAGE_BUCKET === 'string' ? this.env.FIREBASE_STORAGE_BUCKET : '',
+                messagingSenderId: typeof this.env.FIREBASE_MESSAGING_SENDER_ID === 'string' ? this.env.FIREBASE_MESSAGING_SENDER_ID : '',
+                appId: typeof this.env.FIREBASE_APP_ID === 'string' ? this.env.FIREBASE_APP_ID : '',
+              }
+            : undefined;
           const { staticPart, dynamicPart } = this.buildSystemPromptParts({
             filesContext, plannerMode, executionTarget,
             questionMode, destructiveMode, ambiguousMode,
             isIncrementalEdit, isFreshBuild, projectMemory, modelHandoff,
+            projectId: this.name,
+            firebaseConfig,
           });
           const systemPrompt = staticPart + dynamicPart;
           generationStarted = true;
@@ -2044,6 +2057,8 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     toolsAvailable?: boolean;
     projectMemory?: string;
     modelHandoff?: string;
+    projectId?: string;
+    firebaseConfig?: { apiKey: string; authDomain: string; projectId: string; storageBucket: string; messagingSenderId: string; appId: string };
   }): { staticPart: string; dynamicPart: string } {
     return buildSystemPromptPartsModule(opts);
   }

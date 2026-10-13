@@ -47,8 +47,10 @@
     "@xterm/xterm": "^6.0.0",
     "agents": "^0.22.0",
     "ai": "^7.0.97",
+    "dompurify": "^3.4.15",
     "jszip": "^3.10.2",
     "lucide-react": "^1.43.0",
+    "monaco-editor": "^0.56.0",
     "pdfjs-dist": "^6.3.289",
     "prismjs": "^1.30.0",
     "react": "^19.2.8",
@@ -56,8 +58,6 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "sucrase": "^3.35.1",
-    "dompurify": "^3.4.15",
-    "monaco-editor": "^0.56.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
