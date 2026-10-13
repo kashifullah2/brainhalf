@@ -126,6 +126,13 @@ export function createToolHandlers(ctx: ToolContext) {
       }
       logWritePath('tool:write_file', cleanPath, 'accepted');
       if (/\.(?:[cm]?jsx?|tsx?)$/i.test(cleanPath)) transform(content, { transforms: ['typescript', 'jsx'], filePath: cleanPath });
+      // Re-check epoch immediately before the DB write: abortGeneration() broadcasts
+      // generation_interrupted, then bumps the epoch, then aborts the controller.
+      // A write that passed the check at the top of this function may still land here
+      // with a stale epoch if abortGeneration ran between the two checks.
+      if (!writeEpoch.accepts(epoch) || abortController.signal.aborted) {
+        return { success: false, error: 'This generation was superseded; write discarded.' };
+      }
       if (!upsertFile(cleanPath, normalizedContent)) return { success: false, error: `File exceeds the ${MAX_FILE_BYTES} byte limit` };
       inspectedFiles.set(cleanPath, normalizedContent);
       toolWrittenPaths.add(cleanPath);
@@ -162,14 +169,16 @@ export function createToolHandlers(ctx: ToolContext) {
           const rows = runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`;
           if (rows.length > 0) {
             let content = rows[0].content as string;
-            if (startLine === undefined && endLine === undefined && content.length <= 24000) inspectedFiles.set(cleanPath, content);
-            if (startLine !== undefined || endLine !== undefined) {
+            const isPartial = startLine !== undefined || endLine !== undefined;
+            if (!isPartial && content.length <= 24000) inspectedFiles.set(cleanPath, content);
+            if (isPartial) {
               const lines = content.split('\n');
               const start = startLine ? Math.max(0, startLine - 1) : 0;
               const end = endLine ? Math.min(lines.length, endLine) : lines.length;
               content = lines.slice(start, end).join('\n');
             }
             if (content.length > 24000) return { error: 'This result is too large. Read a smaller startLine/endLine range; the file has not been marked as fully inspected.' };
+            if (isPartial) return { content, note: 'Partial read — edit_file will auto-load the full file, but your search strings must exactly match the current content.' };
             return { content };
           }
           return { error: 'File not found' };
@@ -267,8 +276,17 @@ export function createToolHandlers(ctx: ToolContext) {
       inputSchema: z.object({ path: z.string(), edits: z.array(z.object({ search: z.string().min(1), replace: z.string() })).min(1).max(30) }),
       execute: async ({ path, edits }: { path: string; edits: Array<{ search: string; replace: string }> }) => {
         const cleanPath = normalizePath(path);
-        const original = inspectedFiles.get(cleanPath);
-        if (original === undefined) return { success: false, error: 'Read the complete file before editing it.' };
+        let original = inspectedFiles.get(cleanPath);
+        if (original === undefined) {
+          // Lazy inspection: load the current file content from the DB so the model
+          // does not waste a step on a mandatory read before every edit. applyExactEdits
+          // will still fail if the model's search strings do not match, which is the
+          // natural correction mechanism for stale knowledge.
+          const row = runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`[0];
+          if (!row) return { success: false, error: 'File not found. Use list_files to verify the path.' };
+          original = row.content as string;
+          inspectedFiles.set(cleanPath, original);
+        }
         let result: string;
         try { result = applyExactEdits(original, edits); }
         catch (error) {

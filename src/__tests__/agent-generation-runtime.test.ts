@@ -871,24 +871,36 @@ describe('Most important correctness: 5 critical path tests', () => {
     expect(autoReply?.message).toMatch(/unfinished file|regenerate/i);
   });
 
-  it('edit_file guard: returns error when file was not read before editing', async () => {
+  it('edit_file lazy inspection: succeeds without prior read_file when search matches', async () => {
+    // edit_file now auto-loads the file from DB if it was not explicitly read first.
+    // The edit succeeds as long as the search string matches the current content.
     const { database, run } = createAgent();
     database.prepare('INSERT INTO project_files (path, content) VALUES (?, ?)').run('/src/config.ts', 'export const HOST = "localhost";\n');
+    providerState.model = new MockLanguageModelV4({ doStream: async (options: any) => {
+      const toolMsg = options.prompt?.find?.((m: any) => m.role === 'tool');
+      if (toolMsg) return response('Done.');
+      return response('', { toolName: 'edit_file', input: { path: '/src/config.ts', edits: [{ search: '"localhost"', replace: '"production.example.com"' }] } });
+    } });
+    await run({}, 'Update config host');
+    // Edit must have applied
+    expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/src/config.ts')?.content)
+      .toBe('export const HOST = "production.example.com";\n');
+  });
+
+  it('edit_file guard: returns error when file does not exist', async () => {
+    const { run } = createAgent();
     let toolError: string | null = null;
     providerState.model = new MockLanguageModelV4({ doStream: async (options: any) => {
       const toolMsg = options.prompt?.find?.((m: any) => m.role === 'tool');
       if (toolMsg) {
         toolError = typeof toolMsg.content === 'string' ? toolMsg.content : JSON.stringify(toolMsg.content);
-        return response('Could not edit without reading first.');
+        return response('File not found.');
       }
-      // Try to edit without reading
-      return response('', { toolName: 'edit_file', input: { path: '/src/config.ts', edits: [{ search: 'localhost', replace: 'production.example.com' }] } });
+      return response('', { toolName: 'edit_file', input: { path: '/src/nonexistent.ts', edits: [{ search: 'x', replace: 'y' }] } });
     } });
-    await run({}, 'Update config host');
+    await run({}, 'Edit missing file');
     expect(toolError).not.toBeNull();
-    expect(toolError).toMatch(/read.*file|before editing/i);
-    // File must remain unchanged
-    expect(database.prepare('SELECT content FROM project_files WHERE path=?').get('/src/config.ts')?.content).toBe('export const HOST = "localhost";\n');
+    expect(toolError).toMatch(/not found|list_files/i);
   });
 
   it('does not start a new generation while a generation lock is already held', async () => {

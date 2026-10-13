@@ -98,6 +98,7 @@ export async function runCapabilityLoop(run: (input: Record<string, unknown>) =>
   const tools = Object.entries(capabilities).map(([name, entry]) => ({ type: 'function', function: { name, description: entry.description, parameters: entry.parameters } }));
   const text: string[] = [];
   const maxSteps = typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps) ? Math.max(1, Math.min(10, Math.floor(options.maxSteps))) : 6;
+  const toolErrorStreak: Record<string, number> = {};
   for (let step = 0; step < maxSteps; step++) {
     signal.throwIfAborted();
     let startedText = false;
@@ -105,7 +106,7 @@ export async function runCapabilityLoop(run: (input: Record<string, unknown>) =>
     const response = await withAbortSignal(run({ messages, tools, stream: true, max_tokens: 8192 }), signal);
     const streamed = response instanceof ReadableStream;
     const raw = streamed ? await readToolStream(response, signal, emit) : response as ToolResponse;
-    if (raw.error) throw new Error('The selected model could not use agent tools. Try another model.');
+    if (raw.error) throw new Error(`Model tool call failed: ${typeof raw.error === 'string' ? raw.error : JSON.stringify(raw.error)}`);
     if (raw.usage) onUsage(raw.usage);
     const message = raw.choices?.[0]?.message;
     const calls = message?.tool_calls || raw.tool_calls || [];
@@ -128,6 +129,15 @@ export async function runCapabilityLoop(run: (input: Record<string, unknown>) =>
       } catch (error) { signal.throwIfAborted(); result = { error: error instanceof Error ? error.message : 'Tool failed.' }; }
       const isErr = result && typeof result === 'object' && (('error' in (result as Record<string, unknown>)) || ('success' in (result as Record<string, unknown>) && !(result as any).success));
       options.onToolResult?.(call.function.name, !isErr);
+      // Circuit-breaker: 4 consecutive errors on the same tool aborts the loop.
+      if (isErr) {
+        toolErrorStreak[call.function.name] = (toolErrorStreak[call.function.name] ?? 0) + 1;
+        if (toolErrorStreak[call.function.name] >= 4) {
+          throw new Error(`Tool "${call.function.name}" failed ${toolErrorStreak[call.function.name]} times in a row. Stopping to prevent a stuck loop. Last error: ${JSON.stringify((result as any).error ?? (result as any).success)}`);
+        }
+      } else {
+        toolErrorStreak[call.function.name] = 0;
+      }
       const serialized = JSON.stringify(result) ?? 'null';
       return { role: 'tool', tool_call_id: call.id, content: serialized.length <= 26000 ? serialized : JSON.stringify({ error: 'Tool output was too large. Request a smaller result or a narrower line range.', truncated: true }) };
     };
