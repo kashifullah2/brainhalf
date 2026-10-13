@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { isFullStackProject } from './backend-runner';
 import { runtimeRequest, type useProjectRuntime } from './project-runtime-client';
 import { sourceSnapshot } from '../runtime/source';
-import type { RuntimeStatus } from '../runtime/types';
+import { devJobPayload, type RuntimeStatus } from '../runtime/types';
 import { resolveBackendFailure } from './backend-failure';
 
 /**
@@ -101,7 +101,7 @@ export function useAutomaticBackend(projectId: string, runtime: Runtime) {
       if (pending.current === files) pending.current = null;
       if (snapshot.revision === attempted.current && !status.jobs.some(job => job.revision === snapshot.revision && ['failed', 'stopped'].includes(job.status))) return;
       setFault(false); setNotice('Starting dev server…');
-      await runtimeRequest(projectId, '/jobs', 'development', { method: 'POST', body: JSON.stringify({ kind: 'preview', files }) });
+      await runtimeRequest(projectId, '/jobs', 'development', { method: 'POST', body: JSON.stringify(devJobPayload(files)) });
       if (current === epoch.current) { attempted.current = snapshot.revision; refresh(); }
     } catch (cause) {
       if (current === epoch.current) { setFault(true); setNotice(toPlainBackendError(cause)); }

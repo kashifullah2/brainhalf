@@ -458,12 +458,9 @@ export default {
       // Login and signup are the classic credential-stuffing targets and were
       // completely unmetered. Session and logout are cheap, so only the two
       // write paths are limited.
-      if (request.method === 'POST' && url.pathname !== '/api/auth/session') {
-        // ws-ticket gets its own bucket — it requires a valid session so it
-        // can't be hit anonymously, but it writes to Registry storage and must
-        // not be unmetered. All other auth write paths share the auth bucket.
-        const bucket = url.pathname === '/api/auth/ws-ticket' ? 'wsTicket' : 'auth';
-        const rate = await checkRateLimit(env, bucket, clientKey(request));
+      if (request.method === 'POST' && url.pathname !== '/api/auth/session' && url.pathname !== '/api/auth/ws-ticket') {
+        // ws-ticket is handled below with its own parallel rate-limit + session check.
+        const rate = await checkRateLimit(env, 'auth', clientKey(request));
         if (!rate.ok) return withCors(rate.unavailable ? jsonError('Rate-limit service unavailable. Please retry shortly.', 503) : tooManyRequests(rate.retryAfter), origin);
       }
 
@@ -521,10 +518,19 @@ export default {
           response = await handleLogout(request, env);
           break;
         case '/api/auth/ws-ticket': {
-          // The handshake needs a credential that fits in a URL. Issue one that
-          // is single-use and short-lived; the client never sees a long-lived
-          // token in a WebSocket URL again.
-          const user = await verifySession(request, env);
+          // Run rate-limit check and session verify in parallel — both call the
+          // singleton Registry DO; running them serially adds a full round-trip
+          // to every post-disconnect reconnect attempt.
+          const [rate, user] = await Promise.all([
+            checkRateLimit(env, 'wsTicket', clientKey(request)),
+            verifySession(request, env),
+          ]);
+          if (!rate.ok) {
+            response = rate.unavailable
+              ? jsonError('Rate-limit service unavailable. Please retry shortly.', 503)
+              : tooManyRequests(rate.retryAfter);
+            break;
+          }
           if (!user) {
             response = unauthorized('Sign in to request a connection ticket');
             break;

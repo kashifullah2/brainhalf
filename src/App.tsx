@@ -141,11 +141,20 @@ function App() {
         void verify();
       }
     };
+    // RC-4: session expired mid-generation. Clear user state so LoginScreen
+    // renders over the workspace, but preserve the project URL so after auth
+    // the workspace resumes in place (handleAuthenticated keeps currentView).
+    const onWorkspaceExpired = () => {
+      setUser(null);
+      setAuthChecked(true);
+    };
     window.addEventListener('bh-session-expired', onExpired);
+    window.addEventListener('bh-session-expired-in-workspace', onWorkspaceExpired);
     window.addEventListener('storage', onStorage);
     return () => {
       mounted = false;
       window.removeEventListener('bh-session-expired', onExpired);
+      window.removeEventListener('bh-session-expired-in-workspace', onWorkspaceExpired);
       window.removeEventListener('storage', onStorage);
     };
   }, []);

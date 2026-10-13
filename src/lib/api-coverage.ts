@@ -31,7 +31,11 @@ export const PLATFORM_PROVIDED_ROUTES = new Set<string>([
 
 /** Replace named route params with a canonical placeholder for comparison. */
 export function normalizeApiPath(path: string): string {
-  return path.replace(PARAM_SEGMENT, '/:param').replace(/\/\*$/, '');
+  return path
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
+    .replace(PARAM_SEGMENT, '/:param')
+    .replace(/\/\*$/, '');
 }
 
 /**
@@ -63,19 +67,56 @@ export function extractApiFetches(files: Map<string, string>): string[] {
 }
 
 /**
- * Extract all /api/... route paths registered in a worker source file via
- * the standard chained-router pattern (.get, .post, .put, .patch, .delete, .all).
+ * Extract all /api/... route paths registered in a worker source file.
+ *
+ * Recognises five dispatch patterns:
+ *   1. Chained-router / Hono:  app.get('/api/foo', handler)
+ *   2. Pathname equality:      url.pathname === '/api/foo'
+ *   3. Pathname regex match:   url.pathname.match(/^\/api\/foo\/([^/]+)$/)
+ *   4. Switch/case dispatch:   case '/api/foo':
+ *   5. Pathname startsWith:    url.pathname.startsWith('/api/foo/')
  */
 export function extractWorkerRoutes(workerSource: string): string[] {
   const routes = new Set<string>();
-  // String literal routes: app.get('/api/foo', ...)
+
+  // 1. Chained-router: app.get('/api/foo', ...) / app.get(`/api/foo`, ...)
   for (const m of workerSource.matchAll(/\.\s*(?:get|post|put|patch|delete|all)\s*\(\s*['"]\/api\/([^'"$\s]+)['"]/gi)) {
     routes.add('/api/' + m[1]);
   }
-  // Template literal routes (less common): app.get(`/api/foo`, ...)
   for (const m of workerSource.matchAll(/\.\s*(?:get|post|put|patch|delete|all)\s*\(\s*`\/api\/([^`$\s]+)`/gi)) {
     routes.add('/api/' + m[1]);
   }
+
+  // 2. Pathname equality: url.pathname === '/api/foo' or "/api/foo"
+  for (const m of workerSource.matchAll(/url\.pathname\s*===\s*['"]\/api\/([^'"?#\s]+)['"]/g)) {
+    routes.add('/api/' + m[1]);
+  }
+
+  // 3. Regex match: url.pathname.match(/^\/api\/foo\/([^/]+)$/)
+  //    Convert capture groups to :param segments.
+  const REGEX_MATCH = /url\.pathname\.match\s*\(\s*\/\^\\\/api\\\/(.+?)\$\//g;
+  const NAMED_GROUP = new RegExp(String.raw`\(\?<[a-zA-Z_]\w*>\[[^\]]*\]\+\)`, 'g');
+  for (const m of workerSource.matchAll(REGEX_MATCH)) {
+    const raw = m[1];
+    const path = '/api/' + raw
+      .replace(/\\\//g, '/')
+      .replace(NAMED_GROUP, ':param')
+      .replace(/\([^)]*\)/g, ':param')
+      .replace(/\$$/, '');
+    routes.add(path);
+  }
+
+  // 4. Switch/case: case '/api/foo':
+  for (const m of workerSource.matchAll(/case\s+['"]\/api\/([^'"?#\s]+)['"]\s*:/g)) {
+    routes.add('/api/' + m[1]);
+  }
+
+  // 5. startsWith: url.pathname.startsWith('/api/foo/')
+  //    Trailing slash implies a parametric child segment.
+  for (const m of workerSource.matchAll(/url\.pathname\.startsWith\s*\(\s*['"]\/api\/([^'"?#\s]+\/)['"]\s*\)/g)) {
+    routes.add('/api/' + m[1] + ':param');
+  }
+
   return [...routes];
 }
 
@@ -99,8 +140,9 @@ function isCoveredByRoute(fetchPath: string, route: string): boolean {
  * A wildcard route (/api/*) is treated as covering everything.
  * Platform-provided routes are excluded — the worker never implements them.
  */
-export function findUncoveredFetches(fetches: string[], routes: string[]): string[] {
+export function findUncoveredFetches(fetches: string[], routes: string[], workerSource?: string): string[] {
   if (routes.some(r => /\/api\/\*/.test(r) || r === '/api/')) return [];
+  if (routes.length === 0 && workerSource && /\/api\//.test(workerSource)) return [];
   return fetches.filter(f => {
     if (PLATFORM_PROVIDED_ROUTES.has(normalizeApiPath(f))) return false;
     return !routes.some(r => isCoveredByRoute(f, r));

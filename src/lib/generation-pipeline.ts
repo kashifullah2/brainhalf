@@ -25,7 +25,9 @@ import { tracing } from 'cloudflare:workers';
 import { GenerationUserError, classifyGenerationError, errorMessage } from './generation-errors';
 import { isStepCount, streamText, type SystemModelMessage } from 'ai';
 import { sourceSnapshot } from '../runtime/source';
+import { devJobPayload, PILOT_LIMITS } from '../runtime/types';
 import { AUTO_RETRY_FULL_APP_MARKER } from './file-extractor';
+import { DISCONNECT_GRACE_MS } from './timeouts';
 
 const KILL_SWITCH_CACHE_KEY = 'ks_cache';
 const GENERATION_TRANSIENT_RETRIES = 3;
@@ -379,7 +381,7 @@ export class GenerationPipeline {
     const fetches = extractApiFetches(allFiles);
     if (fetches.length === 0) return null;
     const routes = extractWorkerRoutes(workerContent);
-    const uncovered = findUncoveredFetches(fetches, routes);
+    const uncovered = findUncoveredFetches(fetches, routes, workerContent);
     if (uncovered.length === 0) return null;
     console.warn(`Route coverage check: ${uncovered.length} fetch call(s) with no matching route: ${uncovered.join(', ')}`);
     if (this.apiRouteCoverageRepairAttempts < 1) {
@@ -572,15 +574,19 @@ export class GenerationPipeline {
         // A silent tab must not keep streaming after logout. Check subscribers while
         // inference is active; every incoming command also checks before execution.
         let checkingAccess = false;
+        let disconnectedSince: number | null = null;
         const accessTimer = setInterval(async () => {
           if (checkingAccess) return;
           checkingAccess = true;
           try {
             const connections = [...this.ctx.getConnections()];
-            // Parallel: the previous sequential for-await added N×registry-RTT of
-            // stutter every 10 s for users with multiple tabs open.
-            await Promise.all(connections.map(sub => this.ctx.authorizeConnection(sub, true)));
-            if (!this.ctx.connectionUserIds.size) this.ctx.abortGeneration();
+            await Promise.all(connections.map(sub => this.ctx.authorizeConnection(sub, false)));
+            if (!this.ctx.connectionUserIds.size) {
+              if (!disconnectedSince) disconnectedSince = Date.now();
+              if (Date.now() - disconnectedSince >= DISCONNECT_GRACE_MS) this.ctx.abortGeneration();
+            } else {
+              disconnectedSince = null;
+            }
           } catch { this.ctx.abortGeneration(); }
           finally { checkingAccess = false; }
         }, 10_000);
@@ -618,7 +624,7 @@ export class GenerationPipeline {
     
         const budget = new AiBudget(this.ctx.env, this.ctx.connectionUserIds.get(connection.id) || '', abortController.signal);
         try {
-          connection.send(JSON.stringify({ type: 'generation_notice', message: 'Preparing your app request…', stage: 'accepted', requestId: data.idempotencyKey }));
+          try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'Preparing your app request…', stage: 'accepted', requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }
           if (modes?.isIncrementalEdit) {
             try { connection.send(JSON.stringify({ type: 'generation_mode', mode: 'incremental' })); } catch {}
           }
@@ -1159,7 +1165,7 @@ export class GenerationPipeline {
                     };
     
                     try {
-                      connection.send(JSON.stringify({ type: 'generation_notice', message: stage.notice, stage: stage.stageId, requestId: data.idempotencyKey }));
+                      try { connection.send(JSON.stringify({ type: 'generation_notice', message: stage.notice, stage: stage.stageId, requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }
                       const result = streamText(streamOptions);
                       const finalText = await withAbortSignal(result.text, abortController.signal);
                       clearTimeout(idleTimer);
@@ -1499,6 +1505,9 @@ export class GenerationPipeline {
             });
           }
           if (measureGeneration && !repairPending) await this.ctx.queueProductOutcome({ ...outcomeScope, kind: completed ? 'generation_completed' : 'generation_failed', at: Date.now(), ...(completed && completedRevision ? { revision: completedRevision } : {}) });
+          if (completed && !repairPending && completedRevision && completedSource) {
+            this.triggerDevBuild(completedSource, completedRevision, outcomeScope.ownerId, connection);
+          }
           if (this.activeAccounting === accounting) this.activeAccounting = null;
           if (this.activeGeneration?.epoch === epoch) this.activeGeneration = null;
           if (this.currentAbortController === abortController) this.currentAbortController = null;
@@ -1559,6 +1568,149 @@ export class GenerationPipeline {
         }
   }
 
+  private triggerDevBuild(files: Record<string, string>, revision: string, ownerId: string, connection: PipelineConnection) {
+    const hasBackend = Object.keys(files).some(p => {
+      const clean = p.replace(/^\//, '');
+      return clean === 'worker/index.ts' || clean === 'worker/index.js' || clean === 'worker/index.mjs' || clean === 'src/worker.ts';
+    });
+    if (!hasBackend) return;
+    const runtime = this.ctx.env.RUNTIME as { fetch(input: RequestInfo, init?: RequestInit): Promise<Response> } | undefined;
+    if (!runtime || !ownerId) return;
+    const payload = devJobPayload(files, true);
+    this.ctx.waitUntil(
+      runtime.fetch(new Request('https://runtime/jobs?environment=development', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-bh-project': this.ctx.name, 'x-bh-owner': ownerId },
+        body: JSON.stringify(payload),
+      }))
+      .then(async (res: Response) => {
+        const result = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const job = result.job as Record<string, unknown> | undefined;
+        if (res.status === 429) {
+          const msg = JSON.stringify({ type: 'runtime_build_status', status: 'queued', revision });
+          try { connection.send(msg); } catch (e) { noteSendFailure(e); }
+          try { this.ctx.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
+          const chatMsg = JSON.stringify({ type: 'generation_notice', message: 'Files saved. The preview is waiting for a free build slot.' });
+          try { connection.send(chatMsg); } catch (e) { noteSendFailure(e); }
+          try { this.ctx.broadcast(chatMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+          this.scheduleCapacityRetry(revision, ownerId, connection, 0);
+          return;
+        }
+        const msg = JSON.stringify({
+          type: 'runtime_build_status',
+          status: res.ok ? 'triggered' : 'failed',
+          revision,
+          ...(job?.id ? { jobId: job.id } : {}),
+          ...(result.deduplicated ? { deduplicated: true } : {}),
+          ...(!res.ok ? { error: (result as any).error ?? `Runtime returned ${res.status}` } : {}),
+        });
+        try { connection.send(msg); } catch (e) { noteSendFailure(e); }
+        try { this.ctx.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
+        if (res.ok && job?.id) {
+          void this.ctx.storage.put?.('server_build_check', { jobId: job.id, revision });
+          this.scheduleBuildStatusCheck(job.id as string, connection, 0);
+        }
+        if (!res.ok) {
+          const errDetail = typeof (result as any).error === 'string' ? (result as any).error : `HTTP ${res.status}`;
+          const chatMsg = JSON.stringify({ type: 'generation_notice', message: `Files saved, but the app failed to build: ${errDetail}` });
+          try { connection.send(chatMsg); } catch (e) { noteSendFailure(e); }
+          try { this.ctx.broadcast(chatMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+        }
+      })
+      .catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.warn('Server-triggered dev build failed:', errMsg);
+        const msg = JSON.stringify({ type: 'runtime_build_status', status: 'failed', revision, error: errMsg });
+        try { connection.send(msg); } catch (e) { noteSendFailure(e); }
+        try { this.ctx.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
+        const chatMsg = JSON.stringify({ type: 'generation_notice', message: `Files saved, but the app failed to build: ${errMsg}` });
+        try { connection.send(chatMsg); } catch (e) { noteSendFailure(e); }
+        try { this.ctx.broadcast(chatMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+      })
+    );
+  }
+
+  private scheduleBuildStatusCheck(jobId: string, connection: PipelineConnection, attempt: number) {
+    if (attempt >= 20) return;
+    this.ctx.waitUntil(
+      new Promise<void>(r => setTimeout(r, 30_000)).then(async () => {
+        const runtime = this.ctx.env.RUNTIME as { fetch(input: RequestInfo): Promise<Response> } | undefined;
+        if (!runtime) return;
+        const pending = await this.ctx.storage.get?.('server_build_check') as { jobId: string } | undefined;
+        if (!pending || pending.jobId !== jobId) return;
+        const res = await runtime.fetch(new Request('https://runtime/status?environment=development', {
+          headers: { 'x-bh-project': this.ctx.name, 'x-bh-owner': '' },
+          signal: AbortSignal.timeout(5_000),
+        }));
+        if (!res.ok) return;
+        const status = await res.json() as { jobs?: Array<{ id: string; status: string; message?: string }> };
+        const job = status.jobs?.find(j => j.id === jobId);
+        if (!job) { await this.ctx.storage.delete?.('server_build_check'); return; }
+        if (['queued', 'running', 'stopping'].includes(job.status)) {
+          this.scheduleBuildStatusCheck(jobId, connection, attempt + 1);
+          return;
+        }
+        await this.ctx.storage.delete?.('server_build_check');
+        if (job.status !== 'failed') return;
+        const error = job.message || 'Build failed';
+        const chatMsg = JSON.stringify({ type: 'generation_notice', message: `Files saved, but the app failed to build: ${error}` });
+        try { connection.send(chatMsg); } catch (e) { noteSendFailure(e); }
+        try { this.ctx.broadcast(chatMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+      }).catch(() => {})
+    );
+  }
+
+  private static CAPACITY_BACKOFF = [30_000, 60_000, 120_000, 240_000, 480_000] as const;
+
+  scheduleCapacityRetry(revision: string, ownerId: string, connection: PipelineConnection, attempt: number) {
+    const backoff = GenerationPipeline.CAPACITY_BACKOFF;
+    if (attempt >= backoff.length) {
+      void this.ctx.storage.delete?.('server_build_check');
+      const msg = JSON.stringify({ type: 'runtime_build_status', status: 'failed', revision, error: 'All build slots are still busy.' });
+      try { connection.send(msg); } catch (e) { noteSendFailure(e); }
+      try { this.ctx.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
+      const chatMsg = JSON.stringify({ type: 'generation_notice', message: 'All build slots are still busy after several retries. You can retry from the preview panel when a slot frees up.' });
+      try { connection.send(chatMsg); } catch (e) { noteSendFailure(e); }
+      try { this.ctx.broadcast(chatMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+      return;
+    }
+    void this.ctx.storage.put?.('server_build_check', { retry: true, attempt, revision, ownerId });
+    this.ctx.waitUntil(
+      new Promise<void>(r => setTimeout(r, backoff[attempt])).then(async () => {
+        const pending = await this.ctx.storage.get?.('server_build_check') as { retry?: boolean; revision?: string } | undefined;
+        if (!pending?.retry || pending.revision !== revision) return;
+        const runtime = this.ctx.env.RUNTIME as { fetch(input: RequestInfo): Promise<Response> } | undefined;
+        if (!runtime) return;
+        const files = this.ctx.readAllProjectFiles();
+        const payload = devJobPayload(files, true);
+        const res = await runtime.fetch(new Request('https://runtime/jobs?environment=development', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-bh-project': this.ctx.name, 'x-bh-owner': ownerId },
+          body: JSON.stringify(payload),
+        }));
+        if (res.status === 429) {
+          this.scheduleCapacityRetry(revision, ownerId, connection, attempt + 1);
+          return;
+        }
+        const result = await res.json().catch(() => ({})) as Record<string, unknown>;
+        if (res.ok && result.job) {
+          const job = result.job as Record<string, unknown>;
+          void this.ctx.storage.put?.('server_build_check', { jobId: job.id as string, revision });
+          const msg = JSON.stringify({ type: 'runtime_build_status', status: 'triggered', revision, jobId: job.id });
+          try { connection.send(msg); } catch (e) { noteSendFailure(e); }
+          try { this.ctx.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
+          this.scheduleBuildStatusCheck(job.id as string, connection, 0);
+        } else {
+          void this.ctx.storage.delete?.('server_build_check');
+          const errDetail = typeof (result as any).error === 'string' ? (result as any).error : `HTTP ${res.status}`;
+          const chatMsg = JSON.stringify({ type: 'generation_notice', message: `Files saved, but the app failed to build: ${errDetail}` });
+          try { connection.send(chatMsg); } catch (e) { noteSendFailure(e); }
+          try { this.ctx.broadcast(chatMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
+        }
+      }).catch(() => {})
+    );
+  }
+
   async runCloudflareWorkersAI(
     modelName: string,
     systemPrompt: string,
@@ -1591,7 +1743,7 @@ export class GenerationPipeline {
       const runAI = async (model: string, input: Record<string, unknown>, options: { signal: AbortSignal }) => {
         options.signal.throwIfAborted();
         if (accounting) accounting.providerCalls++;
-        connection.send(JSON.stringify({ type: 'generation_notice', message: 'The app builder is working…', stage: 'model', requestId: this.activeGeneration?.id }));
+        try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'The app builder is working…', stage: 'model', requestId: this.activeGeneration?.id })); } catch (e) { noteSendFailure(e); }
         // These models document reasoning as enabled by default. Apply the
         // user's fast-mode choice to tool turns as well as the final answer.
         const request = modelSupportsThinking(model) ? { ...input, chat_template_kwargs: { enable_thinking: !fastMode } } : input;

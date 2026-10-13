@@ -253,6 +253,44 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     }).catch((e) => { console.warn('Backend readiness prewarm failed:', e instanceof Error ? e.message : e); });
   }
 
+  private checkServerBuildFailure(connection: Connection, attempt = 0) {
+    const runtime = this.env?.RUNTIME;
+    if (!runtime) return;
+    const check = this.ctx.storage.get<{ jobId?: string; revision?: string; retry?: boolean; attempt?: number; ownerId?: string }>('server_build_check')
+      .then(async (pending) => {
+        if (!pending) return;
+        if (pending.retry && pending.revision && pending.ownerId) {
+          this.pipeline.scheduleCapacityRetry(pending.revision, pending.ownerId, connection, pending.attempt ?? 0);
+          return;
+        }
+        if (!pending.jobId) return;
+        const res = await runtime.fetch(new Request('https://runtime/status?environment=development', {
+          headers: { 'x-bh-project': this.name, 'x-bh-owner': '' },
+          signal: AbortSignal.timeout(5_000),
+        }));
+        if (!res.ok) return;
+        const status = await res.json() as { jobs?: Array<{ id: string; status: string; message?: string }> };
+        const job = status.jobs?.find(j => j.id === pending.jobId);
+        if (!job) { await this.ctx.storage.delete('server_build_check'); return; }
+        if (['queued', 'running', 'stopping'].includes(job.status)) {
+          if (attempt < 20) {
+            this.ctx.waitUntil(
+              new Promise<void>(r => setTimeout(r, 30_000)).then(() => this.checkServerBuildFailure(connection, attempt + 1))
+            );
+          }
+          return;
+        }
+        await this.ctx.storage.delete('server_build_check');
+        if (job.status !== 'failed') return;
+        const error = job.message || 'Build failed';
+        const msg = JSON.stringify({ type: 'generation_notice', message: `Files saved, but the app failed to build: ${error}` });
+        try { connection.send(msg); } catch { /* client may already be gone */ }
+        try { this.broadcast(msg, [connection.id]); } catch { /* best effort */ }
+      })
+      .catch(() => {});
+    this.ctx.waitUntil(check);
+  }
+
   private abortGeneration() {
     // Broadcast a terminal event to all clients BEFORE bumping the epoch.
     // Without this, runGeneration's finally block finds writeEpoch.accepts()
@@ -1067,6 +1105,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         // for the redundant R2 round-trip.
         this.sendHistoryMessage(connection, false);
         this.prewarmBackendReadiness(userId);
+        this.checkServerBuildFailure(connection);
       } else {
         // Cold start or new project: R2 may have a backup to restore.
         await this.restoreFromR2(userId);
@@ -1077,6 +1116,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         this.seedStarterIfEmpty();
         this.sendHistoryMessage(connection, postRestoreCount === 0);
         this.prewarmBackendReadiness(userId);
+        this.checkServerBuildFailure(connection);
       }
     } catch (err) {
       console.error('[onConnect] CRITICAL: uncaught exception in onConnect body:', err);
@@ -1301,22 +1341,37 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
   }
 
   private async doAuthorizeConnection(connection: Connection): Promise<boolean> {
-    try {
-      const state = connection.state as { userId?: string; sessionHash?: string } | null;
-      const uri = connection.uri ? new URL(connection.uri) : null;
-      const userId = state?.userId || uri?.searchParams.get(USER_ID_QUERY_PARAM);
-      const sessionHash = state?.sessionHash || uri?.searchParams.get(SESSION_HASH_QUERY_PARAM);
-      if (userId && sessionHash && /^[a-f0-9]{64}$/.test(sessionHash)) {
+    const state = connection.state as { userId?: string; sessionHash?: string; transientAuthFailures?: number } | null;
+    const uri = connection.uri ? new URL(connection.uri) : null;
+    const userId = state?.userId || uri?.searchParams.get(USER_ID_QUERY_PARAM);
+    const sessionHash = state?.sessionHash || uri?.searchParams.get(SESSION_HASH_QUERY_PARAM);
+    if (userId && sessionHash && /^[a-f0-9]{64}$/.test(sessionHash)) {
+      try {
         const [sessionRes, ownerOk] = await Promise.all([
           getRegistry(this.env).fetch(`https://registry/sessions/${sessionHash}`),
           isProjectOwner(this.env, this.name, userId),
         ]);
         if (sessionRes.ok && (await sessionRes.json() as { userId?: string }).userId === userId && ownerOk) {
           this.connectionUserIds.set(connection.id, userId);
+          // Reset transient failure counter on a confirmed success.
+          if ((state?.transientAuthFailures ?? 0) > 0) {
+            try { connection.setState({ ...state, transientAuthFailures: 0 }); } catch {}
+          }
           return true;
         }
+        // Definitive rejection: Registry responded but session or ownership check failed.
+      } catch (e) {
+        // Transient failure: Registry timeout, 5xx, DO cold start.
+        // Tolerate up to 2 consecutive transients before failing closed so that
+        // a brief Registry hiccup does not kill a running generation.
+        console.warn('Auth check failed (transient):', e instanceof Error ? e.message : e);
+        const failures = (state?.transientAuthFailures ?? 0) + 1;
+        try { connection.setState({ ...state, transientAuthFailures: failures }); } catch {}
+        if (failures < 3) return true;
+        console.warn(`Auth check failed ${failures} times consecutively on ${connection.id}; failing closed`);
       }
-    } catch (e) { console.warn('Auth check failed (failing closed):', e instanceof Error ? e.message : e); }
+    }
+    // Definitive rejection or missing credentials or 3 consecutive transient failures.
     this.connectionUserIds.delete(connection.id);
     try { connection.close(4401, 'Session expired or project access revoked'); } catch {}
     return false;

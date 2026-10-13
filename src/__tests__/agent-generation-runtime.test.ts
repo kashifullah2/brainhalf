@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APICallError, simulateReadableStream } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import type { LanguageModelV4StreamPart, LanguageModelV4StreamResult } from '@ai-sdk/provider';
+import { DISCONNECT_STOP_DELAY } from '../lib/timeouts';
 
 const providerState = vi.hoisted(() => ({ model: undefined as any }));
 
@@ -301,7 +302,7 @@ describe('Agent generation against the installed AI SDK', () => {
     const controller = new AbortController(); agent.currentAbortController = controller;
     const epoch = agent.writeEpoch.begin();
     await agent.onClose(connection);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(DISCONNECT_STOP_DELAY);
     expect(controller.signal.aborted).toBe(true);
     expect(agent.writeEpoch.accepts(epoch)).toBe(false);
   });

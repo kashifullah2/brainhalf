@@ -81,6 +81,244 @@ describe('extractWorkerRoutes', () => {
     const src = "app.get('/health', handler); app.get('/api/users', handler)";
     expect(extractWorkerRoutes(src)).toEqual(['/api/users']);
   });
+
+  // ── if/else pathname dispatch (baseline workers-starter template) ────────
+
+  it('extracts routes from url.pathname === "/api/..." dispatch', () => {
+    const src = `
+      if (url.pathname === '/api/items' && request.method === 'GET') { return json({ items }); }
+      if (url.pathname === '/api/items' && request.method === 'POST') { return json(item, 201); }
+    `;
+    expect(extractWorkerRoutes(src).sort()).toEqual(['/api/items']);
+  });
+
+  it('extracts routes when method check comes first', () => {
+    const src = `if (request.method === 'GET' && url.pathname === '/api/products') { return json(products); }`;
+    expect(extractWorkerRoutes(src).sort()).toEqual(['/api/products']);
+  });
+
+  it('extracts routes from double-quoted pathname checks', () => {
+    const src = `if (url.pathname === "/api/orders") { return json(orders); }`;
+    expect(extractWorkerRoutes(src)).toEqual(['/api/orders']);
+  });
+
+  it('extracts routes from pathname check without method guard', () => {
+    const src = `if (url.pathname === '/api/health') return json({ ok: true });`;
+    expect(extractWorkerRoutes(src)).toEqual(['/api/health']);
+  });
+
+  // ── regex pathname match (baseline template parametric routes) ───────────
+
+  it('extracts routes from url.pathname.match regex', () => {
+    const src = String.raw`const match = url.pathname.match(/^\/api\/items\/([a-zA-Z0-9-]+)$/);`;
+    expect(extractWorkerRoutes(src)).toEqual(['/api/items/:param']);
+  });
+
+  it('extracts routes from url.pathname.match with named groups', () => {
+    const src = String.raw`const m = url.pathname.match(/^\/api\/products\/(?<id>[^/]+)\/adjust$/);`;
+    expect(extractWorkerRoutes(src)).toEqual(['/api/products/:param/adjust']);
+  });
+
+  // ── switch/case on pathname ──────────────────────────────────────────────
+
+  it('extracts routes from switch/case dispatch', () => {
+    const src = `
+      switch (url.pathname) {
+        case '/api/items': return handleItems(request);
+        case '/api/health': return json({ ok: true });
+        default: return json({ error: 'Not found' }, 404);
+      }
+    `;
+    expect(extractWorkerRoutes(src).sort()).toEqual(['/api/health', '/api/items']);
+  });
+
+  // ── startsWith for parametric prefixes ──────────────────────────────────
+
+  it('extracts routes from url.pathname.startsWith for param prefixes', () => {
+    const src = `if (url.pathname.startsWith('/api/items/')) { const id = url.pathname.split('/')[3]; }`;
+    expect(extractWorkerRoutes(src)).toEqual(['/api/items/:param']);
+  });
+
+  // ── Hono-style app.method (identical to chained-router but exercises
+  //    that the combination of patterns works) ──────────────────────────────
+
+  it('extracts Hono-style routes with path params', () => {
+    const src = `
+      app.get('/api/products', listProducts)
+      app.post('/api/products', createProduct)
+      app.get('/api/products/:id', getProduct)
+      app.put('/api/products/:id', updateProduct)
+      app.delete('/api/products/:id', deleteProduct)
+      app.patch('/api/products/:id/adjust', adjustStock)
+    `;
+    expect(extractWorkerRoutes(src).sort()).toEqual([
+      '/api/products',
+      '/api/products/:id',
+      '/api/products/:id/adjust',
+    ]);
+  });
+
+  // ── Full baseline template (real source from workers-starter.ts) ─────────
+
+  it('extracts all routes from the baseline workers-starter template', () => {
+    const baselineWorker = `import type { BrainHalfServices } from './brainhalf';
+interface Env extends BrainHalfServices { DB: D1Database; BRAINHALF_MANAGED?: string }
+const json = (body: unknown, status = 200) => Response.json(body, { status });
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/health') return json({ ok: true, runtime: 'workers', database: !!env.DB });
+    const userId = env.BRAINHALF_MANAGED === 'true' ? request.headers.get('x-bh-user-id') : null;
+    if (!userId) return json({ error: 'Sign in to use this feature.' }, 401);
+    if (url.pathname === '/api/items' && request.method === 'GET') {
+      const result = await env.DB.prepare('SELECT id,title FROM items WHERE user_id=?').bind(userId).all();
+      return json({ items: result.results });
+    }
+    if (url.pathname === '/api/items' && request.method === 'POST') {
+      return json({ item: { id: '1', title: 'test' } }, 201);
+    }
+    const match = url.pathname.match(/^\\/api\\/items\\/([a-zA-Z0-9-]+)$/);
+    if (match && request.method === 'DELETE') {
+      return json({ ok: true });
+    }
+    return json({ error: 'Route not found' }, 404);
+  }
+};`;
+    const routes = extractWorkerRoutes(baselineWorker).sort();
+    expect(routes).toEqual(['/api/health', '/api/items', '/api/items/:param']);
+  });
+
+  // ── Inventory tracker (common generated pattern) ─────────────────────────
+
+  it('extracts all routes from an inventory-tracker worker', () => {
+    const inventoryWorker = `const items = [];
+const json = (body, status = 200) => Response.json(body, { status });
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/items' && request.method === 'GET') return json(items);
+    if (url.pathname === '/api/items' && request.method === 'POST') {
+      const body = await request.json();
+      items.push({ id: crypto.randomUUID(), ...body });
+      return json(items[items.length - 1], 201);
+    }
+    return json({ error: 'Not found' }, 404);
+  }
+};`;
+    expect(extractWorkerRoutes(inventoryWorker).sort()).toEqual(['/api/items']);
+  });
+
+  // ── Products worker with parametric adjust route ─────────────────────────
+
+  it('extracts routes from a products worker with regex param routes', () => {
+    const productsWorker = String.raw`export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/products' && request.method === 'GET') return json(products);
+    if (url.pathname === '/api/products' && request.method === 'POST') return json(newProduct, 201);
+    const detailMatch = url.pathname.match(/^\/api\/products\/([a-zA-Z0-9-]+)$/);
+    if (detailMatch && request.method === 'GET') return json(product);
+    if (detailMatch && request.method === 'DELETE') return json({ ok: true });
+    const adjustMatch = url.pathname.match(/^\/api\/products\/(?<id>[^/]+)\/adjust$/);
+    if (adjustMatch && request.method === 'PATCH') return json(adjusted);
+    return json({ error: 'Not found' }, 404);
+  }
+};`;
+    expect(extractWorkerRoutes(productsWorker).sort()).toEqual([
+      '/api/products',
+      '/api/products/:param',
+      '/api/products/:param/adjust',
+    ]);
+  });
+
+  // ── Chained-router worker (existing syntax — no regression) ──────────────
+
+  it('extracts all routes from a chained-router worker', () => {
+    const chainedWorker = `
+      import { Hono } from 'hono';
+      const app = new Hono();
+      app.get('/api/notes', listNotes)
+      app.post('/api/notes', createNote)
+      app.get('/api/notes/:id', getNote)
+      app.put('/api/notes/:id', updateNote)
+      app.delete('/api/notes/:id', deleteNote)
+      export default app;
+    `;
+    expect(extractWorkerRoutes(chainedWorker).sort()).toEqual([
+      '/api/notes',
+      '/api/notes/:id',
+    ]);
+  });
+
+  // ── Zero false positives: findUncoveredFetches with the baseline template ─
+
+  it('reports zero false positives against the baseline template', () => {
+    const baselineWorker = `
+    if (url.pathname === '/api/health') return json({ ok: true });
+    if (url.pathname === '/api/items' && request.method === 'GET') return json({ items });
+    if (url.pathname === '/api/items' && request.method === 'POST') return json({ item }, 201);
+    const match = url.pathname.match(/^\\/api\\/items\\/([a-zA-Z0-9-]+)$/);
+    if (match && request.method === 'DELETE') return json({ ok: true });
+    `;
+    const fetches = ['/api/health', '/api/items', '/api/items/:param'];
+    const routes = extractWorkerRoutes(baselineWorker);
+    const uncovered = findUncoveredFetches(fetches, routes);
+    expect(uncovered).toEqual([]);
+  });
+
+  // ── Genuinely missing route IS still reported ────────────────────────────
+
+  it('still reports a genuinely missing route', () => {
+    const src = `if (url.pathname === '/api/items' && request.method === 'GET') return json(items);`;
+    const routes = extractWorkerRoutes(src);
+    const uncovered = findUncoveredFetches(['/api/items', '/api/orders'], routes);
+    expect(uncovered).toEqual(['/api/orders']);
+  });
+
+  // ── Fail-safe: unparseable dispatch produces no false positives ──────────
+
+  it('returns no routes from a worker that stores paths in variables', () => {
+    const src = `
+const ITEMS_PATH = '/api/items';
+const HEALTH_PATH = '/api/health';
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === ITEMS_PATH && request.method === 'GET') return json(items);
+    if (url.pathname === ITEMS_PATH && request.method === 'POST') return json(item, 201);
+    if (url.pathname === HEALTH_PATH) return json({ ok: true });
+    return json({ error: 'Not found' }, 404);
+  }
+};`;
+    expect(extractWorkerRoutes(src)).toEqual([]);
+  });
+
+  it('findUncoveredFetches skips the check when worker has /api/ dispatch but no parseable routes', () => {
+    const workerSource = `
+const ITEMS_PATH = '/api/items';
+if (url.pathname === ITEMS_PATH) return json(items);`;
+    const routes = extractWorkerRoutes(workerSource);
+    const uncovered = findUncoveredFetches(
+      ['/api/items', '/api/health'],
+      routes,
+      workerSource,
+    );
+    expect(uncovered).toEqual([]);
+  });
+});
+
+describe('normalizeApiPath — trailing slashes and query strings', () => {
+  it('strips trailing slashes', () => {
+    expect(normalizeApiPath('/api/notes/')).toBe('/api/notes');
+  });
+
+  it('strips query strings', () => {
+    expect(normalizeApiPath('/api/notes?active=true')).toBe('/api/notes');
+  });
+
+  it('strips both trailing slash and query string', () => {
+    expect(normalizeApiPath('/api/notes/?active=true')).toBe('/api/notes');
+  });
 });
 
 describe('findUncoveredFetches', () => {
@@ -91,6 +329,21 @@ describe('findUncoveredFetches', () => {
   it('matches after normalising :param segments', () => {
     expect(findUncoveredFetches(['/api/notes/:param'], ['/api/notes/:id'])).toEqual([]);
     expect(findUncoveredFetches(['/api/notes/123'], ['/api/notes/:id'])).toEqual([]);
+  });
+
+  it('matches :id, :slug, :param and ${id} as the same param segment', () => {
+    expect(findUncoveredFetches(['/api/notes/:param'], ['/api/notes/:id'])).toEqual([]);
+    expect(findUncoveredFetches(['/api/notes/:id'], ['/api/notes/:slug'])).toEqual([]);
+    expect(findUncoveredFetches(['/api/notes/:param'], ['/api/notes/:slug'])).toEqual([]);
+  });
+
+  it('matches routes with trailing slashes stripped', () => {
+    expect(findUncoveredFetches(['/api/notes/'], ['/api/notes'])).toEqual([]);
+    expect(findUncoveredFetches(['/api/notes'], ['/api/notes/'])).toEqual([]);
+  });
+
+  it('matches routes with query strings stripped', () => {
+    expect(findUncoveredFetches(['/api/notes?page=1'], ['/api/notes'])).toEqual([]);
   });
 
   it('returns uncovered fetches', () => {

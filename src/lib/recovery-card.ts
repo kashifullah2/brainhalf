@@ -19,6 +19,8 @@ export interface RecoveryCardState {
   connectionError: string | null;
   /** Whether the workspace socket is currently open. */
   isConnected: boolean;
+  /** RC-4: set when a 4401 close arrived while a generation was active. */
+  sessionExpiredDuringGeneration?: boolean;
 }
 
 export interface RecoveryCardDecision {
@@ -30,12 +32,26 @@ export interface RecoveryCardDecision {
   actionLabel: 'Reconnect & try again' | 'Try again';
   /** True when the primary action must reconnect first. */
   needsReconnect: boolean;
+  /** RC-4: true when the primary action should open the sign-in flow. */
+  needsSignIn?: boolean;
 }
 
 export const GENERIC_NO_RESPONSE_BODY =
   'No reply is available for this message. Your prompt is saved. Try again, or select another model below.';
 
+export const SESSION_EXPIRED_DURING_GENERATION_BODY =
+  'Your session expired while the builder was working. Sign in again to resume.';
+
 export function decideRecoveryCard(state: RecoveryCardState): RecoveryCardDecision {
+  if (state.sessionExpiredDuringGeneration) {
+    return {
+      title: 'Session expired',
+      body: SESSION_EXPIRED_DURING_GENERATION_BODY,
+      actionLabel: 'Try again',
+      needsReconnect: false,
+      needsSignIn: true,
+    };
+  }
   if (state.connectionError && !state.isConnected) {
     return {
       title: 'Connection problem',
@@ -50,4 +66,15 @@ export function decideRecoveryCard(state: RecoveryCardState): RecoveryCardDecisi
     actionLabel: 'Try again',
     needsReconnect: false,
   };
+}
+
+/**
+ * RC-5: build the "Resuming interrupted build" status detail shown when
+ * a generation_notice with resumedFrom arrives. N comes from the local
+ * project store so it reflects files written before the disconnect.
+ */
+export function buildResumeNotice(fileCount: number): string {
+  return fileCount > 0
+    ? `Resuming interrupted build (${fileCount} file${fileCount === 1 ? '' : 's'} already saved)…`
+    : 'Resuming interrupted build…';
 }

@@ -389,18 +389,24 @@ async function getWsTicket(): Promise<string | null> {
 }
 
 async function fetchWsTicket(): Promise<string | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5_000);
-  try {
-    const res = await authFetch(`${apiBase()}/api/auth/ws-ticket`, { method: 'POST', signal: controller.signal });
-    if (!res.ok) return null;
-    const body = await res.json().catch(() => null);
-    const ticket = (body as { ticket?: string } | null)?.ticket;
-    return typeof ticket === 'string' && ticket.startsWith('bhwt_') ? ticket : null;
-  } catch {
-    if (controller.signal.aborted) throw new Error('The workspace sign-in check timed out. Retry or sign in again.');
-    return null;
-  } finally { clearTimeout(timeout); }
+  let lastAborted = false;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    if (attempt > 0) await new Promise<void>(r => setTimeout(r, 1_000));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const res = await authFetch(`${apiBase()}/api/auth/ws-ticket`, { method: 'POST', signal: controller.signal });
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => null);
+      const ticket = (body as { ticket?: string } | null)?.ticket;
+      return typeof ticket === 'string' && ticket.startsWith('bhwt_') ? ticket : null;
+    } catch {
+      if (!controller.signal.aborted) return null;
+      lastAborted = true;
+    } finally { clearTimeout(timeout); }
+  }
+  if (lastAborted) throw new Error('The workspace sign-in check timed out. Retry or sign in again.');
+  return null;
 }
 
 let prefetchedTicket: Promise<string | null> | null = null;

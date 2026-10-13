@@ -211,6 +211,70 @@ describe('Hosting slot admission', () => {
     expect(p.pilot.forceRelease).toHaveBeenCalledWith('my-app', 'owner');
   });
 });
+
+describe('Job dedup and server-triggered lease', () => {
+  const workerFiles = { 'package.json': JSON.stringify({ brainhalf: { runtime: 'workers' }, scripts: { build: 'build' } }), 'src/App.tsx': 'source', 'worker/index.ts': 'export default {}' };
+
+  it('deduplicates two concurrent POSTs with the same revision into one job and one slot', async () => {
+    const p = await project();
+    const first = await p.call('/jobs', 'POST', { kind: 'preview', files: workerFiles });
+    expect(first.status).toBe(202);
+    const firstJob = (await first.json() as any).job;
+
+    const second = await p.call('/jobs', 'POST', { kind: 'preview', files: workerFiles });
+    expect(second.status).toBe(200);
+    const secondBody = await second.json() as any;
+    expect(secondBody.deduplicated).toBe(true);
+    expect(secondBody.job.id).toBe(firstJob.id);
+    expect(p.pilot.acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicates against a just-passed job with the same revision', async () => {
+    const p = await project();
+    const first = await p.call('/jobs', 'POST', { kind: 'preview', files: workerFiles });
+    const firstJob = (await first.json() as any).job;
+    const current = await p.ctx.storage.get('current') as any;
+    current.status = 'passed'; current.finishedAt = Date.now();
+    await p.ctx.storage.put('current', current);
+    await p.ctx.storage.put(`job:${firstJob.id}`, current);
+
+    const second = await p.call('/jobs', 'POST', { kind: 'preview', files: workerFiles });
+    expect(second.status).toBe(200);
+    expect((await second.json() as any).deduplicated).toBe(true);
+    expect(p.pilot.acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not dedup against a failed job with the same revision', async () => {
+    const p = await project();
+    const first = await p.call('/jobs', 'POST', { kind: 'preview', files: workerFiles });
+    const firstJob = (await first.json() as any).job;
+    const current = await p.ctx.storage.get('current') as any;
+    current.status = 'failed'; current.finishedAt = Date.now();
+    await p.ctx.storage.put('current', current);
+    await p.ctx.storage.put(`job:${firstJob.id}`, current);
+
+    const second = await p.call('/jobs', 'POST', { kind: 'preview', files: workerFiles });
+    expect(second.status).toBe(202);
+    expect(p.pilot.acquire).toHaveBeenCalledTimes(2);
+  });
+
+  it('sets an extended lease for server-triggered jobs', async () => {
+    const p = await project();
+    const response = await p.call('/jobs', 'POST', { kind: 'preview', files: workerFiles, serverTriggered: true });
+    expect(response.status).toBe(202);
+    const job = (await response.json() as any).job;
+    expect(job.leaseUntil - job.createdAt).toBeGreaterThanOrEqual(590_000);
+  });
+
+  it('sets a normal 45s lease for UI-triggered jobs', async () => {
+    const p = await project();
+    const response = await p.call('/jobs', 'POST', { kind: 'preview', files: workerFiles });
+    expect(response.status).toBe(202);
+    const job = (await response.json() as any).job;
+    expect(job.leaseUntil - job.createdAt).toBeLessThanOrEqual(46_000);
+  });
+});
+
 describe('Custom slug alias handling', () => {
   it('keeps the stored slug across later control requests instead of clobbering it', async () => {
     const p = await project();

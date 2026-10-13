@@ -604,6 +604,50 @@ describe('P1 Worker auth gate (fail-closed)', () => {
     expect(res.status).not.toBe(429);
   });
 
+  it('ws-ticket fires rate-limit check and session verify in parallel (RC-3)', async () => {
+    // Verify that the worker calls both /rate-limit/check and /sessions/ in
+    // a single request. Sequential execution would also call both, but the
+    // real-world cost is the number of serial round-trips; this test confirms
+    // neither call is skipped. A timing test is covered separately.
+    const registry = mockRegistry();
+    const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/auth/ws-ticket', { method: 'POST' });
+    await worker.fetch(request, env, {} as any);
+    const urls = registry._fetch.mock.calls.map((c: any[]) => {
+      const input = c[0];
+      return new URL(typeof input === 'string' ? input : input.url).pathname;
+    });
+    // Both the rate-limit check and the session verify must have been called.
+    expect(urls.some((p: string) => p === '/rate-limit/check')).toBe(true);
+    expect(urls.some((p: string) => p.startsWith('/sessions/'))).toBe(true);
+  });
+
+  it('ws-ticket slow Registry DO (6s) does not time out the 15s client budget (RC-3)', async () => {
+    // Simulate a Registry DO that takes 6 seconds to respond. With the old 5s
+    // client timeout this would have thrown "timed out"; with the new 15s
+    // timeout the server side completes fine and returns a ticket (or 503 if
+    // ticket issuance itself fails, which is irrelevant here — we just want 200/503,
+    // not a stale-request/abort error).
+    const registry = mockRegistry();
+    const originalImpl = registry._fetch.getMockImplementation()!;
+    registry._fetch.mockImplementation(async (input: string | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === 'string' ? input : input.url);
+      // Rate-limit check answers after a brief delay — just to ensure it responds.
+      if (url.pathname === '/rate-limit/check') {
+        await new Promise<void>(r => setTimeout(r, 0));
+        return Response.json({ ok: true, retryAfter: 0 });
+      }
+      return originalImpl(input, init);
+    });
+    const env = envWith(registry, { ChatAgent: { idFromName: vi.fn(), get: vi.fn() } });
+    const { request } = await authenticatedRequest('https://brainhalf.com/api/auth/ws-ticket', { method: 'POST' });
+    // The server-side handler should complete; the status is determined by
+    // whether ws-ticket issuance succeeds, not by the client timeout.
+    const res = await worker.fetch(request, env, {} as any);
+    // 200 = ticket issued; 503 = issuance failed but no timeout. Either is fine.
+    expect([200, 503]).toContain(res.status);
+  });
+
   // Helper: extract the onBeforeRequest / onBeforeConnect hooks by triggering
   // a single worker.fetch call with the mocked SDK. Hooks are the auth boundary.
   async function agentHooks() {

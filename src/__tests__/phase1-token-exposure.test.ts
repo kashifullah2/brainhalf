@@ -186,9 +186,10 @@ describe('P1 — the long-lived token is absent from navigational URLs', () => {
     try {
       const m = await mod_import();
       const result = expect(m.withWsAuthQuery('wss://brainhalf.com/agents/chat-agent/proj-a')).rejects.toThrow('sign-in check timed out');
-      await vi.advanceTimersByTimeAsync(15_000);
+      // RC-3a: 15s timeout + 1s backoff + 15s second attempt = 31s total.
+      await vi.advanceTimersByTimeAsync(32_000);
       await result;
-      expect(signal?.aborted).toBe(true); expect(fetchSpy).toHaveBeenCalledOnce();
+      expect(signal?.aborted).toBe(true); expect(fetchSpy).toHaveBeenCalledTimes(2);
       expect(vi.getTimerCount()).toBe(0);
     } finally { fetchSpy.mockRestore(); restore(); vi.useRealTimers(); }
   });

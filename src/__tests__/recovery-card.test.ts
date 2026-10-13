@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildResumeNotice,
   decideRecoveryCard,
   GENERIC_NO_RESPONSE_BODY,
+  SESSION_EXPIRED_DURING_GENERATION_BODY,
 } from '../lib/recovery-card';
 
 /**
@@ -46,5 +48,40 @@ describe('decideRecoveryCard (B1)', () => {
     const decision = decideRecoveryCard({ connectionError: 'stale', isConnected: true });
     expect(decision.actionLabel).toBe('Try again');
     expect(decision.needsReconnect).toBe(false);
+  });
+});
+
+describe('RC-4 — session expired during generation', () => {
+  it('shows the re-auth card with needsSignIn and the correct body', () => {
+    const decision = decideRecoveryCard({
+      connectionError: null,
+      isConnected: false,
+      sessionExpiredDuringGeneration: true,
+    });
+    expect(decision.title).toBe('Session expired');
+    expect(decision.body).toBe(SESSION_EXPIRED_DURING_GENERATION_BODY);
+    expect(decision.needsSignIn).toBe(true);
+    expect(decision.needsReconnect).toBe(false);
+  });
+
+  it('session-expired card takes priority over a connection error', () => {
+    const decision = decideRecoveryCard({
+      connectionError: 'Some connection error',
+      isConnected: false,
+      sessionExpiredDuringGeneration: true,
+    });
+    expect(decision.needsSignIn).toBe(true);
+    expect(decision.title).toBe('Session expired');
+  });
+});
+
+describe('RC-5 — buildResumeNotice', () => {
+  it('includes file count when files are present', () => {
+    expect(buildResumeNotice(5)).toBe('Resuming interrupted build (5 files already saved)…');
+    expect(buildResumeNotice(1)).toBe('Resuming interrupted build (1 file already saved)…');
+  });
+
+  it('omits file count when zero files have been saved', () => {
+    expect(buildResumeNotice(0)).toBe('Resuming interrupted build…');
   });
 });

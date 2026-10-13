@@ -77,6 +77,11 @@ export const DEV_MAX_CRASH_RESTARTS = 3;              // cap before surfacing th
 export const DEV_LIVE_FILE_MAX_BYTES = 512 * 1024;    // 512 KB per /live-files push
 export const DEV_LIVE_FILE_RATE_PER_MIN = 60;         // max /live-files pushes per minute per project
 
+export interface DevJobPayload { kind: 'preview'; files: SourceFiles; serverTriggered?: boolean }
+export function devJobPayload(files: SourceFiles, serverTriggered = false): DevJobPayload {
+  return serverTriggered ? { kind: 'preview', files, serverTriggered } : { kind: 'preview', files };
+}
+
 export class RuntimeError extends Error {
   constructor(message: string, public status = 400) { super(message); this.name = 'RuntimeError'; }
 }

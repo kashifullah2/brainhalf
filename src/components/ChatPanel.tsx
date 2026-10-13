@@ -33,7 +33,7 @@ import { PendingChatRequest } from '../lib/pending-chat-request';
 import { FileSnapshotAssembler, type FileSnapshotRequest } from '../lib/file-snapshot';
 import { formatModelReliability, rankModelsByReliability, recordModelOutcome } from '../lib/model-reliability';
 import { completeAssistantResponse, EMPTY_RESPONSE_MESSAGE, isEmptyAssistantResponse } from '../lib/assistant-response';
-import { decideRecoveryCard } from '../lib/recovery-card';
+import { buildResumeNotice, decideRecoveryCard } from '../lib/recovery-card';
 import { reconcileWorkspaceSnapshot } from '../lib/workspace-reconciliation';
 import { getReliabilityControls, pushUsageEvent, savePromptVersion, setOnboardingState } from '../lib/project-growth';
 
@@ -502,6 +502,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     connectionErrorRef.current = msg;
     setConnectionError(msg);
   };
+  // RC-4: set when a 4401 close arrived while a generation was active.
+  const [sessionExpiredDuringGeneration, setSessionExpiredDuringGeneration] = useState(false);
   const platformStatus = usePlatformStatus(activeProjectId);
   const [mergeConflict, setMergeConflict] = useState<{ sourceName: string; conflicts: string[] } | null>(null);
   const [workspaceConflict, setWorkspaceConflict] = useState<string[] | null>(null);
@@ -943,6 +945,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         if (!isMounted || !isCurrent()) return;
         setIsConnected(true);
         setConnectionErrorBoth(null);
+        setSessionExpiredDuringGeneration(false);
         console.log(`Connected to session: ${activeProjectId}`);
         // B1: fire a resend queued by "Reconnect & try again".
         if (pendingResendRef.current) {
@@ -1317,7 +1320,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               const dedupeKey = data.message.trim();
               if (dedupeKey !== lastNoticeMessageRef.current) {
                 lastNoticeMessageRef.current = dedupeKey;
-                appEvents.emit('generation-status', { status: 'Generating', detail: data.message, projectId: activeProjectId });
+                // RC-5: when the server signals an auto-resume, show a client-side
+                // message with the local file count (may be more accurate than the
+                // server's count if files were saved before the disconnect).
+                const detail = typeof data.resumedFrom === 'string'
+                  ? buildResumeNotice(Object.keys(getProjectFiles(activeProjectId) || {}).length)
+                  : data.message;
+                appEvents.emit('generation-status', { status: 'Generating', detail, projectId: activeProjectId });
               }
             }
             // A notice for a generation this tab isn't tracking (e.g. started
@@ -1599,6 +1608,15 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           // "Restoring your conversation…" placeholder spinning.
           setHistoryLoaded(true);
           if (wasGenerating) generationClockRef.current?.finish('failed');
+
+          if (wasGenerating) {
+            // RC-4: session expired while the builder was running. Show the
+            // re-auth card instead of the generic "project inaccessible" message.
+            // The project URL is preserved so after sign-in the workspace resumes.
+            setSessionExpiredDuringGeneration(true);
+            return;
+          }
+
           // B1: record the reason so the recovery card names it.
           setConnectionErrorBoth('This project could not be opened. It may have been deleted or moved; pick it again from the dashboard.');
           if (!getToken()) {
@@ -2439,14 +2457,18 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                           msg.role === 'ai' ? (
                             (() => {
                               // B1: never offer a blind "Try again" on a dead connection.
-                              const recovery = decideRecoveryCard({ connectionError, isConnected });
+                              const recovery = decideRecoveryCard({ connectionError, isConnected, sessionExpiredDuringGeneration });
                               return (
                             <div className="studio-response-error" role="status">
                               <div><AlertCircle size={17} /><strong>{recovery.title}</strong></div>
                               <p>{recovery.body}</p>
                               {isLastMessage && (
                                 <div className="studio-recovery-actions">
-                                  {recovery.needsReconnect ? (
+                                  {recovery.needsSignIn ? (
+                                    // RC-4: sign-in clears the user state in App.tsx while keeping
+                                    // the project URL intact, so after auth the workspace resumes.
+                                    <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('bh-session-expired-in-workspace'))}>Sign in again</button>
+                                  ) : recovery.needsReconnect ? (
                                     <button type="button" disabled={isGenerating} onClick={() => {
                                       const prompt = messagesRef.current.slice(0, idx).reverse().find(message => message.role === 'user' && !message.internal && !isSystemContinuation(message.content))?.content;
                                       if (!prompt) return;

@@ -519,7 +519,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       return Response.json({ release });
     }
     if (path === '/jobs' && request.method === 'POST') {
-      const body = await readJson(request, 5_000_000) as { kind: RuntimeJob['kind']; files: Record<string, string>; retryJobId?: string };
+      const body = await readJson(request, 5_000_000) as { kind: RuntimeJob['kind']; files: Record<string, string>; retryJobId?: string; serverTriggered?: boolean };
       if (!['build', 'preview', 'dev', 'verify', 'deploy', 'migrate', 'publish'].includes(body.kind)) throw new RuntimeError('Unknown job kind.');
       if (body.kind === 'publish' && environment !== 'production') throw new RuntimeError('Publish creates a production release.');
       if (body.kind === 'verify' && environment !== 'development') throw new RuntimeError('Run destructive verification against development only.');
@@ -555,16 +555,25 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
         const services = this.services().store;
         assertProductionServices(services.settings('production'), await services.readiness('production'));
       }
-      const job: StoredJob = { id: crypto.randomUUID(), kind: body.kind, environment, revision: snapshot.revision, status: 'queued', createdAt: Date.now(), updatedAt: Date.now(), leaseUntil: Date.now() + (body.kind === 'publish' ? PILOT_LIMITS.commandTimeoutMs : PILOT_LIMITS.leaseMs), processIds: [], message: 'Queued', step: 0, sandboxId: '', sourceKey: '', node, static: staticApp, ...(body.kind === 'publish' ? { publishStage: 'build' } : {}) };
+      const serverTriggered = body.serverTriggered === true;
+      const leaseMs = body.kind === 'publish' || serverTriggered ? PILOT_LIMITS.commandTimeoutMs : PILOT_LIMITS.leaseMs;
+      const job: StoredJob = { id: crypto.randomUUID(), kind: body.kind, environment, revision: snapshot.revision, status: 'queued', createdAt: Date.now(), updatedAt: Date.now(), leaseUntil: Date.now() + leaseMs, processIds: [], message: 'Queued', step: 0, sandboxId: '', sourceKey: '', node, static: staticApp, ...(body.kind === 'publish' ? { publishStage: 'build' } : {}) };
       job.sandboxId = `job-${job.id}`; job.sourceKey = `${this.alias}/sources/${snapshot.revision}.json`;
+      let dedupedJob: StoredJob | null = null;
       await this.withControlLock(async () => {
         if (this.databaseOperation) throw new RuntimeError('Wait for the database action to finish.', 409);
-        if (active(await this.ctx.storage.get<StoredJob>('current'))) throw new RuntimeError('A runtime job is already running. Stop it first.', 409);
+        const current = await this.ctx.storage.get<StoredJob>('current');
+        if (current && current.revision === snapshot.revision && current.environment === environment && current.kind === body.kind && (active(current) || (current as StoredJob).status === 'passed')) {
+          dedupedJob = current;
+          return;
+        }
+        if (active(current)) throw new RuntimeError('A runtime job is already running. Stop it first.', 409);
         requireAdmission(await this.pilot().register(this.alias, this.scope));
         requireAdmission(await this.pilot().acquire(job.id, 'sandbox', this.scope.projectId));
         try { await this.consumeUsage('jobs', job.id); await this.env.ARTIFACTS.put(job.sourceKey, JSON.stringify(snapshot)); await this.saveJob(job); await this.scheduleAlarm(Date.now() + 100); }
         catch (error) { await this.pilot().release(job.id); throw error; }
       });
+      if (dedupedJob) return Response.json({ job: dedupedJob, deduplicated: true }, { status: 200 });
       return Response.json({ job }, { status: 202 });
     }
     if (path === '/live-files' && request.method === 'POST') {
