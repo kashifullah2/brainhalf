@@ -98,7 +98,7 @@ export async function runCapabilityLoop(run: (input: Record<string, unknown>) =>
   const tools = Object.entries(capabilities).map(([name, entry]) => ({ type: 'function', function: { name, description: entry.description, parameters: entry.parameters } }));
   const text: string[] = [];
   const maxSteps = typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps) ? Math.max(1, Math.min(10, Math.floor(options.maxSteps))) : 6;
-  const toolErrorStreak: Record<string, number> = {};
+  let consecutiveErrorSteps = 0;
   for (let step = 0; step < maxSteps; step++) {
     signal.throwIfAborted();
     let startedText = false;
@@ -129,15 +129,6 @@ export async function runCapabilityLoop(run: (input: Record<string, unknown>) =>
       } catch (error) { signal.throwIfAborted(); result = { error: error instanceof Error ? error.message : 'Tool failed.' }; }
       const isErr = result && typeof result === 'object' && (('error' in (result as Record<string, unknown>)) || ('success' in (result as Record<string, unknown>) && !(result as any).success));
       options.onToolResult?.(call.function.name, !isErr);
-      // Circuit-breaker: 4 consecutive errors on the same tool aborts the loop.
-      if (isErr) {
-        toolErrorStreak[call.function.name] = (toolErrorStreak[call.function.name] ?? 0) + 1;
-        if (toolErrorStreak[call.function.name] >= 4) {
-          throw new Error(`Tool "${call.function.name}" failed ${toolErrorStreak[call.function.name]} times in a row. Stopping to prevent a stuck loop. Last error: ${JSON.stringify((result as any).error ?? (result as any).success)}`);
-        }
-      } else {
-        toolErrorStreak[call.function.name] = 0;
-      }
       const serialized = JSON.stringify(result) ?? 'null';
       return { role: 'tool', tool_call_id: call.id, content: serialized.length <= 26000 ? serialized : JSON.stringify({ error: 'Tool output was too large. Request a smaller result or a narrower line range.', truncated: true }) };
     };
@@ -149,6 +140,20 @@ export async function runCapabilityLoop(run: (input: Record<string, unknown>) =>
       const results = await Promise.all(batch.map(execute));
       signal.throwIfAborted();
       messages.push(...results);
+    }
+    // Circuit-breaker: if every tool call in this step errored, bump the
+    // streak. Parallel batches (e.g. 4 read_file guesses) can all fail
+    // legitimately — only abort after 3 consecutive all-error steps.
+    const stepResults = messages.slice(-normalized.length);
+    const allFailed = stepResults.every(m => { try { const v = JSON.parse((m as any).content); return v && typeof v === 'object' && ('error' in v || ('success' in v && !v.success)); } catch { return false; } });
+    if (allFailed) {
+      consecutiveErrorSteps++;
+      if (consecutiveErrorSteps >= 3) {
+        const lastErr = stepResults[stepResults.length - 1];
+        throw new Error(`${consecutiveErrorSteps} consecutive steps had all tool calls fail. Stopping to prevent a stuck loop. Last result: ${(lastErr as any).content?.slice(0, 200)}`);
+      }
+    } else {
+      consecutiveErrorSteps = 0;
     }
   }
   // Preserve prior file blocks when the caller finishes with the streaming path.

@@ -2217,7 +2217,11 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
           } catch { /* fail closed */ }
         }
       }
-      if (!operator) return Response.json({ error: 'Not an operator' }, { status: 403 });
+      // Allow the verified project owner through alongside operators so that
+      // the export-zip endpoint (which already checked isProjectOwner in the
+      // worker) can fetch files from the DO.
+      const isOwner = !!userId && this.name === projectId;
+      if (!operator && !isOwner) return Response.json({ error: 'Not an operator' }, { status: 403 });
       this.ensureSchema();
       const all = this.readAllProjectFiles();
       const files: Record<string, string> = Object.create(null);

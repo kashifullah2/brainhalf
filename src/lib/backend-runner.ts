@@ -364,8 +364,8 @@ export async function executeBackendRequest(
   const pathname = urlObj.pathname.replace(/^\/(?:preview|p)\/[^/]+/, ''); // normalize
   const searchParams = urlObj.searchParams;
 
-  if (req.body != null && (typeof req.body !== 'object' || Array.isArray(req.body))) {
-    return backendError(400, 'Request body must be a JSON object');
+  if (req.body != null && typeof req.body !== 'object') {
+    return backendError(400, 'Request body must be a JSON object or array');
   }
 
   // Handle Health check: /api/health

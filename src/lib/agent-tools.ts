@@ -272,7 +272,7 @@ export function createToolHandlers(ctx: ToolContext) {
       },
     }),
     edit_file: tool({
-      description: 'Apply exact str_replace edits to an inspected file when <40% of its content changes. Read the file first. Each search must match exactly once; fails on stale read, ambiguous match or syntax error.',
+      description: 'Apply exact str_replace edits to a file when <40% of its content changes. The file is loaded automatically if not already read. Each search must match exactly once; fails on ambiguous match or syntax error.',
       inputSchema: z.object({ path: z.string(), edits: z.array(z.object({ search: z.string().min(1), replace: z.string() })).min(1).max(30) }),
       execute: async ({ path, edits }: { path: string; edits: Array<{ search: string; replace: string }> }) => {
         const cleanPath = normalizePath(path);
@@ -317,8 +317,13 @@ export function createToolHandlers(ctx: ToolContext) {
           for (const file of files) {
             const cleanPath = normalizePath(file.path);
             if (isHarnessEntry(cleanPath)) return { success: false, error: `This entry point is owned by the preview: ${cleanPath}` };
-            const original = pending.has(cleanPath) ? pending.get(cleanPath)!.content : inspectedFiles.get(cleanPath);
-            if (original === undefined) return { success: false, error: `Read the complete file before editing it: ${cleanPath}` };
+            let original = pending.has(cleanPath) ? pending.get(cleanPath)!.content : inspectedFiles.get(cleanPath);
+            if (original === undefined) {
+              const row = runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`[0];
+              if (!row) return { success: false, error: `File not found: ${cleanPath}. Use list_files to verify the path.` };
+              original = row.content as string;
+              inspectedFiles.set(cleanPath, original);
+            }
             const editResult = ensureHtmlDoctype(cleanPath, applyExactEdits(original, file.edits));
             const shrinkPct = checkShrinkage(cleanPath, editResult, typeof original === 'string' ? original : '');
             if (shrinkPct > 0 && !isShrinkIntentional(actualPrompt ?? '') && !editResult.includes(SHRINK_OK_MARKER)) {

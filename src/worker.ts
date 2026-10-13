@@ -764,13 +764,13 @@ export default {
         const fileEntries = Object.entries(files).filter(([, v]) => typeof v === 'string') as [string, string][];
         if (!fileEntries.length) return withCors(jsonError('No files to export', 400), origin);
         const zipBytes = buildZip(fileEntries);
-        return new Response(new Blob([zipBytes.buffer.slice(0, zipBytes.byteLength) as ArrayBuffer]), {
+        return withCors(new Response(new Blob([zipBytes.buffer.slice(0, zipBytes.byteLength) as ArrayBuffer]), {
           headers: {
             'Content-Type': 'application/zip',
             'Content-Disposition': `attachment; filename="${projectId.slice(0, 32)}.zip"`,
             'Cache-Control': 'no-store',
           },
-        });
+        }), origin);
       } catch { return withCors(jsonError('Export failed. Please try again.', 503), origin); }
     }
     /* --------- project listing / management (authenticated) --------- */

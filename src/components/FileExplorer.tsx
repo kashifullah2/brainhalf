@@ -75,7 +75,10 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
 
   function commitCreate() {
     if (!onCreateFile) { setCreating(false); return; }
-    const newPath = normalizePath(newFileName);
+    const trimmed = newFileName.trim().replace(/\/+$/, '');
+    const lastSegment = trimmed.split('/').pop() || '';
+    if (!trimmed || !lastSegment || !lastSegment.includes('.')) { setCreating(false); return; }
+    const newPath = normalizePath(trimmed);
     if (newPath && !files[newPath]) {
       onCreateFile(newPath);
     }

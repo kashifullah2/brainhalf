@@ -1170,7 +1170,7 @@ export class GenerationPipeline {
                       const finalText = await withAbortSignal(result.text, abortController.signal);
                       clearTimeout(idleTimer);
                       const usage = await withAbortSignal(result.totalUsage, abortController.signal);
-                      this.captureUsage(usage.inputTokens, usage.outputTokens, usage.inputTokenDetails);
+                      if (usage) this.captureUsage(usage.inputTokens, usage.outputTokens, usage.inputTokenDetails);
                       const inTok = usage.inputTokens ?? 0;
                       const hitTok = usage.inputTokenDetails?.cacheReadTokens ?? 0;
                       const writeTok = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
