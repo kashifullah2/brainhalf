@@ -331,10 +331,13 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     expect(await res.text()).toBe('Agent Routed');
   });
 
-  it('serves static assets from env.ASSETS when request is not an agent or preview route', async () => {
+  it('serves hashed /assets/* chunks with immutable cache header on 200', async () => {
     vi.mocked(routeAgentRequest).mockResolvedValue(undefined as any);
 
-    const mockAssetResponse = new Response('<html>BrainHalf App</html>', { status: 200 });
+    const mockAssetResponse = new Response('console.log("bundle")', {
+      status: 200,
+      headers: { 'Content-Type': 'application/javascript' },
+    });
     const mockAssetsFetch = vi.fn().mockResolvedValue(mockAssetResponse);
 
     const env = envWith(mockRegistry(), {
@@ -342,16 +345,78 @@ describe('Cloudflare Worker Gateway & Routing', () => {
       ASSETS: { fetch: mockAssetsFetch },
     });
 
-    const req = new Request('https://brainhalf.com/assets/index.js');
+    const req = new Request('https://brainhalf.com/assets/main-abc123.js');
     const res = await worker.fetch(req, env, {} as any);
 
     expect(mockAssetsFetch).toHaveBeenCalledWith(req);
-    // The asset is re-issued rather than passed through so the shell security
-    // headers can be attached; the body and status must survive the wrap.
-    expect(res.status).toBe(mockAssetResponse.status);
-    await expect(res.text()).resolves.toBe('<html>BrainHalf App</html>');
-    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
-    expect(res.headers.get('Content-Security-Policy')).toContain('script-src');
+    expect(res.status).toBe(200);
+    await expect(res.text()).resolves.toBe('console.log("bundle")');
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('returns a real 404 with no-store for missing /assets/* chunks (prevents CDN caching HTML as JS)', async () => {
+    vi.mocked(routeAgentRequest).mockResolvedValue(undefined as any);
+
+    const mockAssetsFetch = vi.fn().mockResolvedValue(new Response('Not found', { status: 404 }));
+
+    const env = envWith(mockRegistry(), {
+      ChatAgent: { idFromName: vi.fn(), get: vi.fn() },
+      ASSETS: { fetch: mockAssetsFetch },
+    });
+
+    const req = new Request('https://brainhalf.com/assets/typescript-H_TSRuvX.js');
+    const res = await worker.fetch(req, env, {} as any);
+
+    expect(res.status).toBe(404);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    // Body must be empty — never HTML served as JavaScript
+    expect(await res.text()).toBe('');
+  });
+
+  it('passes 304 Not Modified through with immutable cache header and no body (If-None-Match hit)', async () => {
+    vi.mocked(routeAgentRequest).mockResolvedValue(undefined as any);
+
+    const mockAssetsFetch = vi.fn().mockResolvedValue(
+      new Response(null, { status: 304, headers: { ETag: '"abc123"' } })
+    );
+
+    const env = envWith(mockRegistry(), {
+      ChatAgent: { idFromName: vi.fn(), get: vi.fn() },
+      ASSETS: { fetch: mockAssetsFetch },
+    });
+
+    const req = new Request('https://brainhalf.com/assets/main-abc123.js', {
+      headers: { 'If-None-Match': '"abc123"' },
+    });
+    const res = await worker.fetch(req, env, {} as any);
+
+    expect(res.status).toBe(304);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+    expect(res.headers.get('ETag')).toBe('"abc123"');
+    // 304 responses must carry no body
+    expect(await res.text()).toBe('');
+  });
+
+  it('passes 206 Partial Content through with immutable cache header', async () => {
+    vi.mocked(routeAgentRequest).mockResolvedValue(undefined as any);
+
+    const mockAssetsFetch = vi.fn().mockResolvedValue(
+      new Response('partial', { status: 206, headers: { 'Content-Range': 'bytes 0-6/200' } })
+    );
+
+    const env = envWith(mockRegistry(), {
+      ChatAgent: { idFromName: vi.fn(), get: vi.fn() },
+      ASSETS: { fetch: mockAssetsFetch },
+    });
+
+    const req = new Request('https://brainhalf.com/assets/main-abc123.js', {
+      headers: { Range: 'bytes=0-6' },
+    });
+    const res = await worker.fetch(req, env, {} as any);
+
+    expect(res.status).toBe(206);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+    expect(await res.text()).toBe('partial');
   });
 
   it('returns 404 when no assets binding is provided and routeAgentRequest yields undefined', async () => {

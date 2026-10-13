@@ -30,6 +30,24 @@ function prerenderedGalleryApps(): GalleryApp[] | null {
   }
 }
 
+// Reload when Vite can't load a dynamic import chunk (stale tab after deploy).
+// The sessionStorage guard (timestamp-based, expires after 60 s) prevents
+// infinite reload loops when a chunk is genuinely absent from the new build.
+// During an active generation the reload is deferred: App.tsx listens for the
+// 'bh-needs-chunk-reload' event, shows a banner, and reloads when safe.
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  const EXPIRY_MS = 60_000;
+  const stored = sessionStorage.getItem('bh_chunk_reload');
+  if (stored && Date.now() - Number(stored) < EXPIRY_MS) return;
+  sessionStorage.setItem('bh_chunk_reload', String(Date.now()));
+  if ((window as any).__bh_generating) {
+    window.dispatchEvent(new CustomEvent('bh-needs-chunk-reload'));
+    return;
+  }
+  window.location.reload();
+});
+
 const root = document.getElementById('root');
 if (root && window.self === window.top && !/^\/(preview|p)(\/|$)/.test(window.location.pathname)) {
   const path = window.location.pathname.replace(/\/$/, '') || '/';

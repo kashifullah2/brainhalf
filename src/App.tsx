@@ -59,6 +59,7 @@ function App() {
   const createProjectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [generationActive, setGenerationActive] = useState(false);
   const [runtimeActive, setRuntimeActive] = useState(false);
+  const [needsChunkReload, setNeedsChunkReload] = useState(false);
   const [closingProject, setClosingProject] = useState(false);
   const [closeError, setCloseError] = useState('');
   const [pendingWorkspaceExit, setPendingWorkspaceExit] = useState<'home' | 'new' | 'dashboard' | null>(null);
@@ -172,6 +173,27 @@ function App() {
   useEffect(() => appEvents.on('runtime-status', ({ projectId, running }) => {
     if (projectId === activeIdRef.current) setRuntimeActive(running);
   }), []);
+
+  // Expose generation state to the vite:preloadError handler in main.tsx, which
+  // runs outside React and needs a synchronous flag to decide whether to reload
+  // immediately or defer to the banner below.
+  useEffect(() => {
+    (window as any).__bh_generating = generationActive;
+  }, [generationActive]);
+
+  // Listen for deferred chunk-reload requests (fired when vite:preloadError
+  // occurs during an active generation). Show a banner rather than interrupting.
+  useEffect(() => {
+    const onNeedsReload = () => setNeedsChunkReload(true);
+    window.addEventListener('bh-needs-chunk-reload', onNeedsReload);
+    return () => window.removeEventListener('bh-needs-chunk-reload', onNeedsReload);
+  }, []);
+
+  // Auto-reload when generation ends (the banner was shown mid-generation and
+  // the user didn't explicitly dismiss it).
+  useEffect(() => {
+    if (needsChunkReload && !generationActive) window.location.reload();
+  }, [needsChunkReload, generationActive]);
 
   useEffect(() => {
     const unsubReady = appEvents.on('workspace-session-ready', ({ projectId }) => {
@@ -516,6 +538,35 @@ function App() {
     <ErrorBoundary>
     <Suspense fallback={<div className="studio-session-loading" aria-busy="true" aria-label="Loading workspace"><div><span className="loading-logo-ring"><BrainHalfLogo size={32} strokeWidth={1.5} color="currentColor" /></span><span className="loading-text">Setting up your workspace…</span><span className="loading-bar" /></div></div>}>
     <div className="app-container studio-workspace">
+      {needsChunkReload && (
+        <div role="status" style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: 'var(--bg-surface)', color: 'var(--text-primary)',
+          borderBottom: '1px solid var(--border-medium)',
+          padding: '8px 16px',
+          display: 'flex', alignItems: 'center', gap: '12px',
+          fontSize: '13px', lineHeight: '1.4',
+        }}>
+          <span style={{ flex: 1 }}>
+            A new version is available — will reload when the current build finishes.
+          </span>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{ padding: '4px 10px', borderRadius: '4px', border: '1px solid var(--border-strong)', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap' }}
+          >
+            Reload now
+          </button>
+          <button
+            type="button"
+            onClick={() => setNeedsChunkReload(false)}
+            aria-label="Dismiss"
+            style={{ padding: '4px 8px', border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className="main-content">
         {/* TopNav is now rendered inside Workspace for workspace mode (Bolt-style unified topbar) */}
         {/* Mobile view switcher. Lives outside workspace-area because the

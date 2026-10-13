@@ -40,9 +40,10 @@
   Cache-Control: no-store
   X-Robots-Tag: noindex, nofollow
 
-# Fingerprinted bundles can be cached without serving stale releases.
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
+# Fingerprinted /assets/* bundles are now intercepted by the Worker so the
+# immutable header can be restricted to 200 responses only. Missing hashed
+# chunks (after a deploy) return a real 404 with no-store instead of an
+# immutably-cached HTML page. See src/worker.ts for the handler.
 
 # Older HTML and development still use the unversioned startup script.
 # Only its content-hashed production copy is safe to cache for a year.

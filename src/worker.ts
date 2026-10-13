@@ -1221,6 +1221,34 @@ export default {
       return withCors(jsonError(`No route for ${request.method} ${url.pathname}`, 404), origin);
     }
 
+    // Hashed Vite bundles live under /assets/* and are immutably cacheable —
+    // but only when the file actually exists. The _headers catch-all would
+    // otherwise apply the immutable directive to 404 responses too (a missing
+    // chunk after a deploy), trapping the CDN in an infinite "HTML served as
+    // JS" loop. We intercept here so we can condition the header on status.
+    if (url.pathname.startsWith('/assets/') && env.ASSETS) {
+      const asset = await env.ASSETS.fetch(request);
+      const { status } = asset;
+      // Missing hashed chunk: return a real 404 with no-store so the CDN cannot
+      // cache the HTML fallback as if it were JavaScript.
+      if (status === 404) {
+        return new Response(null, {
+          status: 404,
+          headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
+        });
+      }
+      // 304 Not Modified: body must stay null; update Cache-Control so the browser
+      // refreshes the TTL of its cached copy. ETag is inherited from the binding.
+      // 200/206 and other 2xx: pass the body through with the immutable header.
+      // Other non-2xx (redirects, 5xx): pass through unchanged.
+      if (status === 304 || asset.ok) {
+        const next = new Response(status === 304 ? null : asset.body, asset);
+        next.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        return next;
+      }
+      return asset;
+    }
+
     if (env.ASSETS) {
       // withShellSecurity sets no-store caching, so the previous special case
       // for '/' and '/index.html' is no longer needed — every shell response

@@ -478,8 +478,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   useEffect(() => {
     let active = true;
     if (typeof window === 'undefined') return;
+    // Install the no-op blob worker before the import so Monaco picks it up
+    // for all worker types (TypeScript, JSON, CSS) from the very first init.
+    configureMonacoWorkerFallback();
     void import('monaco-editor').then(monaco => {
-      configureMonacoWorkerFallback();
       monaco.editor.defineTheme('brainhalf-studio', {
         base: 'vs',
         inherit: true,
