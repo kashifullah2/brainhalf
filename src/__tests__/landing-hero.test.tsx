@@ -24,9 +24,9 @@ describe('LandingHero redesign', () => {
     const html = renderHero();
     expect(html).toContain('id="hero-heading"');
     expect(html).toContain('hero-gradient-text');
-    expect(html).toContain('build it.');
-    expect(html).toContain('Start building');
-    expect(html).toContain('See examples');
+    expect(html).toContain('architect it.');
+    expect(html).toContain('Open blank canvas');
+    expect(html).toContain('Explore live examples');
     expect(html).toContain('href="#examples"');
   });
 
