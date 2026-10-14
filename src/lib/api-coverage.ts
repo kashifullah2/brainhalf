@@ -69,10 +69,10 @@ export function extractApiFetches(files: Map<string, string>): string[] {
 /**
  * Extract all /api/... route paths registered in a worker source file.
  *
- * Recognises five dispatch patterns:
+ * Recognises five dispatch patterns (including aliased pathname/path variables):
  *   1. Chained-router / Hono:  app.get('/api/foo', handler)
- *   2. Pathname equality:      url.pathname === '/api/foo'
- *   3. Pathname regex match:   url.pathname.match(/^\/api\/foo\/([^/]+)$/)
+ *   2. Pathname equality:      url.pathname === '/api/foo' or pathname === '/api/foo'
+ *   3. Pathname regex match:   url.pathname.match(/^\/api\/foo\/([^/]+)$/) or /^\/api\/.../.test(...)
  *   4. Switch/case dispatch:   case '/api/foo':
  *   5. Pathname startsWith:    url.pathname.startsWith('/api/foo/')
  */
@@ -87,14 +87,14 @@ export function extractWorkerRoutes(workerSource: string): string[] {
     routes.add('/api/' + m[1]);
   }
 
-  // 2. Pathname equality: url.pathname === '/api/foo' or "/api/foo"
-  for (const m of workerSource.matchAll(/url\.pathname\s*===\s*['"]\/api\/([^'"?#\s]+)['"]/g)) {
+  // 2. Pathname equality: url.pathname / pathname / path / route === '/api/foo' or "/api/foo"
+  for (const m of workerSource.matchAll(/(?:url\.pathname|\bpathname|\bpath|\broute)\s*===\s*['"]\/api\/([^'"?#\s]+)['"]/g)) {
     routes.add('/api/' + m[1]);
   }
 
-  // 3. Regex match: url.pathname.match(/^\/api\/foo\/([^/]+)$/)
+  // 3. Regex match or .test(): any regex literal anchored at /^\/api\/.../
   //    Convert capture groups to :param segments.
-  const REGEX_MATCH = /url\.pathname\.match\s*\(\s*\/\^\\\/api\\\/(.+?)\$\//g;
+  const REGEX_MATCH = /\/\^\\\/api\\\/(.+?)\$?\//g;
   const NAMED_GROUP = new RegExp(String.raw`\(\?<[a-zA-Z_]\w*>\[[^\]]*\]\+\)`, 'g');
   for (const m of workerSource.matchAll(REGEX_MATCH)) {
     const raw = m[1];
@@ -111,10 +111,14 @@ export function extractWorkerRoutes(workerSource: string): string[] {
     routes.add('/api/' + m[1]);
   }
 
-  // 5. startsWith: url.pathname.startsWith('/api/foo/')
-  //    Trailing slash implies a parametric child segment.
-  for (const m of workerSource.matchAll(/url\.pathname\.startsWith\s*\(\s*['"]\/api\/([^'"?#\s]+\/)['"]\s*\)/g)) {
-    routes.add('/api/' + m[1] + ':param');
+  // 5. startsWith: (url.pathname|pathname|path).startsWith('/api/foo/')
+  for (const m of workerSource.matchAll(/(?:url\.pathname|\bpathname|\bpath|\broute)\.startsWith\s*\(\s*['"]\/api\/([^'"?#\s]+)['"]\s*\)/g)) {
+    if (m[1].endsWith('/')) {
+      routes.add('/api/' + m[1] + ':param');
+    } else {
+      routes.add('/api/' + m[1]);
+      routes.add('/api/' + m[1] + '/:param');
+    }
   }
 
   return [...routes];

@@ -151,6 +151,80 @@ function backendDevPlugin() {
           return;
         }
 
+        // Platform & Durable Object HTTP routes used by ChatPanel, Dashboard, AgentTools, AgentTracker, and ProjectHistory in dev mode.
+        const cleanPath = url.split('?')[0];
+        if (cleanPath === '/api/models/status' && method === 'GET') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ integratedModelsEnabled: true, disabledModels: [], customModels: [] }));
+          return;
+        }
+        if (cleanPath === '/api/projects' || cleanPath.startsWith('/api/projects/')) {
+          if (!url.match(/^\/api\/projects\/[^/?#]+\/runtime\//)) {
+            res.setHeader('Content-Type', 'application/json');
+            if (method === 'GET') {
+              res.end(JSON.stringify({ projects: [] }));
+            } else {
+              res.end(JSON.stringify({ ok: true }));
+            }
+            return;
+          }
+        }
+        if (cleanPath === '/api/account/ai-usage' && method === 'GET') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({
+            day: new Date().toISOString().slice(0, 10),
+            calls: 0,
+            reservedOutputTokens: 0,
+            activeGenerations: 0,
+            limits: { dailyCalls: 100, dailyOutputTokens: 500000, concurrentGenerations: 3 },
+          }));
+          return;
+        }
+        if (cleanPath === '/api/account/project-quota' && method === 'GET') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ live: 0, limit: 50 }));
+          return;
+        }
+        if (cleanPath === '/api/account/deletions' && method === 'GET') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ deletions: [] }));
+          return;
+        }
+        if (cleanPath.startsWith('/agents/chat-agent/')) {
+          res.setHeader('Content-Type', 'application/json');
+          if (cleanPath.endsWith('/snapshot') && method === 'GET') {
+            res.end(JSON.stringify({ files: {}, messages: [], fileCount: 0, messageCount: 0, revision: 1 }));
+            return;
+          }
+          if (cleanPath.endsWith('/is-empty') && method === 'GET') {
+            res.end(JSON.stringify({ empty: true }));
+            return;
+          }
+          if (cleanPath.endsWith('/usage') && method === 'GET') {
+            res.end(JSON.stringify({
+              entries: [],
+              summary: { requests: 0, inputTokens: 0, outputTokens: 0, toolCalls: 0, avgDurationMs: 0, models: {} },
+            }));
+            return;
+          }
+          if (cleanPath.includes('/checkpoints')) {
+            if (method === 'GET') {
+              res.end(JSON.stringify({ revision: 1, checkpoints: [], changes: [] }));
+            } else {
+              res.end(JSON.stringify({
+                ok: true,
+                revision: 1,
+                checkpoint: { id: 'cp-dev', label: 'Saved checkpoint', createdAt: Date.now(), fileCount: 0, bytes: 0 },
+              }));
+            }
+            return;
+          }
+          if (cleanPath.includes('/builder/')) {
+            res.end(JSON.stringify({ ok: true, attachments: [], servers: [], skills: [] }));
+            return;
+          }
+        }
+
         // Managed-runtime routes — the runtime Worker does not run in dev.
         // Answer with an explicit "disabled" status instead of falling into the
         // simulated app backend, which 404s and surfaces a confusing

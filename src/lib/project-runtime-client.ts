@@ -1,3 +1,4 @@
+import { apiOrigin } from './api-origin';
 import { useCallback, useEffect, useState } from 'react';
 import { authFetch } from './auth-client';
 import { appEvents } from './events';
@@ -89,8 +90,7 @@ function withJitter(delayMs: number): number {
 }
 
 export function runtimeBase(projectId: string): string {
-  const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const origin = local ? (import.meta.env.VITE_BACKEND_HOST || '') : '';
+  const origin = apiOrigin();
   return `${origin}/api/projects/${encodeURIComponent(projectId)}/runtime`;
 }
 

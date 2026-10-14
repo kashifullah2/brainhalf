@@ -94,16 +94,17 @@ export function cfImageMessages(messages: Array<{ role: string; content: string 
 }
 
 /** Current Workers AI chat-completions models use the standard function/tool-call envelope. */
-export async function runCapabilityLoop(run: (input: Record<string, unknown>) => Promise<unknown>, messages: Array<Record<string, unknown>>, capabilities: AgentCapabilities, signal: AbortSignal, onUsage: (usage: Record<string, number>) => void, onTool: (name: string) => void = () => {}, onText: (text: string) => void = () => {}, options: { maxSteps?: number; onToolResult?: (name: string, success: boolean) => void } = {}) {
+export async function runCapabilityLoop(run: (input: Record<string, unknown>) => Promise<unknown>, messages: Array<Record<string, unknown>>, capabilities: AgentCapabilities, signal: AbortSignal, onUsage: (usage: Record<string, number>) => void, onTool: (name: string) => void = () => {}, onText: (text: string) => void = () => {}, options: { maxSteps?: number; maxTokens?: number; onToolResult?: (name: string, success: boolean) => void } = {}) {
   const tools = Object.entries(capabilities).map(([name, entry]) => ({ type: 'function', function: { name, description: entry.description, parameters: entry.parameters } }));
   const text: string[] = [];
   const maxSteps = typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps) ? Math.max(1, Math.min(10, Math.floor(options.maxSteps))) : 6;
+  const maxTokens = typeof options.maxTokens === 'number' && Number.isFinite(options.maxTokens) && options.maxTokens > 0 ? Math.floor(options.maxTokens) : 16384;
   let consecutiveErrorSteps = 0;
   for (let step = 0; step < maxSteps; step++) {
     signal.throwIfAborted();
     let startedText = false;
     const emit = (chunk: string) => { if (!startedText && text.length) onText('\n'); startedText = true; onText(chunk); };
-    const response = await withAbortSignal(run({ messages, tools, stream: true, max_tokens: 8192 }), signal);
+    const response = await withAbortSignal(run({ messages, tools, stream: true, max_tokens: maxTokens }), signal);
     const streamed = response instanceof ReadableStream;
     const raw = streamed ? await readToolStream(response, signal, emit) : response as ToolResponse;
     if (raw.error) throw new Error(`Model tool call failed: ${typeof raw.error === 'string' ? raw.error : JSON.stringify(raw.error)}`);

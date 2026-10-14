@@ -399,8 +399,8 @@ export class GenerationPipeline {
     }
     try {
       connection.send(JSON.stringify({
-        type: 'error',
-        error: `The app is incomplete: ${uncovered.length} API call(s) in the frontend have no matching backend route (${uncovered.slice(0, 5).join(', ')}${uncovered.length > 5 ? ', …' : ''}). Ask the builder to add the missing routes.`,
+        type: 'generation_notice',
+        message: `Note: ${uncovered.length} frontend API path(s) could not be statically matched to /worker/index.ts (${uncovered.slice(0, 5).join(', ')}${uncovered.length > 5 ? ', …' : ''}).`,
       }));
     } catch { }
     return null;
@@ -823,7 +823,7 @@ export class GenerationPipeline {
               const toolWrittenPaths = assetPaths;
               const inspectedFiles = new Map<string, string>();
               const agentTools = createToolHandlers({
-                runSql: this.ctx.runSql.bind(this),
+                runSql: this.ctx.runSql.bind(this.ctx),
                 writeEpoch: this.ctx.writeEpoch,
                 upsertFile: this.ctx.upsertFile.bind(this.ctx),
                 isHarnessEntry: isHarnessEntryModule,
@@ -1841,7 +1841,7 @@ export class GenerationPipeline {
             flushFrame();
             const event = JSON.stringify({ type: 'tool_call', tool: name });
             try { connection.send(event); this.ctx.broadcast(event, [connection.id]); } catch (e) { noteSendFailure(e); }
-          }, emit, { maxSteps, onToolResult: (name, success) => {
+          }, emit, { maxSteps, maxTokens: requestedMaxTokens || 32768, onToolResult: (name, success) => {
             const evt = JSON.stringify({ type: 'tool_result', tool: name, success });
             try { connection.send(evt); this.ctx.broadcast(evt, [connection.id]); } catch (e) { noteSendFailure(e); }
           } });

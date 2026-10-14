@@ -449,6 +449,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Undo last AI change — quick restore to the most recent "Before agent changes" checkpoint
   const [undoCheckpoint, setUndoCheckpoint] = useState<{ id: string; revision: number } | null>(null);
+  const [checkpointRevision, setCheckpointRevision] = useState<number>(0);
   const [undoLoading, setUndoLoading] = useState(false);
   // Full version history list — all source_checkpoints (up to 12)
   const [checkpointList, setCheckpointList] = useState<Array<{ id: string; label: string; createdAt: number; fileCount: number }>>([]);
@@ -832,8 +833,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
       const resp = await authFetch(base, { signal: AbortSignal.timeout(8_000), headers: { 'Content-Type': 'application/json' } });
       const data = await resp.json() as { checkpoints?: Array<{ id: string; label: string; createdAt?: number; fileCount?: number }>; revision?: number };
       if (Array.isArray(data.checkpoints) && typeof data.revision === 'number') {
+        setCheckpointRevision(data.revision);
         const cp = data.checkpoints.find(c => c.label === 'Before agent changes');
         if (cp) setUndoCheckpoint({ id: cp.id, revision: data.revision });
+        else setUndoCheckpoint(null);
         setCheckpointList(data.checkpoints.map(c => ({
           id: c.id,
           label: c.label,
@@ -862,6 +865,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       }
       setUndoCheckpoint(null);
       addBuildLog('Restored to pre-generation checkpoint', 'info');
+      void refreshUndoCheckpoint();
     } catch (err: any) {
       addBuildLog(`Undo failed: ${err?.message || err}`, 'error');
     } finally {
@@ -2023,7 +2027,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           {checkpointList.map(cp => (
                             <button
                               key={cp.id}
-                              onClick={() => void restoreCheckpoint(cp.id, undoCheckpoint?.revision ?? 0)}
+                              onClick={() => void restoreCheckpoint(cp.id, undoCheckpoint?.revision ?? checkpointRevision)}
                               disabled={!!restoringCheckpointId}
                               style={{
                                 display: 'flex', flexDirection: 'column', alignItems: 'flex-start',

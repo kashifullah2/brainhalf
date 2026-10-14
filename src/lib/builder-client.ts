@@ -1,8 +1,8 @@
 import { authFetch } from './auth-client';
+import { apiOrigin } from './api-origin';
 
 export async function builderRequest<T>(projectId: string, path: string, init: RequestInit = {}): Promise<T> {
-  const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const origin = local ? (import.meta.env.VITE_BACKEND_HOST || '') : '';
+  const origin = apiOrigin();
   const response = await authFetch(`${origin}/agents/chat-agent/${encodeURIComponent(projectId)}/builder${path}`, {
     ...init, headers: { 'Content-Type': 'application/json', ...init.headers },
   });

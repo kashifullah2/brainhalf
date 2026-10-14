@@ -1,3 +1,4 @@
+import { wsOrigin } from '../lib/api-origin';
 import { GenerationClock } from '../lib/generation-timing';
 import { acceptsImageInput } from '../lib/models';
 import { PENDING_REQUEST_TIMEOUT, WS_SNAPSHOT_SYNC_TIMEOUT, WS_RECONNECT_BACKOFF_CAP, WS_MAX_RECONNECT_ATTEMPTS, COMPOSER_UNLOCK_DELAY } from '../lib/timeouts';
@@ -879,14 +880,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       // It must never fall back to the production host: a dev shell that
       // silently talks to the real backend is a debugging trap and leaks local
       // session tokens to production.
-      const backendHost = import.meta.env.VITE_BACKEND_HOST || window.location.host;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-
       const query = new URLSearchParams();
       const projectName = getProjects().find(project => project.id === activeProjectId)?.name?.trim();
       if (projectName) query.set('name', projectName.slice(0, 120));
       query.set('idempotencyKey', getProjectSubmissionKey(activeProjectId));
-      const wsUrl = `${protocol}//${backendHost}/agents/chat-agent/${activeProjectId}${query.toString() ? `?${query.toString()}` : ''}`;
+      const wsUrl = `${wsOrigin()}/agents/chat-agent/${activeProjectId}${query.toString() ? `?${query.toString()}` : ''}`;
       workspaceReadyRef.current = false;
       workspaceWritePendingRef.current = false;
       serverOwnsWorkspaceRef.current = false;
@@ -999,7 +997,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           const data = JSON.parse(event.data);
           
           if (data.type === 'history') {
-            setHistoryLoaded(true);
+            try {
             const generation = data.generation;
             if (generation && typeof generation.id === 'string' && typeof generation.prompt === 'string'
               && typeof generation.response === 'string' && typeof generation.model === 'string') {
@@ -1058,7 +1056,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               appEvents.emit('workspace-session-ready', { projectId: activeProjectId });
               if (syncMode === 'snapshot-v2') {
                 const localFiles = getProjectFiles(activeProjectId) || currentFilesRef.current;
-                const localEmpty = !localFiles || Object.keys(localFiles).length === 0;
+                const localEmpty = !localFiles || Object.keys(localFiles).length === 0 || !reconcileWorkspaceSnapshot(localFiles, {}).hasLocalChanges;
                 if (initialWorkspaceEmpty && localEmpty) {
                   workspaceReadyRef.current = true;
                   flushPendingSend();
@@ -1108,6 +1106,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
               const historyGeneration = currentGenIdRef.current;
               const localSaved = await getProjectMessagesAsync(activeProjectId);
               if (!isMounted || !isCurrent() || isGeneratingRef.current || historyGeneration !== currentGenIdRef.current) return;
+              if (messagesRef.current.some(m => m.role === 'user')) return;
               if (localSaved?.length) {
                 setMessages(localSaved);
                 messagesRef.current = localSaved;
@@ -1147,6 +1146,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             if (messagesRef.current.some(message => message.role === 'user')) scheduleAutoScroll('instant');
             if (typeof data.previewStoreCapped === 'boolean') {
               appEvents.emit('preview-store-capped', { capped: data.previewStoreCapped, reason: data.previewCappedReason });
+            }
+            } finally {
+              if (isMounted && isCurrent()) setHistoryLoaded(true);
             }
           } else if (data.type === 'stream') {
             if (!isGeneratingRef.current) return;
@@ -1554,9 +1556,22 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         contextCleanups.clear();
         if (!isMounted || !isCurrent()) return;
         cancelTokenFlush();
+        const hadUnsentPendingSend = pendingSendRef.current !== null;
         pendingRequestRef.current?.cancel();
         pendingSendRef.current = null;
         pendingContinuationRef.current = null;
+        if (hadUnsentPendingSend && event?.code !== 4401 && event?.code !== 4409) {
+          const currentMsgs = [...messagesRef.current];
+          const lastMsg = currentMsgs[currentMsgs.length - 1];
+          const prevMsg = currentMsgs[currentMsgs.length - 2];
+          if (lastMsg?.role === 'ai' && !lastMsg.content.trim() && prevMsg?.role === 'user' && !prevMsg.internal) {
+            pendingResendRef.current = prevMsg.content;
+            const trimmed = currentMsgs.slice(0, -2);
+            messagesRef.current = trimmed;
+            setMessages(trimmed);
+            saveProjectMessages(activeProjectId, trimmed);
+          }
+        }
         workspaceReadyRef.current = false;
         workspaceWritePendingRef.current = false;
         setIsConnected(false);

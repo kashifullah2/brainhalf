@@ -1,3 +1,4 @@
+import { apiOrigin } from './api-origin';
 /**
  * Browser-side session helper.
  *
@@ -112,12 +113,7 @@ export interface SessionUser {
 
 function apiBase(): string {
   if (typeof window === 'undefined') return '';
-  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  // Same-origin in production; configurable for local wrangler dev / E2E tests.
-  if (isLocal) {
-    return (import.meta.env.VITE_BACKEND_HOST as string | undefined) || window.location.origin;
-  }
-  return window.location.origin;
+  return apiOrigin() || window.location.origin;
 }
 
 export function getToken(): string | null {
@@ -268,7 +264,8 @@ export async function authFetch(input: string, init: RequestInit = {}, options: 
   const token = getToken();
   const headers = new Headers(init.headers || {});
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const res = await fetch(input, { ...init, headers, credentials: 'include' });
+  const resolvedInput = input.startsWith('/') ? `${apiOrigin()}${input}` : input;
+  const res = await fetch(resolvedInput, { ...init, headers, credentials: 'include' });
   // Advisory polls (e.g. model availability) must not end the session: a 401
   // from a non-auth endpoint can be transient or a backend blip, and clearing
   // here would dump the user out of their workspace mid-session.

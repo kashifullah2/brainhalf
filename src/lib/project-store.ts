@@ -648,6 +648,10 @@ function fetchProjectSnapshot(projectId: string): Promise<{ files: Record<string
   const existing = snapshotInFlight.get(projectId);
   if (existing) return existing;
   const scope = accountScope;
+  const filesKey = `files_${projectId}`;
+  const messagesKey = `messages_${projectId}`;
+  const filesRevBefore = storageRevisions.get(filesKey) || 0;
+  const messagesRevBefore = storageRevisions.get(messagesKey) || 0;
   const promise = (async () => {
     try {
       const origin = typeof window !== 'undefined' ? apiOrigin() : '';
@@ -661,16 +665,24 @@ function fetchProjectSnapshot(projectId: string): Promise<{ files: Record<string
       const messages = Array.isArray(body.messages) ? body.messages : [];
       const revision = typeof body.revision === 'number' ? body.revision : null;
       if (scope !== accountScope || projectDeleted(projectId)) return null;
-      // Cache both in IDB so subsequent reads hit the local store.
-      void idbSet('files', projectId, files);
-      void idbSet('messages', projectId, messages);
-      // Store the server revision so future cold-starts can detect stale IDB data.
-      if (revision !== null) void idbSet('files', `revision:${projectId}`, revision);
-      memoryCache[`files_${projectId}`] = files;
-      memoryCache[`messages_${projectId}`] = messages;
-      markStorageWrite(`files_${projectId}`);
-      markStorageWrite(`messages_${projectId}`);
-      return { files, messages };
+      // Only populate files cache/IDB if no local write happened while /snapshot was in flight.
+      const currentFilesRev = storageRevisions.get(filesKey) || 0;
+      if (currentFilesRev === filesRevBefore || Object.keys(files).length > 0) {
+        void idbSet('files', projectId, files);
+        if (revision !== null) void idbSet('files', `revision:${projectId}`, revision);
+        memoryCache[filesKey] = files;
+        markStorageWrite(filesKey);
+      }
+      // Never clobber locally saved messages (e.g. an in-flight user prompt) with an empty server snapshot.
+      const currentMessagesRev = storageRevisions.get(messagesKey) || 0;
+      const existingMessages = memoryCache[messagesKey];
+      const hasLocalUserMessages = Array.isArray(existingMessages) && existingMessages.some((m: any) => m && m.role === 'user');
+      if (currentMessagesRev === messagesRevBefore && (!hasLocalUserMessages || messages.length > 0)) {
+        void idbSet('messages', projectId, messages);
+        memoryCache[messagesKey] = messages;
+        markStorageWrite(messagesKey);
+      }
+      return { files: memoryCache[filesKey] ?? files, messages: memoryCache[messagesKey] ?? messages };
     } catch {
       return null;
     } finally {

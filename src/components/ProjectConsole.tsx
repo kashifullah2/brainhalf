@@ -84,7 +84,7 @@ function Step({ number, title, help, state, children }: { number: number; title:
 
 export default function ProjectConsole({ projectId, files, onClose, sectionRequest }: { projectId: string; files: SourceFiles; onClose: () => void; sectionRequest?: { section: string; nonce: number } | null }) {
   const [section, setSection] = useState<Section>('Go live');
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(true);
   // Lets the workspace header jump straight to a console section (e.g. the
   // header "Go live" button opens the Go live section). The nonce makes
   // repeat requests fire even when the section name is unchanged.
