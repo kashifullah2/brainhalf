@@ -51,7 +51,7 @@ export async function exportToGitHub(
   let ref = await api<{ object: { sha: string } }>(`${base}/git/ref/heads/${branch}`, 'GET', undefined, true);
   if (!ref) {
     // Only a confirmed empty repository may be initialized. Permission/server errors never enter this branch.
-    if (repo.size !== 0) throw new Error('Default branch not found. Choose a valid default branch in GitHub first.');
+    if ((repo?.size ?? 0) !== 0) throw new Error('Default branch not found. Choose a valid default branch in GitHub first.');
     await api(`${base}/contents/.brainhalf`, 'PUT', { message: 'Initialize BrainHalf project', content: btoa('BrainHalf source export\n'), branch: targetBranch });
     ref = await api<{ object: { sha: string } }>(`${base}/git/ref/heads/${branch}`);
   }

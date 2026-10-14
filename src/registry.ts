@@ -375,6 +375,14 @@ export class AuthRegistry {
         if (!userId) return this.json(400, { error: 'Missing owner' });
         return Response.json({ deletions: this.cleanup().list(userId).map(({ user_id: _owner, ...job }) => job) });
       }
+      const json = async <T = any>(): Promise<T | null> => {
+        try {
+          return (await request.json()) as T;
+        } catch {
+          return null;
+        }
+      };
+
       if (path === '/account/github-token') {
         const userId = url.searchParams.get('userId') || '';
         if (!userId) return this.json(400, { error: 'userId is required' });
@@ -426,14 +434,6 @@ export class AuthRegistry {
         const row = this.sql.exec('SELECT user_id,deleted_at FROM project_owners WHERE project_id=?', url.searchParams.get('projectId') || '').toArray()[0];
         return row?.deleted_at != null ? Response.json({ ownerId: row.user_id }) : this.json(404, { error: 'No deletion was requested' });
       }
-
-      const json = async <T = any>(): Promise<T | null> => {
-        try {
-          return (await request.json()) as T;
-        } catch {
-          return null;
-        }
-      };
 
       // These routes are internal to the Worker binding, never public API.
       // Operator tooling resolves pilot emails here without reading credentials,
