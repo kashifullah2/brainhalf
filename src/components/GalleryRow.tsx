@@ -143,8 +143,16 @@ export const GalleryRow: React.FC<{ onUseIdea?: (prompt: string) => void }> = ({
         const data = (await response.json()) as { apps?: unknown };
         if (!Array.isArray(data.apps)) throw new Error('The gallery could not be loaded.');
         setApps(data.apps as GalleryApp[]);
+        setError('');
       })
-      .catch(safeCatch(controller.signal, setError, 'The gallery could not be loaded.'));
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          // Gracefully fall back to the interactive starter ideas on the homepage
+          // instead of showing a broken alert banner when /api/gallery is unreachable.
+          setError('');
+          setApps([]);
+        }
+      });
     return () => controller.abort();
   }, []);
 
