@@ -1,4 +1,4 @@
-import { buildDynamicImportMap, previewImportSpecifiers } from './preview-import-map.ts';
+import { buildDynamicImportMap, previewImportSpecifiers, REACT_THREE_PEER_IMPORTS } from './preview-import-map.ts';
 import { selectAppEntry, selectHtmlEntry } from './preview-entry.ts';
 
 export function resolvePreviewImport(files: Record<string, string>, from: string, specifier: string): string | null {
@@ -61,6 +61,9 @@ export async function loadPreviewDependencies(files: Record<string, string>, bui
       const names = Object.keys(library as object).filter(key => key !== 'default' && /^[a-zA-Z_$][\w$]*$/.test(key));
       const source = `const library = globalThis.__brainhalfPreviewLibraries[${JSON.stringify(name)}]; export default library; ${names.map(key => `export const ${key} = library[${JSON.stringify(key)}];`).join('\n')}`;
       builtinImportMap[name] = URL.createObjectURL(new Blob([source], { type: 'application/javascript' }));
+    }
+    for (const [peerPkg, peerUrl] of Object.entries(REACT_THREE_PEER_IMPORTS)) {
+      if (!(peerPkg in builtinImportMap)) builtinImportMap[peerPkg] = peerUrl;
     }
     const map = document.createElement('script');
     map.type = 'importmap';

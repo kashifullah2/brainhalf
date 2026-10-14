@@ -290,7 +290,6 @@ export class FileExtractor {
       const importerExt = d.importer.match(/\.[A-Za-z0-9]+$/)?.[0]?.toLowerCase();
       const ext = importerExt && JS_EXTS.includes(importerExt) ? importerExt : '.tsx';
       out.add(d.resolvedPath + ext);
-      out.add(d.resolvedPath + '/index' + ext);
     }
     return [...out];
   }

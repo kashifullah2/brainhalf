@@ -262,7 +262,7 @@ export class GenerationPipeline {
     if (this.finalCompletenessRepairAttempts < 1) {
       this.finalCompletenessRepairAttempts++;
       this.persistRepairCounters();
-      const list = candidates.slice(0, 8).map(p => `- ${p}`).join('\n');
+      const list = candidates.slice(0, 15).map(p => `- ${p}`).join('\n');
       try { connection.send(JSON.stringify({ type: 'generation_notice', message: `The build was missing ${candidates.length} file(s). Generating them now…` })); } catch (e) { noteSendFailure(e); }
       return (
         `${COMPLETENESS_REPAIR_MARKER}\n${list}\n\n` +

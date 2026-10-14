@@ -78,7 +78,7 @@ export function createToolHandlers(ctx: ToolContext) {
       }
       const cleanPath = normalizePath(path);
       const normalizedContent = ensureHtmlDoctype(cleanPath, content);
-      if (isHarnessEntry(cleanPath)) return { success: false, error: 'This entry point is owned by the preview.' };
+      if (isHarnessEntry(cleanPath)) return { success: false, error: '/src/main.tsx is provided automatically by the BrainHalf preview runtime (React 19.2.8) and mounts /src/App.tsx. Do not create or edit /src/main.tsx; export your root component from /src/App.tsx.' };
       if (!plannerMode) {
         const isBackendPath = isBackendWritePath(cleanPath);
         const isAppFirstPath = isAppFirstBackendPath(cleanPath);
@@ -165,6 +165,12 @@ export function createToolHandlers(ctx: ToolContext) {
           const cleanPath = normalizePath(path);
           if (isBlockedSecretFile(cleanPath)) {
             return { error: 'This file holds credentials and cannot be read. Write to it without reading it.' };
+          }
+          if (isHarnessEntry(cleanPath)) {
+            return {
+              content: "import React from 'react';\nimport { createRoot } from 'react-dom/client';\nimport App from './App';\nimport './styles.css';\n\ncreateRoot(document.getElementById('root')!).render(<App />);\n",
+              note: 'Virtual platform entry point (read-only). BrainHalf PreviewRunner automatically mounts /src/App.tsx using React 19.2.8. Do not create or edit /src/main.tsx.',
+            };
           }
           const rows = runSql`SELECT content FROM project_files WHERE path = ${cleanPath}`;
           if (rows.length > 0) {

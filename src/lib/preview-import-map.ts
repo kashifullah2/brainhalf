@@ -22,6 +22,12 @@ export function isHarnessEntry(cleanPath: string): boolean {
   );
 }
 
+export const REACT_THREE_PEER_IMPORTS: Record<string, string> = {
+  'three': 'https://esm.sh/three@0.170.0',
+  '@react-three/fiber': 'https://esm.sh/@react-three/fiber@9.1.2?external=react,react-dom,three',
+  '@react-three/drei': 'https://esm.sh/@react-three/drei@10.0.6?external=react,react-dom,three,@react-three/fiber',
+};
+
 export function buildDynamicImportMap(files: Array<{ path: string, content: string }>): string {
   const KNOWN_PACKAGES: Record<string, string> = {
     'react': 'https://esm.sh/react@19.2.8',
@@ -47,8 +53,9 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
     'sonner': 'https://esm.sh/sonner@1.4.0?external=react,react-dom',
     'chart.js': 'https://esm.sh/chart.js@4.4.1',
     'react-chartjs-2': 'https://esm.sh/react-chartjs-2@5.2.0?external=react,chart.js',
-    'three': 'https://esm.sh/three@0.161.0',
-    '@react-three/fiber': 'https://esm.sh/@react-three/fiber@8.15.16?external=react,three',
+    'three': REACT_THREE_PEER_IMPORTS['three'],
+    '@react-three/fiber': REACT_THREE_PEER_IMPORTS['@react-three/fiber'],
+    '@react-three/drei': REACT_THREE_PEER_IMPORTS['@react-three/drei'],
     'lodash-es': 'https://esm.sh/lodash-es@4.17.21',
     'uuid': 'https://esm.sh/uuid@9.0.1',
     'nanoid': 'https://esm.sh/nanoid@5.0.5',
@@ -71,6 +78,9 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
     'framer-motion': KNOWN_PACKAGES['framer-motion'],
     'clsx': KNOWN_PACKAGES['clsx'],
     'tailwind-merge': KNOWN_PACKAGES['tailwind-merge'],
+    'three': KNOWN_PACKAGES['three'],
+    '@react-three/fiber': KNOWN_PACKAGES['@react-three/fiber'],
+    '@react-three/drei': KNOWN_PACKAGES['@react-three/drei'],
   };
 
   // Parse package.json if it exists.
@@ -89,26 +99,26 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
 
   for (const file of files) {
     if (!/\.(?:[cm]?[jt]sx?|html)$/.test(file.path)) continue;
-    // FIX: `importRegex` was declared once outside the loop with the /g flag
-    // and reused across files. `lastIndex` carried over between iterations, so
-    // imports near the start of a later file were skipped. It is now built per
-    // file, which is also what makes the scan deterministic.
     for (const pkg of previewImportSpecifiers(file.content)) {
-
-      // The spec is model-authored and ends up both in an esm.sh URL and in an
-      // inline <script> block. Reject anything that is not a bare npm
-      // identifier rather than relying on escaping alone.
       if (!isValidBareModuleSpecifier(pkg)) continue;
 
       const parts = pkg.split('/');
       const packageName = parts.slice(0, pkg.startsWith('@') ? 2 : 1).join('/');
       const subpath = pkg.slice(packageName.length);
+
+      // Keep three / @react-three/fiber / @react-three/drei locked to the
+      // React-19-compatible singleton URLs so R3F v8 (React 18) or split
+      // fiber instances never crash the preview with ReactCurrentBatchConfig
+      // or "R3F: Hooks can only be used within the Canvas component!".
+      if (pkg in REACT_THREE_PEER_IMPORTS) {
+        importMap[pkg] = REACT_THREE_PEER_IMPORTS[pkg];
+        continue;
+      }
+
       let version = '';
       if (packageDeps[packageName]) {
         version = '@' + String(packageDeps[packageName]).replace(/^[\^~]/, '');
       }
-      // A version string comes from a generated package.json — constrain it to
-      // digits/dots/pre-release tags so it cannot carry a payload either.
       if (version && !/^@[0-9A-Za-z.+-]+$/.test(version)) version = '';
 
       if (KNOWN_PACKAGES[pkg] && !version) {
@@ -117,15 +127,19 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
         if (!version && KNOWN_PACKAGES[packageName]) {
           version = new URL(KNOWN_PACKAGES[packageName]).pathname.slice(packageName.length + 1);
         }
-        const suffix = packageName === 'react' || packageName === 'react-dom' ? '' : '?external=react,react-dom';
+        let suffix = '?external=react,react-dom';
+        if (packageName === 'react' || packageName === 'react-dom' || packageName === 'three') {
+          suffix = '';
+        } else if (packageName === '@react-three/fiber') {
+          suffix = '?external=react,react-dom,three';
+        } else if (packageName.startsWith('@react-three/')) {
+          suffix = '?external=react,react-dom,three,@react-three/fiber';
+        }
         importMap[pkg] = `https://esm.sh/${packageName}${version}${subpath}${suffix}`;
       }
     }
   }
 
-  // Keys and values derive from generated code, which is prompt-controlled.
-  // JSON.stringify escapes quotes and backslashes but NOT `</script>` — a
-  // package name containing it would terminate this script tag early.
   const raw = JSON.stringify({ imports: importMap }, null, 2);
   return raw
     .replace(/</g, '\\u003c')
@@ -133,4 +147,4 @@ export function buildDynamicImportMap(files: Array<{ path: string, content: stri
     .replace(/&/g, '\\u0026')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029');
-  }
+}

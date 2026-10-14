@@ -42,6 +42,7 @@ const builtinLibraries: Record<string, unknown> = {
   'react-dom': ReactDOMBase,
   'react-dom/client': ReactDOM,
   'react/jsx-runtime': JSXRuntime,
+  'react/jsx-dev-runtime': JSXRuntime,
 };
 
 const lucideModule = (icons: Record<string, unknown>) => new Proxy<Record<string, unknown>>({ default: icons, ...icons }, {
