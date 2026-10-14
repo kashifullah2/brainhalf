@@ -286,10 +286,10 @@ interface ErrorBoundaryState {
   formattedMessage: string;
 }
 
-function PreviewReadySignal() {
+function PreviewReadySignal({ revision, syncAck }: { revision: number; syncAck: number }) {
   useEffect(() => {
     if (window.parent !== window) window.parent.postMessage({ type: 'preview-success' }, '*');
-  }, []);
+  }, [revision, syncAck]);
   return null;
 }
 
@@ -324,6 +324,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
 }) => {
   const {
     revision,
+    syncAck,
     files,
     waitingForFiles,
     runtimeError,
@@ -463,7 +464,7 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
         }}
       >
         {RenderedComponent ? <RenderedComponent /> : null}
-        {RenderedComponent ? <PreviewReadySignal /> : null}
+        {RenderedComponent ? <PreviewReadySignal revision={revision} syncAck={syncAck} /> : null}
       </PreviewErrorBoundary>
       {inspectMode && (
         <>

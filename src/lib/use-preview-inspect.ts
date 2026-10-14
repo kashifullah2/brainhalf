@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { isAllowedOrigin } from './allowed-origins';
+import { isAllowedOrigin, ALLOWED_ORIGINS } from './allowed-origins';
 
 export interface ContextMenuState {
   x: number;
@@ -56,7 +56,7 @@ export function usePreviewInspect(projectId: string) {
 
   useEffect(() => {
     const handle = (e: MessageEvent) => {
-      if (e.source !== window.parent || !isAllowedOrigin(e.origin)) return;
+      if (e.source !== window.parent || (!isAllowedOrigin(e.origin) && !ALLOWED_ORIGINS.includes(e.origin))) return;
       if (e.data?.type === 'set-inspect-mode' && e.data.projectId === projectId) {
         setInspectMode(!!e.data.enabled);
         if (!e.data.enabled) setHoveredRect(null);

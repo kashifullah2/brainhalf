@@ -1,17 +1,21 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { basicReactTemplate } from './templates';
 import { InMemoryDataStore } from './backend-runner';
-import { isAllowedOrigin } from './allowed-origins';
+import { isAllowedOrigin, ALLOWED_ORIGINS } from './allowed-origins';
 import { selectHtmlEntry } from './preview-entry';
 import { loadPreviewDependencies } from './preview-modules';
 import { createPreviewFetch } from './preview-fetch';
 
 const nativeFetch = window.fetch.bind(window);
 
-const DEP_LOAD_TIMEOUT_MS = 20_000;
+const DEP_LOAD_TIMEOUT_MS = 30_000;
 const DEP_LOAD_MAX_RETRIES = 2;
 const FILE_SYNC_RETRY_MS = 2_000;
 const FILE_SYNC_MAX_ATTEMPTS = 5;
+
+function isTrustedParentOrigin(origin: string): boolean {
+  return isAllowedOrigin(origin) || ALLOWED_ORIGINS.includes(origin);
+}
 
 function getDefaultFiles(): Record<string, string> {
   return {
@@ -32,6 +36,7 @@ export function usePreviewFiles(
   builtinLibraries: Record<string, unknown> = {},
 ) {
   const [revision, setRevision] = useState(0);
+  const [syncAck, setSyncAck] = useState(0);
   const [files, setFiles] = useState<Record<string, string>>(() => {
     if (initialFiles && Object.keys(initialFiles).length > 0) return initialFiles;
     return getDefaultFiles();
@@ -62,7 +67,13 @@ export function usePreviewFiles(
       setWaitingForFiles(false);
       setRuntimeError(null);
       const previous = currentFiles.current;
-      if (Object.keys(previous).length === Object.keys(next).length && Object.keys(previous).every(path => previous[path] === next[path])) return;
+      if (Object.keys(previous).length === Object.keys(next).length && Object.keys(previous).every(path => previous[path] === next[path])) {
+        // Files already match (e.g. embedded in #preview-data on initial load).
+        // Still bump syncAck so PreviewReadySignal re-notifies the parent
+        // Workspace that the preview is rendered and ready!
+        setSyncAck(value => value + 1);
+        return;
+      }
       if (!initialSync && selectHtmlEntry(previous)) {
         if (window.parent !== window) {
           window.parent.postMessage({ type: 'request-reload', projectId }, '*');
@@ -74,10 +85,15 @@ export function usePreviewFiles(
       currentFiles.current = next;
       setFiles(next);
       setRevision(value => value + 1);
+      setSyncAck(value => value + 1);
     };
     const handleMessage = (event: MessageEvent) => {
-      if (event.source !== window.parent || !isAllowedOrigin(event.origin)) return;
+      if (event.source !== window.parent || !isTrustedParentOrigin(event.origin)) return;
       if (!event.data || typeof event.data !== 'object') return;
+      if (event.data.type === 'preview-revision' || event.data.type === 'check-preview-ready') {
+        setSyncAck(value => value + 1);
+        return;
+      }
       if (event.data.projectId !== projectId) return;
 
       if (event.data.type === 'sync-files' && event.data.files) {
@@ -91,7 +107,10 @@ export function usePreviewFiles(
             ? (event.data.changed as Record<string, string>)
             : {};
         const removed = Array.isArray(event.data.removed) ? (event.data.removed as string[]) : [];
-        if (Object.keys(changed).length === 0 && removed.length === 0) return;
+        if (Object.keys(changed).length === 0 && removed.length === 0) {
+          setSyncAck(value => value + 1);
+          return;
+        }
 
         const next = { ...currentFiles.current, ...changed };
         for (const path of removed) delete next[path];
@@ -122,6 +141,9 @@ export function usePreviewFiles(
     let retryCount = 0;
 
     const doLoad = () => {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'preview-loading', projectId }, '*');
+      }
       const timeout = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error(`Timed out after ${DEP_LOAD_TIMEOUT_MS / 1000}s`)), DEP_LOAD_TIMEOUT_MS);
       });
@@ -133,6 +155,9 @@ export function usePreviewFiles(
           if (!active) return;
           if (retryCount < DEP_LOAD_MAX_RETRIES) {
             retryCount += 1;
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({ type: 'preview-loading', projectId }, '*');
+            }
             depLoadTimerRef.current = setTimeout(doLoad, 1_500 * retryCount);
             return;
           }
@@ -223,6 +248,7 @@ export function usePreviewFiles(
 
   return {
     revision,
+    syncAck,
     files,
     waitingForFiles,
     runtimeError,

@@ -330,17 +330,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [edgeRefreshCounter, setEdgeRefreshCounter] = useState(0);
   const reloadPreview = useCallback(() => {
     edgeRefreshCounterRef.current++;
-    if (iframeRef.current) {
-      try {
-        const src = `/preview/${activeProjectId}/index.html`;
-        iframeRef.current.contentWindow?.location.replace(src);
-      } catch {
-        setEdgeRefreshCounter(c => c + 1);
-      }
-    } else {
-      setEdgeRefreshCounter(c => c + 1);
-    }
-  }, [activeProjectId]);
+    syncedPreviewFilesRef.current = {};
+    setEdgeRefreshCounter(c => c + 1);
+  }, []);
   const previewTargetOrigin = useMemo(() => previewMessageTargetOrigin(), []);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const hasGeneratedApp = useMemo(() => hasGeneratedAppCode(files), [files]);
@@ -1027,10 +1019,20 @@ const Workspace: React.FC<WorkspaceProps> = ({
           setStatus('Ready');
           setPreviewStatus(activeProjectId, 'Ready');
         } else {
-          // No render has confirmed the final files yet. Mark loading now; the
-          // actual reload fires in handleFilesRefreshed (after the snapshot
-          // arrives) so the iframe always loads the fully-written file set.
+          // Ensure the iframe receives the complete final file set and
+          // re-emits preview-success even if files_snapshot already arrived.
+          setPreviewSessionReady(true);
           markPreviewState('loading');
+          if (iframeRef.current?.contentWindow) {
+            const snapshot = previewFiles(filesRef.current, true);
+            iframeRef.current.contentWindow.postMessage(
+              { type: 'sync-files', projectId: activeProjectId, files: snapshot },
+              previewTargetOrigin
+            );
+            syncedPreviewFilesRef.current = snapshot;
+          } else {
+            reloadPreview();
+          }
         }
         if (completedGeneration) startBackend(filesRef.current);
         addBuildLog(
@@ -1168,20 +1170,34 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
     const handleFilesRefreshed = (newFiles: FileMap) => {
       if (!newFiles) return;
+      setPreviewSessionReady(true);
+      const previous = filesRef.current;
       // Merge: snapshot fills in files missing locally; local state wins for
       // paths that arrived via streaming after the snapshot was taken.
-      const merged = { ...newFiles, ...filesRef.current };
+      const merged = { ...newFiles, ...previous };
       const generated = hasGeneratedAppCode(merged);
+      const filesUnchanged =
+        Object.keys(previous).length === Object.keys(merged).length &&
+        Object.keys(merged).every(k => previous[k] === merged[k]);
       filesRef.current = merged;
       setFiles(merged);
       if (!isReadOnlyProjectRef.current) saveProjectFiles(activeProjectId, merged);
-      setStatus(generated ? 'Connecting' : 'Idle');
-      if (generated) markPreviewState('loading');
-      else {
-        setPreviewLoadState('idle');
-        setPreviewLoadError('');
+      if (filesUnchanged && previewLoadStateRef.current === 'ready') {
+        setStatus('Ready');
+        setPreviewStatus(activeProjectId, 'Ready');
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: 'sync-files', projectId: activeProjectId, files: previewFiles(merged, true) },
+          previewTargetOrigin
+        );
+      } else {
+        setStatus(generated ? 'Connecting' : 'Idle');
+        if (generated) markPreviewState('loading');
+        else {
+          setPreviewLoadState('idle');
+          setPreviewLoadError('');
+        }
+        reloadPreview();
       }
-      reloadPreview();
       // Auto-start the backend when opening an existing full-stack project so
       // the live preview is always available without a manual "Start" click.
       if (generated && isFullStackProject(merged)) startBackend(merged);
@@ -1304,6 +1320,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
         return;
       }
 
+      if (type === 'preview-loading') {
+        if (previewLoadStateRef.current === 'loading') {
+          markPreviewState('loading');
+        }
+        return;
+      }
+
       if (type === 'preview-success') {
         if (generationActiveRef.current) {
           // A render completed with the files synced so far, so any earlier
@@ -1391,6 +1414,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
   }, [commitFiles, isReadOnlyProject]);
 
   const handleRefresh = useCallback(() => {
+    setPreviewSessionReady(true);
+    setPreviewIssue(null);
+    setPreviewLoadError('');
     appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
     if (hasGeneratedAppCode(filesRef.current)) {
       setStatus('Connecting');
@@ -1580,7 +1606,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         hasFiles={Object.keys(files).length > 0}
         viewportMode={viewportMode}
         onViewportMode={handleViewportMode}
-        onRefreshPreview={reloadPreview}
+        onRefreshPreview={handleRefresh}
         onOpenPreview={handlePopoutPreview}
         previewReady={hasGeneratedApp && status !== 'Generating'}
         openPreviewReady={hasGeneratedApp && status !== 'Generating'}
