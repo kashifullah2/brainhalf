@@ -1,25 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { ArrowUpRight, ChevronRight, Menu, Sparkles, X } from 'lucide-react';
 
 export interface MobileNavLink { href: string; label: string; current?: boolean }
 
-/**
- * Whether a pointer-down outside the menu should close it. The hamburger
- * toggle button manages its own open/close state, so a press on it must not
- * be treated as an "outside" press — otherwise the outside handler closes the
- * menu on mousedown and the button's click handler immediately reopens it,
- * making the menu impossible to close via the button.
- */
 export function shouldCloseMenuOnPointerDown(insideMenu: boolean, insideToggleButton: boolean): boolean {
   return !insideMenu && !insideToggleButton;
 }
 
-/**
- * Hamburger menu for the public site header on small screens, where
- * `.studio-navigation` is hidden (see LandingPage.css @media max-width: 640px).
- * Mirrors the inline mobile menu on LandingPage: Escape closes it, clicking
- * outside closes it, and choosing a link closes it.
- */
 export default function MobileNav({ links }: { links: MobileNavLink[] }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -40,30 +27,52 @@ export default function MobileNav({ links }: { links: MobileNavLink[] }) {
     };
     if (open) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open ]);
+  }, [open]);
 
-  return <>
-    <button
-      type="button"
-      ref={buttonRef}
-      className="landing-mobile-menu-btn"
-      aria-label={open ? 'Close menu' : 'Open menu'}
-      aria-expanded={open}
-      aria-controls="mobile-nav"
-      onClick={() => setOpen(previous => !previous)}
-    >
-      {open ? <X size={20} /> : <Menu size={20} />}
-    </button>
-    {open && (
-      <div className="landing-mobile-nav" id="mobile-nav" ref={menuRef} role="dialog" aria-label="Navigation menu">
-        <nav aria-label="Mobile navigation">
-          {links.map(link => (
-            <a key={link.href} href={link.href} {...(link.current ? { 'aria-current': 'page' as const } : {})} onClick={() => setOpen(false)}>
-              {link.label}
+  return (
+    <>
+      <button
+        type="button"
+        ref={buttonRef}
+        className="landing-mobile-menu-btn"
+        aria-label={open ? 'Close menu' : 'Open menu'}
+        aria-expanded={open}
+        aria-controls="mobile-nav"
+        onClick={() => setOpen(previous => !previous)}
+      >
+        {open ? <X size={19} /> : <Menu size={19} />}
+      </button>
+      {open && (
+        <div className="landing-mobile-nav" id="mobile-nav" ref={menuRef} role="dialog" aria-label="Navigation menu">
+          <div className="landing-mobile-nav-header">
+            <span className="landing-mobile-nav-kicker">
+              <Sparkles size={12} aria-hidden="true" /> BrainHalf AI Studio
+            </span>
+            <span className="landing-mobile-nav-status">Live Edge</span>
+          </div>
+          <nav aria-label="Mobile navigation">
+            {links.map(link => {
+              const isExternalRoute = link.href.startsWith('/');
+              return (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  {...(link.current ? { 'aria-current': 'page' as const } : {})}
+                  onClick={() => setOpen(false)}
+                >
+                  <span>{link.label}</span>
+                  {isExternalRoute ? <ArrowUpRight size={15} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />}
+                </a>
+              );
+            })}
+          </nav>
+          <div className="landing-mobile-nav-footer">
+            <a href="#start-building" className="landing-mobile-cta" onClick={() => setOpen(false)}>
+              Start building for free
             </a>
-          ))}
-        </nav>
-      </div>
-    )}
-  </>;
+          </div>
+        </div>
+      )}
+    </>
+  );
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import MobileNav, { type MobileNavLink } from './MobileNav';
 import SiteHeaderActions, { type HeaderUser } from './SiteHeaderActions';
@@ -19,12 +20,6 @@ interface SiteNavbarProps {
   onBrandClick?: (event: React.MouseEvent) => void;
 }
 
-/**
- * The single public-site navbar: brand, desktop links, auth actions, theme
- * toggle, and the mobile hamburger menu in one component. Previously every
- * public page assembled these from three separate pieces (an inline header,
- * MobileNav, SiteHeaderActions); that duplication is gone.
- */
 export const SiteNavbar: React.FC<SiteNavbarProps> = ({
   links,
   currentUser,
@@ -35,14 +30,21 @@ export const SiteNavbar: React.FC<SiteNavbarProps> = ({
   onBrandClick,
 }) => {
   const [condensed, setCondensed] = useState(false);
+  const [activeHash, setActiveHash] = useState('');
   const headerRef = useRef<HTMLElement>(null);
 
-  // Condense the sticky nav once the page scrolls: slimmer bar, deeper blur.
   useEffect(() => {
     const onScroll = () => setCondensed(window.scrollY > 24);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const updateHash = () => setActiveHash(window.location.hash || '');
+    updateHash();
+    window.addEventListener('hashchange', updateHash);
+    return () => window.removeEventListener('hashchange', updateHash);
   }, []);
 
   const handleBrandClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
@@ -54,24 +56,39 @@ export const SiteNavbar: React.FC<SiteNavbarProps> = ({
 
   return (
     <header ref={headerRef} className={`site-navbar${condensed ? ' site-navbar-condensed' : ''}`}>
-      <a
-        className="site-brand"
-        href="/"
-        onClick={handleBrandClick}
-        aria-label="BrainHalf home"
-      >
-        <span className="site-brand-logo">
-          <BrainHalfLogo size={27} strokeWidth={1.6} color="currentColor" />
-        </span>
-        <span className="site-brand-text">BrainHalf</span>
-      </a>
+      <div className="site-navbar-left">
+        <a
+          className="site-brand"
+          href="/"
+          onClick={handleBrandClick}
+          aria-label="BrainHalf home"
+        >
+          <span className="site-brand-logo">
+            <BrainHalfLogo size={26} strokeWidth={1.7} color="currentColor" />
+          </span>
+          <span className="site-brand-text">BrainHalf</span>
+          <span className="site-brand-badge" aria-hidden="true">
+            <Sparkles size={10} /> Studio
+          </span>
+        </a>
+      </div>
 
       <nav className="site-nav" aria-label="Main navigation">
-        {links.map(link => (
-          <a key={link.href} href={link.href}>
-            {link.label}
-          </a>
-        ))}
+        {links.map(link => {
+          const isCurrent = link.current || (link.href.startsWith('#') && activeHash === link.href);
+          return (
+            <a
+              key={link.href}
+              href={link.href}
+              className={isCurrent ? 'is-active' : undefined}
+              onClick={() => {
+                if (link.href.startsWith('#')) setActiveHash(link.href);
+              }}
+            >
+              {link.label}
+            </a>
+          );
+        })}
       </nav>
 
       <div className="site-navbar-right">
