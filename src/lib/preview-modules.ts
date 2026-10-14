@@ -19,8 +19,8 @@ export function resolvePreviewImport(files: Record<string, string>, from: string
 
 export function previewDependencyMap(files: Record<string, string>): Record<string, string> {
   const entry = selectHtmlEntry(files) || selectAppEntry(files);
-  const allClientPaths = Object.keys(files).filter(path => !/^\/?(?:server|worker|migrations)\//.test(path));
-  const pending = entry ? [entry, ...allClientPaths] : allClientPaths;
+  const allClientPaths = Object.keys(files).filter(path => !/^\/?(?:server|worker|migrations)\//.test(path) && !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path));
+  const pending = entry ? [entry] : allClientPaths;
   const visited = new Set<string>();
   const sources: Array<{ path: string; content: string }> = [];
   for (let index = 0; index < pending.length; index += 1) {
