@@ -94,7 +94,7 @@ export function extractWorkerRoutes(workerSource: string): string[] {
 
   // 3. Regex match or .test(): any regex literal anchored at /^\/api\/.../
   //    Convert capture groups to :param segments.
-  const REGEX_MATCH = /\/\^\\\/api\\\/(.+?)\$?\//g;
+  const REGEX_MATCH = /\/\^\\\/api\\\/(.+)\$?\//g;
   const NAMED_GROUP = new RegExp(String.raw`\(\?<[a-zA-Z_]\w*>\[[^\]]*\]\+\)`, 'g');
   for (const m of workerSource.matchAll(REGEX_MATCH)) {
     const raw = m[1];
