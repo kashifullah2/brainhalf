@@ -7,6 +7,30 @@ export type PreviewDiagnostic = {
 export function diagnosePreviewError(error: string): PreviewDiagnostic {
   const text = String(error || '').toLowerCase();
 
+  if (text.includes('minified react error #185') || text.includes('maximum update depth exceeded') || text.includes('too many re-renders') || text.includes('minified react error #301')) {
+    return {
+      category: 'react-render',
+      likelyCause: 'Infinite re-render loop (#185/#301) caused by an unstable Zustand/store selector returning a new array/object reference on every call, or calling setState unconditionally inside render/useEffect.',
+      suggestedFix: 'Select primitive slices from Zustand (or derive filtered/mapped arrays inside useMemo), and ensure useEffect state updates have stable dependency arrays and guard conditions.',
+    };
+  }
+
+  if (text.includes('minified react error #300') || text.includes('minified react error #310') || text.includes('rendered more hooks') || text.includes('rendered fewer hooks')) {
+    return {
+      category: 'react-render',
+      likelyCause: 'React Rules of Hooks violation (#300/#310): a hook was called conditionally or after an early return.',
+      suggestedFix: 'Move all React hooks (useState, useMemo, useEffect, useFrame, useStore) above any conditional return statements.',
+    };
+  }
+
+  if (text.includes('hooks can only be used within the canvas component') || text.includes('r3f:')) {
+    return {
+      category: 'react-render',
+      likelyCause: 'React Three Fiber hook (useFrame, useThree) called in a component rendered outside <Canvas>.',
+      suggestedFix: 'Ensure any component calling useFrame or useThree is rendered as a child inside the <Canvas> tree, while HTML HUD overlays remain outside <Canvas>.',
+    };
+  }
+
   if (text.includes('minified react error #130') || text.includes('element type is invalid')) {
     return {
       category: 'react-render',

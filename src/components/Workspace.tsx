@@ -309,7 +309,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // "Choose an app to remove" (hosted-limit states) lands on the console's
   // app-spaces manager: request the section, then switch to the console tab.
   const openHostedSlots = useCallback(() => {
-    setConsoleSectionRequest({ section: 'Hosted apps', nonce: Date.now() });
+    setConsoleSectionRequest({ section: 'My live apps', nonce: Date.now() });
     selectTab('console');
   }, [selectTab]);
   const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');

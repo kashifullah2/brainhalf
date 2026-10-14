@@ -144,14 +144,17 @@ export function usePreviewFiles(
         });
     };
 
-    const importKey = Object.entries(files)
-      .filter(([path]) => /\.(?:[cm]?[jt]sx?|html)$/.test(path))
-      .flatMap(([, content]) => {
-        const matches = content.match(/\b(?:from|import)\s+['"]([^'"]+)['"]/g);
-        return matches || [];
-      })
-      .sort()
-      .join('\n');
+    const pkgJson = files['/package.json'] ?? files['package.json'] ?? '';
+    const importKey = [
+      pkgJson,
+      ...Object.entries(files)
+        .filter(([path]) => /\.(?:[cm]?[jt]sx?|html)$/.test(path))
+        .flatMap(([, content]) => {
+          const matches = content.match(/\b(?:from\s*|import\s*(?:\(\s*)?|require\s*\(\s*)['"]([^'"]+)['"]/g);
+          return matches || [];
+        })
+        .sort(),
+    ].join('\n');
 
     if (importKey !== lastImportKeyRef.current || !dependencies) {
       lastImportKeyRef.current = importKey;

@@ -19,7 +19,8 @@ export function resolvePreviewImport(files: Record<string, string>, from: string
 
 export function previewDependencyMap(files: Record<string, string>): Record<string, string> {
   const entry = selectHtmlEntry(files) || selectAppEntry(files);
-  const pending = entry ? [entry] : Object.keys(files).filter(path => !/^\/?server\//.test(path));
+  const allClientPaths = Object.keys(files).filter(path => !/^\/?(?:server|worker|migrations)\//.test(path));
+  const pending = entry ? [entry, ...allClientPaths] : allClientPaths;
   const visited = new Set<string>();
   const sources: Array<{ path: string; content: string }> = [];
   for (let index = 0; index < pending.length; index += 1) {
@@ -27,6 +28,7 @@ export function previewDependencyMap(files: Record<string, string>): Record<stri
     if (visited.has(path)) continue;
     visited.add(path);
     const content = files[path];
+    if (typeof content !== 'string') continue;
     sources.push({ path, content });
     const references = previewImportSpecifiers(content);
     if (path.endsWith('.html')) references.push(...Array.from(content.matchAll(/<script\b[^>]*\bsrc\s*=\s*['"]([^'"]+)['"]/gi), match => match[1]));

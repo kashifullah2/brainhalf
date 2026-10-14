@@ -89,11 +89,13 @@ export default function ProjectConsole({ projectId, files, onClose, sectionReque
   // header "Go live" button opens the Go live section). The nonce makes
   // repeat requests fire even when the section name is unchanged.
   useEffect(() => {
-    if (sectionRequest && (sections as string[]).includes(sectionRequest.section)) {
-      setSection(sectionRequest.section as Section);
+    if (!sectionRequest) return;
+    const requested = sectionRequest.section === 'Hosted apps' ? 'My live apps' : sectionRequest.section;
+    if ((sections as string[]).includes(requested)) {
+      setSection(requested as Section);
       // If requesting an advanced section, show the advanced groups
       const advancedSections = ['Data', 'Files', 'People', 'Monitoring', 'History', 'Usage', 'My live apps', 'Settings'];
-      if (advancedSections.includes(sectionRequest.section)) {
+      if (advancedSections.includes(requested)) {
         setShowAdvanced(true);
       }
       setError('');

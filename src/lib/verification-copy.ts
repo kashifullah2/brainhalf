@@ -52,6 +52,10 @@ export function isVerificationFailure(jobMessage: string): boolean {
 }
 
 const ERROR_PATTERNS: Array<[RegExp, string]> = [
+  [/minified react error #185|maximum update depth exceeded|too many re-renders|minified react error #301/i, 'A screen component got stuck in a refresh loop while updating its state.'],
+  [/minified react error #130|element type is invalid/i, 'One of the screen components could not be loaded properly.'],
+  [/minified react error #300|minified react error #310|rendered (?:more|fewer) hooks/i, 'A screen component ran its state steps out of order.'],
+  [/hooks can only be used within the canvas component/i, 'A 3D scene component was placed outside the 3D canvas.'],
   [/timed?\s?out/i, 'A step took too long and stopped.'],
   [/\b5\d\d\b|server error/i, 'The behind-the-scenes part of the app returned an error.'],
   [/\b404\b|not found/i, 'A page or part of the app could not be found.'],
