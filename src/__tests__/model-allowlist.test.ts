@@ -60,7 +60,7 @@ describe('P2 Model allowlist — exact match, no substring dispatch', () => {
     expect(FRONTEND_CATALOG).not.toContain(id);
     expect(resolveModel(id, 'cloudflare')).toMatchObject({ id, provider: 'cloudflare', maxTokens: 8192, clientSelectable: false });
     expect(resolveModel(id, 'aws')).toBeNull();
-    expect(resolveModel('@cf/zai-org/glm-5.3')).toBeNull();
+    expect(resolveModel('@cf/zai-org/glm-5.3')).toMatchObject({ id: '@cf/zai-org/glm-5.3', provider: 'cloudflare' });
   });
 
   it('resolves claude-sonnet-6 to the configured AWS Bedrock model', () => {
