@@ -696,7 +696,7 @@ export class GenerationPipeline {
               // pipeline (token caps, logging) works unchanged.
               let resolved: AllowedModel;
               if (customModel) {
-                resolved = { id: customModel.modelId, name: customModel.name, provider: 'custom', maxTokens: MAX_OUTPUT_TOKENS, clientSelectable: false };
+                resolved = { id: customModel.modelId, name: customModel.name, provider: 'custom', maxTokens: 16384, clientSelectable: false };
               } else {
                 const allowlisted = resolveModel(requestedModel, data.provider);
                 if (!allowlisted) {
@@ -908,19 +908,33 @@ export class GenerationPipeline {
                 // Defense-in-depth re-validation: the URL was checked at registration
                 // time, but re-checking here catches any record written before the
                 // guard existed or modified outside the normal admin flow.
-                const { assertSafeCustomModelUrl } = await import('./ssrf');
-                const cmUrlError = assertSafeCustomModelUrl(customModel.baseUrl);
+                const {
+                  assertSafeCustomModelUrl,
+                  normalizeCustomModelBaseUrl,
+                  fetchCustomModelWithRetry,
+                } = await import('./ssrf');
+                const normalizedBaseUrl = normalizeCustomModelBaseUrl(customModel.baseUrl);
+                customModel.baseUrl = normalizedBaseUrl;
+                const cmUrlError = assertSafeCustomModelUrl(normalizedBaseUrl);
                 if (cmUrlError) {
                   sendError(`Custom model base URL is not allowed: ${cmUrlError}`);
                   return;
                 }
                 try {
                   const { createOpenAI } = await import('@ai-sdk/openai');
-                  // Wrap fetch to inject missing tool_calls[i].index into SSE stream
-                  // (required by the ai-sdk OpenAI parser; Gemini and some other
-                  // compatible endpoints omit this field).
+                  const customApiKey = customModel.apiKey;
+                  // Wrap fetch to normalize headers, retry transient 502/503/504/429
+                  // responses, fall back to tool-less or non-streaming when needed, and
+                  // inject missing tool_calls[i].index into SSE stream (required by
+                  // the ai-sdk OpenAI parser; Gemini and some compatible endpoints omit it).
                   const patchedFetch: typeof fetch = async (input, init) => {
-                    const resp = await fetch(input, init);
+                    const targetUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+                    const resp = await fetchCustomModelWithRetry({
+                      url: targetUrl,
+                      apiKey: customApiKey,
+                      baseUrl: normalizedBaseUrl,
+                      init,
+                    });
                     const ct = resp.headers.get('content-type') ?? '';
                     if (!ct.includes('text/event-stream') || !resp.body) return resp;
                     const decoder = new TextDecoder();
@@ -937,9 +951,9 @@ export class GenerationPipeline {
                     });
                     return new Response(resp.body.pipeThrough(transform), { status: resp.status, headers: resp.headers });
                   };
-                  const custom = createOpenAI({ apiKey: customModel.apiKey, baseURL: customModel.baseUrl, compatibility: 'compatible', fetch: patchedFetch } as any);
-                  aiModel = custom.chat(customModel.modelId);
-                  maxTokensForModel = MAX_OUTPUT_TOKENS;
+                  const custom = createOpenAI({ apiKey: customModel.apiKey, baseURL: normalizedBaseUrl, compatibility: 'compatible', fetch: patchedFetch } as any);
+                  aiModel = custom.chat(customModel.modelId.trim());
+                  maxTokensForModel = 16384;
                 } catch (err) {
                   sendError(err instanceof Error ? err.message : 'Custom model is not configured');
                   return;
@@ -1315,7 +1329,7 @@ export class GenerationPipeline {
                       // markup sets displayContent even before any real output, poisoning the
                       // original !displayContent check after the first tool call.
                       if (customModel && !customToolsDisabled && !streamedText && toolWrittenPaths.size === stageToolWrittenPaths.size && !abortController.signal.aborted
-                        && /\btools?\b|\bfunctions?\b|schema|400|bad request|invalid (?:param|argument|request)/i.test(errMessage)) {
+                        && (/\btools?\b|\bfunctions?\b|schema|400|422|500|501|502|503|bad request|service unavailable|overloaded|invalid (?:param|argument|request)/i.test(errMessage))) {
                         customToolsDisabled = true;
                         console.warn(`Custom model ${customModel.name} rejected tool calling; retrying stage "${stage.stageId}" without tools`);
                         try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'This model does not support tool calls — switching to direct file output…', stage: stage.stageId, requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }

@@ -80,6 +80,9 @@ const CF_MODELS: AllowedModel[] = [
   { name: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', maxTokens: CF_DEFAULT_MAX },
   // Disabled: times out on all generation levels; removed from picker until stable.
   { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: 8192, clientSelectable: false, supportsThinking: true },
+  { name: '@cf/zai-org/glm-5.3', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3', maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
+  { name: '@cf/ibm-granite/granite-4.0-h-micro', provider: 'cloudflare', id: '@cf/ibm-granite/granite-4.0-h-micro', maxTokens: 32768 },
+  { name: '@cf/utter-project/eurollm-9b-it', provider: 'cloudflare', id: '@cf/utter-project/eurollm-9b-it', maxTokens: 32768 },
 ];
 
 const ANTHROPIC_MODELS: AllowedModel[] = [
@@ -202,6 +205,9 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   '@cf/qwen/qwen2.5-coder-32b-instruct': 'Qwen 2.5 Coder 32B',
   '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b': 'DeepSeek R1 32B',
   '@cf/zai-org/glm-5.3-flash': 'GLM 5.3 Flash',
+  '@cf/zai-org/glm-5.3': 'GLM 5.3',
+  '@cf/ibm-granite/granite-4.0-h-micro': 'Granite 4.0 H Micro',
+  '@cf/utter-project/eurollm-9b-it': 'EuroLLM 9B',
   'claude-sonnet-6': 'Claude Sonnet 4.6',
   'claude-opus-6': 'Claude Opus 4.6',
   'kimi-k3': 'Kimi K3 v1',

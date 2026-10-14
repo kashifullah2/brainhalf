@@ -573,13 +573,14 @@ export class AuthRegistry {
         if (!body || !body.name?.trim() || !body.baseUrl?.trim() || !body.modelId?.trim() || !body.apiKey?.trim()) {
           return this.json(400, { error: 'Name, base URL, model ID, and API key are required.' });
         }
+        const { assertSafeCustomModelUrl, normalizeCustomModelBaseUrl } = await import('./lib/ssrf');
         let baseUrl: string;
         try {
-          baseUrl = new URL(body.baseUrl.trim()).toString().replace(/\/$/, '');
+          new URL(body.baseUrl.trim());
+          baseUrl = normalizeCustomModelBaseUrl(body.baseUrl.trim());
         } catch {
           return this.json(400, { error: 'Base URL must be a valid URL.' });
         }
-        const { assertSafeCustomModelUrl } = await import('./lib/ssrf');
         const urlError = assertSafeCustomModelUrl(baseUrl);
         if (urlError) return this.json(400, { error: `Base URL is not allowed: ${urlError}.` });
         // MODEL_KEY_SECRET must be a separate secret dedicated to encrypting
@@ -616,28 +617,39 @@ export class AuthRegistry {
         const { decryptValue } = await import('./lib/crypto');
         const apiKey = await decryptValue(secret, rows[0].api_key_encrypted);
         if (!apiKey) return this.json(500, { error: 'Could not decrypt the API key.' });
-        // Defense-in-depth: re-validate the stored URL before every outbound
-        // fetch in case the record was written before this check was added.
-        const { assertSafeCustomModelUrl: assertSafe } = await import('./lib/ssrf');
-        const storedUrlError = assertSafe(rows[0].base_url);
+        // Defense-in-depth: normalize and re-validate the stored URL before every
+        // outbound fetch in case the record was written before normalization existed.
+        const {
+          assertSafeCustomModelUrl: assertSafe,
+          normalizeCustomModelBaseUrl,
+          fetchCustomModelWithRetry,
+          extractUpstreamErrorMessage,
+        } = await import('./lib/ssrf');
+        const normalizedBaseUrl = normalizeCustomModelBaseUrl(rows[0].base_url);
+        const storedUrlError = assertSafe(normalizedBaseUrl);
         if (storedUrlError) return this.json(400, { error: `Stored base URL is not allowed: ${storedUrlError}.` });
-        // redirect:'manual' prevents the fetch from silently following a 3xx
-        // to a different host — a redirect to an internal address would bypass
-        // the URL check above.
-        const upstream = await fetch(`${rows[0].base_url}/chat/completions`, {
-          method: 'POST',
-          redirect: 'manual',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({
-            model: rows[0].model_id,
-            messages: [{ role: 'user', content: body.prompt.trim() }],
-            stream: true,
-          }),
+        const upstream = await fetchCustomModelWithRetry({
+          url: `${normalizedBaseUrl}/chat/completions`,
+          apiKey,
+          baseUrl: normalizedBaseUrl,
+          init: {
+            method: 'POST',
+            body: JSON.stringify({
+              model: rows[0].model_id.trim(),
+              messages: [{ role: 'user', content: body.prompt.trim() }],
+              stream: true,
+            }),
+          },
         });
         if (!upstream.ok || !upstream.body) {
           const text = await upstream.text().catch(() => '');
-          console.error('Custom model API error:', text);
-          return this.json(502, { error: `Model API returned ${upstream.status}` });
+          console.error('Custom model API error:', upstream.status, text);
+          const detail = extractUpstreamErrorMessage(upstream.status, text);
+          return this.json(502, {
+            error: detail
+              ? `Model API returned ${upstream.status}: ${detail}`
+              : `Model API returned ${upstream.status}`,
+          });
         }
         // Stream the upstream SSE through to the client.
         return new Response(upstream.body, {
@@ -708,7 +720,8 @@ export class AuthRegistry {
         const { decryptValue } = await import('./lib/crypto');
         const apiKey = await decryptValue(secret, rows[0].api_key_encrypted);
         if (!apiKey) return this.json(500, { error: 'Could not decrypt the API key.' });
-        return this.json(200, { id, name: rows[0].name, baseUrl: rows[0].base_url, modelId: rows[0].model_id, apiKey });
+        const { normalizeCustomModelBaseUrl } = await import('./lib/ssrf');
+        return this.json(200, { id, name: rows[0].name, baseUrl: normalizeCustomModelBaseUrl(rows[0].base_url), modelId: rows[0].model_id.trim(), apiKey });
       }
       if (path === '/oauth/store' && method === 'POST') {
         const body = await json<{ key?: string; kind?: string; data?: unknown; ttl?: number }>();

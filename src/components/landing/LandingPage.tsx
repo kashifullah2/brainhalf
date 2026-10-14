@@ -31,6 +31,17 @@ const NAV_LINKS = [
   { href: '/pricing', label: 'Pricing' },
 ];
 
+const STUDIO_CAPABILITIES = [
+  'Inventory & Stockrooms',
+  'Appointment Booking',
+  'Client Portals & CRMs',
+  'Field Service Trackers',
+  'Custom Order Forms',
+  'Team Task Boards',
+  'Invoice & Quote Logs',
+  'Real-Time Dashboards',
+];
+
 export const LandingPage: React.FC<LandingPageProps> = ({
   onSubmitInitialPrompt,
   creatingProject = false,
@@ -40,7 +51,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenDashboard,
 }) => {
   const [promptText, setPromptText] = useState('');
-
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useScrollReveal();
@@ -105,31 +115,69 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           onFocusComposer={focusComposer}
         />
 
-        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+        {/* Kinetic Studio Ticker */}
+        <section className="studio-ticker-strip" aria-label="Supported app types">
+          <div className="studio-ticker-label">BUILT FOR REAL WORK</div>
+          <div className="studio-ticker-track">
+            {[...STUDIO_CAPABILITIES, ...STUDIO_CAPABILITIES].map((item, idx) => (
+              <span key={`${item}-${idx}`} className="studio-ticker-item">
+                <i className="studio-ticker-diamond" aria-hidden="true" />
+                {item}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <div className="studio-section-block" data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <div className="studio-index-rail" aria-hidden="true">
+            <span className="index-rail-code">01 // INTERACTIVE SANDBOX</span>
+            <span className="index-rail-line" />
+            <span className="index-rail-meta">LIVE PREVIEW</span>
+          </div>
           <InteractiveDemo onUseIdea={handleExamplePrompt} />
         </div>
 
-        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+        <div className="studio-section-block" data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <div className="studio-index-rail" aria-hidden="true">
+            <span className="index-rail-code">02 // PRODUCTION GALLERY</span>
+            <span className="index-rail-line" />
+            <span className="index-rail-meta">READY TO REMIX</span>
+          </div>
           <GalleryRow onUseIdea={handleExamplePrompt} />
         </div>
 
-        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+        <div className="studio-section-block" data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <div className="studio-index-rail" aria-hidden="true">
+            <span className="index-rail-code">03 // ARCHITECTURE FLOW</span>
+            <span className="index-rail-line" />
+            <span className="index-rail-meta">3 STEPS TO LAUNCH</span>
+          </div>
           <HowItWorks />
         </div>
 
-        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+        <div className="studio-section-block" data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <div className="studio-index-rail" aria-hidden="true">
+            <span className="index-rail-code">04 // PLATFORM SPECIFICATIONS</span>
+            <span className="index-rail-line" />
+            <span className="index-rail-meta">INCLUDED BY DEFAULT</span>
+          </div>
           <BentoGrid />
         </div>
 
-        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+        <div className="studio-section-block" data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
           <TrustSection />
         </div>
 
-        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+        <div className="studio-section-block" data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+          <div className="studio-index-rail" aria-hidden="true">
+            <span className="index-rail-code">05 // COMMON QUESTIONS</span>
+            <span className="index-rail-line" />
+            <span className="index-rail-meta">PLAIN ANSWERS</span>
+          </div>
           <FaqSection />
         </div>
 
-        <div data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
+        <div className="studio-section-block" data-reveal style={{ ['--reveal-delay' as string]: '0ms' }}>
           <FinalCta onStartBuilding={focusComposer} />
         </div>
       </main>

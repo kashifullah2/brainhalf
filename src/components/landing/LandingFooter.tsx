@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, ArrowUpRight, Sparkles } from 'lucide-react';
 import BrainHalfLogo from '../BrainHalfLogo';
 
 const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
@@ -55,38 +55,58 @@ export const LandingFooter: React.FC = () => {
 
   return (
     <footer className="landing-footer" aria-label="Landing footer">
-      <div className="landing-footer-grid">
-        <div className="landing-footer-brand-col">
-          <a className="landing-footer-brand" href="/" aria-label="BrainHalf home">
-            <BrainHalfLogo size={26} />
-            <span>BrainHalf</span>
-          </a>
-          <p className="landing-footer-tagline">
-            Describe your idea, watch it become a working app, and publish it — all from one workspace. Free to start, no coding required.
-          </p>
-          <button type="button" className="landing-footer-top-btn" onClick={scrollToTop}>
-            <ArrowUp size={13} aria-hidden="true" />
-            <span>Back to top</span>
-          </button>
+      <div className="landing-footer-card">
+        <div className="landing-footer-grid">
+          <div className="landing-footer-brand-col">
+            <a className="landing-footer-brand" href="/" aria-label="BrainHalf home">
+              <BrainHalfLogo size={28} />
+              <span>BrainHalf</span>
+            </a>
+            <p className="landing-footer-tagline">
+              Describe your idea, watch it become a working business app, and publish it—all from
+              one tactile studio workspace.
+            </p>
+            <div className="landing-footer-status">
+              <span className="footer-status-dot" aria-hidden="true" />
+              <span>All studio compilers operational</span>
+            </div>
+            <button type="button" className="landing-footer-top-btn" onClick={scrollToTop}>
+              <ArrowUp size={13} aria-hidden="true" />
+              <span>Back to top</span>
+            </button>
+          </div>
+
+          {COLUMNS.map(column => (
+            <nav key={column.title} className="landing-footer-col" aria-label={column.title}>
+              <p className="landing-footer-heading">{column.title}</p>
+              {column.links.map(link => (
+                <a key={link.href} className="landing-footer-link" href={link.href}>
+                  <span>{link.label}</span>
+                  <ArrowUpRight size={12} className="footer-link-arrow" aria-hidden="true" />
+                </a>
+              ))}
+            </nav>
+          ))}
         </div>
-        {COLUMNS.map(column => (
-          <nav key={column.title} className="landing-footer-col" aria-label={column.title}>
-            <p className="landing-footer-heading">{column.title}</p>
-            {column.links.map(link => (
-              <a key={link.href} className="landing-footer-link" href={link.href}>
-                {link.label}
-              </a>
-            ))}
-          </nav>
-        ))}
+
+        <div className="landing-footer-bottom">
+          <span className="landing-footer-copy">
+            © {year} BrainHalf Studio. A little thought goes a long way.
+          </span>
+          <div className="landing-footer-legal">
+            <a className="landing-footer-link" href="/privacy">Privacy</a>
+            <a className="landing-footer-link" href="/terms">Usage guidelines</a>
+            <a className="landing-footer-link" href="/contact">Contact</a>
+          </div>
+        </div>
       </div>
-      <div className="landing-footer-bottom">
-        <span className="landing-footer-copy">© {year} BrainHalf. A little thought goes a long way.</span>
-        <div className="landing-footer-legal">
-          <a className="landing-footer-link" href="/privacy">Privacy</a>
-          <a className="landing-footer-link" href="/terms">Usage guidelines</a>
-          <a className="landing-footer-link" href="/contact">Contact</a>
-        </div>
+
+      {/* Monumental Studio Wordmark */}
+      <div className="landing-footer-monument" aria-hidden="true">
+        <span className="monument-word">BRAINHALF</span>
+        <span className="monument-caption">
+          <Sparkles size={12} /> PLAIN WORDS TO WORKING SOFTWARE
+        </span>
       </div>
     </footer>
   );

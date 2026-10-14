@@ -3,8 +3,11 @@ import {
   FETCH_MAX_BYTES,
   FETCH_MAX_TEXT,
   assertSafeCustomModelUrl,
+  extractUpstreamErrorMessage,
+  fetchCustomModelWithRetry,
   isPublicIp,
   isPublicRoutableHost,
+  normalizeCustomModelBaseUrl,
   safeFetchText,
   validateFetchUrl,
 } from '../lib/ssrf';
@@ -255,5 +258,84 @@ describe('assertSafeCustomModelUrl — custom model base URL SSRF guard', () => 
 
   it('rejects an invalid URL', () => {
     expect(assertSafeCustomModelUrl('not-a-url')).not.toBeNull();
+  });
+});
+
+describe('normalizeCustomModelBaseUrl & fetchCustomModelWithRetry — custom model 503 resilience', () => {
+  it('strips trailing /chat/completions and fills known provider base paths', () => {
+    expect(normalizeCustomModelBaseUrl('https://api.openai.com/v1/chat/completions')).toBe('https://api.openai.com/v1');
+    expect(normalizeCustomModelBaseUrl('https://openrouter.ai/api/v1/chat/completions/')).toBe('https://openrouter.ai/api/v1');
+    expect(normalizeCustomModelBaseUrl('https://api.deepseek.com')).toBe('https://api.deepseek.com/v1');
+    expect(normalizeCustomModelBaseUrl('https://generativelanguage.googleapis.com')).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
+    expect(normalizeCustomModelBaseUrl('https://api.groq.com/openai')).toBe('https://api.groq.com/openai/v1');
+  });
+
+  it('extracts upstream JSON and array-wrapped error messages cleanly', () => {
+    expect(
+      extractUpstreamErrorMessage(
+        503,
+        JSON.stringify([{ error: { code: 503, message: 'The model is overloaded. Please try again later.' } }])
+      )
+    ).toBe('The model is overloaded. Please try again later.');
+  });
+
+  it('retries transient 503 responses and succeeds when upstream recovers', async () => {
+    let calls = 0;
+    const mockFetch: typeof fetch = async () => {
+      calls++;
+      if (calls === 1) {
+        return new Response(JSON.stringify({ error: { message: 'Service overloaded' } }), { status: 503 });
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    };
+
+    const res = await fetchCustomModelWithRetry({
+      url: 'https://api.openai.com/v1/chat/completions',
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.openai.com/v1',
+      fetchImpl: mockFetch,
+      init: {
+        method: 'POST',
+        body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: 'Hi' }], stream: true }),
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(calls).toBe(2);
+  });
+
+  it('falls back to stream: false and wraps JSON into SSE when stream: true persistently returns 503', async () => {
+    const mockFetch: typeof fetch = async (_input, init) => {
+      const body = JSON.parse(String(init?.body || '{}'));
+      if (body.stream === true) {
+        return new Response(JSON.stringify({ error: { message: 'SSE streaming unavailable on this node' } }), { status: 503 });
+      }
+      return new Response(
+        JSON.stringify({
+          id: 'cmpl-1',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'Recovered via non-stream!' }, finish_reason: 'stop' }],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    const res = await fetchCustomModelWithRetry({
+      url: 'https://my-provider.example.com/v1/chat/completions',
+      apiKey: 'sk-test',
+      baseUrl: 'https://my-provider.example.com/v1',
+      fetchImpl: mockFetch,
+      maxRetries: 1,
+      init: {
+        method: 'POST',
+        body: JSON.stringify({ model: 'custom-model', messages: [{ role: 'user', content: 'Hi' }], stream: true }),
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const text = await res.text();
+    expect(text).toContain('Recovered via non-stream!');
+    expect(text).toContain('data: [DONE]');
   });
 });

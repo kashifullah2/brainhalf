@@ -267,3 +267,383 @@ export function assertSafeCustomModelUrl(rawUrl: string): string | null {
   }
   return null;
 }
+
+const KNOWN_PROVIDER_BASE_PATHS: Record<string, string> = {
+  'api.openai.com': '/v1',
+  'api.deepseek.com': '/v1',
+  'api.groq.com': '/openai/v1',
+  'openrouter.ai': '/api/v1',
+  'generativelanguage.googleapis.com': '/v1beta/openai',
+  'api.together.xyz': '/v1',
+  'api.fireworks.ai': '/inference/v1',
+  'api.mistral.ai': '/v1',
+  'api.x.ai': '/v1',
+  'api.cohere.com': '/compatibility/v1',
+  'api.anthropic.com': '/v1',
+  'api.cerebras.ai': '/v1',
+  'api.sambanova.ai': '/v1',
+  'api.hyperbolic.xyz': '/v1',
+};
+
+/**
+ * Normalizes a custom model Base URL so common user inputs work out of the box:
+ * - Strips accidental trailing `/chat/completions`, `/completions`, or `/messages`
+ * - Fills in the standard OpenAI-compatible base path for known provider roots
+ * - Removes trailing slashes
+ */
+export function normalizeCustomModelBaseUrl(rawUrl: string): string {
+  const trimmed = (rawUrl || '').trim();
+  if (!trimmed) return '';
+  try {
+    const url = new URL(trimmed);
+    let pathname = url.pathname.replace(/\/+$/, '');
+    pathname = pathname
+      .replace(/\/chat\/completions$/i, '')
+      .replace(/\/completions$/i, '')
+      .replace(/\/messages$/i, '')
+      .replace(/\/+$/, '');
+
+    const host = url.hostname.toLowerCase();
+    if (!pathname || pathname === '/') {
+      const defaultPath = KNOWN_PROVIDER_BASE_PATHS[host];
+      if (defaultPath) pathname = defaultPath;
+    } else if (host === 'openrouter.ai' && pathname === '/api') {
+      pathname = '/api/v1';
+    } else if (host === 'api.groq.com' && pathname === '/openai') {
+      pathname = '/openai/v1';
+    } else if (host === 'generativelanguage.googleapis.com' && (pathname === '/v1beta' || pathname === '/v1')) {
+      pathname = '/v1beta/openai';
+    }
+
+    url.pathname = pathname || '/';
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return trimmed
+      .replace(/\/+$/, '')
+      .replace(/\/chat\/completions$/i, '')
+      .replace(/\/+$/, '');
+  }
+}
+
+export function buildCustomModelHeaders(
+  apiKey: string,
+  baseUrl: string,
+  extraHeaders?: HeadersInit
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'text/event-stream, application/json',
+    'Authorization': `Bearer ${apiKey}`,
+    'User-Agent': 'BrainHalf/1.0 (+https://brainhalf.com)',
+  };
+  if (extraHeaders) {
+    const entries = extraHeaders instanceof Headers
+      ? Array.from(extraHeaders.entries())
+      : Array.isArray(extraHeaders)
+        ? extraHeaders
+        : Object.entries(extraHeaders);
+    for (const [k, v] of entries) {
+      if (v !== undefined && v !== null) headers[k] = String(v);
+    }
+  }
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    if (host === 'openrouter.ai' || host.endsWith('.openrouter.ai')) {
+      if (!headers['HTTP-Referer']) headers['HTTP-Referer'] = 'https://brainhalf.com';
+      if (!headers['X-Title']) headers['X-Title'] = 'BrainHalf';
+    } else if (host === 'api.anthropic.com' || host.endsWith('.anthropic.com')) {
+      if (!headers['x-api-key']) headers['x-api-key'] = apiKey;
+      if (!headers['anthropic-version']) headers['anthropic-version'] = '2023-06-01';
+    }
+  } catch {
+    // ignore URL parse error
+  }
+  return headers;
+}
+
+export function extractUpstreamErrorMessage(status: number, rawText: string): string {
+  const trimmed = (rawText || '').trim();
+  if (!trimmed) {
+    if (status === 503) return 'Upstream model service is temporarily overloaded or warming up — try again in a few seconds or verify the Model ID and Base URL';
+    if (status === 502 || status === 504) return 'Upstream model gateway timed out or could not be reached';
+    if (status === 401 || status === 403) return 'Authentication failed — check your API key';
+    if (status === 404) return 'Endpoint or Model ID not found — verify Base URL and Model ID';
+    if (status === 429) return 'Rate limit or quota exceeded on the upstream provider';
+    return '';
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    const root = Array.isArray(parsed) ? parsed[0] : parsed;
+    const candidate =
+      root?.error?.message ||
+      root?.error?.detail ||
+      (typeof root?.error === 'string' ? root.error : '') ||
+      root?.message ||
+      root?.detail ||
+      root?.error_msg ||
+      '';
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim().replace(/\s+/g, ' ').slice(0, 240);
+    }
+  } catch {
+    // Not JSON
+  }
+  if (/<html|<!doctype|<head|<body/i.test(trimmed)) {
+    const titleMatch = trimmed.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const title = titleMatch?.[1]?.trim().replace(/\s+/g, ' ');
+    if (title) return `Upstream gateway error (${title.slice(0, 120)})`;
+    return `Upstream gateway returned an HTML ${status} error page — verify Base URL or retry shortly`;
+  }
+  return trimmed.replace(/\s+/g, ' ').slice(0, 240);
+}
+
+export function jsonCompletionToSseResponse(json: Record<string, unknown>, status = 200): Response {
+  const choices = Array.isArray(json.choices) ? (json.choices as Array<Record<string, any>>) : [];
+  const firstChoice = choices[0] || {};
+  const msg = firstChoice.message || firstChoice.delta || {};
+  let contentText = '';
+  if (typeof msg.content === 'string') {
+    contentText = msg.content;
+  } else if (Array.isArray(msg.content)) {
+    contentText = msg.content
+      .map((part: any) => (typeof part === 'string' ? part : part?.text || ''))
+      .join('');
+  } else if (typeof firstChoice.text === 'string') {
+    contentText = firstChoice.text;
+  } else if (Array.isArray(json.content)) {
+    contentText = (json.content as Array<any>)
+      .map((part) => (typeof part === 'string' ? part : part?.text || ''))
+      .join('');
+  } else if (typeof json.response === 'string') {
+    contentText = json.response;
+  }
+
+  const reasoningText = typeof msg.reasoning_content === 'string' ? msg.reasoning_content : '';
+  const toolCalls = Array.isArray(msg.tool_calls)
+    ? msg.tool_calls.map((tc: any, idx: number) => ({
+        index: typeof tc?.index === 'number' ? tc.index : idx,
+        id: tc?.id || `call_${idx}`,
+        type: tc?.type || 'function',
+        function: tc?.function || {},
+      }))
+    : undefined;
+
+  const delta: Record<string, unknown> = { role: 'assistant' };
+  if (contentText) delta.content = contentText;
+  else if (reasoningText) delta.content = reasoningText;
+  else if (!toolCalls) delta.content = '';
+  if (toolCalls && toolCalls.length > 0) delta.tool_calls = toolCalls;
+
+  const chunkPayload: Record<string, unknown> = {
+    id: json.id || 'chatcmpl-fallback',
+    object: 'chat.completion.chunk',
+    created: json.created || Math.floor(Date.now() / 1000),
+    model: json.model || 'custom',
+    choices: [
+      {
+        index: 0,
+        delta,
+        finish_reason: firstChoice.finish_reason || (toolCalls?.length ? 'tool_calls' : 'stop'),
+      },
+    ],
+  };
+  if (json.usage) chunkPayload.usage = json.usage;
+
+  const sseBody = `data: ${JSON.stringify(chunkPayload)}\n\ndata: [DONE]\n\n`;
+  return new Response(sseBody, {
+    status,
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    },
+  });
+}
+
+function isTransientModelStatus(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504 || status === 520 || status === 522 || status === 524;
+}
+
+export async function fetchCustomModelWithRetry(options: {
+  url: string;
+  apiKey: string;
+  baseUrl: string;
+  init?: RequestInit;
+  fetchImpl?: typeof fetch;
+  maxRetries?: number;
+}): Promise<Response> {
+  const fetchFn = options.fetchImpl ?? fetch;
+  const maxRetries = options.maxRetries ?? 2;
+  const isVitest = typeof process !== 'undefined' && Boolean(process.env?.VITEST);
+  const headers = buildCustomModelHeaders(options.apiKey, options.baseUrl, options.init?.headers);
+
+  let rawBodyStr = typeof options.init?.body === 'string' ? options.init.body : '';
+  let parsedBody: Record<string, unknown> | null = null;
+  if (rawBodyStr) {
+    try {
+      parsedBody = JSON.parse(rawBodyStr) as Record<string, unknown>;
+    } catch {
+      parsedBody = null;
+    }
+  }
+
+  // Clamp excessive default max_tokens (e.g. 65536) on initial request to 16384
+  // so standard OpenAI/DeepSeek/Gemini/Groq models don't immediately 400.
+  if (parsedBody) {
+    if (typeof parsedBody.max_tokens === 'number' && parsedBody.max_tokens > 16384) {
+      parsedBody = { ...parsedBody, max_tokens: 16384 };
+      rawBodyStr = JSON.stringify(parsedBody);
+    }
+    if (typeof parsedBody.max_completion_tokens === 'number' && parsedBody.max_completion_tokens > 16384) {
+      parsedBody = { ...parsedBody, max_completion_tokens: 16384 };
+      rawBodyStr = JSON.stringify(parsedBody);
+    }
+  }
+
+  const executeSingleFetch = async (targetUrl: string, bodyStr: string): Promise<Response> => {
+    let currentUrl = targetUrl;
+    for (let hop = 0; hop <= 2; hop++) {
+      const resp = await fetchFn(currentUrl, {
+        ...options.init,
+        method: options.init?.method || 'POST',
+        redirect: 'manual',
+        headers,
+        body: bodyStr || options.init?.body,
+      });
+      if (resp.status >= 300 && resp.status < 400 && resp.headers.get('location') && hop < 2) {
+        try {
+          const nextUrl = new URL(resp.headers.get('location')!, currentUrl).toString();
+          if (assertSafeCustomModelUrl(nextUrl) === null) {
+            currentUrl = nextUrl;
+            continue;
+          }
+        } catch {
+          // fall through and return redirect response
+        }
+      }
+      return resp;
+    }
+    return fetchFn(currentUrl, {
+      ...options.init,
+      method: options.init?.method || 'POST',
+      redirect: 'manual',
+      headers,
+      body: bodyStr || options.init?.body,
+    });
+  };
+
+  let lastResp = await executeSingleFetch(options.url, rawBodyStr);
+
+  // 1. Retry transient 429 / 502 / 503 / 504 errors with exponential backoff
+  for (let attempt = 1; attempt <= maxRetries && isTransientModelStatus(lastResp.status); attempt++) {
+    if (options.init?.signal?.aborted) break;
+    const delayMs = isVitest ? 5 : 650 * attempt;
+    await new Promise((r) => setTimeout(r, delayMs));
+    if (options.init?.signal?.aborted) break;
+    lastResp = await executeSingleFetch(options.url, rawBodyStr);
+    if (lastResp.ok) break;
+  }
+
+  // 2. If baseUrl had no path (e.g. https://custom-host.example.com/chat/completions)
+  // and returned 404 or 503, try /v1/chat/completions on the same host.
+  if (!lastResp.ok && (lastResp.status === 404 || lastResp.status === 503)) {
+    try {
+      const u = new URL(options.url);
+      if (u.pathname === '/chat/completions') {
+        u.pathname = '/v1/chat/completions';
+        const altResp = await executeSingleFetch(u.toString(), rawBodyStr);
+        if (altResp.ok) lastResp = altResp;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2b. If the request included `tools` / `tool_choice` and the custom endpoint
+  // returned 400, 422, 500, 501, 502, or 503 (many OpenAI-compatible proxies,
+  // reasoning models, and vLLM deployments return 503/500/400 when tool schemas
+  // or `tool_choice: "auto"` are sent), retry without `tools` so the model can
+  // respond directly using BrainHalf's <file path="..."> protocol.
+  if (!lastResp.ok && [400, 422, 500, 501, 502, 503].includes(lastResp.status) && parsedBody && ('tools' in parsedBody || 'tool_choice' in parsedBody)) {
+    const toolLessBody = { ...parsedBody };
+    delete toolLessBody.tools;
+    delete toolLessBody.tool_choice;
+    const toolLessResp = await executeSingleFetch(options.url, JSON.stringify(toolLessBody));
+    if (toolLessResp.ok) {
+      lastResp = toolLessResp;
+      parsedBody = toolLessBody;
+      rawBodyStr = JSON.stringify(toolLessBody);
+    }
+  }
+
+  // 3. If max_tokens was rejected (400/422/503) on models with smaller 4k/8k caps,
+  // retry with max_tokens=8192 and then without max_tokens.
+  if (!lastResp.ok && (lastResp.status === 400 || lastResp.status === 422 || lastResp.status === 503) && parsedBody && ('max_tokens' in parsedBody || 'max_completion_tokens' in parsedBody)) {
+    const reducedBody = { ...parsedBody };
+    delete reducedBody.max_tokens;
+    delete reducedBody.max_completion_tokens;
+    const retryResp = await executeSingleFetch(options.url, JSON.stringify(reducedBody));
+    if (retryResp.ok) {
+      lastResp = retryResp;
+      parsedBody = reducedBody;
+      rawBodyStr = JSON.stringify(reducedBody);
+    }
+  }
+
+  // 4. Google Gemini OpenAI-compat endpoint often returns 503 on overloaded/retired preview models
+  // (e.g. gemini-2.0-flash or busy gemini-2.5-pro). Try stable fallback Gemini models if 503/404 persists.
+  if (!lastResp.ok && (lastResp.status === 503 || lastResp.status === 404) && parsedBody && typeof parsedBody.model === 'string') {
+    try {
+      const host = new URL(options.url).hostname.toLowerCase();
+      if (host === 'generativelanguage.googleapis.com') {
+        const fallbacks = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash'].filter(m => m !== parsedBody!.model);
+        for (const fbModel of fallbacks) {
+          const fbBody = { ...parsedBody, model: fbModel };
+          const fbResp = await executeSingleFetch(options.url, JSON.stringify(fbBody));
+          if (fbResp.ok) {
+            lastResp = fbResp;
+            parsedBody = fbBody;
+            rawBodyStr = JSON.stringify(fbBody);
+            break;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 5. Non-streaming fallback: some OpenAI-compatible gateways/models return 503/502/400/501
+  // when `stream: true` is sent, but succeed with `stream: false`.
+  const requestedStream = parsedBody?.stream === true;
+  if (!lastResp.ok && requestedStream && (lastResp.status === 503 || lastResp.status === 502 || lastResp.status === 500 || lastResp.status === 400 || lastResp.status === 501)) {
+    const nonStreamBody = { ...parsedBody, stream: false };
+    const nonStreamResp = await executeSingleFetch(options.url, JSON.stringify(nonStreamBody));
+    if (nonStreamResp.ok) {
+      try {
+        const json = (await nonStreamResp.json()) as Record<string, unknown>;
+        return jsonCompletionToSseResponse(json, 200);
+      } catch {
+        // ignore and return original response
+      }
+    }
+  }
+
+  // 6. If the upstream ignored `stream: true` and returned 200 OK with application/json,
+  // convert the JSON payload into an SSE stream so SSE consumers receive the content cleanly.
+  if (lastResp.ok && requestedStream) {
+    const ct = (lastResp.headers.get('content-type') || '').toLowerCase();
+    if (ct.includes('application/json')) {
+      try {
+        const clone = lastResp.clone();
+        const json = (await clone.json()) as Record<string, unknown>;
+        if (json && (Array.isArray(json.choices) || Array.isArray(json.content) || typeof json.response === 'string')) {
+          return jsonCompletionToSseResponse(json, lastResp.status);
+        }
+      } catch {
+        // fall through to original response
+      }
+    }
+  }
+
+  return lastResp;
+}

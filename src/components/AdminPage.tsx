@@ -208,12 +208,12 @@ const BUILTIN_MODEL_META: Record<string, { label: string; badge: string; colorCl
 
 const PRESET_PROVIDERS = [
   { name: 'OpenAI', url: 'https://api.openai.com/v1', model: 'gpt-4o' },
-  { name: 'Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.0-flash' },
-  { name: 'Cohere', url: 'https://api.cohere.com/compatibility/v1', model: 'command-a-03-2025' },
-  { name: 'DeepSeek', url: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  { name: 'Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' },
+  { name: 'DeepSeek', url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { name: 'Groq', url: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile' },
   { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', model: 'anthropic/claude-3.5-sonnet' },
-  { name: 'Ollama (Local)', url: 'http://localhost:11434/v1', model: 'llama3' },
+  { name: 'Together AI', url: 'https://api.together.xyz/v1', model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
+  { name: 'Cohere', url: 'https://api.cohere.com/compatibility/v1', model: 'command-a-03-2025' },
 ];
 
 const BENCHMARK_PROMPTS = [
@@ -641,8 +641,20 @@ export default function AdminPage() {
           const data = trimmed.slice(5).trim();
           if (data === '[DONE]') continue;
           try {
-            const parsed = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }> };
-            const content = parsed.choices?.[0]?.delta?.content;
+            const parsed = JSON.parse(data) as {
+              choices?: Array<{
+                delta?: { content?: string; reasoning_content?: string };
+                message?: { content?: string; reasoning_content?: string };
+              }>;
+              error?: { message?: string } | string;
+            };
+            if (parsed.error) {
+              const errMsg = typeof parsed.error === 'string' ? parsed.error : (parsed.error.message || 'Upstream stream error');
+              setTestOutput(`Error: ${errMsg}`);
+              return;
+            }
+            const choice = parsed.choices?.[0];
+            const content = choice?.delta?.content ?? choice?.message?.content ?? choice?.delta?.reasoning_content ?? choice?.message?.reasoning_content;
             if (content) { rawOutput += content; setTestOutput(stripThinking(rawOutput)); }
           } catch { /* ignore malformed chunks */ }
         }
