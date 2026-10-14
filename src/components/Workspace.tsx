@@ -1967,11 +1967,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   <button
                     onClick={(e) => { (e.currentTarget as HTMLElement).focus(); github.openModal(); }}
                     className="hover-bright"
-                    title={github.savedRepo ? `GitHub: ${github.savedRepo}${github.hasToken ? ' · auto-sync on' : ''}` : 'Export to GitHub'}
+                    title={github.savedRepo ? `GitHub: ${github.savedRepo}${github.hasToken ? ' · auto-sync on' : ' · click to reconnect token'}` : 'Export to GitHub'}
                     aria-label={github.savedRepo ? `GitHub: ${github.savedRepo}` : 'Export to GitHub'}
                     style={{
                       background: 'transparent', border: 'none',
-                      color: github.savedRepo ? 'var(--color-success, #22c55e)' : 'var(--text-muted)',
+                      color: github.savedRepo
+                        ? (github.hasToken ? 'var(--color-success, #22c55e)' : 'var(--color-warning, #f59e0b)')
+                        : 'var(--text-muted)',
                       padding: '6px 8px', minHeight: '32px', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'inherit'
                     }}

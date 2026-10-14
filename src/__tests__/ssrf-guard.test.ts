@@ -3,11 +3,8 @@ import {
   FETCH_MAX_BYTES,
   FETCH_MAX_TEXT,
   assertSafeCustomModelUrl,
-  extractUpstreamErrorMessage,
-  fetchCustomModelWithRetry,
   isPublicIp,
   isPublicRoutableHost,
-  normalizeCustomModelBaseUrl,
   safeFetchText,
   validateFetchUrl,
 } from '../lib/ssrf';

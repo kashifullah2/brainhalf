@@ -1,6 +1,6 @@
 import { isPrivateSearch } from './seo/metadata';
 import { routeAgentRequest } from 'agents';
-import { handleGoogleAuth } from './lib/google-auth';
+import { handleGoogleAuth, handleGithubAuth } from './lib/google-auth';
 import { handleManagedGoogle } from './lib/managed-providers';
 export { ManagedProviders } from './lib/managed-providers';
 import { handleEmailRequest, sendEmail, type EmailQueueMessage } from './lib/email';
@@ -95,6 +95,9 @@ const AUTH_ROUTES = new Set([
   '/api/auth/google/start',
   '/api/auth/google/callback',
   '/api/auth/google/complete',
+  '/api/auth/github/start',
+  '/api/auth/github/callback',
+  '/api/auth/github/complete',
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
   '/api/auth/resend-verification',
@@ -403,7 +406,7 @@ export default {
     const privateSearch = isPrivateSearch(url.search);
     const origin = request.headers.get('origin');
     const untrustedOrigin = (origin !== null && !isAllowedOrigin(origin, { IS_DEV: _isDev })) || request.headers.get('sec-fetch-site') === 'cross-site';
-    const googleCallback = url.pathname === '/api/auth/google/callback' && request.method === 'GET';
+    const googleCallback = (url.pathname === '/api/auth/google/callback' || url.pathname === '/api/auth/github/callback') && request.method === 'GET';
     const managedGoogleStart = url.pathname === '/api/apps/google/start' && request.method === 'GET';
     if ((url.pathname.startsWith('/api/') || url.pathname.startsWith('/agents/')) && untrustedOrigin && !googleCallback && !managedGoogleStart) {
       return withCors(forbidden('Untrusted request origin'), origin);
@@ -456,7 +459,7 @@ export default {
       return handleManagedGoogle(request, env);
     }
     if (AUTH_ROUTES.has(url.pathname)) {
-      const method = url.pathname === '/api/auth/session' || url.pathname === '/api/auth/google/callback' ? 'GET' : 'POST';
+      const method = url.pathname === '/api/auth/session' || url.pathname === '/api/auth/google/callback' || url.pathname === '/api/auth/github/callback' ? 'GET' : 'POST';
       if (request.method !== method) {
         const response = jsonError('Method not allowed', 405);
         response.headers.set('Allow', method);
@@ -504,6 +507,17 @@ export default {
             writeAuthEvent(env.ANALYTICS, { userId, method: 'google', status: 'ok' });
           }
           break;
+        case '/api/auth/github/start':
+        case '/api/auth/github/callback':
+        case '/api/auth/github/complete': {
+          const currentSession = url.pathname === '/api/auth/github/start' ? await verifySession(request, env) : null;
+          response = await handleGithubAuth(request, env, currentSession?.userId);
+          if (response.ok && url.pathname === '/api/auth/github/complete') {
+            const userId = response.headers.get('x-auth-user-id') ?? 'unknown';
+            writeAuthEvent(env.ANALYTICS, { userId, method: 'github' as any, status: 'ok' });
+          }
+          break;
+        }
         case '/api/auth/signup':
         case '/api/auth/forgot-password':
         case '/api/auth/reset-password':
@@ -754,6 +768,23 @@ export default {
       if (!user) return withCors(unauthorized(), origin);
       try { return withCors(await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(`https://registry/projects/quota?userId=${encodeURIComponent(user.userId)}`), origin); }
       catch { return withCors(jsonError('Project quota unavailable', 503), origin); }
+    }
+    if (url.pathname === '/api/account/github-token' && ['GET', 'PUT', 'DELETE'].includes(request.method)) {
+      const user = await verifySession(request, env);
+      if (!user) return withCors(unauthorized(), origin);
+      try {
+        const init: RequestInit = { method: request.method, headers: { 'Content-Type': 'application/json' } };
+        if (request.method === 'PUT') init.body = await request.text();
+        const response = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch(
+          `https://registry/account/github-token?userId=${encodeURIComponent(user.userId)}`,
+          init
+        );
+        const headers = new Headers(response.headers);
+        headers.set('Cache-Control', 'no-store');
+        return withCors(new Response(response.body, { status: response.status, headers }), origin);
+      } catch {
+        return withCors(jsonError('GitHub token service unavailable', 503), origin);
+      }
     }
     /* --------- Export project as ZIP --------- */
     const exportZipMatch = url.pathname.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/export-zip$/);

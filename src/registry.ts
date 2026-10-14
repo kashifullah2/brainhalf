@@ -375,6 +375,45 @@ export class AuthRegistry {
         if (!userId) return this.json(400, { error: 'Missing owner' });
         return Response.json({ deletions: this.cleanup().list(userId).map(({ user_id: _owner, ...job }) => job) });
       }
+      if (path === '/account/github-token') {
+        const userId = url.searchParams.get('userId') || '';
+        if (!userId) return this.json(400, { error: 'userId is required' });
+        const secret = ((this.env as Record<string, unknown>).GITHUB_TOKEN_SECRET as string | undefined) || this.env.SESSION_SECRET;
+        if (!secret) return this.json(500, { error: 'Encryption secret is not configured' });
+        if (method === 'GET') {
+          const rows = this.sql.exec(
+            'SELECT login, token_encrypted, connected_at FROM github_tokens WHERE user_id = ?', userId
+          ).toArray() as Array<{ login: string; token_encrypted: string; connected_at: number }>;
+          if (!rows.length) return this.json(200, { connected: false });
+          const { decryptValue } = await import('./lib/crypto');
+          const token = await decryptValue(secret, rows[0].token_encrypted);
+          if (!token) return this.json(200, { connected: false });
+          return this.json(200, {
+            connected: true,
+            login: rows[0].login,
+            token,
+            connectedAt: rows[0].connected_at,
+          });
+        }
+        if (method === 'PUT') {
+          const body = await json<{ login?: string; token?: string }>();
+          const token = body?.token?.trim() || '';
+          const login = (body?.login?.trim() || 'github-user').slice(0, 64);
+          if (!token || /[\r\n]/.test(token)) return this.json(400, { error: 'Invalid GitHub token' });
+          const { encryptValue } = await import('./lib/crypto');
+          const encrypted = await encryptValue(secret, token);
+          const now = Date.now();
+          this.sql.exec(
+            'INSERT OR REPLACE INTO github_tokens (user_id, login, token_encrypted, connected_at) VALUES (?, ?, ?, ?)',
+            userId, login, encrypted, now
+          );
+          return this.json(200, { connected: true, login, connectedAt: now });
+        }
+        if (method === 'DELETE') {
+          this.sql.exec('DELETE FROM github_tokens WHERE user_id = ?', userId);
+          return this.json(200, { connected: false });
+        }
+      }
       if (path === '/projects/quota' && method === 'GET') {
         const userId = url.searchParams.get('userId');
         if (!userId) return this.json(400, { error: 'Missing owner' });
@@ -742,6 +781,40 @@ export class AuthRegistry {
         const rows = this.sql.exec('SELECT data, expires_at FROM oauth_flows WHERE key_hash = ? AND kind = ?', hash, body.kind || '').toArray() as Array<{ data: string; expires_at: number }>;
         this.sql.exec('DELETE FROM oauth_flows WHERE key_hash = ? AND kind = ?', hash, body.kind || '');
         return this.json(200, rows[0] && rows[0].expires_at > Date.now() ? JSON.parse(rows[0].data) : null);
+      }
+      if (path === '/auth/github' && method === 'POST') {
+        const body = await json<{ subject?: string; email?: string; login?: string; token?: string }>();
+        if (typeof body?.subject !== 'string' || !body.subject || body.subject.length > 255 || typeof body.email !== 'string' || !isValidEmail(body.email)) {
+          return this.json(400, { error: 'Invalid GitHub identity' });
+        }
+        const subject = body.subject;
+        const email = body.email.trim().toLowerCase();
+        const login = (body.login || email.split('@')[0] || 'github-user').trim().slice(0, 64);
+        const result = this.state.storage.transactionSync(() => {
+          const linked = this.sql.exec("SELECT users.id, users.email FROM oauth_identities JOIN users ON users.id = oauth_identities.user_id WHERE provider = 'github' AND subject = ?", subject).toArray() as Array<{ id: string; email: string }>;
+          if (linked[0]) return { userId: linked[0].id, email: linked[0].email };
+          const existingByEmail = this.sql.exec('SELECT id, email FROM users WHERE email = ?', email).toArray() as Array<{ id: string; email: string }>;
+          if (existingByEmail[0]) {
+            this.sql.exec("INSERT OR IGNORE INTO oauth_identities (provider, subject, user_id) VALUES ('github', ?, ?)", subject, existingByEmail[0].id);
+            return { userId: existingByEmail[0].id, email: existingByEmail[0].email };
+          }
+          const id = randomId('usr_');
+          this.sql.exec('INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)', id, email, '!github-only', Date.now());
+          this.sql.exec("INSERT INTO oauth_identities (provider, subject, user_id) VALUES ('github', ?, ?)", subject, id);
+          return { userId: id, email };
+        });
+        if (body.token && result.userId) {
+          const secret = ((this.env as Record<string, unknown>).GITHUB_TOKEN_SECRET as string | undefined) || this.env.SESSION_SECRET;
+          if (secret) {
+            const { encryptValue } = await import('./lib/crypto');
+            const encrypted = await encryptValue(secret, body.token.trim());
+            this.sql.exec(
+              'INSERT OR REPLACE INTO github_tokens (user_id, login, token_encrypted, connected_at) VALUES (?, ?, ?, ?)',
+              result.userId, login, encrypted, Date.now()
+            );
+          }
+        }
+        return this.json(200, result);
       }
       if (path === '/auth/google' && method === 'POST') {
         const body = await json<{ subject?: string; email?: string }>();

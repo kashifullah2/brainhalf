@@ -1,10 +1,27 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement, type RefObject } from 'react';
-import { FolderCode, Loader2 } from 'lucide-react';
+import { FolderCode, Loader2, CheckCircle2 } from 'lucide-react';
+import { authFetch, startGithubSignIn } from '../lib/auth-client';
+import { apiOrigin } from '../lib/api-origin';
 import { appEvents } from '../lib/events';
 import { exportToGitHub, importFromGitHub, type GitHubImport } from '../lib/github-export';
 
 type FileMap = Record<string, string>;
 type BuildLogType = 'info' | 'success' | 'warn' | 'error';
+
+export function parseGithubRepoInput(rawInput: string, fallbackOwner?: string): { repoName: string; owner?: string } {
+  let cleaned = (rawInput || '').trim();
+  cleaned = cleaned
+    .replace(/^https?:\/\/(?:www\.)?github\.com\//i, '')
+    .replace(/^git@github\.com:/i, '')
+    .replace(/\.git$/i, '')
+    .replace(/^\/+|\/+$/g, '');
+  const parts = cleaned.split('/').filter(Boolean);
+  if (parts.length >= 2 && parts[0] !== '.' && parts[0] !== '..') {
+    return { owner: parts[0], repoName: parts[1] };
+  }
+  const cleanOwner = fallbackOwner?.trim() || undefined;
+  return { repoName: cleaned, owner: cleanOwner };
+}
 
 interface GithubSyncOptions {
   activeProjectId: string | null;
@@ -26,13 +43,17 @@ export interface GithubSync {
 }
 
 interface ModalStatus { loading: boolean; error?: string; success?: string }
+interface GithubRepoItem { full_name: string; name: string; owner?: { login?: string }; private?: boolean }
 
-/** GitHub two-way sync: export, auto-sync after generation, and repository import. */
+/** GitHub one-click OAuth connection, repository picker, push, pull, and auto-sync. */
 export function useGithubSync({ activeProjectId, isCurrent, filesRef, commitFiles, addBuildLog }: GithubSyncOptions): GithubSync {
   const [showModal, setShowModal] = useState(false);
   const [repo, setRepo] = useState('');
   const [token, setToken] = useState('');
-  // Repo name persisted per project; token stays in React state only (never on disk)
+  const [connectedLogin, setConnectedLogin] = useState('');
+  const [userRepos, setUserRepos] = useState<GithubRepoItem[]>([]);
+  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [connectingOAuth, setConnectingOAuth] = useState(false);
   const [savedRepo, setSavedRepo] = useState('');
   const [owner, setOwner] = useState('');
   const [pendingImport, setPendingImport] = useState<GitHubImport | null>(null);
@@ -42,20 +63,62 @@ export function useGithubSync({ activeProjectId, isCurrent, filesRef, commitFile
   const triggerRef = useRef<HTMLElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
 
-  // Clear legacy keys that accidentally stored the PAT
   useEffect(() => { try { sessionStorage.removeItem('brainhalf_github_pat'); localStorage.removeItem('brainhalf_github_pat'); } catch {} }, []);
 
-  // On project switch: load persisted repo name, clear session token
+  // Load connected GitHub OAuth account from the server
+  const loadConnectedGithub = useCallback((signal?: AbortSignal) => {
+    authFetch(`${apiOrigin()}/api/account/github-token`, { signal })
+      .then(async res => {
+        if (!res.ok) return;
+        const data = await res.json() as { connected?: boolean; login?: string; token?: string };
+        if (data?.connected && data.token) {
+          setToken(data.token);
+          if (data.login) setConnectedLogin(data.login);
+        }
+      })
+      .catch(() => { /* ignore */ });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadConnectedGithub(controller.signal);
+    return () => controller.abort();
+  }, [activeProjectId, loadConnectedGithub]);
+
+  // Fetch user's GitHub repositories automatically when modal opens and connected
+  useEffect(() => {
+    if (!showModal || !token) return;
+    let cancelled = false;
+    setLoadingRepos(true);
+    fetch('https://api.github.com/user/repos?sort=updated&per_page=50', {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    })
+      .then(async res => {
+        if (!res.ok) return;
+        const list = await res.json() as GithubRepoItem[];
+        if (!cancelled && Array.isArray(list)) {
+          setUserRepos(list);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingRepos(false); });
+    return () => { cancelled = true; };
+  }, [showModal, token]);
+
   useEffect(() => {
     if (!activeProjectId) return;
-    setToken('');
     setLastSynced(null);
     setSyncing(false);
     try {
       const saved = localStorage.getItem(`bh_github_repo:${activeProjectId}`) || '';
+      const savedOwner = localStorage.getItem(`bh_github_owner:${activeProjectId}`) || '';
       setSavedRepo(saved);
-      setRepo(saved);
-      setOwner(localStorage.getItem(`bh_github_owner:${activeProjectId}`) || '');
+      setRepo(savedOwner && saved ? `${savedOwner}/${saved}` : saved);
+      setOwner(savedOwner);
     } catch { setSavedRepo(''); setRepo(''); setOwner(''); }
   }, [activeProjectId]);
 
@@ -76,7 +139,6 @@ export function useGithubSync({ activeProjectId, isCurrent, filesRef, commitFile
     return () => unsub();
   }, [openModal]);
 
-  // Escape closes the dialog without tearing down the rest of the UI.
   useEffect(() => {
     if (!showModal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -86,86 +148,104 @@ export function useGithubSync({ activeProjectId, isCurrent, filesRef, commitFile
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [showModal, closeModal]);
 
-  // Restore focus to the control that opened the dialog.
   useEffect(() => { if (!showModal) triggerRef.current?.focus?.(); }, [showModal]);
+
+  const handleConnectGithubButton = useCallback(async () => {
+    setConnectingOAuth(true);
+    setStatus({ loading: false });
+    try {
+      await startGithubSignIn('connect', activeProjectId);
+    } catch (err: any) {
+      setConnectingOAuth(false);
+      setStatus({ loading: false, error: err?.message || 'Could not start GitHub connection.' });
+    }
+  }, [activeProjectId]);
 
   const handleExport = useCallback(async () => {
     if (!repo.trim() || !token.trim()) return;
     setStatus({ loading: true });
     try {
-      await exportToGitHub(filesRef.current, repo.trim(), token.trim(), owner.trim() || undefined);
-      try { localStorage.setItem(`bh_github_repo:${activeProjectId}`, repo.trim()); } catch {}
-      setSavedRepo(repo.trim());
+      const { repoName, owner: parsedOwner } = parseGithubRepoInput(repo, owner || connectedLogin);
+      const repoUrl = await exportToGitHub(filesRef.current, repoName, token.trim(), parsedOwner);
+      const urlParts = repoUrl.replace(/^https?:\/\/github\.com\//i, '').split('/');
+      const resolvedOwner = urlParts[0] || parsedOwner || '';
+      const resolvedRepo = urlParts[1] || repoName;
+      try {
+        localStorage.setItem(`bh_github_repo:${activeProjectId}`, resolvedRepo);
+        if (resolvedOwner) localStorage.setItem(`bh_github_owner:${activeProjectId}`, resolvedOwner);
+      } catch {}
+      setSavedRepo(resolvedRepo);
+      setOwner(resolvedOwner);
+      if (resolvedOwner) setConnectedLogin(resolvedOwner);
       setLastSynced(new Date());
-      setStatus({ loading: false, success: `Synced to ${repo.trim()} — auto-sync enabled for this session.` });
-      addBuildLog(`Pushed codebase to GitHub: ${repo.trim()}`, 'success');
+      setStatus({ loading: false, success: `Synced to ${resolvedOwner ? `${resolvedOwner}/${resolvedRepo}` : resolvedRepo}.` });
+      addBuildLog(`Pushed codebase to GitHub: ${repoUrl}`, 'success');
     } catch (err: any) {
-      setStatus({ loading: false, error: err?.message || 'Failed to export to GitHub' });
-      addBuildLog(`GitHub export failed: ${err?.message || err}`, 'error');
+      setStatus({ loading: false, error: err?.message || 'Failed to push to GitHub' });
+      addBuildLog(`GitHub push failed: ${err?.message || err}`, 'error');
     }
-  }, [repo, token, owner, addBuildLog, activeProjectId, filesRef]);
+  }, [repo, token, owner, connectedLogin, addBuildLog, activeProjectId, filesRef]);
 
   const handleImport = useCallback(async () => {
     if (!repo.trim() || !token.trim()) return;
     setStatus({ loading: true });
     setPendingImport(null);
     try {
-      const input = repo.trim();
-      const slash = input.indexOf('/');
-      const parsedOwner = slash > 0 ? input.slice(0, slash) : undefined;
-      const repoName = slash > 0 ? input.slice(slash + 1) : input;
+      const { repoName, owner: parsedOwner } = parseGithubRepoInput(repo, owner || connectedLogin);
       const result = await importFromGitHub(repoName, token.trim(), parsedOwner);
       setPendingImport(result);
       setStatus({ loading: false });
     } catch (err: any) {
-      setStatus({ loading: false, error: err?.message || 'Failed to import from GitHub' });
-      addBuildLog(`GitHub import failed: ${err?.message || err}`, 'error');
+      setStatus({ loading: false, error: err?.message || 'Failed to pull from GitHub' });
+      addBuildLog(`GitHub pull failed: ${err?.message || err}`, 'error');
     }
-  }, [repo, token, addBuildLog]);
+  }, [repo, token, owner, connectedLogin, addBuildLog]);
 
   const confirmImport = useCallback(() => {
     if (!pendingImport) return;
     commitFiles(pendingImport.files, { replaceAll: true });
-    const input = repo.trim();
-    const slash = input.indexOf('/');
-    const parsedOwner = slash > 0 ? input.slice(0, slash) : '';
-    const repoName = slash > 0 ? input.slice(slash + 1) : input;
+    const { repoName, owner: parsedOwner } = parseGithubRepoInput(repo, owner || connectedLogin);
+    const resolvedOwner = parsedOwner || '';
     try {
       localStorage.setItem(`bh_github_repo:${activeProjectId}`, repoName);
-      if (parsedOwner) localStorage.setItem(`bh_github_owner:${activeProjectId}`, parsedOwner);
+      if (resolvedOwner) localStorage.setItem(`bh_github_owner:${activeProjectId}`, resolvedOwner);
       else localStorage.removeItem(`bh_github_owner:${activeProjectId}`);
     } catch {}
     setSavedRepo(repoName);
-    setRepo(repoName);
-    setOwner(parsedOwner);
+    setRepo(resolvedOwner ? `${resolvedOwner}/${repoName}` : repoName);
+    setOwner(resolvedOwner);
     setLastSynced(new Date());
     const count = Object.keys(pendingImport.files).length;
     addBuildLog(`Imported ${count} files from GitHub: ${pendingImport.repoUrl} (${pendingImport.branch})`, 'success');
     setPendingImport(null);
-    setStatus({ loading: false, success: `Imported ${count} files from ${repoName} — auto-sync enabled for this session.` });
-  }, [pendingImport, repo, activeProjectId, commitFiles, addBuildLog]);
+    setStatus({ loading: false, success: `Imported ${count} files from ${repoName}.` });
+  }, [pendingImport, repo, owner, connectedLogin, activeProjectId, commitFiles, addBuildLog]);
 
   const autoSync = useCallback(async () => {
     if (!token || !savedRepo || !isCurrent()) return;
     setSyncing(true);
     try {
-      await exportToGitHub(filesRef.current, savedRepo, token, owner.trim() || undefined);
+      const { repoName, owner: parsedOwner } = parseGithubRepoInput(savedRepo, owner || connectedLogin);
+      await exportToGitHub(filesRef.current, repoName, token, parsedOwner);
       setLastSynced(new Date());
-      addBuildLog(`Auto-synced to GitHub: ${savedRepo}`, 'success');
+      addBuildLog(`Auto-synced to GitHub: ${parsedOwner ? `${parsedOwner}/${repoName}` : repoName}`, 'success');
     } catch (err: any) {
       addBuildLog(`GitHub auto-sync failed: ${err?.message || err}`, 'warn');
     } finally {
       setSyncing(false);
     }
-  }, [token, savedRepo, owner, addBuildLog, isCurrent, filesRef]);
+  }, [token, savedRepo, owner, connectedLogin, addBuildLog, isCurrent, filesRef]);
 
   const disconnect = useCallback(() => {
     try { localStorage.removeItem(`bh_github_repo:${activeProjectId}`); } catch {}
     try { localStorage.removeItem(`bh_github_owner:${activeProjectId}`); } catch {}
+    void authFetch(`${apiOrigin()}/api/account/github-token`, { method: 'DELETE' }).catch(() => {});
     setSavedRepo('');
     setOwner('');
     setRepo('');
     setToken('');
+    setConnectedLogin('');
+    setUserRepos([]);
     setPendingImport(null);
     setLastSynced(null);
     setShowModal(false);
@@ -175,13 +255,17 @@ export function useGithubSync({ activeProjectId, isCurrent, filesRef, commitFile
     <GithubSyncModal
       modalRef={modalRef}
       repo={repo}
-      token={token}
+      hasToken={Boolean(token)}
+      connectedLogin={connectedLogin}
+      userRepos={userRepos}
+      loadingRepos={loadingRepos}
+      connectingOAuth={connectingOAuth}
       savedRepo={savedRepo}
       lastSynced={lastSynced}
       status={status}
       pendingImport={pendingImport}
       onRepoChange={setRepo}
-      onTokenChange={setToken}
+      onConnectGithub={() => void handleConnectGithubButton()}
       onExport={handleExport}
       onImport={handleImport}
       onConfirmImport={confirmImport}
@@ -197,13 +281,17 @@ export function useGithubSync({ activeProjectId, isCurrent, filesRef, commitFile
 interface GithubSyncModalProps {
   modalRef: RefObject<HTMLDivElement | null>;
   repo: string;
-  token: string;
+  hasToken: boolean;
+  connectedLogin: string;
+  userRepos: GithubRepoItem[];
+  loadingRepos: boolean;
+  connectingOAuth: boolean;
   savedRepo: string;
   lastSynced: Date | null;
   status: ModalStatus;
   pendingImport: GitHubImport | null;
   onRepoChange: (value: string) => void;
-  onTokenChange: (value: string) => void;
+  onConnectGithub: () => void;
   onExport: () => void;
   onImport: () => void;
   onConfirmImport: () => void;
@@ -213,11 +301,10 @@ interface GithubSyncModalProps {
 }
 
 function GithubSyncModal(props: GithubSyncModalProps) {
-  const { modalRef, repo, token, savedRepo, lastSynced, status, pendingImport } = props;
-  const busy = status.loading;
-  const ready = repo.trim().length > 0 && token.trim().length > 0;
+  const { modalRef, repo, hasToken, connectedLogin, userRepos, loadingRepos, connectingOAuth, savedRepo, lastSynced, status, pendingImport } = props;
+  const busy = status.loading || connectingOAuth;
+  const ready = hasToken && repo.trim().length > 0;
 
-  // Focus management: move focus in on open and keep Tab inside the dialog.
   useEffect(() => {
     const node = modalRef.current;
     if (!node) return;
@@ -253,8 +340,6 @@ function GithubSyncModal(props: GithubSyncModalProps) {
         style={{
           background: 'var(--bg-panel)', border: '1px solid var(--border-color)',
           borderRadius: '12px', width: '420px', maxWidth: '100%',
-          // maxHeight + scroll: at 375px with the keyboard up, the fixed
-          // layout put the submit button below the fold and unreachable.
           maxHeight: '90vh', overflowY: 'auto',
           padding: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
           display: 'flex', flexDirection: 'column', gap: '16px'
@@ -262,55 +347,110 @@ function GithubSyncModal(props: GithubSyncModalProps) {
       >
         <h3 id="github-export-title" style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <FolderCode size={20} />
-          {savedRepo && token ? 'GitHub auto-sync' : 'Export to GitHub'}
+          GitHub
         </h3>
 
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-          {savedRepo && token
-            ? `Auto-syncing to ${savedRepo} after each generation.${lastSynced ? ` Last synced ${lastSynced.toLocaleTimeString()}.` : ''}`
-            : 'New repositories are private. Existing repositories keep their default branch and newer commits are protected. Enter owner/repo to pull from another account with Import.'}
-        </p>
+        {!hasToken ? (
+          <>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+              Connect your GitHub account with one click to push this project to a repository or import an existing repository.
+            </p>
+            <button
+              type="button"
+              disabled={connectingOAuth}
+              onClick={props.onConnectGithub}
+              style={{
+                width: '100%', minHeight: '44px', padding: '10px 16px',
+                background: '#24292f', color: '#ffffff', border: '1px solid rgba(255,255,255,0.14)',
+                borderRadius: '8px', cursor: connectingOAuth ? 'wait' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                fontSize: '14px', fontWeight: 600
+              }}
+            >
+              {connectingOAuth ? (
+                <Loader2 size={18} className="lucide-spin" />
+              ) : (
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" width="18" height="18">
+                  <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+                </svg>
+              )}
+              <span>{connectingOAuth ? 'Opening GitHub…' : 'Connect with GitHub'}</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px', background: 'rgba(34, 197, 94, 0.08)',
+              border: '1px solid rgba(34, 197, 94, 0.25)', borderRadius: '8px', fontSize: '13px'
+            }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                <CheckCircle2 size={16} color="var(--color-success, #22c55e)" />
+                Connected{connectedLogin ? ` as @${connectedLogin}` : ' to GitHub'}
+              </span>
+              <button
+                type="button"
+                onClick={props.onDisconnect}
+                style={{
+                  background: 'transparent', border: 'none', color: 'var(--color-error, #ef4444)',
+                  fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: '4px 6px'
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label htmlFor="gh-repo" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-            Repository name
-          </label>
-          <input
-            id="gh-repo"
-            type="text"
-            value={repo}
-            onChange={e => props.onRepoChange(e.target.value)}
-            placeholder="brainhalf-app"
-            autoComplete="off"
-            style={{
-              background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
-              borderRadius: '6px', padding: '10px 12px', color: 'var(--text-primary)',
-              fontSize: '13px', outline: 'none', fontFamily: 'inherit', minHeight: '44px'
-            }}
-          />
-        </div>
+            <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+              {savedRepo
+                ? `Linked to ${savedRepo}.${lastSynced ? ` Last synced ${lastSynced.toLocaleTimeString()}.` : ''}`
+                : 'Choose an existing repository below or enter a new repository name to create one.'}
+            </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <label htmlFor="gh-token" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-            Personal access token
-          </label>
-          <input
-            id="gh-token"
-            type="password"
-            value={token}
-            onChange={e => props.onTokenChange(e.target.value)}
-            placeholder="ghp_..."
-            autoComplete="off"
-            style={{
-              background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
-              borderRadius: '6px', padding: '10px 12px', color: 'var(--text-primary)',
-              fontSize: '13px', outline: 'none', fontFamily: 'inherit', minHeight: '44px'
-            }}
-          />
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Use a fine-grained token with Contents read/write, or a classic token with repo scope. Kept in memory this session only — never written to disk — to enable auto-sync after generation.
-          </span>
-        </div>
+            {userRepos.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label htmlFor="gh-repo-select" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  Your GitHub repositories {loadingRepos ? '(loading…)' : ''}
+                </label>
+                <select
+                  id="gh-repo-select"
+                  value={userRepos.some(r => r.full_name === repo || r.name === repo) ? repo : ''}
+                  onChange={e => { if (e.target.value) props.onRepoChange(e.target.value); }}
+                  style={{
+                    background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
+                    borderRadius: '6px', padding: '10px 12px', color: 'var(--text-primary)',
+                    fontSize: '13px', outline: 'none', fontFamily: 'inherit', minHeight: '42px'
+                  }}
+                >
+                  <option value="">Select an existing repository…</option>
+                  {userRepos.map(r => (
+                    <option key={r.full_name} value={r.full_name}>
+                      {r.full_name} {r.private ? '(Private)' : '(Public)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label htmlFor="gh-repo" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Repository name
+              </label>
+              <input
+                id="gh-repo"
+                type="text"
+                value={repo}
+                onChange={e => props.onRepoChange(e.target.value)}
+                placeholder="brainhalf-app"
+                autoComplete="off"
+                style={{
+                  background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
+                  borderRadius: '6px', padding: '10px 12px', color: 'var(--text-primary)',
+                  fontSize: '13px', outline: 'none', fontFamily: 'inherit', minHeight: '42px'
+                }}
+              />
+            </div>
+          </>
+        )}
 
         {status.error && (
           <div role="alert" style={{ padding: '10px', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--color-error)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '12px', lineHeight: 1.5 }}>
@@ -330,21 +470,16 @@ function GithubSyncModal(props: GithubSyncModalProps) {
               Import <strong>{Object.keys(pendingImport.files).length} files</strong> from <strong>{pendingImport.repoUrl}</strong> ({pendingImport.branch})?
               This replaces the current project files.
             </span>
-            {pendingImport.skipped.length > 0 && (
-              <span style={{ color: 'var(--text-muted)' }}>
-                Skipped: {pendingImport.skipped.slice(0, 4).join(', ')}{pendingImport.skipped.length > 4 ? ` and ${pendingImport.skipped.length - 4} more` : ''}
-              </span>
-            )}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button
                 onClick={props.onCancelImport}
-                style={{ padding: '8px 14px', minHeight: '44px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+                style={{ padding: '8px 14px', minHeight: '40px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
               >
-                Cancel import
+                Cancel
               </button>
               <button
                 onClick={props.onConfirmImport}
-                style={{ padding: '8px 14px', minHeight: '44px', background: 'var(--color-warning, #d97706)', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
+                style={{ padding: '8px 14px', minHeight: '40px', background: 'var(--color-warning, #d97706)', border: 'none', color: '#fff', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
               >
                 Replace project files
               </button>
@@ -352,55 +487,47 @@ function GithubSyncModal(props: GithubSyncModalProps) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px', flexWrap: 'wrap' }}>
-          {savedRepo && (
-            <button
-              onClick={props.onDisconnect}
-              style={{
-                padding: '10px 16px', minHeight: '44px', background: 'transparent',
-                border: '1px solid var(--border-color)', color: 'var(--color-error, #ef4444)',
-                borderRadius: '6px', cursor: 'pointer', fontSize: '13px', marginRight: 'auto'
-              }}
-            >
-              Disconnect
-            </button>
-          )}
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px', flexWrap: 'wrap' }}>
           <button
             onClick={props.onClose}
             style={{
-              padding: '10px 16px', minHeight: '44px', background: 'transparent',
+              padding: '10px 16px', minHeight: '42px', background: 'transparent',
               border: '1px solid var(--border-color)', color: 'var(--text-primary)',
               borderRadius: '6px', cursor: 'pointer', fontSize: '13px'
             }}
           >
-            Cancel
+            Close
           </button>
-          <button
-            onClick={props.onImport}
-            disabled={busy || !!pendingImport || !ready}
-            style={{
-              padding: '10px 16px', minHeight: '44px', background: 'transparent',
-              border: '1px solid var(--color-primary, #3b82f6)', color: 'var(--color-primary, #3b82f6)',
-              borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
-              opacity: (busy || !!pendingImport || !ready) ? 0.5 : 1
-            }}
-          >
-            {busy ? 'Working…' : 'Import'}
-          </button>
-          <button
-            onClick={props.onExport}
-            disabled={busy || !ready}
-            style={{
-              padding: '10px 16px', minHeight: '44px', background: 'var(--brand-primary)',
-              border: 'none', color: 'var(--text-on-accent)', borderRadius: '6px',
-              cursor: (busy || !ready) ? 'not-allowed' : 'pointer',
-              opacity: (busy || !ready) ? 0.6 : 1,
-              display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 500
-            }}
-          >
-            {busy && <Loader2 size={14} className="lucide-spin" />}
-            {busy ? 'Syncing...' : savedRepo ? 'Sync now' : 'Export & enable auto-sync'}
-          </button>
+          {hasToken && (
+            <>
+              <button
+                onClick={props.onImport}
+                disabled={busy || !!pendingImport || !ready}
+                style={{
+                  padding: '10px 16px', minHeight: '42px', background: 'transparent',
+                  border: '1px solid var(--color-primary, #3b82f6)', color: 'var(--color-primary, #3b82f6)',
+                  borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
+                  opacity: (busy || !!pendingImport || !ready) ? 0.5 : 1
+                }}
+              >
+                {busy ? 'Working…' : 'Import'}
+              </button>
+              <button
+                onClick={props.onExport}
+                disabled={busy || !ready}
+                style={{
+                  padding: '10px 16px', minHeight: '42px', background: 'var(--brand-primary)',
+                  border: 'none', color: 'var(--text-on-accent)', borderRadius: '6px',
+                  cursor: (busy || !ready) ? 'not-allowed' : 'pointer',
+                  opacity: (busy || !ready) ? 0.6 : 1,
+                  display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 500
+                }}
+              >
+                {busy && <Loader2 size={14} className="lucide-spin" />}
+                {busy ? 'Syncing…' : savedRepo ? 'Sync now' : 'Push to GitHub'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

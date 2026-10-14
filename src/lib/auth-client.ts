@@ -65,6 +65,27 @@ export async function startGoogleSignIn(): Promise<void> {
   window.location.assign(target.toString());
 }
 
+export async function startGithubSignIn(mode: 'login' | 'connect' = 'login', projectId?: string | null): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(`${apiBase()}/api/auth/github/start`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({
+      project: projectId || new URLSearchParams(window.location.search).get('project'),
+      mode,
+    }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || typeof body?.url !== 'string') throw new Error(body?.error || 'GitHub connection could not start. Please try again.');
+  const target = new URL(body.url);
+  if (target.origin !== 'https://github.com') throw new Error('GitHub connection could not start. Please try again.');
+  window.location.assign(target.toString());
+}
+
 const GOOGLE_ERRORS: Record<string, string> = {
   cancelled: 'Google sign-in was cancelled. Try again or continue with email.',
   expired: 'Google sign-in expired. Please try again.',
@@ -78,15 +99,24 @@ let googleCompletion: Promise<SessionUser> | null = null;
 export function completeGoogleSignIn(): Promise<SessionUser> | null {
   if (googleCompletion) return googleCompletion;
   const url = new URL(window.location.href);
-  const result = url.searchParams.get('google');
+  const ghResult = url.searchParams.get('github');
+  if (ghResult === 'connected') {
+    url.searchParams.delete('github');
+    window.history.replaceState({}, '', url.toString());
+    return null;
+  }
+  const provider = ghResult ? 'github' : 'google';
+  const result = ghResult || url.searchParams.get('google');
   if (!result) return null;
   url.searchParams.delete('google');
+  url.searchParams.delete('github');
   window.history.replaceState({}, '', url.toString());
   googleCompletion = (async () => {
-    if (result !== 'complete') throw new Error(GOOGLE_ERRORS[result] || 'Google sign-in could not finish. Please try again.');
+    const label = provider === 'github' ? 'GitHub' : 'Google';
+    if (result !== 'complete') throw new Error((GOOGLE_ERRORS[result] || `${label} sign-in could not finish. Please try again.`).replace(/Google/g, label));
     const revision = ++sessionRevision;
     const previousToken = getToken();
-    const response = await fetch(`${apiBase()}/api/auth/google/complete`, { method: 'POST', credentials: 'include', signal: AbortSignal.timeout(20_000) });
+    const response = await fetch(`${apiBase()}/api/auth/${provider}/complete`, { method: 'POST', credentials: 'include', signal: AbortSignal.timeout(20_000) });
     const body = await response.json().catch(() => null);
     const user = sessionUser(body?.user);
     if (revision !== sessionRevision || previousToken !== getToken()) throw new Error('Session changed. Sign in again.');

@@ -15,7 +15,7 @@ function githubApi(token: string) {
   const headers = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' };
   return async function api<T>(path: string, method = 'GET', body?: unknown, allowMissing = false): Promise<T | null> {
     let response: Response;
-    try { response = await fetch('https://api.github.com' + path, { method, headers, redirect: 'error', signal: AbortSignal.timeout(30_000), ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
+    try { response = await fetch('https://api.github.com' + path, { method, headers, redirect: 'follow', signal: AbortSignal.timeout(30_000), ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); }
     catch { throw new Error('GitHub could not be reached. Check your connection and try again.'); }
     if (response.status === 404 && allowMissing) { await response.body?.cancel(); return null; }
     if (!response.ok) {
@@ -29,7 +29,13 @@ function githubApi(token: string) {
 }
 
 /** Non-destructive GitHub sync: preserve unrelated files and refuse concurrent branch updates. */
-export async function exportToGitHub(files: Record<string, string>, repoName: string, token: string, owner?: string) {
+export async function exportToGitHub(
+  files: Record<string, string>,
+  repoName: string,
+  token: string,
+  owner?: string,
+  options?: { branch?: string; commitMessage?: string }
+) {
   const prepared = prepareProjectExport(files);
   validateRepoInput(repoName, token, owner);
   const api = githubApi(token);
@@ -39,13 +45,14 @@ export async function exportToGitHub(files: Record<string, string>, repoName: st
   const base = `/repos/${encodeURIComponent(username)}/${encodeURIComponent(repoName)}`;
   let repo = await api<Repository>(base, 'GET', undefined, true);
   if (!repo) repo = await api<Repository>(username === user.login ? '/user/repos' : `/orgs/${encodeURIComponent(username)}/repos`, 'POST', { name: repoName, private: true, auto_init: true, description: 'Project built with BrainHalf' });
-  if (!repo?.default_branch) throw new Error('GitHub did not return a default branch. Initialize the repository and retry.');
-  const branch = encodeURIComponent(repo.default_branch);
+  const targetBranch = (options?.branch?.trim() || repo?.default_branch || '').trim();
+  if (!targetBranch) throw new Error('GitHub did not return a default branch. Initialize the repository and retry.');
+  const branch = encodeURIComponent(targetBranch);
   let ref = await api<{ object: { sha: string } }>(`${base}/git/ref/heads/${branch}`, 'GET', undefined, true);
   if (!ref) {
     // Only a confirmed empty repository may be initialized. Permission/server errors never enter this branch.
     if (repo.size !== 0) throw new Error('Default branch not found. Choose a valid default branch in GitHub first.');
-    await api(`${base}/contents/.brainhalf`, 'PUT', { message: 'Initialize BrainHalf project', content: btoa('BrainHalf source export\n'), branch: repo.default_branch });
+    await api(`${base}/contents/.brainhalf`, 'PUT', { message: 'Initialize BrainHalf project', content: btoa('BrainHalf source export\n'), branch: targetBranch });
     ref = await api<{ object: { sha: string } }>(`${base}/git/ref/heads/${branch}`);
   }
   const parent = ref?.object?.sha;
@@ -54,7 +61,8 @@ export async function exportToGitHub(files: Record<string, string>, repoName: st
   if (!commit?.tree?.sha || !/^[a-f0-9]{40,64}$/.test(commit.tree.sha)) throw new Error('GitHub could not read the current source tree.');
   const tree = await api<{ sha: string }>(`${base}/git/trees`, 'POST', { base_tree: commit.tree.sha, tree: Object.entries(prepared.files).map(([path, content]) => ({ path: path.slice(1), mode: '100644', type: 'blob', content })) });
   if (!tree?.sha || !/^[a-f0-9]{40,64}$/.test(tree.sha)) throw new Error('GitHub returned an invalid source tree. No branch was changed.');
-  const created = await api<{ sha: string }>(`${base}/git/commits`, 'POST', { message: 'Update project files from BrainHalf', tree: tree?.sha, parents: [parent] });
+  const commitMessage = options?.commitMessage?.trim() || 'Update project files from BrainHalf';
+  const created = await api<{ sha: string }>(`${base}/git/commits`, 'POST', { message: commitMessage, tree: tree?.sha, parents: [parent] });
   if (!created?.sha || !/^[a-f0-9]{40,64}$/.test(created.sha)) throw new Error('GitHub returned an invalid commit. No branch was changed.');
   const current = await api<{ object: { sha: string } }>(`${base}/git/ref/heads/${branch}`);
   if (current?.object?.sha !== parent) throw new Error('New commits arrived on GitHub during export. Review those changes and retry; no branch was overwritten.');

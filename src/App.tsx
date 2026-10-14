@@ -30,7 +30,7 @@ function App() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [authChecked, setAuthChecked] = useState<boolean>(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.has('google')) return false;
+    if (params.has('google') || (params.has('github') && params.get('github') !== 'connected')) return false;
     // If a token exists, always wait for server verification to avoid
     // a flash of the unauthenticated landing page.
     if (getToken()) return false;

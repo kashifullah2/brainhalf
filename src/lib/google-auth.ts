@@ -107,3 +107,145 @@ export async function handleGoogleAuth(request: Request, env: GoogleEnv): Promis
     return callback ? redirect(request, returnTo, 'failed') : json(503, { error: 'Google sign-in could not finish. Please try again or use email.' });
   }
 }
+
+interface GithubEnv extends RegistryEnv {
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+}
+const GH_COOKIE = 'bh_github';
+const GH_CALLBACK = '/api/auth/github/callback';
+
+function ghCookie(value: string, request: Request, seconds: number): string {
+  return `${GH_COOKIE}=${value}; Path=/api/auth/github; HttpOnly; SameSite=Lax; Max-Age=${seconds}${new URL(request.url).protocol === 'https:' ? '; Secure' : ''}`;
+}
+function readGhCookie(request: Request): string {
+  return (request.headers.get('cookie') || '').match(/(?:^|;\s*)bh_github=([A-Za-z0-9_-]+)/)?.[1] || '';
+}
+function ghRedirect(request: Request, returnTo: string, result: string, handoff?: string): Response {
+  const target = new URL(returnTo);
+  target.searchParams.set('github', result);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      Location: target.toString(),
+      'Set-Cookie': ghCookie(handoff || '', request, handoff ? 60 : 0),
+      'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
+    },
+  });
+}
+
+export async function handleGithubAuth(request: Request, env: GithubEnv, currentUserId?: string | null): Promise<Response> {
+  const url = new URL(request.url);
+  const callback = url.pathname === GH_CALLBACK;
+  if (request.method !== (callback ? 'GET' : 'POST')) return json(405, { error: 'Method not allowed' });
+  const origin = request.headers.get('origin');
+  if (!callback && (!origin || !isAllowedOrigin(origin))) return json(403, { error: 'Untrusted request origin' });
+  let returnTo = `${url.origin}/`;
+  try {
+    if (url.pathname === '/api/auth/github/complete') {
+      const ticket = readGhCookie(request);
+      if (!ticket) return json(401, { error: 'GitHub sign-in expired. Please try again.' });
+      const user = await registry(env, '/oauth/consume', { key: ticket, kind: 'handoff' });
+      if (!user?.userId || !user?.email) return json(401, { error: 'GitHub sign-in expired. Please try again.' });
+      const { token } = await issueToken(getSessionSecret(env), user.userId, TOKEN_TTL_SECONDS);
+      await registry(env, '/sessions', { tokenHash: await sha256Hex(token), userId: user.userId, expiresAt: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS });
+      const response = sessionResponse(200, { user: { id: user.userId, email: user.email }, token });
+      response.headers.append('Set-Cookie', ghCookie('', request, 0));
+      return response;
+    }
+    if (!env.GITHUB_CLIENT_ID?.trim() || !env.GITHUB_CLIENT_SECRET?.trim()) {
+      return callback ? ghRedirect(request, returnTo, 'unavailable') : json(503, { error: 'GitHub OAuth is not configured on the server yet (set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in Worker secrets).' });
+    }
+    if (!callback) {
+      const body = await request.json().catch(() => null) as { project?: unknown; mode?: unknown } | null;
+      const target = new URL('/', origin!);
+      if (typeof body?.project === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(body.project)) target.searchParams.set('project', body.project);
+      const mode = body?.mode === 'connect' ? 'connect' : 'login';
+      const state = randomId('', 32);
+      const redirectUri = `${url.origin}${GH_CALLBACK}`;
+      await registry(env, '/oauth/store', {
+        key: state,
+        kind: 'state',
+        data: { returnTo: target.toString(), redirectUri, userId: currentUserId || null, mode },
+        ttl: FLOW_TTL,
+      });
+      const authorization = new URL('https://github.com/login/oauth/authorize');
+      authorization.search = new URLSearchParams({
+        client_id: env.GITHUB_CLIENT_ID,
+        redirect_uri: redirectUri,
+        scope: 'repo read:user user:email',
+        state,
+      }).toString();
+      const response = json(200, { url: authorization.toString() });
+      response.headers.set('Set-Cookie', ghCookie(state, request, FLOW_TTL));
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    }
+    const state = url.searchParams.get('state');
+    if (!state || state.length !== 43 || state !== readGhCookie(request)) return ghRedirect(request, returnTo, 'expired');
+    const flow = await registry(env, '/oauth/consume', { key: state, kind: 'state' });
+    if (!flow?.returnTo || !isAllowedOrigin(new URL(flow.returnTo).origin)) return ghRedirect(request, returnTo, 'expired');
+    returnTo = flow.returnTo;
+    if (url.searchParams.has('error')) return ghRedirect(request, returnTo, 'cancelled');
+    const code = url.searchParams.get('code');
+    if (!code || code.length > 4096) return ghRedirect(request, returnTo, 'failed');
+    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      signal: AbortSignal.timeout(15_000),
+      body: new URLSearchParams({
+        client_id: env.GITHUB_CLIENT_ID,
+        client_secret: env.GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri: flow.redirectUri,
+      }),
+    });
+    const tokens = await tokenResponse.json() as { access_token?: string };
+    if (!tokenResponse.ok || !tokens.access_token) return ghRedirect(request, returnTo, 'failed');
+    const ghHeaders = {
+      Authorization: `Bearer ${tokens.access_token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'BrainHalf/1.0',
+    };
+    const userRes = await fetch('https://api.github.com/user', { headers: ghHeaders, signal: AbortSignal.timeout(15_000) });
+    const ghUser = await userRes.json() as { id?: number; login?: string; email?: string };
+    if (!userRes.ok || !ghUser?.id) return ghRedirect(request, returnTo, 'failed');
+    const login = typeof ghUser.login === 'string' && ghUser.login ? ghUser.login : 'github-user';
+
+    // If user was already logged into Studio and clicked "Connect with GitHub",
+    // save the encrypted token to their account and return directly to the project!
+    if (flow.mode === 'connect' && typeof flow.userId === 'string' && flow.userId) {
+      await getRegistry(env).fetch(`https://registry/account/github-token?userId=${encodeURIComponent(flow.userId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login, token: tokens.access_token }),
+      });
+      return ghRedirect(request, returnTo, 'connected');
+    }
+
+    let primaryEmail = typeof ghUser.email === 'string' && ghUser.email.includes('@') ? ghUser.email : '';
+    const emailsRes = await fetch('https://api.github.com/user/emails', { headers: ghHeaders, signal: AbortSignal.timeout(15_000) });
+    if (emailsRes.ok) {
+      const emails = await emailsRes.json() as Array<{ email?: string; primary?: boolean; verified?: boolean }>;
+      if (Array.isArray(emails)) {
+        const primaryVerified = emails.find(e => e?.primary && e?.verified && e?.email);
+        const anyVerified = emails.find(e => e?.verified && e?.email);
+        primaryEmail = primaryVerified?.email || anyVerified?.email || primaryEmail;
+      }
+    }
+    if (!primaryEmail) return ghRedirect(request, returnTo, 'unverified');
+    const identity = await registry(env, '/auth/github', {
+      subject: String(ghUser.id),
+      email: primaryEmail,
+      login,
+      token: tokens.access_token,
+    });
+    if (!identity?.userId || !identity?.email) return ghRedirect(request, returnTo, 'failed');
+    const handoff = randomId('', 32);
+    await registry(env, '/oauth/store', { key: handoff, kind: 'handoff', data: identity, ttl: 60 });
+    return ghRedirect(request, returnTo, 'complete', handoff);
+  } catch {
+    return callback ? ghRedirect(request, returnTo, 'failed') : json(503, { error: 'GitHub sign-in could not finish. Please try again.' });
+  }
+}
