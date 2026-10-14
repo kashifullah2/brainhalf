@@ -3,15 +3,10 @@ import {
   ArrowRight,
   CalendarCheck,
   Check,
-  Database,
+  ClipboardList,
   Globe2,
-  Layers,
-  Lock,
   Package,
-  ShieldCheck,
-  Sparkles,
-  Terminal,
-  Wand2,
+  Users,
 } from 'lucide-react';
 import './LandingHero.css';
 
@@ -34,30 +29,30 @@ const TYPING_PROMPTS = [
 
 const STATIC_PLACEHOLDER = 'Describe your app in plain words…';
 
-const QUICK_BLUEPRINTS = [
+const STARTER_IDEAS = [
   {
     id: 'inventory',
-    label: 'Inventory & Low-Stock Alerts',
-    tag: 'D1 Database',
-    prompt: 'Build an inventory tracker for my shop with SKU, current stock, reorder threshold, and one-click restock actions saved in a database.',
+    label: 'Inventory tracker',
+    icon: Package,
+    prompt: 'Build an inventory tool for my shop with products, stock counts, and low-stock alerts.',
   },
   {
     id: 'booking',
-    label: 'Client Booking Studio',
-    tag: 'Calendar + Auth',
-    prompt: 'Build an appointment booking app for my salon where clients pick open time slots, avoid double-bookings, and view their upcoming visits.',
+    label: 'Booking app',
+    icon: CalendarCheck,
+    prompt: 'Build an appointment booking app for my salon where customers pick a free time slot.',
   },
   {
     id: 'crm',
-    label: 'Sales Pipeline & CRM',
-    tag: 'Kanban + Notes',
-    prompt: 'Build a clean customer CRM with lead stages (New, Contacted, Won), follow-up reminders, deal value tracking, and private account login.',
+    label: 'Customer follow-ups',
+    icon: Users,
+    prompt: 'Build a simple customer list to track enquiries, notes, and who to follow up with this week.',
   },
   {
-    id: 'finance',
-    label: 'Finance & Cashflow OS',
-    tag: 'Analytics + API',
-    prompt: 'Build a business finance and expense tracker with monthly budgets, category breakdowns, recurring bills, and real-time net cashflow charts.',
+    id: 'tasks',
+    label: 'Team task board',
+    icon: ClipboardList,
+    prompt: 'Build a clean weekly task board for my shop with To do, Doing, and Done columns.',
   },
 ] as const;
 
@@ -124,9 +119,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
 }) => {
   const [composerFocused, setComposerFocused] = useState(false);
   const [tilt, setTilt] = useState<{ tiltX: string; tiltY: string }>({ tiltX: '0.00deg', tiltY: '0.00deg' });
-  const [activeBlueprint, setActiveBlueprint] = useState<string | null>(null);
 
-  // The placeholder only performs while the composer is empty and unfocused.
   const typedPlaceholder = useTypingPlaceholder(promptText === '' && !composerFocused);
 
   useEffect(() => {
@@ -149,46 +142,23 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
     setTilt({ tiltX: '0.00deg', tiltY: '0.00deg' });
   };
 
-  const handleSelectBlueprint = (id: string, prompt: string) => {
-    setActiveBlueprint(id);
+  const handlePickIdea = (prompt: string) => {
     onPromptTextChange(prompt);
     textareaRef.current?.focus();
   };
 
   return (
     <section className="landing-hero-redesign" aria-labelledby="hero-heading">
-      <div className="hero-glow" aria-hidden="true" />
-      <div className="hero-grid-mesh" aria-hidden="true" />
-
       <div className="hero-inner">
-        <div className="hero-badge-row">
-          <span className="hero-eyebrow-pill">
-            <span className="hero-live-dot" aria-hidden="true" />
-            <span>AI Full-Stack Studio &middot; React 19 + Cloudflare Workers + D1</span>
-          </span>
-        </div>
-
-        <h1 id="hero-heading">
-          Describe it.<br />
-          <span className="hero-gradient-text">We'll build it.</span>
-        </h1>
-
-        <p className="hero-sub">
-          Turn a plain-English idea into a real, full-stack web application with its own database, user sign-in, and live web address — ready in minutes.
-        </p>
-
-        <div className="hero-cta-row">
-          <a
-            href="#start-building"
-            className="hero-cta-primary"
-            onClick={onFocusComposer}
-          >
-            <span>Start building</span>
-            <ArrowRight size={16} aria-hidden="true" />
-          </a>
-          <a href="#examples" className="hero-cta-secondary">
-            <span>See examples</span>
-          </a>
+        <div className="hero-copy">
+          <p className="hero-kicker">Software for your business, in plain words</p>
+          <h1 id="hero-heading">
+            Describe it.{' '}
+            <span className="hero-gradient-text">We'll build it.</span>
+          </h1>
+          <p className="hero-sub">
+            Tell BrainHalf what your business needs to keep track of. Watch your app take shape, try every button, and share it with customers at your own web address.
+          </p>
         </div>
 
         <form
@@ -196,23 +166,6 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
           id="start-building"
           onSubmit={onPromptSubmit}
         >
-          <div className="hero-prompt-topbar" aria-hidden="true">
-            <div className="hero-prompt-topbar-left">
-              <span className="hero-prompt-mode-pill is-active">
-                <Wand2 size={12} /> Full-Stack App
-              </span>
-              <span className="hero-prompt-mode-pill">
-                <Database size={12} /> Auto-D1 Schema
-              </span>
-              <span className="hero-prompt-mode-pill">
-                <Lock size={12} /> Built-in Auth
-              </span>
-            </div>
-            <span className="hero-prompt-engine-tag">
-              <Terminal size={11} /> Live Workspace
-            </span>
-          </div>
-
           <label htmlFor="app-idea" className="landing-input-label">Describe your app</label>
           <textarea
             id="app-idea"
@@ -221,43 +174,16 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             placeholder={typedPlaceholder || STATIC_PLACEHOLDER}
             aria-describedby="prompt-help"
             value={promptText}
-            onChange={event => {
-              setActiveBlueprint(null);
-              onPromptTextChange(event.target.value);
-            }}
+            onChange={event => onPromptTextChange(event.target.value)}
             onKeyDown={onPromptKeyDown}
             onFocus={() => setComposerFocused(true)}
             onBlur={() => setComposerFocused(false)}
             rows={3}
           />
-
-          <div className="hero-blueprint-bar" role="group" aria-label="Quick app blueprints">
-            <span className="hero-blueprint-label">
-              <Sparkles size={11} aria-hidden="true" /> Blueprints:
-            </span>
-            <div className="hero-blueprint-chips">
-              {QUICK_BLUEPRINTS.map(bp => (
-                <button
-                  key={bp.id}
-                  type="button"
-                  className={`hero-blueprint-chip${activeBlueprint === bp.id ? ' is-selected' : ''}`}
-                  onClick={() => handleSelectBlueprint(bp.id, bp.prompt)}
-                >
-                  <span>{bp.label}</span>
-                  <small>{bp.tag}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="landing-prompt-actions">
-            <div className="hero-prompt-meta">
-              <span id="prompt-help"><Check size={13} aria-hidden="true" /> Free to start</span>
-              <span className="hero-prompt-meta-sep" aria-hidden="true">&middot;</span>
-              <span className="hero-prompt-meta-item"><ShieldCheck size={13} aria-hidden="true" /> Private SQLite DB</span>
-              <span className="hero-prompt-meta-sep" aria-hidden="true">&middot;</span>
-              <span className="hero-prompt-meta-item"><Globe2 size={13} aria-hidden="true" /> Instant URL</span>
-            </div>
+            <span id="prompt-help">
+              <Check size={14} aria-hidden="true" /> Free to start &middot; No coding needed
+            </span>
             <button
               type="submit"
               className="landing-submit-btn"
@@ -270,11 +196,41 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
           </div>
         </form>
 
-        <p className="hero-trust">
-          Builds in ~2 min &middot; Hosted &amp; secure &middot; <a href="#examples">See examples</a>
-        </p>
+        <div className="hero-starters" role="group" aria-label="Example app ideas">
+          <span className="hero-starters-label">Try an idea:</span>
+          <div className="hero-starters-list">
+            {STARTER_IDEAS.map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="hero-starter-pill"
+                  onClick={() => handlePickIdea(item.prompt)}
+                >
+                  <Icon size={13} aria-hidden="true" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-        {/* Realistic 3D Interactive Studio Showcase */}
+        <div className="hero-cta-row">
+          <a
+            href="#start-building"
+            className="hero-cta-primary"
+            onClick={onFocusComposer}
+          >
+            <span>Start building</span>
+            <ArrowRight size={15} aria-hidden="true" />
+          </a>
+          <a href="#examples" className="hero-cta-secondary">
+            <span>See examples</span>
+          </a>
+        </div>
+
+        {/* Realistic Product Window Showcase */}
         <div
           className="hero-stage"
           onMouseMove={handleStageMouseMove}
@@ -289,24 +245,22 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
               <Package size={15} />
             </span>
             <div className="hero-chip-body">
-              <strong>Live D1 Inventory Sync</strong>
-              <span>Oat milk restocked &rarr; 23 cartons</span>
+              <strong>Corner Café stockroom</strong>
+              <span>Oat milk updated to 23 cartons</span>
             </div>
-            <span className="hero-chip-tag">SQLite</span>
           </div>
 
           <div className="hero-chip hero-chip-bookings" aria-hidden="true">
-            <span className="hero-chip-icon hero-chip-icon-teal">
+            <span className="hero-chip-icon hero-chip-icon-warm">
               <CalendarCheck size={15} />
             </span>
             <div className="hero-chip-body">
-              <strong>Booking Confirmed</strong>
-              <span>Thu 11:00 AM &middot; Reminder queued</span>
+              <strong>Thursday at the salon</strong>
+              <span>11:00 AM appointment booked</span>
             </div>
-            <span className="hero-chip-tag hero-chip-tag-teal">201 OK</span>
           </div>
 
-          <div className="hero-shot">
+          <figure className="hero-shot">
             <div className="hero-shot-chrome" aria-hidden="true">
               <div className="hero-shot-dots">
                 <i />
@@ -314,24 +268,19 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
                 <i />
               </div>
               <div className="hero-shot-address">
-                <Lock size={11} />
-                <span>studio.brainhalf.com/workspace/live-app</span>
+                <Globe2 size={12} />
+                <span>yourshop.brainhalf.com</span>
               </div>
-              <div className="hero-shot-status">
-                <Layers size={11} />
-                <span>Full-Stack Ready</span>
-              </div>
+              <span className="hero-shot-badge">Ready to share</span>
             </div>
-            <div className="hero-shot-Viewport">
-              <img
-                src="/images/landing-workspace.png"
-                alt="BrainHalf Studio workspace showing the AI builder chat alongside a live application preview"
-                width={1600}
-                height={1000}
-                loading="eager"
-              />
-            </div>
-          </div>
+            <img
+              src="/images/landing-workspace.png"
+              alt="BrainHalf workspace showing a plain-words conversation next to a live working business app"
+              width={1600}
+              height={1000}
+              loading="eager"
+            />
+          </figure>
         </div>
       </div>
     </section>

@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles } from 'lucide-react';
 import { BrainHalfLogo } from './BrainHalfLogo';
 import MobileNav, { type MobileNavLink } from './MobileNav';
 import SiteHeaderActions, { type HeaderUser } from './SiteHeaderActions';
@@ -30,7 +29,6 @@ export const SiteNavbar: React.FC<SiteNavbarProps> = ({
   onBrandClick,
 }) => {
   const [condensed, setCondensed] = useState(false);
-  const [activeHash, setActiveHash] = useState('');
   const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -38,13 +36,6 @@ export const SiteNavbar: React.FC<SiteNavbarProps> = ({
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
-    const updateHash = () => setActiveHash(window.location.hash || '');
-    updateHash();
-    window.addEventListener('hashchange', updateHash);
-    return () => window.removeEventListener('hashchange', updateHash);
   }, []);
 
   const handleBrandClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
@@ -56,39 +47,28 @@ export const SiteNavbar: React.FC<SiteNavbarProps> = ({
 
   return (
     <header ref={headerRef} className={`site-navbar${condensed ? ' site-navbar-condensed' : ''}`}>
-      <div className="site-navbar-left">
-        <a
-          className="site-brand"
-          href="/"
-          onClick={handleBrandClick}
-          aria-label="BrainHalf home"
-        >
-          <span className="site-brand-logo">
-            <BrainHalfLogo size={26} strokeWidth={1.7} color="currentColor" />
-          </span>
-          <span className="site-brand-text">BrainHalf</span>
-          <span className="site-brand-badge" aria-hidden="true">
-            <Sparkles size={10} /> Studio
-          </span>
-        </a>
-      </div>
+      <a
+        className="site-brand"
+        href="/"
+        onClick={handleBrandClick}
+        aria-label="BrainHalf home"
+      >
+        <span className="site-brand-logo">
+          <BrainHalfLogo size={26} strokeWidth={1.65} color="currentColor" />
+        </span>
+        <span className="site-brand-text">BrainHalf</span>
+      </a>
 
       <nav className="site-nav" aria-label="Main navigation">
-        {links.map(link => {
-          const isCurrent = link.current || (link.href.startsWith('#') && activeHash === link.href);
-          return (
-            <a
-              key={link.href}
-              href={link.href}
-              className={isCurrent ? 'is-active' : undefined}
-              onClick={() => {
-                if (link.href.startsWith('#')) setActiveHash(link.href);
-              }}
-            >
-              {link.label}
-            </a>
-          );
-        })}
+        {links.map(link => (
+          <a
+            key={link.href}
+            href={link.href}
+            {...(link.current ? { 'aria-current': 'page' as const } : {})}
+          >
+            {link.label}
+          </a>
+        ))}
       </nav>
 
       <div className="site-navbar-right">

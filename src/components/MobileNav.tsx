@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, ChevronRight, Menu, Sparkles, X } from 'lucide-react';
+import { ArrowRight, Menu, X } from 'lucide-react';
 
 export interface MobileNavLink { href: string; label: string; current?: boolean }
 
@@ -40,35 +40,26 @@ export default function MobileNav({ links }: { links: MobileNavLink[] }) {
         aria-controls="mobile-nav"
         onClick={() => setOpen(previous => !previous)}
       >
-        {open ? <X size={19} /> : <Menu size={19} />}
+        {open ? <X size={20} /> : <Menu size={20} />}
       </button>
       {open && (
         <div className="landing-mobile-nav" id="mobile-nav" ref={menuRef} role="dialog" aria-label="Navigation menu">
-          <div className="landing-mobile-nav-header">
-            <span className="landing-mobile-nav-kicker">
-              <Sparkles size={12} aria-hidden="true" /> BrainHalf AI Studio
-            </span>
-            <span className="landing-mobile-nav-status">Live Edge</span>
-          </div>
           <nav aria-label="Mobile navigation">
-            {links.map(link => {
-              const isExternalRoute = link.href.startsWith('/');
-              return (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  {...(link.current ? { 'aria-current': 'page' as const } : {})}
-                  onClick={() => setOpen(false)}
-                >
-                  <span>{link.label}</span>
-                  {isExternalRoute ? <ArrowUpRight size={15} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />}
-                </a>
-              );
-            })}
+            {links.map(link => (
+              <a
+                key={link.href}
+                href={link.href}
+                {...(link.current ? { 'aria-current': 'page' as const } : {})}
+                onClick={() => setOpen(false)}
+              >
+                <span>{link.label}</span>
+              </a>
+            ))}
           </nav>
           <div className="landing-mobile-nav-footer">
             <a href="#start-building" className="landing-mobile-cta" onClick={() => setOpen(false)}>
-              Start building for free
+              <span>Start building</span>
+              <ArrowRight size={15} aria-hidden="true" />
             </a>
           </div>
         </div>
