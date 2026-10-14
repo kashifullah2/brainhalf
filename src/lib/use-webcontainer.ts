@@ -51,6 +51,7 @@ export function useWebContainer(
   const containerRef = useRef<WebContainer | null>(null);
   const devServerRef = useRef<DevServerHandle | null>(null);
   const shellRef = useRef<WebContainerProcess | null>(null);
+  const shellWriterRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const mountedRef = useRef(false);
   const prevFilesRef = useRef<Record<string, string>>({});
@@ -67,10 +68,9 @@ export function useWebContainer(
 
   const attachTerminal = useCallback((terminal: Terminal) => {
     terminalRef.current = terminal;
-    const shell = shellRef.current;
-    if (shell) {
-      const writable = shell.input.getWriter();
-      terminal.onData(data => { writable.write(data).catch(() => {}); });
+    const writer = shellWriterRef.current;
+    if (writer) {
+      terminal.onData(data => { writer.write(data).catch(() => {}); });
     }
   }, []);
 
@@ -134,9 +134,10 @@ export function useWebContainer(
         write(data) { writeToTerminal(data); },
       })).catch(() => {});
 
+      const writer = shell.input.getWriter();
+      shellWriterRef.current = writer;
       if (terminalRef.current) {
-        const writable = shell.input.getWriter();
-        terminalRef.current.onData(data => { writable.write(data).catch(() => {}); });
+        terminalRef.current.onData(data => { writer.write(data).catch(() => {}); });
       }
 
       bootedRef.current = true;
@@ -179,6 +180,7 @@ export function useWebContainer(
     devServerRef.current = null;
     shellRef.current?.kill();
     shellRef.current = null;
+    shellWriterRef.current = null;
     mountedRef.current = false;
     teardownWebContainer();
     containerRef.current = null;

@@ -105,12 +105,34 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
   }, []);
 
   // Call execute() and wait for the token via the render callback (up to 30 s).
-  // Returns undefined when Turnstile is unavailable or blocked — the server
-  // accepts requests without a token and falls back to rate-limiting.
+  // Returns undefined when Turnstile is unavailable or blocked.
   const executeTurnstile = useCallback(async (): Promise<string | undefined> => {
     if (!SITE_KEY) return undefined;
     const w = (window as any).turnstile;
-    if (!w || !turnstileWidgetId.current) return undefined;
+    if (!w) return undefined;
+    // If the widget never rendered (race condition: script loaded after mount),
+    // try to render it now before executing.
+    if (!turnstileWidgetId.current && turnstileRef.current) {
+      turnstileWidgetId.current = w.render(turnstileRef.current, {
+        sitekey: SITE_KEY,
+        size: 'invisible',
+        execution: 'execute',
+        callback: (token: string) => {
+          turnstileTokenRef.current = token;
+          const p = turnstilePending.current;
+          turnstilePending.current = null;
+          p?.resolve(token);
+        },
+        'expired-callback': () => { turnstileTokenRef.current = null; },
+        'error-callback': () => {
+          turnstileTokenRef.current = null;
+          const p = turnstilePending.current;
+          turnstilePending.current = null;
+          p?.reject(new Error('challenge failed'));
+        },
+      }) as string;
+    }
+    if (!turnstileWidgetId.current) return undefined;
     try {
       const token = await new Promise<string>((resolve, reject) => {
         let settled = false;
@@ -142,6 +164,11 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     setBusy('email');
     const turnstileToken = await executeTurnstile();
     resetTurnstile();
+    if (SITE_KEY && !turnstileToken) {
+      setError('Security check failed to load — try disabling your ad blocker, or use "Continue with Google".');
+      setBusy(null);
+      return;
+    }
     try {
       const result = await (mode === 'login' ? login(email.trim(), password, turnstileToken) : signup(email.trim(), password, turnstileToken));
       if ('verificationRequired' in result) { setNotice(result.message); setMode('login'); setPassword(''); setVerificationRequired(true); }

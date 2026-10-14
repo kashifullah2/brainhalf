@@ -429,6 +429,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
       const body = await readJson(request) as { slug: string };
       const slug = typeof body?.slug === 'string' ? body.slug.toLowerCase().trim() : '';
       if (!/^[a-z][a-z0-9-]{2,38}[a-z0-9]$/.test(slug)) throw new RuntimeError('App name must be 4–40 lowercase letters, numbers, or hyphens, and start with a letter.', 400);
+      if (slug.startsWith('dev-')) throw new RuntimeError('App names cannot start with "dev-" (reserved for development URLs).', 400);
       if (slug === this.alias) return Response.json({ slug, url: this.url('production') });
       await this.withControlLock(async () => {
         // Renaming mid-build would skew the in-flight job's stored R2 keys, so
@@ -462,6 +463,7 @@ export class ProjectRuntime extends DurableObject<RuntimeEnv> {
     if (path === '/slug/check' && request.method === 'GET') {
       const slug = (url.searchParams.get('slug') || '').toLowerCase().trim();
       if (!/^[a-z][a-z0-9-]{2,38}[a-z0-9]$/.test(slug)) return Response.json({ available: false, reason: 'Invalid format.' });
+      if (slug.startsWith('dev-')) return Response.json({ available: false, reason: 'App names cannot start with "dev-" (reserved).' });
       if (slug === this.alias) return Response.json({ available: true });
       const taken = await this.pilot().lookup(slug);
       return Response.json({ available: !taken || (taken.ownerId === this.scope.ownerId && taken.projectId === this.scope.projectId) });

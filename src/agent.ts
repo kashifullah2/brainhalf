@@ -265,7 +265,7 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         }
         if (!pending.jobId) return;
         const res = await runtime.fetch(new Request('https://runtime/status?environment=development', {
-          headers: { 'x-bh-project': this.name, 'x-bh-owner': '' },
+          headers: { 'x-bh-project': this.name, 'x-bh-owner': pending.ownerId ?? '' },
           signal: AbortSignal.timeout(5_000),
         }));
         if (!res.ok) return;

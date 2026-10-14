@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { FileCode, FileText, FileJson, Palette, Server, Database, Key, Plus, Pencil, Trash2, X, Check } from 'lucide-react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { FileCode, FileText, FileJson, Palette, Server, Database, Key, Plus, Pencil, Trash2, X, Check, ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react';
 
 interface FileExplorerProps {
   files: { [path: string]: string };
@@ -32,6 +32,57 @@ function normalizePath(raw: string): string {
   return p.startsWith('/') ? p : `/${p}`;
 }
 
+interface TreeNode {
+  name: string;
+  fullPath: string;
+  isFolder: boolean;
+  children: TreeNode[];
+}
+
+function buildTree(paths: string[]): TreeNode[] {
+  const root: TreeNode = { name: '', fullPath: '/', isFolder: true, children: [] };
+  for (const path of paths) {
+    const segments = path.replace(/^\//, '').split('/');
+    let current = root;
+    let accumulated = '';
+    for (let i = 0; i < segments.length; i++) {
+      accumulated += '/' + segments[i];
+      const isLast = i === segments.length - 1;
+      let child = current.children.find(c => c.name === segments[i] && c.isFolder === !isLast);
+      if (!child) {
+        child = { name: segments[i], fullPath: isLast ? path : accumulated, isFolder: !isLast, children: [] };
+        current.children.push(child);
+      }
+      current = child;
+    }
+  }
+  return sortNodes(root.children);
+}
+
+function sortNodes(nodes: TreeNode[]): TreeNode[] {
+  const folders = nodes.filter(n => n.isFolder).sort((a, b) => a.name.localeCompare(b.name));
+  const files = nodes.filter(n => !n.isFolder).sort((a, b) => a.name.localeCompare(b.name));
+  for (const folder of folders) folder.children = sortNodes(folder.children);
+  return [...folders, ...files];
+}
+
+function getExpandedFolders(activePath: string): Set<string> {
+  const set = new Set<string>();
+  const segments = activePath.replace(/^\//, '').split('/');
+  let accumulated = '';
+  for (let i = 0; i < segments.length - 1; i++) {
+    accumulated += '/' + segments[i];
+    set.add(accumulated);
+  }
+  return set;
+}
+
+function getFolderIcon(expanded: boolean) {
+  return expanded
+    ? <FolderOpen size={14} strokeWidth={1.75} color="var(--color-warning)" />
+    : <Folder size={14} strokeWidth={1.75} color="var(--color-warning)" />;
+}
+
 const FileExplorer: React.FC<FileExplorerProps> = ({
   files, activeFile, onSelectFile, headerTitle, filter,
   onCreateFile, onRenameFile, onDeleteFile, readOnly = false,
@@ -51,6 +102,33 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
   const filePaths = (filter ? rawPaths.filter(filter) : rawPaths).sort();
   const clientFiles = filePaths.filter(p => !isServerFile(p));
   const serverFiles = filePaths.filter(isServerFile);
+
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => getExpandedFolders(activeFile));
+
+  const clientTree = useMemo(() => buildTree(clientFiles), [clientFiles.join(',')]);
+  const serverTree = useMemo(() => buildTree(serverFiles), [serverFiles.join(',')]);
+
+  React.useEffect(() => {
+    if (!activeFile) return;
+    const parents = getExpandedFolders(activeFile);
+    setExpandedFolders(prev => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const p of parents) {
+        if (!next.has(p)) { next.add(p); changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [activeFile]);
+
+  const toggleFolder = useCallback((folderPath: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) next.delete(folderPath);
+      else next.add(folderPath);
+      return next;
+    });
+  }, []);
 
   function startRename(path: string) {
     setRenamingFile(path);
@@ -86,7 +164,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     setNewFileName('');
   }
 
-  const renderFileItem = (path: string) => {
+  const renderFileItem = (path: string, depth = 0) => {
     const isActive = path === activeFile;
     const fileName = path.split('/').pop() || path;
     const isServer = isServerFile(path);
@@ -150,7 +228,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         onMouseEnter={() => setHoveredFile(path)}
         onMouseLeave={() => setHoveredFile(null)}
         title={path}
-        style={{ position: 'relative' }}
+        style={{ position: 'relative', paddingLeft: `${depth * 12 + 8}px` }}
       >
         {getFileIcon(path)}
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0 }}>
@@ -191,6 +269,36 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
     );
   };
 
+  const renderTreeNode = (node: TreeNode, depth: number): React.ReactNode => {
+    if (!node.isFolder) return renderFileItem(node.fullPath, depth);
+
+    const isExpanded = expandedFolders.has(node.fullPath);
+    return (
+      <div key={node.fullPath} role="group">
+        <div
+          role="treeitem"
+          aria-expanded={isExpanded}
+          tabIndex={0}
+          className="file-tree-item folder-item"
+          onClick={() => toggleFolder(node.fullPath)}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleFolder(node.fullPath); }}
+          style={{ paddingLeft: `${depth * 12 + 8}px`, cursor: 'pointer' }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, width: 14, justifyContent: 'center' }}>
+            {isExpanded
+              ? <ChevronDown size={12} strokeWidth={2} color="var(--text-muted)" />
+              : <ChevronRight size={12} strokeWidth={2} color="var(--text-muted)" />}
+          </span>
+          {getFolderIcon(isExpanded)}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0, fontWeight: 500 }}>
+            {node.name}
+          </span>
+        </div>
+        {isExpanded && node.children.map(child => renderTreeNode(child, depth + 1))}
+      </div>
+    );
+  };
+
   return (
     <div className="file-explorer-container" role="tree" aria-label="Project files">
       <div className="studio-files-heading" style={{
@@ -224,14 +332,14 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
         )}
       </div>
 
-      <div style={{ padding: '8px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{ padding: '8px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '1px' }}>
         {serverFiles.length > 0 ? (
           <>
             <div style={{ padding: '6px 8px 4px', fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span>App screens</span>
               <span style={{ fontSize: '9px', opacity: 0.7 }}>{clientFiles.length}</span>
             </div>
-            {clientFiles.map(renderFileItem)}
+            {clientTree.map(node => renderTreeNode(node, 0))}
 
             <div style={{ padding: '12px 8px 4px', fontSize: '10px', fontWeight: 600, color: 'var(--color-code-violet)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -239,10 +347,10 @@ const FileExplorer: React.FC<FileExplorerProps> = ({
               </span>
               <span style={{ fontSize: '9px', opacity: 0.7 }}>{serverFiles.length}</span>
             </div>
-            {serverFiles.map(renderFileItem)}
+            {serverTree.map(node => renderTreeNode(node, 0))}
           </>
         ) : (
-          clientFiles.map(renderFileItem)
+          clientTree.map(node => renderTreeNode(node, 0))
         )}
 
         {creating && (

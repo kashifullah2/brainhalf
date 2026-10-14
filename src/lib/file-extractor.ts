@@ -1,6 +1,20 @@
 import { transform } from 'sucrase';
 import { normalizePath } from './utils';
 import { parseEditPairs, parseMessageSegments } from './message-parser';
+
+/**
+ * Redirect source files that land outside a recognised tree prefix (/src,
+ * /worker, /shared, /server, /migrations) to /src/.  The AI occasionally
+ * writes <file path="/App.tsx"> or <file path="/components/Foo.tsx"> instead
+ * of the correct /src/App.tsx or /src/components/Foo.tsx.  Those stray files
+ * end up in the project DB, get served alongside the real /src/ tree, and
+ * cause React error #130 ("element type is invalid" / rendering undefined).
+ */
+function redirectSrcPath(filePath: string): string {
+  if (/^\/(?:src|worker|shared|server|migrations)\//.test(filePath)) return filePath;
+  if (/\.(?:[cm]?[jt]sx?|css|scss|sass|less)$/.test(filePath)) return `/src${filePath}`;
+  return filePath;
+}
 import { applyExactEdits } from './exact-edits';
 import { findDanglingImports } from './preview-module-transform';
 import { isConversationalPrompt, isDestructivePrompt, isQuestionPrompt, isAmbiguousPrompt } from './prompt-mode';
@@ -218,7 +232,7 @@ export class FileExtractor {
       const block = stack.pop();
       if (!block) continue;
       if (block.nested) continue;
-      let filePath = normalizePath(block.path);
+      let filePath = redirectSrcPath(normalizePath(block.path));
       const fileContent = this.cleanCodeBlock(text.slice(block.contentStart, token.index));
       if (this.ctx.isHarnessEntry(filePath)) {
         if (/export default|function App|return \(/.test(fileContent)) {
@@ -251,7 +265,7 @@ export class FileExtractor {
           wasTruncated = true;
           continue;
         }
-        let filePath = normalizePath(match[1]);
+        let filePath = redirectSrcPath(normalizePath(match[1]));
         const fileContent = this.cleanCodeBlock(match[2]);
         if (this.ctx.isHarnessEntry(filePath)) {
           if (/export default|function App|return \(/.test(fileContent)) {
@@ -322,14 +336,14 @@ export class FileExtractor {
     const deleteRegex = /<delete\s+path=["']([^"']+)["']\s*\/?>/gi;
     let deleteMatch;
     while ((deleteMatch = deleteRegex.exec(text)) !== null) {
-      const filePath = normalizePath(deleteMatch[1]);
+      const filePath = redirectSrcPath(normalizePath(deleteMatch[1]));
       if (!this.ctx.isHarnessEntry(filePath)) operations.push({ index: deleteMatch.index, path: filePath, type: 'delete' });
     }
 
     const editRegex = /<edit\s+path=["']([^"']+)["']>([\s\S]*?)<\/edit>/gi;
     let editMatch;
     while ((editMatch = editRegex.exec(text)) !== null) {
-      const filePath = normalizePath(editMatch[1]);
+      const filePath = redirectSrcPath(normalizePath(editMatch[1]));
       if (this.ctx.isHarnessEntry(filePath)) continue;
       const edits = parseEditPairs(editMatch[2], false);
       if (edits.length === 0) continue;
@@ -350,7 +364,7 @@ export class FileExtractor {
     if (!sawClosedFileTag && text.includes('```')) {
       for (const segment of parseMessageSegments(text).segments) {
         if (segment.type !== 'file' || segment.isStreaming) continue;
-        const filePath = normalizePath(segment.path);
+        const filePath = redirectSrcPath(normalizePath(segment.path));
         if (!pendingWrites.has(filePath) && !this.ctx.isHarnessEntry(filePath)) pendingWrites.set(filePath, segment.content);
       }
     }
@@ -430,6 +444,14 @@ export class FileExtractor {
         logWritePath('text-protocol', path, 'accepted', 'removal intent in prompt');
         continue;
       }
+      const existingLineCount = existing.split('\n').length;
+      if (existingLineCount > 200) {
+        pendingWrites.delete(path);
+        logWritePath('text-protocol', path, 'rejected', `overwrite of ${existingLineCount}-line existing file`);
+        brokenFiles.push({ path, error: `Cannot overwrite an existing ${existingLineCount}-line file with <file>. Use <edit> to change specific sections instead of rewriting the whole file.` });
+        this.ctx.repairLog?.add(this.ctx.name, 'shrinkage', `${path}: rejected <file> overwrite (${existingLineCount} lines)`);
+        continue;
+      }
       const pct = checkShrinkage(path, content, existing);
       if (pct === 0) continue;
       pendingWrites.delete(path);
@@ -439,33 +461,38 @@ export class FileExtractor {
     }
 
     const pkgContent = pendingWrites.get('/package.json');
-    if (pkgContent && this.ctx.flipFlopGuard) {
+    if (pkgContent) {
       try {
         const newPkg = JSON.parse(pkgContent);
-        const pkgPath = '/package.json';
-        const oldRow = this.ctx.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = ${pkgPath}`;
-        if (oldRow[0]?.content) {
-          const oldPkg = JSON.parse(oldRow[0].content);
-          let flipFlop = false;
-          for (const section of ['dependencies', 'devDependencies'] as const) {
-            const oldDeps: Record<string, string> = oldPkg[section] || {};
-            const newDeps: Record<string, string> = newPkg[section] || {};
-            for (const [pkg, newVer] of Object.entries(newDeps)) {
-              if (oldDeps[pkg] && oldDeps[pkg] !== newVer) {
-                if (this.ctx.flipFlopGuard.record(`${this.ctx.name}:${pkg}`, newVer)) {
-                  flipFlop = true;
-                  try {
-                    connection.send(JSON.stringify({
-                      type: 'error',
-                      error: `Dependency "${pkg}" keeps alternating versions. The builder cannot resolve this conflict automatically — check the peer dependency requirements and pin a compatible version.`,
-                    }));
-                  } catch (e) { noteSendFailure(e); }
+        // Re-serialize to eliminate duplicate keys and normalize formatting
+        pendingWrites.set('/package.json', JSON.stringify(newPkg, null, 2) + '\n');
+
+        if (this.ctx.flipFlopGuard) {
+          const pkgPath = '/package.json';
+          const oldRow = this.ctx.runSql<{ content: string }>`SELECT content FROM project_files WHERE path = ${pkgPath}`;
+          if (oldRow[0]?.content) {
+            const oldPkg = JSON.parse(oldRow[0].content);
+            let flipFlop = false;
+            for (const section of ['dependencies', 'devDependencies'] as const) {
+              const oldDeps: Record<string, string> = oldPkg[section] || {};
+              const newDeps: Record<string, string> = newPkg[section] || {};
+              for (const [pkg, newVer] of Object.entries(newDeps)) {
+                if (oldDeps[pkg] && oldDeps[pkg] !== newVer) {
+                  if (this.ctx.flipFlopGuard.record(`${this.ctx.name}:${pkg}`, newVer)) {
+                    flipFlop = true;
+                    try {
+                      connection.send(JSON.stringify({
+                        type: 'error',
+                        error: `Dependency "${pkg}" keeps alternating versions. The builder cannot resolve this conflict automatically — check the peer dependency requirements and pin a compatible version.`,
+                      }));
+                    } catch (e) { noteSendFailure(e); }
+                  }
                 }
               }
             }
-          }
-          if (flipFlop) {
-            pendingWrites.delete('/package.json');
+            if (flipFlop) {
+              pendingWrites.delete('/package.json');
+            }
           }
         }
       } catch { /* parse failure handled by syntax check */ }
@@ -480,10 +507,37 @@ export class FileExtractor {
         }
         continue;
       }
-      const isJsxLike = path.endsWith('.jsx') || path.endsWith('.tsx');
+      if (!/\.(?:[cm]?[jt]sx?)$/.test(path)) continue;
+
+      const isJsx = path.endsWith('.jsx');
+      const isJs = path.endsWith('.js') || path.endsWith('.mjs') || path.endsWith('.cjs');
+      const isJsxLike = isJsx || path.endsWith('.tsx');
       const isTs = path.endsWith('.ts') || path.endsWith('.tsx');
       const transforms = isJsxLike ? (['jsx', 'typescript'] as const) : isTs ? (['typescript'] as const) : (['jsx'] as const);
-      if (!/\.(?:[cm]?[jt]sx?)$/.test(path)) continue;
+
+      // Detect TypeScript syntax in .jsx/.js files — Vite won't apply TS transforms to those extensions.
+      if (isJsx || isJs) {
+        const viteTransforms = isJsx ? (['jsx'] as const) : ([] as const);
+        let viteOk = true;
+        try { transform(content, { transforms: [...viteTransforms] }); } catch { viteOk = false; }
+        if (!viteOk) {
+          const tsTransforms = isJsx ? (['jsx', 'typescript'] as const) : (['typescript'] as const);
+          try {
+            transform(content, { transforms: [...tsTransforms] });
+            const newExt = isJsx ? '.tsx' : '.ts';
+            const newPath = path.replace(/\.[cm]?jsx?$/, newExt);
+            if (!pendingWrites.has(newPath)) {
+              pendingWrites.set(newPath, content);
+              pendingWrites.delete(path);
+              logWritePath('text-protocol', path, 'accepted', `renamed → ${newPath} (TypeScript in JS extension)`);
+              continue;
+            }
+          } catch { /* falls through to normal syntax check below */ }
+        } else {
+          continue;
+        }
+      }
+
       try {
         transform(content, { transforms: [...transforms] });
       } catch (syntaxErr) {

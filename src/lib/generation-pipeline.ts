@@ -654,8 +654,30 @@ export class GenerationPipeline {
     
               // Custom models added via the admin page (ids start with cm_).
               // They are OpenAI-compatible: base URL + API key + model id.
+              // Gate: only operators (admin users) may use custom models, to
+              // prevent any signed-in user from consuming paid API keys.
               let customModel: { baseUrl: string; modelId: string; apiKey: string; name: string } | null = null;
               if (requestedModel.startsWith('cm_')) {
+                const senderId = this.ctx.senderUserId(connection);
+                let isOperator = false;
+                if (senderId) {
+                  const allowlist = String(this.ctx.env.PRODUCT_METRICS_OWNER_IDS || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+                  isOperator = allowlist.includes(senderId);
+                  if (!isOperator) {
+                    const adminEmails = String(this.ctx.env.ADMIN_EMAILS || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+                    if (adminEmails.length && this.ctx.env.REGISTRY) {
+                      try {
+                        const ownerRes = await this.ctx.env.REGISTRY.get(this.ctx.env.REGISTRY.idFromName('auth')).fetch(`https://registry/admin/managed-owner?ownerId=${encodeURIComponent(senderId)}`);
+                        const ownerData = ownerRes.ok ? await ownerRes.json() as { email?: string } : null;
+                        isOperator = !!ownerData?.email && adminEmails.includes(ownerData.email.toLowerCase());
+                      } catch { /* fail closed */ }
+                    }
+                  }
+                }
+                if (!isOperator) {
+                  sendError('Custom models are only available to admin users.');
+                  return;
+                }
                 try {
                   const cmRes = await this.ctx.env.REGISTRY!.get(this.ctx.env.REGISTRY!.idFromName('auth')).fetch(`https://registry/internal/custom-model/${encodeURIComponent(requestedModel)}`);
                   if (cmRes.ok) {
@@ -1372,7 +1394,7 @@ export class GenerationPipeline {
             // A timeout aborts with the custom 'Generation exceeded …' error as
             // the reason; a user stop (or disconnect stop) aborts with no reason.
             const reason = abortController.signal.reason;
-            const timedOut = reason instanceof Error && /Generation exceeded/.test(reason.message);
+            const timedOut = reason instanceof Error && /Generation exceeded|stream stalled|ran out of time/i.test(reason.message);
             jobOutcome = {
               kind: 'interrupted',
               error: timedOut
@@ -1607,7 +1629,7 @@ export class GenerationPipeline {
         try { connection.send(msg); } catch (e) { noteSendFailure(e); }
         try { this.ctx.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
         if (res.ok && job?.id) {
-          void this.ctx.storage.put?.('server_build_check', { jobId: job.id, revision });
+          void this.ctx.storage.put?.('server_build_check', { jobId: job.id, revision, ownerId });
           this.scheduleBuildStatusCheck(job.id as string, connection, 0);
         }
         if (!res.ok) {

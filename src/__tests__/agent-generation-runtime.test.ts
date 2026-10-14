@@ -150,6 +150,7 @@ describe('Agent generation against the installed AI SDK', () => {
       },
       REQUIRED_MODEL_PROVIDERS: 'aws',
       AWS_BEARER_TOKEN_BEDROCK: 'test-key',
+      PRODUCT_METRICS_OWNER_IDS: 'owner',
     };
     const source = 'export default () => <h1>Custom model app</h1>;';
     let step = 0;

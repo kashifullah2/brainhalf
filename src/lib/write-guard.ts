@@ -45,7 +45,7 @@ export function isConfigWriteBlocked(path: string, userPrompt: string, buildErro
   const le = buildErrorContext.toLowerCase();
   const basename = path.replace(/^\//, '');
   if (lp.includes(basename) || le.includes(basename)) return false;
-  if (/package\.json$/.test(path) && /\b(depend|install|package|npm|version|librar)/i.test(userPrompt)) return false;
+  if (/package\.json$/.test(path) && /\b(depend|install|package|npm|version|librar|stack|three\.?js|firebase|clerk|supabase|prisma|socket\.?io|stripe)/i.test(userPrompt)) return false;
   if (/tsconfig/.test(path) && /\b(typescript|tsconfig|type.check|strict|compiler)\b/i.test(userPrompt)) return false;
   if (/vite\.config/.test(path) && /\b(vite|build config|bundl)\b/i.test(userPrompt)) return false;
   return true;

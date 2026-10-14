@@ -55,6 +55,7 @@ scratch_test_sql.ts
 assest/
 tmp-*/
 qa-audit/
+.audit/
 
 # Claude Code config (local per-machine)
 .claude/
