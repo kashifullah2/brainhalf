@@ -1172,9 +1172,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
       if (!newFiles) return;
       setPreviewSessionReady(true);
       const previous = filesRef.current;
-      // Merge: snapshot fills in files missing locally; local state wins for
-      // paths that arrived via streaming after the snapshot was taken.
-      const merged = { ...newFiles, ...previous };
+      // Merge strategy: local files win when they contain real generated app code
+      // (the local copy may be ahead of the snapshot due to streaming writes).
+      // When local state is just the baseline template (e.g. fresh device / cleared
+      // IDB), the server snapshot is authoritative — let it win so we don't
+      // clobber the real app with the starter template.
+      const merged = hasGeneratedAppCode(previous)
+        ? { ...newFiles, ...previous }
+        : { ...previous, ...newFiles };
       const generated = hasGeneratedAppCode(merged);
       const filesUnchanged =
         Object.keys(previous).length === Object.keys(merged).length &&
@@ -1442,10 +1447,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // expired sessions (which return JSON, not HTML) to show a clear error
   // instead of waiting for the 45-second load timeout.
   const handlePreviewIframeLoad = useCallback(() => {
-    iframeRef.current?.contentWindow?.postMessage(
-      { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
-      previewTargetOrigin
-    );
+    // Only push workspace files to the preview when the local file set contains
+    // real generated app code. When local state is just the baseline template
+    // (e.g. first load on a new device / cleared IDB) the server already embedded
+    // the authoritative snapshot in the iframe HTML — overriding it here with the
+    // baseline would clobber the real app and break the preview. The preview's own
+    // request-preview-files pull will sync once it mounts and decides what it needs.
+    if (hasGeneratedAppCode(filesRef.current)) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: 'sync-files', projectId: activeProjectId, files: previewFiles(filesRef.current, true) },
+        previewTargetOrigin
+      );
+    }
     // Fast-path: detect expired session by fetching the preview URL and
     // checking the status. 401/403 with a JSON body → expired; a 429 from the
     // preview rate limiter is transient and recovers on the next reload, so it

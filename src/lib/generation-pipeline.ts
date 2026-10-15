@@ -1369,6 +1369,12 @@ export class GenerationPipeline {
                         continue;
                       }
                       if (classification.category === 'unknown') throw new Error(errMessage);
+                      // CF Workers AI uses a binding — there are no user-configured credentials.
+                      // An auth-category error from a CF model means the model is unavailable or
+                      // requires access not granted to this account, not a bad API key.
+                      if (classification.category === 'auth' && model.provider === 'cloudflare') {
+                        throw new GenerationUserError({ ...classification, userMessage: 'This model is not available. Please select a different model.' }, effectiveErr);
+                      }
                       throw new GenerationUserError(classification, effectiveErr);
                     }
                   }

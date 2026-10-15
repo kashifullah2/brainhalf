@@ -66,7 +66,8 @@ const CF_DEFAULT_MAX = 65536;
 const CF_MODELS: AllowedModel[] = [
   { name: DEFAULT_MODEL_ID, provider: 'cloudflare', id: DEFAULT_MODEL_ID, maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
   { name: '@cf/deepseek-ai/deepseek-v4-pro-0813', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-v4-pro-0813', maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
-  { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX },
+  // Disabled: returns 403/permission-denied on accounts without beta access; re-enable when publicly available.
+  { name: '@cf/openai/gpt-oss-120b', provider: 'cloudflare', id: '@cf/openai/gpt-oss-120b', maxTokens: CF_DEFAULT_MAX, clientSelectable: false },
   { name: '@cf/moonshotai/kimi-k2.7-code', provider: 'cloudflare', id: '@cf/moonshotai/kimi-k2.7-code', maxTokens: CF_DEFAULT_MAX },
   // Disabled: times out (2 min+) on real generation requests; re-enable when model becomes stable.
   { name: '@cf/qwen/qwen3.8-27b', provider: 'cloudflare', id: '@cf/qwen/qwen3.8-27b', maxTokens: 32768, clientSelectable: false },
@@ -80,7 +81,8 @@ const CF_MODELS: AllowedModel[] = [
   { name: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', provider: 'cloudflare', id: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', maxTokens: CF_DEFAULT_MAX },
   // Disabled: times out on all generation levels; removed from picker until stable.
   { name: '@cf/zai-org/glm-5.3-flash', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3-flash', maxTokens: 8192, clientSelectable: false, supportsThinking: true },
-  { name: '@cf/zai-org/glm-5.3', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3', maxTokens: CF_DEFAULT_MAX, supportsThinking: true },
+  // Disabled: times out on generation requests like glm-5.3-flash; re-enable when stable.
+  { name: '@cf/zai-org/glm-5.3', provider: 'cloudflare', id: '@cf/zai-org/glm-5.3', maxTokens: CF_DEFAULT_MAX, supportsThinking: true, clientSelectable: false },
   { name: '@cf/ibm-granite/granite-4.0-h-micro', provider: 'cloudflare', id: '@cf/ibm-granite/granite-4.0-h-micro', maxTokens: 32768 },
   { name: '@cf/utter-project/eurollm-9b-it', provider: 'cloudflare', id: '@cf/utter-project/eurollm-9b-it', maxTokens: 32768 },
 ];
