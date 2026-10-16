@@ -249,13 +249,20 @@ describe('Project access through the Worker and real Registry SQLite', () => {
     expect(agentFetch).not.toHaveBeenCalled();
   });
 
-  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('retains owner-only %s mutations for published apps', async method => {
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('retains owner-only %s mutations for preview and Referer routes on published apps', async method => {
     await publication(true);
-    for (const path of [`/preview/${projectId}/api/tasks`, `/p/${projectId}/api/tasks`, '/api/tasks']) {
+    // In-browser preview and Referer-proxied platform paths stay read-only for non-owners.
+    for (const path of [`/preview/${projectId}/api/tasks`, '/api/tasks']) {
       const headers = { Referer: `https://brainhalf.com/preview/${projectId}/` };
       expect((await request(path, 'other', { method, headers })).status).toBe(403);
       expect((await request(path, 'owner', { method, headers })).status).toBe(200);
     }
+    // Live deployed apps (/p/) accept all HTTP methods for published projects so
+    // full-stack apps can serve POST/PUT/PATCH/DELETE to any visitor — including
+    // authenticated BrainHalf users who aren't the owner.
+    const deployPath = `/p/${projectId}/api/tasks`;
+    expect((await request(deployPath, 'other', { method })).status).toBe(200);
+    expect((await request(deployPath, 'owner', { method })).status).toBe(200);
   });
 
   it('checks publication on Referer fallback reads and rejects forged origins', async () => {

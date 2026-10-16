@@ -343,7 +343,14 @@ export function buildCustomModelHeaders(
         ? extraHeaders
         : Object.entries(extraHeaders);
     for (const [k, v] of entries) {
-      if (v !== undefined && v !== null) headers[k] = String(v);
+      if (v !== undefined && v !== null) {
+        // Case-insensitive dedup: remove existing entry with the same name so we
+        // don't send e.g. both "Authorization" and "authorization" to fetch(),
+        // which would combine them as "Bearer x, Bearer x" and trigger a 401.
+        const existingKey = Object.keys(headers).find(h => h.toLowerCase() === k.toLowerCase());
+        if (existingKey) delete headers[existingKey];
+        headers[k] = String(v);
+      }
     }
   }
   try {

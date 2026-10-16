@@ -33,8 +33,16 @@ export async function checkPreviewAccess(
     if (!response.ok) return { ok: false, status: response.status === 404 ? 404 : 503 };
     const access = await response.json() as { owner?: boolean; published?: boolean };
     if (userId && access.owner === true) return { ok: true, owner: true };
-    if (access.published === true && (method === 'GET' || method === 'HEAD') && (target === 'deployment' || isPublicPreviewRead(path))) {
-      return { ok: true, owner: false };
+    if (access.published === true) {
+      // Deployed apps (live /p/:id/* traffic) must accept all HTTP methods so
+      // full-stack apps can serve POST/PUT/PATCH/DELETE to public visitors.
+      // The request is forwarded to an isolated tenant Worker that has no
+      // access to BrainHalf internals — there is no platform data exposure.
+      if (target === 'deployment') return { ok: true, owner: false };
+      // In-browser preview is still read-only for public viewers.
+      if ((method === 'GET' || method === 'HEAD') && isPublicPreviewRead(path)) {
+        return { ok: true, owner: false };
+      }
     }
     return { ok: false, status: userId ? 403 : 401 };
   } catch (error) {
