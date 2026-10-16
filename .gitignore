@@ -73,3 +73,4 @@ qa-audit/
 /audit-artifacts/
 /test-screenshots/
 /playwright-screenshot.png
+.superdesign/tmp/

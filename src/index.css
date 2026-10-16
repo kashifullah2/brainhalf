@@ -29,8 +29,8 @@
   --border-subtle: rgba(255, 255, 255, 0.07);
   --border-medium: rgba(255, 255, 255, 0.12);
   --border-strong: rgba(255, 255, 255, 0.18);
-  --border-accent: rgba(20, 184, 166, 0.35);
-  --border-accent-strong: rgba(45, 212, 191, 0.6);
+  --border-accent: rgba(88, 87, 255, 0.30);
+  --border-accent-strong: rgba(88, 87, 255, 0.50);
 
   /* Scrollbar thumb colors (dark-theme defaults; light overrides below) */
   --scrollbar-thumb: rgba(255, 255, 255, 0.16);
@@ -43,17 +43,13 @@
   --text-muted: #94a3b8;
   /* Slate-400: 7.3:1 contrast ratio on canvas/cards, passes WCAG AA */
 
-  /* Crisp Distinctive Brand Accent (Bespoke Engineering Teal) */
-  --accent-primary: #0d9488;
-  /* Deep Teal */
-  --accent-secondary: #0f766e;
-  /* Rich Dark Teal */
-  --accent-light: #2dd4bf;
-  /* Vibrant Cyan-Teal */
-  --accent-gradient: #3659d9;
-  /* Solid brand blue (name kept for compatibility; studio theme overrides) */
-  --accent-glow: rgba(20, 184, 166, 0.15);
-  --accent-glow-strong: rgba(45, 212, 191, 0.3);
+  /* Brand accent — electric blue-violet (studio theme overrides per mode) */
+  --accent-primary: #5857FF;
+  --accent-secondary: #3A39C0;
+  --accent-light: #8887FF;
+  --accent-gradient: #5857FF;
+  --accent-glow: rgba(88, 87, 255, 0.15);
+  --accent-glow-strong: rgba(88, 87, 255, 0.30);
   --color-accent: var(--accent-primary);
   --color-accent-hover: var(--accent-secondary);
 
@@ -81,10 +77,9 @@
   --color-info-bg: rgba(14, 165, 233, 0.08);
   --color-info-border: rgba(14, 165, 233, 0.25);
 
-  --color-ai: #2dd4bf;
-  /* Distinctive Teal for AI elements */
-  --color-ai-bg: rgba(20, 184, 166, 0.08);
-  --color-ai-border: rgba(20, 184, 166, 0.28);
+  --color-ai: #8887FF;
+  --color-ai-bg: rgba(88, 87, 255, 0.08);
+  --color-ai-border: rgba(88, 87, 255, 0.25);
 
   --color-neutral: #a1a1aa;
   /* Zinc */
@@ -120,7 +115,7 @@
 
   /* Typography (studio-fonts.css provides the actual families) */
   --font-sans: 'Instrument Sans', system-ui, sans-serif;
-  --font-brand: 'Bricolage Grotesque', 'Instrument Sans', system-ui, sans-serif;
+  --font-brand: 'Instrument Studio', system-ui, sans-serif;
   --font-mono: 'DM Mono', ui-monospace, monospace;
 
   /* ==========================================================================
@@ -846,8 +841,8 @@ h4,
 }
 
 .chat-input-wrapper:focus-within {
-  border-color: rgba(99, 102, 241, 0.35);
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.15), 0 4px 16px rgba(0, 0, 0, 0.2);
+  border-color: rgba(88, 87, 255, 0.35);
+  box-shadow: 0 0 0 1px rgba(88, 87, 255, 0.15), 0 4px 16px rgba(0, 0, 0, 0.2);
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -882,12 +877,12 @@ h4,
   justify-content: center;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-  box-shadow: 0 2px 8px rgba(20, 184, 166, 0.35);
+  box-shadow: 0 2px 8px rgba(88, 87, 255, 0.35);
 }
 
 .chat-send-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.5);
+  box-shadow: 0 4px 12px rgba(88, 87, 255, 0.45);
 }
 
 .chat-send-btn:active:not(:disabled) {
@@ -978,13 +973,13 @@ h4,
   100% {
     transform: scale(1);
     opacity: 1;
-    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.7);
+    box-shadow: 0 0 0 0 rgba(88, 87, 255, 0.7);
   }
 
   50% {
     transform: scale(1.18);
     opacity: 0.85;
-    box-shadow: 0 0 0 6px rgba(45, 212, 191, 0);
+    box-shadow: 0 0 0 6px rgba(88, 87, 255, 0);
   }
 }
 
@@ -1026,7 +1021,7 @@ h4,
 }
 
 .status-badge.generating {
-  background: rgba(13, 148, 136, 0.14);
+  background: rgba(88, 87, 255, 0.14);
   color: var(--accent-light);
   border: none;
   box-shadow: none;
@@ -1513,7 +1508,7 @@ h4,
   left: 0;
   height: 100%;
   width: 50%;
-  background: var(--accent-gradient);
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-light));
   border-radius: 2px;
   animation: shimmer 1.8s infinite ease-in-out;
   background-size: 200% 100%;
@@ -1758,7 +1753,7 @@ h4,
 .action-chip:hover {
   background: var(--color-ai-bg);
   border-color: var(--color-ai-border);
-  color: #f0fdfa;
+  color: var(--accent-light);
   transform: translateY(-1px);
 }
 
@@ -2179,7 +2174,7 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   margin-top: 8px;
   padding: 11px 15px;
   border-radius: 12px;
-  border: 1px solid rgba(45, 212, 191, 0.28);
+  border: 1px solid rgba(88, 87, 255, 0.28);
   background: var(--bg-card);
   box-shadow: none;
   color: var(--text-primary);
@@ -2208,9 +2203,9 @@ textarea:not(.landing-prompt-textarea):not(.chat-input):focus-visible {
   margin-left: 4px;
   padding: 2px 6px;
   border-radius: 999px;
-  border: 1px solid rgba(45, 212, 191, 0.3);
-  background: rgba(13, 148, 136, 0.2);
-  color: rgba(45, 212, 191, 0.9);
+  border: 1px solid rgba(88, 87, 255, 0.3);
+  background: rgba(88, 87, 255, 0.15);
+  color: rgba(136, 135, 255, 0.9);
   font-family: var(--font-mono);
   font-size: 11px;
 }

@@ -1,6 +1,6 @@
 /* ==========================================================================
    Landing Page Design Tokens
-   Warm, confident, modern. Fraunces display + system sans body.
+   Unified with studio accent (#5857FF). Warm light surface, single accent.
    Overrides studio-theme tokens within .landing-container scope.
    ========================================================================== */
 .landing-container {
@@ -15,10 +15,10 @@
   --landing-ink-secondary: #4A4A4D;
   --landing-ink-muted: #7C7C80;
 
-  /* ---- Accent — warm indigo, used sparingly ---- */
-  --landing-accent: #4F46E5;
-  --landing-accent-hover: #4338CA;
-  --landing-accent-light: #EEF2FF;
+  /* ---- Accent — unified brand blue-violet ---- */
+  --landing-accent: #5857FF;
+  --landing-accent-hover: #3A39C0;
+  --landing-accent-light: rgba(88, 87, 255, 0.10);
   --landing-accent-on: #FFFFFF;
 
   /* ---- Secondary highlight ---- */
@@ -36,8 +36,8 @@
   --landing-shadow-xl: 0 24px 80px rgba(15, 15, 16, 0.10), 0 4px 12px rgba(15, 15, 16, 0.04);
 
   /* ---- Typography ---- */
-  --landing-font-display: var(--font-sans, 'Inter', system-ui, sans-serif);
-  --landing-font-body: var(--font-sans, 'Inter', system-ui, sans-serif);
+  --landing-font-display: var(--font-sans, 'Instrument Sans', system-ui, sans-serif);
+  --landing-font-body: var(--font-sans, 'Instrument Sans', system-ui, sans-serif);
 
   /* Fluid type scale */
   --landing-text-xs: clamp(11px, 0.75vw, 12px);
@@ -87,31 +87,31 @@
   --brand-solid: var(--landing-accent);
   --brand-solid-hover: var(--landing-accent-hover);
   --brand-on-solid: var(--landing-accent-on);
-  --focus-ring: rgba(79, 70, 229, 0.15);
+  --focus-ring: rgba(88, 87, 255, 0.15);
   --text-secondary: var(--landing-ink-secondary);
 }
 
 /* ---- Dark theme overrides ---- */
 :root[data-theme='dark'] .landing-container {
-  --landing-bg: #0F0F10;
-  --landing-bg-alt: #161618;
-  --landing-surface: #1A1A1D;
-  --landing-surface-hover: #222225;
+  --landing-bg: #0C0C0E;
+  --landing-bg-alt: #111113;
+  --landing-surface: #171719;
+  --landing-surface-hover: #1E1E21;
 
-  --landing-ink: #F2F1EC;
-  --landing-ink-secondary: #B5B4AF;
-  --landing-ink-muted: #8A897F;
+  --landing-ink: #EAEAEE;
+  --landing-ink-secondary: #9494A4;
+  --landing-ink-muted: #5A5A6E;
 
-  --landing-accent: #818CF8;
-  --landing-accent-hover: #A5B4FC;
-  --landing-accent-light: rgba(129, 140, 248, 0.08);
-  --landing-accent-on: #0F0F10;
+  --landing-accent: #7B7AFF;
+  --landing-accent-hover: #9B9AFF;
+  --landing-accent-light: rgba(88, 87, 255, 0.10);
+  --landing-accent-on: #ffffff;
 
   --landing-highlight: #1E1E21;
-  --landing-highlight-warm: #1C1B18;
+  --landing-highlight-warm: #171719;
 
-  --landing-border: #2A2A2D;
-  --landing-border-strong: #3A3A3E;
+  --landing-border: rgba(255, 255, 255, 0.06);
+  --landing-border-strong: rgba(255, 255, 255, 0.10);
 
   --landing-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --landing-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.15);
@@ -127,6 +127,6 @@
   --brand-solid: var(--landing-accent);
   --brand-solid-hover: var(--landing-accent-hover);
   --brand-on-solid: var(--landing-accent-on);
-  --focus-ring: rgba(129, 140, 248, 0.2);
+  --focus-ring: rgba(88, 87, 255, 0.20);
   --text-secondary: var(--landing-ink-secondary);
 }

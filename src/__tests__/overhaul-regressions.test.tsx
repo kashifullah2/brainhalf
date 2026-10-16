@@ -19,17 +19,19 @@ describe('dark-grey theme (no navy regression)', () => {
   const themeInit = readFileSync(resolve(__dirname, '../../public/theme-init.js'), 'utf8');
   // Hexes from the old navy dark theme that must not come back.
   const NAVY_HEXES = ['#1a2332', '#16213e', '#0f172a', '#1e293b'];
-  // The dark palette's neutral grey anchors.
-  const GREY_HEXES = ['#161616', '#212121', '#292929'];
+  // studio-theme.css dark palette anchors (updated to new darker pure-black palette).
+  const STUDIO_GREY_HEXES = ['#0C0C0E', '#111113', '#171719'];
+  // index.css carries baseline dark defaults (overridden by studio-theme.css at runtime).
+  const INDEX_GREY_HEXES = ['#161616', '#212121', '#292929'];
 
   it('studio-theme.css uses the neutral grey scale with no navy hexes', () => {
-    for (const hex of GREY_HEXES) expect(themeCss).toContain(hex);
+    for (const hex of STUDIO_GREY_HEXES) expect(themeCss).toContain(hex);
     for (const hex of NAVY_HEXES) expect(themeCss.toLowerCase()).not.toContain(hex);
   });
 
   it('index.css dark base layer uses grey and keeps navy out of dark mode', () => {
     const [darkLayer] = indexCss.split("Light Mode Theme Overrides");
-    for (const hex of GREY_HEXES) expect(darkLayer).toContain(hex);
+    for (const hex of INDEX_GREY_HEXES) expect(darkLayer).toContain(hex);
     for (const hex of NAVY_HEXES) expect(darkLayer.toLowerCase()).not.toContain(hex);
   });
 
