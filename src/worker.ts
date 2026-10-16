@@ -801,6 +801,9 @@ export default {
         if (!files || typeof files !== 'object' || Array.isArray(files)) return withCors(jsonError('Invalid project files', 502), origin);
         const fileEntries = Object.entries(files).filter(([, v]) => typeof v === 'string') as [string, string][];
         if (!fileEntries.length) return withCors(jsonError('No files to export', 400), origin);
+        if (fileEntries.length > 65535) return withCors(jsonError('Too many files to export as ZIP (limit: 65 535)', 413), origin);
+        let totalBytes = 0;
+        for (const [, content] of fileEntries) { totalBytes += content.length; if (totalBytes > 25 * 1024 * 1024) return withCors(jsonError('Project too large to export as ZIP (limit: 25 MB)', 413), origin); }
         const zipBytes = buildZip(fileEntries);
         return withCors(new Response(new Blob([zipBytes.buffer.slice(0, zipBytes.byteLength) as ArrayBuffer]), {
           headers: {

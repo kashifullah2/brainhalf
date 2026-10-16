@@ -148,6 +148,7 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
   const [projectsToDelete, setProjectsToDelete] = useState<string[] | null>(null);
   const [projectToRename, setProjectToRename] = useState<Project | null>(null);
   const [renamedName, setRenamedName] = useState('');
+  const [renameError, setRenameError] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   // When the server-side project quota is exhausted, creating is pointless —
@@ -219,10 +220,16 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     setDeleting(false);
   };
 
-  const saveRename = () => {
-    if (projectToRename && renamedName.trim()) updateProjectName(projectToRename.id, renamedName.trim());
-    setProjectToRename(null);
-    refreshProjects();
+  const saveRename = async () => {
+    if (!projectToRename || !renamedName.trim()) return;
+    setRenameError('');
+    try {
+      await updateProjectName(projectToRename.id, renamedName.trim());
+      setProjectToRename(null);
+      refreshProjects();
+    } catch {
+      setRenameError('Could not rename the project. Please try again.');
+    }
   };
 
   return <div className="dashboard-page landing-container">
@@ -269,6 +276,6 @@ export default function DashboardPage({ currentUser, onOpenProject, onCreateProj
     </main>
     {projectToDelete && <ConfirmModal isOpen title="Delete Project" message="Delete this project, its published apps, and its saved data? Access is revoked immediately. Your files and conversation history are removed first; everything else is erased by an automatic cleanup job that you can track here on the dashboard." confirmLabel={deleting ? 'Deleting…' : 'Delete Project'} pending={deleting} error={deleteError} isDestructive onConfirm={handleDelete} onCancel={() => { if (!deletionPending.current) { setProjectToDelete(null); setDeleteError(''); } }} />}
     {projectsToDelete && <ConfirmModal isOpen title={`Delete ${projectsToDelete.length} project${projectsToDelete.length !== 1 ? 's' : ''}`} message={`Permanently delete ${projectsToDelete.length} selected project${projectsToDelete.length !== 1 ? 's' : ''}, their published apps, and all saved data? This cannot be undone.`} confirmLabel={deleting ? 'Deleting…' : `Delete ${projectsToDelete.length} project${projectsToDelete.length !== 1 ? 's' : ''}`} pending={deleting} error={deleteError} isDestructive onConfirm={handleBulkDelete} onCancel={() => { if (!deletionPending.current) { setProjectsToDelete(null); setDeleteError(''); } }} />}
-    {projectToRename && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rename-title" ref={renameDialogRef} tabIndex={-1} onClick={() => setProjectToRename(null)}><div className="modal-card dashboard-rename" onClick={event => event.stopPropagation()}><h2 id="rename-title">Rename project</h2><label htmlFor="project-rename-input">Project name</label><input id="project-rename-input" className="text-input" value={renamedName} onChange={event => setRenamedName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveRename(); }} /><div><button className="button-secondary" type="button" onClick={() => setProjectToRename(null)}>Cancel</button><button className="button-primary" type="button" onClick={saveRename}>Save</button></div></div></div>}
+    {projectToRename && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="rename-title" ref={renameDialogRef} tabIndex={-1} onClick={() => setProjectToRename(null)}><div className="modal-card dashboard-rename" onClick={event => event.stopPropagation()}><h2 id="rename-title">Rename project</h2><label htmlFor="project-rename-input">Project name</label><input id="project-rename-input" className="text-input" value={renamedName} onChange={event => setRenamedName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveRename(); }} />{renameError && <p role="alert" style={{ color: 'var(--color-error, #ef4444)', fontSize: '13px', margin: '4px 0 0' }}>{renameError}</p>}<div><button className="button-secondary" type="button" onClick={() => setProjectToRename(null)}>Cancel</button><button className="button-primary" type="button" onClick={saveRename}>Save</button></div></div></div>}
   </div>;
 }

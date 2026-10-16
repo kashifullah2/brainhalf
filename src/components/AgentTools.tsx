@@ -16,6 +16,7 @@ export default function AgentTools({ projectId, onClose, onAttach, initialTab = 
   const [skillName, setSkillName] = useState(''); const [instructions, setInstructions] = useState('');
   const alive = useRef(true);
   const pendingAction = useRef(false);
+  const lastFailedAction = useRef<{ action: () => Promise<void>; optimistic?: BuilderConfiguration } | null>(null);
   const modal = useModalFocus(true, onClose);
   const refresh = async () => {
     const [next, uploads] = await Promise.all([
@@ -39,14 +40,21 @@ export default function AgentTools({ projectId, onClose, onAttach, initialTab = 
     let saved = false;
     if (optimisticConfig) setConfig(optimisticConfig);
     setBusy(true); setError('');
-    try { await action(); saved = true; await refresh(); }
+    try { await action(); saved = true; lastFailedAction.current = null; await refresh(); }
     catch (cause) {
       if (alive.current) {
         if (optimisticConfig && !saved) setConfig(previous);
+        lastFailedAction.current = { action, optimistic: optimisticConfig };
         setError(cause instanceof Error ? cause.message : 'Please try again.');
       }
     }
     finally { pendingAction.current = false; if (alive.current) setBusy(false); }
+  };
+  const retry = () => {
+    const failed = lastFailedAction.current;
+    if (!failed) return;
+    lastFailedAction.current = null;
+    void perform(failed.action, failed.optimistic);
   };
   const updateServer = (server: BuilderMcpServer, tools: string[], enabled: boolean) => perform(async () => {
     await builderRequest(projectId, `/servers/${server.id}`, { method: 'PATCH', body: JSON.stringify({ allowedTools: tools, enabled }) });
@@ -59,7 +67,7 @@ export default function AgentTools({ projectId, onClose, onAttach, initialTab = 
       <header><div><span className="agent-tools-eyebrow">FOR THIS PROJECT</span><h2 id="agent-tools-title">Agent tools</h2><p>Connect services, add instructions, and reuse your uploads.</p></div><button className="icon-btn" onClick={onClose} aria-label="Close agent tools"><X size={20} /></button></header>
       <nav aria-label="Agent tool categories">{(['connections', 'skills', 'files'] as const).map(value => <button key={value} aria-pressed={tab === value} onClick={() => setTab(value)}>{value === 'connections' ? <Cable size={16} /> : value === 'skills' ? <Sparkles size={16} /> : <FileText size={16} />}{value === 'connections' ? 'MCP connections' : value === 'skills' ? 'Skills' : 'Uploads'}</button>)}</nav>
       <div className="agent-tools-content" aria-busy={busy}>
-        {error && <div className="agent-tools-error" role="alert">{error}<button onClick={() => void perform(async () => {})} disabled={busy}>Retry</button></div>}
+        {error && <div className="agent-tools-error" role="alert">{error}<button onClick={retry} disabled={busy}>Retry</button></div>}
         {busy && <p role="status">Working…</p>}
         {tab === 'connections' && <>
           <p>Connect a remote MCP server, then choose the tools your agent may use. Enabled tools can access or change data in the connected service.</p>

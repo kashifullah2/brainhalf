@@ -429,6 +429,7 @@ export default function AdminPage() {
   };
 
   const toggleSingleModel = async (modelKey: string) => {
+    const prev = [...disabledModels];
     const next = disabledModels.includes(modelKey)
       ? disabledModels.filter(k => k !== modelKey)
       : [...disabledModels, modelKey];
@@ -441,11 +442,11 @@ export default function AdminPage() {
       });
       if (!response.ok) {
         setNotice({ kind: 'error', text: 'Could not save the model setting.' });
-        setDisabledModels(disabledModels);
+        setDisabledModels(prev);
       }
     } catch {
       setNotice({ kind: 'error', text: 'Could not save the model setting.' });
-      setDisabledModels(disabledModels);
+      setDisabledModels(prev);
     }
   };
 
@@ -834,6 +835,7 @@ export default function AdminPage() {
         const res = await authFetch(`/api/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('delete failed');
         const body = await res.json() as { deletedProjects?: number };
+        setUsers(prev => prev.filter(u => u.id !== user.id));
         setNotice({ kind: 'ok', text: `${user.email} deleted along with ${body.deletedProjects ?? 0} projects.` });
       }),
     });
@@ -849,12 +851,14 @@ export default function AdminPage() {
       onConfirm: () => runConfirmed(async () => {
         let deleted = 0;
         let failed = 0;
+        const deletedIds = new Set<string>();
         for (const target of targets) {
           try {
             const res = await authFetch(`/api/admin/users/${encodeURIComponent(target.id)}`, { method: 'DELETE' });
-            if (res.ok) deleted++; else failed++;
+            if (res.ok) { deleted++; deletedIds.add(target.id); } else failed++;
           } catch { failed++; }
         }
+        if (deletedIds.size) setUsers(prev => prev.filter(u => !deletedIds.has(u.id)));
         setNotice(failed
           ? { kind: 'error', text: `Deleted ${deleted} accounts, ${failed} failed. Refresh to see the current list.` }
           : { kind: 'ok', text: `Deleted ${deleted} unverified accounts. Only verified accounts remain.` });

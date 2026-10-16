@@ -236,10 +236,19 @@ export function useGithubSync({ activeProjectId, isCurrent, filesRef, commitFile
     }
   }, [token, savedRepo, owner, connectedLogin, addBuildLog, isCurrent, filesRef]);
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
+    try {
+      const res = await authFetch(`${apiOrigin()}/api/account/github-token`, { method: 'DELETE' });
+      if (!res.ok) {
+        setStatus({ loading: false, error: 'Could not revoke GitHub token. Please try again.' });
+        return;
+      }
+    } catch {
+      setStatus({ loading: false, error: 'Could not reach the server to revoke the GitHub token.' });
+      return;
+    }
     try { localStorage.removeItem(`bh_github_repo:${activeProjectId}`); } catch {}
     try { localStorage.removeItem(`bh_github_owner:${activeProjectId}`); } catch {}
-    void authFetch(`${apiOrigin()}/api/account/github-token`, { method: 'DELETE' }).catch(() => {});
     setSavedRepo('');
     setOwner('');
     setRepo('');

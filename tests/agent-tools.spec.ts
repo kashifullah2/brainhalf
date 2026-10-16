@@ -117,3 +117,33 @@ test('a pending tool selection stays checked and rolls back when saving fails', 
   await expect.poll(() => state.servers[0].allowedTools).toEqual(['lookup']);
   await expect(dialog.getByLabel('Enabled for the agent')).toBeEnabled();
 });
+
+test('retry button replays the failed operation', async ({ page }) => {
+  const state = await toolsFixture(page);
+  await openAdvanced(page);
+  await page.getByRole('button', { name: 'Add and configure options', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Upload skills', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Agent tools', exact: true });
+  await dialog.getByRole('button', { name: 'MCP connections', exact: true }).click();
+  await dialog.getByLabel('Name', { exact: true }).fill('Inventory');
+  await dialog.getByLabel('Server URL').fill('https://inventory.example.com/mcp');
+  // Intercept the POST to fail once
+  await page.route('**/builder/servers', async route => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 503, json: { error: 'Service unavailable' } });
+    } else {
+      await route.continue();
+    }
+  }, { times: 1 });
+  await dialog.getByRole('button', { name: 'Connect and discover tools' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Service unavailable');
+  const retryButton = dialog.getByRole('alert').getByRole('button', { name: 'Retry' });
+  await expect(retryButton).toBeVisible();
+  const requestCountBefore = state.requests.filter(r => r.path === '/servers' && r.method === 'POST').length;
+  await retryButton.click();
+  // The route intercept expired (times: 1), so retry hits the default handler and succeeds
+  await expect.poll(() => state.servers.length).toBe(1);
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  const requestCountAfter = state.requests.filter(r => r.path === '/servers' && r.method === 'POST').length;
+  expect(requestCountAfter).toBe(requestCountBefore + 1);
+});

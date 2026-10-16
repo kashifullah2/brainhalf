@@ -59,7 +59,18 @@ export async function exportToGitHub(
   if (!parent || !/^[a-f0-9]{40,64}$/.test(parent)) throw new Error('GitHub returned an invalid branch reference.');
   const commit = await api<{ tree: { sha: string } }>(`${base}/git/commits/${parent}`);
   if (!commit?.tree?.sha || !/^[a-f0-9]{40,64}$/.test(commit.tree.sha)) throw new Error('GitHub could not read the current source tree.');
-  const tree = await api<{ sha: string }>(`${base}/git/trees`, 'POST', { base_tree: commit.tree.sha, tree: Object.entries(prepared.files).map(([path, content]) => ({ path: path.slice(1), mode: '100644', type: 'blob', content })) });
+  const treeEntries: Array<{ path: string; mode: string; type: string; content?: string; sha?: string }> = [];
+  for (const [path, content] of Object.entries(prepared.files)) {
+    const cleanPath = path.slice(1);
+    if (/\0/.test(content) || /[\uD800-\uDFFF]/.test(content)) {
+      const blob = await api<{ sha: string }>(`${base}/git/blobs`, 'POST', { content: btoa(unescape(encodeURIComponent(content))), encoding: 'base64' });
+      if (!blob?.sha) throw new Error(`GitHub could not create a blob for ${cleanPath}.`);
+      treeEntries.push({ path: cleanPath, mode: '100644', type: 'blob', sha: blob.sha });
+    } else {
+      treeEntries.push({ path: cleanPath, mode: '100644', type: 'blob', content });
+    }
+  }
+  const tree = await api<{ sha: string }>(`${base}/git/trees`, 'POST', { base_tree: commit.tree.sha, tree: treeEntries });
   if (!tree?.sha || !/^[a-f0-9]{40,64}$/.test(tree.sha)) throw new Error('GitHub returned an invalid source tree. No branch was changed.');
   const commitMessage = options?.commitMessage?.trim() || 'Update project files from BrainHalf';
   const created = await api<{ sha: string }>(`${base}/git/commits`, 'POST', { message: commitMessage, tree: tree?.sha, parents: [parent] });

@@ -96,6 +96,10 @@ export default function PublishPopover({ projectId, files, onClose, onCustomDoma
     return () => { document.removeEventListener('mousedown', onPointerDown); document.removeEventListener('keydown', onKey); };
   }, [onClose]);
 
+  useEffect(() => {
+    return () => { if (slugCheckTimer.current) clearTimeout(slugCheckTimer.current); };
+  }, []);
+
   const handleSlugChange = (value: string) => {
     const cleaned = value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-{2,}/g, '-');
     setSlugInput(cleaned); setSlugError('');

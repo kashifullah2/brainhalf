@@ -24,7 +24,12 @@ export async function sealSecret(value: unknown, masterKey: string, scope: strin
 export async function openSecret<T>(sealed: string, masterKey: string, scope: string): Promise<T> {
   const envelope = JSON.parse(sealed) as { version: number; iv: string; data: string };
   if (envelope.version !== 1) throw new RuntimeError('Unsupported secret version.', 503);
-  const data = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(envelope.iv), additionalData: encoder.encode(scope) }, await encryptionKey(masterKey), fromBase64(envelope.data));
+  let data: ArrayBuffer;
+  try {
+    data = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromBase64(envelope.iv), additionalData: encoder.encode(scope) }, await encryptionKey(masterKey), fromBase64(envelope.data));
+  } catch {
+    throw new RuntimeError('Could not decrypt secret: encryption key may have changed or data is corrupt. Remove and re-add this credential.', 400);
+  }
   return JSON.parse(new TextDecoder().decode(data)) as T;
 }
 
