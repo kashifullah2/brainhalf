@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import { InteractiveDemo } from '../components/landing/InteractiveDemo';
-import { BentoGrid } from '../components/landing/BentoGrid';
-import { HowItWorks } from '../components/landing/HowItWorks';
-import { TrustSection } from '../components/landing/TrustSection';
-import { FaqSection } from '../components/landing/FaqSection';
-import { FinalCta } from '../components/landing/FinalCta';
+import { InteractiveDemo, BentoGrid, HowItWorks, TrustSection, FaqSection, FinalCta } from '../components/landing/LandingPage';
 import { GalleryRow } from '../components/GalleryRow';
 import { HOME_FAQS } from '../seo/content';
 

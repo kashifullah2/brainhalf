@@ -943,8 +943,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         window.dispatchEvent(new CustomEvent('bh-session-expired'));
         return;
       }
-      console.log(`Connecting to Durable Object session: ${activeProjectId}`);
-
       ws = new WebSocket(authedUrl);
       wsRef.current = ws;
 
@@ -956,7 +954,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         setIsConnected(true);
         setConnectionErrorBoth(null);
         setSessionExpiredDuringGeneration(false);
-        console.log(`Connected to session: ${activeProjectId}`);
         // B1: fire a resend queued by "Reconnect & try again".
         if (pendingResendRef.current) {
           const prompt = pendingResendRef.current;

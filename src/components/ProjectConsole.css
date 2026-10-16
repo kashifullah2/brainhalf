@@ -60,31 +60,14 @@
 
 /* ── Section navigation ── */
 .project-console nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  padding: 12px 24px 14px;
+  padding: 10px 20px 12px;
   border-bottom: 1px solid var(--border-subtle);
-}
-
-.console-nav-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.console-nav-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 .console-nav-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px;
 }
 
 /* ── Main content ── */

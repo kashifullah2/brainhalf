@@ -272,10 +272,10 @@ const TopNav: React.FC<TopNavProps> = ({
               {onInspect && (
                 <>
                   <button type="button" className={`bolt-icon-btn bolt-icon-btn--labeled${inspectActive ? ' active' : ''}`}
-                    title={inspectActive ? 'Cancel — click outside to deselect' : 'Click any element in the preview to edit it'}
-                    aria-label={inspectActive ? 'Cancel element selection' : 'Select an element to edit'} disabled={!previewReady} onClick={onInspect}>
+                    title={inspectActive ? 'Click any element to edit it — press Esc to cancel' : 'Click any element in the preview to edit it with AI'}
+                    aria-label={inspectActive ? 'Picking element — click to edit, Esc to cancel' : 'Edit an element'} disabled={!previewReady} onClick={onInspect}>
                     <MousePointer2 size={13} />
-                    <span>{inspectActive ? 'Cancel' : 'Select'}</span>
+                    <span>{inspectActive ? 'Picking…' : 'Edit element'}</span>
                   </button>
                   <span className="bolt-tools-sep" aria-hidden="true" />
                 </>

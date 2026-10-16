@@ -38,8 +38,6 @@ export const vanillaTemplate: FrameworkTemplate = {
 </html>
 `,
     '/main.js': `import './style.css'
-
-console.log('App loaded')
 `,
     '/style.css': `* {
   margin: 0;

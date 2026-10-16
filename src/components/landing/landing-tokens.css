@@ -1,14 +1,14 @@
 /* ==========================================================================
    Landing Page Design Tokens
-   Unified with studio accent (#5857FF). Warm light surface, single accent.
+   Unified with studio accent (#5857FF). Single surface, single accent.
    Overrides studio-theme tokens within .landing-container scope.
    ========================================================================== */
 .landing-container {
   /* ---- Surface ---- */
-  --landing-bg: #FAF8F5;
-  --landing-bg-alt: #F5F2EE;
+  --landing-bg: #f8f9fc;
+  --landing-bg-alt: #f0f2f7;
   --landing-surface: #FFFFFF;
-  --landing-surface-hover: #F7F5F2;
+  --landing-surface-hover: #f4f5f9;
 
   /* ---- Ink ---- */
   --landing-ink: #0F0F10;
@@ -22,12 +22,12 @@
   --landing-accent-on: #FFFFFF;
 
   /* ---- Secondary highlight ---- */
-  --landing-highlight: #F0EDEA;
-  --landing-highlight-warm: #FDF8F0;
+  --landing-highlight: #f4f5f9;
+  --landing-highlight-warm: #edf0f8;
 
   /* ---- Borders ---- */
-  --landing-border: #E8E4DF;
-  --landing-border-strong: #D4D0CB;
+  --landing-border: #e2e5ee;
+  --landing-border-strong: #d0d4e0;
 
   /* ---- Shadows ---- */
   --landing-shadow-sm: 0 1px 2px rgba(15, 15, 16, 0.04);

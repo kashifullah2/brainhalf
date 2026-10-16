@@ -486,6 +486,21 @@ export const PreviewRunner: React.FC<{ projectId: string; initialFiles?: Record<
             />
           )}
           <div
+            role="status"
+            aria-live="polite"
+            style={{
+              position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 1000000, pointerEvents: 'none',
+              background: 'rgba(15,15,16,0.85)', color: '#fff',
+              fontSize: 12, fontFamily: 'system-ui, -apple-system, sans-serif',
+              padding: '6px 14px', borderRadius: 99,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+              whiteSpace: 'nowrap', backdropFilter: 'blur(6px)',
+            }}
+          >
+            Click any element to edit it &nbsp;·&nbsp; Esc to cancel
+          </div>
+          <div
             ref={inspectOverlayRef}
             role="presentation"
             aria-label="Click an element to select it for editing"
