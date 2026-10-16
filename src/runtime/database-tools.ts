@@ -12,7 +12,8 @@ export function prepareRowImport(table: string, input: unknown, allowedColumns: 
   if (!Array.isArray(input) || !input.length || input.length > 100) throw new RuntimeError('Import a JSON array containing 1 to 100 records.');
   if (!input[0] || typeof input[0] !== 'object' || Array.isArray(input[0])) throw new RuntimeError('Every record must be an object.');
   const columns = Object.keys(input[0]);
-  if (!columns.length || columns.length * input.length > 100 || columns.some(column => !allowedColumns.includes(column))) throw new RuntimeError('Import at most 100 field values using existing columns.');
+  const MAX_TOTAL_PARAMS = 500;
+  if (!columns.length || columns.length * input.length > MAX_TOTAL_PARAMS || columns.some(column => !allowedColumns.includes(column))) throw new RuntimeError(`Import at most ${Math.floor(MAX_TOTAL_PARAMS / Math.max(1, columns.length))} records for a table with ${columns.length} columns.`);
   const params: Array<string | number | null> = [];
   for (const row of input) {
     if (!row || typeof row !== 'object' || Array.isArray(row) || Object.keys(row).length !== columns.length || columns.some(column => !Object.prototype.hasOwnProperty.call(row, column))) throw new RuntimeError('All records must have the same columns.');

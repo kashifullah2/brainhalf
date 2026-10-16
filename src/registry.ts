@@ -450,7 +450,12 @@ export class AuthRegistry {
         const rows = this.sql
           .exec('SELECT COUNT(*) AS live FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', userId)
           .toArray() as Array<{ live: number }>;
-        return Response.json({ live: Number(rows[0]?.live ?? 0), limit: (await this.isAdminUnlimited()) ? 999999 : MAX_PROJECTS_PER_USER });
+        const adminEmailList = String(this.env.ADMIN_EMAILS || '').split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+        const isAdminUser = adminEmailList.length > 0 && (() => {
+          const userRows = this.sql.exec('SELECT email FROM users WHERE id = ?', userId).toArray();
+          return userRows.length > 0 && adminEmailList.includes(String(userRows[0].email).toLowerCase());
+        })();
+        return Response.json({ live: Number(rows[0]?.live ?? 0), limit: isAdminUser ? 999999 : MAX_PROJECTS_PER_USER });
       }
       if (path === '/projects/deletion-owner' && method === 'GET') {
         const row = this.sql.exec('SELECT user_id,deleted_at FROM project_owners WHERE project_id=?', url.searchParams.get('projectId') || '').toArray()[0];
@@ -1271,8 +1276,14 @@ export class AuthRegistry {
           'SELECT user_id, name, showcase FROM project_owners WHERE project_id = ? AND deleted_at IS NULL', body.sourceProjectId as string
         ).toArray() as Array<{ user_id: string; name: string; showcase: number }>;
         if (!source.length || source[0].showcase !== 1) return this.json(404, { error: 'This app is not listed in the gallery' });
-        // Resolve async admin check before the synchronous quota+INSERT block
-        const adminUnlimited = await this.isAdminUnlimited();
+        // Check admin status via direct users-table lookup (same pattern as /projects/claim).
+        // isAdminUnlimited() cannot be used here: it reads the DO name to find the owner,
+        // but this runs on the auth singleton DO (name='auth'), not an ai-budget DO.
+        const remixAdminEmails = String(this.env.ADMIN_EMAILS || '').split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
+        const adminUnlimited = remixAdminEmails.length > 0 && (() => {
+          const rows = this.sql.exec('SELECT email FROM users WHERE id = ?', body.userId as string).toArray();
+          return rows.length > 0 && remixAdminEmails.includes(String(rows[0].email).toLowerCase());
+        })();
         const remixQuotaResult = this.state.storage.transactionSync(() => {
           const live = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', body.userId).toArray()[0]?.total || 0);
           if (live >= MAX_PROJECTS_PER_USER && !adminUnlimited) return { error: 'You have reached the project limit. Delete a project to make room.' } as const;

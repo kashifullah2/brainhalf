@@ -192,6 +192,12 @@ export class ManagedAuth {
         const passwordHash = await hashPassword(body.password);
         user = this.store.byEmail(environment, email);
         if (!user) user = this.addUser(environment, email, typeof body.name === 'string' ? body.name.trim().slice(0, 100) : '', passwordHash);
+      } else if (!user.verified && !user.disabled) {
+        // Re-signup for an existing unverified account: update to the new password
+        // hash so the user can sign in once they click the verification link.
+        // Covers the case where the original signup used a magic link (password_hash=null).
+        const passwordHash = await hashPassword(body.password);
+        this.store.sql.exec('UPDATE managed_users SET password_hash=? WHERE environment=? AND id=?', passwordHash, environment, user.id);
       }
       if (!user.verified && !user.disabled) await this.issue(environment, user, 'verify_email');
     } else if (path === '/api/auth/magic-link') {

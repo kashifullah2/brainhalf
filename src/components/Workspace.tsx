@@ -1813,7 +1813,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   </div>
                 )}
                 <PreviewCanvas mode={viewportMode}>
-                  {wcEnabled ? (
+                  {wcEnabled && wc.status !== 'error' ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
                   ) : backend.liveUrl ? (
                     <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />
@@ -2306,7 +2306,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 </div>
               )}
               <PreviewCanvas mode={viewportMode}>
-                  {wcEnabled ? (
+                  {wcEnabled && wc.status !== 'error' ? (
                     <WebContainerPreview status={wc.status} previewUrl={wc.previewUrl} error={wc.error} onRestart={wc.restart} onOpenTerminal={() => selectTab('terminal')} />
                   ) : backend.liveUrl ? (
                     <LivePreviewFrame projectId={activeProjectId} liveUrl={backend.liveUrl} />

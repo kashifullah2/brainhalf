@@ -1133,8 +1133,11 @@ export default {
         }
 
         if (env.ChatAgent) {
-          if (!access.owner && !isPublicPreviewRead(subPath)) return withCors(previewDenied(user ? 403 : 401), origin);
-          const internalPath = subPath === '/' || subPath === '' ? '/index.html' : subPath;
+          // Extensionless paths with an HTML Accept header are browser navigations
+          // to client-side routes — serve index.html so the SPA router handles them.
+          const isHtmlNavigation = !subPath.includes('.') && (request.headers.get('Accept') || '').includes('text/html');
+          if (!access.owner && !isPublicPreviewRead(subPath) && !isHtmlNavigation) return withCors(previewDenied(user ? 403 : 401), origin);
+          const internalPath = subPath === '/' || subPath === '' || isHtmlNavigation ? '/index.html' : subPath;
 
           const targetUrl = new URL(request.url);
           targetUrl.pathname = `/preview/${scriptName}${internalPath}`;
