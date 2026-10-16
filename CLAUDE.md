@@ -5,8 +5,8 @@ AI app builder on Cloudflare Workers. React 19 + Vite 8 SPA with Durable Objects
 ## Architecture
 
 - **`src/worker.ts`** — Main Cloudflare Worker: routes, auth, project access control, WebSocket upgrade
-- **`src/agent.ts`** — `ChatAgent` Durable Object (~2662 lines): WebSocket lifecycle, onMessage routing, auth, file serving, project management. Delegates AI generation to `GenerationPipeline`.
-- **`src/lib/generation-pipeline.ts`** — `GenerationPipeline` class (~1907 lines): full AI generation path — CF Workers AI retry loop, kill-switch, tool loop, repair counters, completeness/phantom-hook/route-coverage checks, file extraction, streaming.
+- **`src/agent.ts`** — `ChatAgent` Durable Object: WebSocket lifecycle, onMessage routing, auth, file serving, project management. Delegates AI generation to `GenerationPipeline`.
+- **`src/lib/generation-pipeline.ts`** — `GenerationPipeline` class: full AI generation path — CF Workers AI retry loop, kill-switch, tool loop, repair counters, completeness/phantom-hook/route-coverage checks, file extraction, streaming.
 - **`src/registry.ts`** — `AuthRegistry` Durable Object: user accounts, project ownership, publication, model status (admin kill-switch)
 - **`src/runtime/`** — Separate Worker (`brainhalf-runtime`): builds and hosts user-generated apps via Workers for Platforms
 - **`src/components/`** — React UI: workspace, chat panel, preview, publication controls
@@ -20,6 +20,34 @@ AI app builder on Cloudflare Workers. React 19 + Vite 8 SPA with Durable Objects
 - **`src/lib/api-coverage.ts`** — `extractWorkerRoutes` / `extractApiFetches` / `findUncoveredFetches`. Route checker only recognises chained-router `.get('/api/...', handler)` syntax — NOT the if/else `url.pathname` dispatch style used by the baseline `workers-starter.ts` template.
 - **`src/runtime/source.ts`** — `assertSafeMigration`, `sourceSnapshot`, file hashing
 
+## Frontend Design System
+
+Single unified design system — no split between landing and studio.
+
+### Fonts
+- **`--font-sans` / `--font-brand`**: `'Instrument Studio'` (Instrument Sans) — used for all text including headings
+- **`--font-mono`**: `'DM Studio Mono'` — code only
+- Self-hosted WOFF files in `public/fonts/`
+
+### Accent color
+- Light mode: `#5857FF` (electric blue-violet)
+- Dark mode: `#7B7AFF`
+
+### CSS layers (load order matters)
+1. `src/index.css` — dark-mode defaults and base token definitions
+2. `src/styles/studio-theme.css` — active token overrides for all App.tsx pages (loaded last, wins)
+3. `src/components/landing/landing-tokens.css` — landing-only scoped overrides within `.landing-container`
+
+### Key token files
+- **`src/styles/studio-theme.css`** — primary token layer for all pages
+- **`src/styles/studio-fonts.css`** — `@font-face` declarations
+- **`src/components/landing/landing-tokens.css`** — landing page scoped overrides (maps `--landing-*` → studio tokens)
+- **`src/index.css`** — base/fallback tokens
+
+### Design work
+- Superdesign project: `.superdesign/` — init files in `.superdesign/init/`, design system in `.superdesign/design-system.md`
+- Canvas: `https://superdesign.dev/teams/5cb48de4-0ec0-4e58-8050-0c9a5c9d42bf/projects/a500624d-b0b2-4afe-accb-f72bb85c287b`
+
 ## Commands
 
 ### Development
@@ -31,8 +59,8 @@ npx wrangler dev         # Local Worker dev
 ### Testing
 ```bash
 npm test                              # All unit tests (vitest main + runtime + scripts)
-npx vitest run                        # Main tests only (~1440 tests)
-npx vitest run --config vitest.runtime.config.ts  # Runtime tests only (~140 tests)
+npx vitest run                        # Main tests only
+npx vitest run --config vitest.runtime.config.ts  # Runtime tests only (runtime-tests/)
 npm run typecheck                     # Both tsconfigs: tsconfig.json + tsconfig.runtime.json
 npm run lint                          # oxlint
 npm run verify                        # Full pipeline: typecheck + test + lint + build
@@ -66,7 +94,7 @@ About 22 of ~264 Playwright tests require a production backend (Durable Objects,
 
 1. Add entry to `CF_MODELS` (or other provider array) in `src/lib/models.ts`
 2. Add display metadata in `MODEL_DISPLAY` in `src/components/ChatPanel.tsx`
-3. If the model supports thinking/reasoning, set `supportsThinking: true` on its entry in `src/lib/models.ts` (checked by `modelSupportsThinking()` at line ~177)
+3. If the model supports thinking/reasoning, set `supportsThinking: true` on its entry in `src/lib/models.ts` (checked by `modelSupportsThinking()`)
 4. If the model accepts image input, add to `acceptsImageInput()` in `src/lib/models.ts`
 5. Verify the model ID exists on Cloudflare Workers AI catalog before deploying
 
