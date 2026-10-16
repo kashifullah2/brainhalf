@@ -265,6 +265,16 @@ export class AuthRegistry {
       )`
     );
     sql.exec(
+      `CREATE TABLE IF NOT EXISTS project_cleanup (
+        project_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        step INTEGER NOT NULL DEFAULT 0,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_at INTEGER NOT NULL,
+        completed_at INTEGER
+      )`
+    );
+    sql.exec(
       `INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (${SCHEMA_VERSION}, ${Date.now()})`
     );
     this.initialized = true;
@@ -283,11 +293,21 @@ export class AuthRegistry {
    * ever removed, never a live session.
    */
   private sweepExpiredSessions(): void {
+    const now = Date.now();
     try {
-      this.sql.exec('DELETE FROM sessions WHERE expires_at <= ?', Date.now());
+      this.sql.exec('DELETE FROM sessions WHERE expires_at <= ?', now);
     } catch (e) {
-      // A failed sweep must never break the login it was called from.
       console.warn('Session TTL sweep failed:', e);
+    }
+    try {
+      this.sql.exec('DELETE FROM email_actions WHERE expires_at <= ?', now);
+    } catch (e) {
+      console.warn('email_actions TTL sweep failed:', e);
+    }
+    try {
+      this.sql.exec('DELETE FROM project_claim_idempotency WHERE created_at < ?', now - 7 * 24 * 60 * 60_000);
+    } catch (e) {
+      console.warn('project_claim_idempotency sweep failed:', e);
     }
   }
 
@@ -533,9 +553,6 @@ export class AuthRegistry {
         }
         this.state.storage.transactionSync(() => {
           this.sql.exec('DELETE FROM project_owners WHERE project_id = ?', projectId);
-          // The cleanup queue table is created by ProjectCleanup's constructor;
-          // ensure it exists before deleting (it may never have been created).
-          this.sql.exec('CREATE TABLE IF NOT EXISTS project_cleanup (project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, step INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, completed_at INTEGER)');
           this.sql.exec('DELETE FROM project_cleanup WHERE project_id = ?', projectId);
           this.sql.exec('DELETE FROM project_claim_idempotency WHERE project_id = ?', projectId);
         });
@@ -577,7 +594,6 @@ export class AuthRegistry {
           'SELECT token_hash FROM sessions WHERE user_id = ?', userId
         ).toArray() as Array<{ token_hash: string }>).map(r => r.token_hash);
         this.state.storage.transactionSync(() => {
-          this.sql.exec('CREATE TABLE IF NOT EXISTS project_cleanup (project_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, step INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, completed_at INTEGER)');
           for (const projectId of deletedProjects) {
             this.sql.exec('DELETE FROM project_owners WHERE project_id = ?', projectId);
             this.sql.exec('DELETE FROM project_cleanup WHERE project_id = ?', projectId);
@@ -847,6 +863,9 @@ export class AuthRegistry {
         if (!isValidPassword(password))
           return this.json(400, { error: 'Password must be 8-512 printable characters' });
 
+        const signupRate = this.consumeRateLimit('signup', email, 3, 15 * 60_000);
+        if (!signupRate.ok) return this.json(429, { error: 'Too many signup attempts. Please try again later.' });
+
         const existing = this.sql
           .exec('SELECT id FROM users WHERE email = ?', email)
           .toArray() as Array<{ id: string }>;
@@ -1091,46 +1110,49 @@ export class AuthRegistry {
           return this.json(200, { projectId: body.projectId, ownerId, claimed: false });
         }
 
-        // A quota is what makes claim-on-first-access safe as an ownership model:
-        // without one, a client could mint unbounded rows — one per request — and
-        // fill the registry's SQLite database with ids it never intends to use.
-        const counts = this.sql
-          .exec(
-            `SELECT
-               SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) AS live,
-               COUNT(*) AS total
-             FROM project_owners WHERE user_id = ?`,
-            body.userId
-          )
-          .toArray() as Array<{ live: number; total: number }>;
-        const live = Number(counts[0]?.live ?? 0);
-        const total = Number(counts[0]?.total ?? 0);
+        // Resolve the async admin check BEFORE the synchronous quota+INSERT
+        // block so no concurrent request can interleave between the count
+        // query and the insert (DO input gates yield on await).
+        const adminUnlimited = await this.isAdminUnlimited();
         const adminEmails = String(this.env.ADMIN_EMAILS || '').split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean);
         const isAdminUser = adminEmails.length > 0 && (() => {
           const rows = this.sql.exec('SELECT email FROM users WHERE id = ?', body.userId as string).toArray();
           return rows.length > 0 && adminEmails.includes(String(rows[0].email).toLowerCase());
         })();
-        if (!isAdminUser) {
-          if (live >= MAX_PROJECTS_PER_USER && !(await this.isAdminUnlimited())) {
-            return this.json(409, {
-              error: `You have reached the ${MAX_PROJECTS_PER_USER}-project limit. Delete a project to create another.`,
-            });
-          }
-          if (total >= MAX_PROJECT_ROWS_PER_USER) {
-            return this.json(409, {
-              error: `You have reached the project limit. Deleting projects keeps their ids reserved; contact support to reclaim them.`,
-            });
-          }
-        }
 
-        this.sql.exec(
-          'INSERT OR IGNORE INTO project_owners (project_id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-          body.projectId as string,
-          body.userId,
-          name,
-          now,
-          now
-        );
+        // Quota check + INSERT in a synchronous transaction so no concurrent
+        // request can slip in between the count and the insert.
+        const quotaError = this.state.storage.transactionSync(() => {
+          const counts = this.sql
+            .exec(
+              `SELECT
+                 SUM(CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END) AS live,
+                 COUNT(*) AS total
+               FROM project_owners WHERE user_id = ?`,
+              body.userId
+            )
+            .toArray() as Array<{ live: number; total: number }>;
+          const live = Number(counts[0]?.live ?? 0);
+          const total = Number(counts[0]?.total ?? 0);
+          if (!isAdminUser && !adminUnlimited) {
+            if (live >= MAX_PROJECTS_PER_USER) {
+              return `You have reached the ${MAX_PROJECTS_PER_USER}-project limit. Delete a project to create another.`;
+            }
+            if (total >= MAX_PROJECT_ROWS_PER_USER) {
+              return `You have reached the project limit. Deleting projects keeps their ids reserved; contact support to reclaim them.`;
+            }
+          }
+          this.sql.exec(
+            'INSERT OR IGNORE INTO project_owners (project_id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+            body.projectId as string,
+            body.userId,
+            name,
+            now,
+            now
+          );
+          return null;
+        });
+        if (quotaError) return this.json(409, { error: quotaError });
         const rows = this.sql
           .exec('SELECT user_id, deleted_at FROM project_owners WHERE project_id = ?', body.projectId as string)
           .toArray() as Array<{ user_id: string; deleted_at: number | null }>;
@@ -1249,24 +1271,26 @@ export class AuthRegistry {
           'SELECT user_id, name, showcase FROM project_owners WHERE project_id = ? AND deleted_at IS NULL', body.sourceProjectId as string
         ).toArray() as Array<{ user_id: string; name: string; showcase: number }>;
         if (!source.length || source[0].showcase !== 1) return this.json(404, { error: 'This app is not listed in the gallery' });
-        const live = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', body.userId).toArray()[0]?.total || 0);
-        if (live >= MAX_PROJECTS_PER_USER && !(await this.isAdminUnlimited())) return this.json(409, { error: 'You have reached the project limit. Delete a project to make room.' });
-        const total = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ?', body.userId).toArray()[0]?.total || 0);
-        if (total >= MAX_PROJECT_ROWS_PER_USER) {
-          return this.json(409, {
-            error: 'You have reached the project limit. Deleting projects keeps their ids reserved; contact support to reclaim them.',
-          });
-        }
-        const projectId = crypto.randomUUID();
-        const name = `${source[0].name.replace(/ \(remix\)$/u, '').slice(0, 112)} (remix)`;
-        const now = Date.now();
-        this.sql.exec(
-          'INSERT INTO project_owners (project_id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-          projectId, body.userId, name, now, now
-        );
-        this.sql.exec('UPDATE project_owners SET remix_count = remix_count + 1 WHERE project_id = ?', body.sourceProjectId as string);
+        // Resolve async admin check before the synchronous quota+INSERT block
+        const adminUnlimited = await this.isAdminUnlimited();
+        const remixQuotaResult = this.state.storage.transactionSync(() => {
+          const live = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ? AND deleted_at IS NULL', body.userId).toArray()[0]?.total || 0);
+          if (live >= MAX_PROJECTS_PER_USER && !adminUnlimited) return { error: 'You have reached the project limit. Delete a project to make room.' } as const;
+          const total = Number(this.sql.exec('SELECT COUNT(*) AS total FROM project_owners WHERE user_id = ?', body.userId).toArray()[0]?.total || 0);
+          if (total >= MAX_PROJECT_ROWS_PER_USER) return { error: 'You have reached the project limit. Deleting projects keeps their ids reserved; contact support to reclaim them.' } as const;
+          const projectId = crypto.randomUUID();
+          const name = `${source[0].name.replace(/ \(remix\)$/u, '').slice(0, 112)} (remix)`;
+          const now = Date.now();
+          this.sql.exec(
+            'INSERT INTO project_owners (project_id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+            projectId, body.userId, name, now, now
+          );
+          this.sql.exec('UPDATE project_owners SET remix_count = remix_count + 1 WHERE project_id = ?', body.sourceProjectId as string);
+          return { projectId, name } as const;
+        });
+        if ('error' in remixQuotaResult) return this.json(409, { error: remixQuotaResult.error });
         this.galleryCache = null;
-        return this.json(201, { projectId, name });
+        return this.json(201, { projectId: remixQuotaResult.projectId, name: remixQuotaResult.name });
       }
 
       // Read-only ownership check (no claim). Used by preview/static-asset paths

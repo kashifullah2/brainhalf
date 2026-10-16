@@ -474,6 +474,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [composerUnlocked, setComposerUnlocked] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copyErrorIndex, setCopyErrorIndex] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -530,6 +531,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
     const timer = window.setTimeout(() => setComposerUnlocked(true), COMPOSER_UNLOCK_DELAY);
     return () => window.clearTimeout(timer);
   }, [activeProjectId]);
+
+  useEffect(() => {
+    return () => {
+      if (emptySendTimer.current) clearTimeout(emptySendTimer.current);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (historyLoaded) setComposerUnlocked(true);
@@ -941,6 +949,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       wsRef.current = ws;
 
       let pingInterval: any = null;
+      let lastWsActivity = Date.now();
 
       ws.onopen = () => {
         if (!isMounted || !isCurrent()) return;
@@ -967,9 +976,16 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         const stableTimer = setTimeout(() => { connectAttempts = 0; }, 2000);
         ws!.addEventListener('close', () => clearTimeout(stableTimer), { once: true });
 
-        // Keep WebSocket alive across long reasoning/generation phases
+        // Keep WebSocket alive across long reasoning/generation phases.
+        // Track last message receipt to detect dead connections.
+        lastWsActivity = Date.now();
         pingInterval = setInterval(() => {
           if (ws && ws.readyState === WebSocket.OPEN) {
+            if (Date.now() - lastWsActivity > 45_000) {
+              console.warn('No WS activity for 45s, closing to trigger reconnect');
+              ws.close();
+              return;
+            }
             try { ws.send(JSON.stringify({ type: 'ping' })); } catch { }
           }
         }, 20000);
@@ -995,6 +1011,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
       };
 
       ws.onmessage = async (event) => {
+        lastWsActivity = Date.now();
         if (!isMounted || !isCurrent()) return;
         try {
           const data = JSON.parse(event.data);
@@ -1222,6 +1239,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             }
             
             if (data.chunk?.done) {
+              if (!isGeneratingRef.current) return;
               // Cancel any pending RAF flush — we do a final synchronous update below
               if (rafHandleRef.current !== null) {
                 cancelAnimationFrame(rafHandleRef.current);
@@ -1480,6 +1498,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             workspaceReadyRef.current = false;
             resolveWorkspaceConflictRef.current = null;
             setWorkspaceConflict(null);
+            appEvents.emit('generation-status', { status: 'Ready', detail: 'Files re-synced from server (sync conflict resolved)', projectId: activeProjectId });
             beginSnapshot();
           } else if (data.type === 'files_changed') {
             if (!workspaceReadyRef.current) return;
@@ -1675,7 +1694,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
           return;
         }
         // Use capped exponential backoff (1s, 2s, 4s, 8s … 30s max)
-        const backoffMs = Math.min(1000 * Math.pow(2, connectAttempts - 1), WS_RECONNECT_BACKOFF_CAP);
+        const baseBackoff = Math.min(1000 * Math.pow(2, connectAttempts - 1), WS_RECONNECT_BACKOFF_CAP);
+        const backoffMs = baseBackoff + Math.random() * baseBackoff * 0.3;
         console.warn(`WS closed (attempt ${connectAttempts}), retrying in ${Math.round(backoffMs / 1000)}s…`);
         reconnectTimer = setTimeout(connect, backoffMs);
       };
@@ -1773,6 +1793,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         setMessages(cleared);
         messagesRef.current = cleared;
         deleteProjectMessages(activeProjectId);
+        resumableJobRef.current = null;
+        setResumableJob(null);
         setConfirmModalConfig(null);
       }
     });
@@ -1915,6 +1937,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
         messagesRef.current = fresh;
         setMessages(fresh);
         saveProjectMessages(activeProjectId, fresh);
+        resumableJobRef.current = null;
+        setResumableJob(null);
         setConfirmModalConfig(null);
       }
     });
@@ -2406,7 +2430,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                         const content = isAi ? formatToolTranscript(msg.content).replace(/<agent-tools>([\s\S]*?)<\/agent-tools>/g, (_block, names: string) => `The builder used tools (${names.split('|').length})`) : msg.content;
                         await navigator.clipboard.writeText(content);
                         setCopiedIndex(idx);
-                        setTimeout(() => setCopiedIndex(null), 2000);
+                        if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+                        copiedTimerRef.current = setTimeout(() => { setCopiedIndex(null); copiedTimerRef.current = null; }, 2000);
                       } catch { setCopiedIndex(null); setCopyErrorIndex(idx); }
                     }}>{copiedIndex === idx ? <Check size={15} /> : <Copy size={15} />}</button>
                   </div>

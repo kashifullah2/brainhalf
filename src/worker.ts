@@ -380,7 +380,7 @@ function buildZip(files: [string, string][]): Uint8Array {
 }
 
 export default {
-  async fetch(request: Request, env: PlatformEnv, _ctx: ExecutionContext) {
+  async fetch(request: Request, env: PlatformEnv, ctx: ExecutionContext) {
     // Read the deploy-time IS_DEV flag into the module-level ref so corsHeaders
     // can access it without parameter threading through 100+ call sites.
     _isDev = env.IS_DEV === 'true';
@@ -921,6 +921,9 @@ export default {
       const user = await verifySession(request, env);
       if (!user) return withCors(unauthorized(), origin);
       const showcaseProjectId = showcaseMatch[1];
+      if (request.method === 'PUT' && !await isProjectOwner(env, showcaseProjectId, user.userId)) {
+        return withCors(forbidden('You do not own this project'), origin);
+      }
       const query = new URLSearchParams({ projectId: showcaseProjectId, userId: user.userId });
       try {
         const putBody = request.method === 'PUT' ? await request.json() : undefined;
@@ -933,7 +936,7 @@ export default {
         if (request.method === 'PUT' && response.ok) {
           const result = await response.clone().json() as { showcase?: boolean };
           if (result.showcase) {
-            void (async () => {
+            ctx.waitUntil((async () => {
               try {
                 const galleryRes = await env.REGISTRY.get(env.REGISTRY.idFromName('auth')).fetch('https://registry/gallery');
                 if (galleryRes.ok) {
@@ -941,10 +944,10 @@ export default {
                   const entry = (gallery.apps || []).find(a => a.id === showcaseProjectId);
                   await upsertProjectVector(env, showcaseProjectId, entry?.name || '', entry?.description || '');
                 }
-              } catch { /* non-critical */ }
-            })();
+              } catch (e) { console.warn('Vectorize showcase sync failed:', e); }
+            })());
           } else {
-            void deleteProjectVector(env, showcaseProjectId);
+            ctx.waitUntil(deleteProjectVector(env, showcaseProjectId));
           }
         }
         return withCors(response, origin);

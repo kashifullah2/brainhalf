@@ -175,7 +175,9 @@ export const AGENT_MIGRATIONS: Migration[] = [
 ];
 
 /**
- * The auth registry's tables, including the TTL sweep support added in Phase 5.
+ * @deprecated Not imported anywhere. The registry schema is maintained
+ * exclusively by `ensureSchema()` in `registry.ts`. Do not add new
+ * migrations here — update `ensureSchema()` instead.
  */
 export const REGISTRY_MIGRATIONS: Migration[] = [
   {

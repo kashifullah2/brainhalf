@@ -1681,6 +1681,18 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
       // Consumed at job creation below; null for brand-new prompts.
       let resumeChain: { parentJobId: string; resumeCount: number; initialFiles: string[] } | null = null;
 
+      // Only recognised message types proceed past this point.
+      // A prompt/chat message uses type 'prompt' or omits the type field with
+      // a non-empty prompt/message body. Anything else is rejected so that
+      // unrecognised types (or empty payloads) never silently start a generation.
+      const GENERATION_TYPES = new Set(['prompt', 'resume_generation', undefined]);
+      if (!GENERATION_TYPES.has(data.type) || (data.type !== 'resume_generation' && !data.prompt && !data.message)) {
+        if (data.type) {
+          try { connection.send(JSON.stringify({ type: 'error', error: `Unknown message type: ${String(data.type).slice(0, 60)}` })); } catch (e) { noteSendFailure(e); }
+        }
+        return;
+      }
+
       if (data.type === 'resume_generation') {
         const jobs = this.generationJobs();
         const requestedId = typeof (data as { jobId?: unknown }).jobId === 'string' ? String((data as { jobId: unknown }).jobId) : '';
@@ -2084,7 +2096,18 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
     const work = (async () => {
       const events = this.runSql`SELECT id,event FROM product_outbox ORDER BY rowid LIMIT 20`;
       for (const row of events) {
-        if (this.erasing || !await recordProductOutcome(this.env, JSON.parse(String(row.event)))) return;
+        if (this.erasing) return;
+        try {
+          if (!await recordProductOutcome(this.env, JSON.parse(String(row.event)))) {
+            // Transient delivery failure — skip this row and continue draining
+            // the rest of the batch so one poison event cannot block the queue.
+            console.warn(`Product outcome delivery failed for ${row.id}; will retry next flush.`);
+            continue;
+          }
+        } catch (parseErr) {
+          // Permanently malformed event — dead-letter it to avoid infinite retries.
+          console.error(`Dropping malformed product_outbox row ${row.id}:`, parseErr);
+        }
         this.runSql`DELETE FROM product_outbox WHERE id=${row.id}`;
       }
       if (!this.runSql`SELECT id FROM product_outbox LIMIT 1`.length) {

@@ -21,7 +21,7 @@ export async function upsertProjectVector(
     const embedding = result.data?.[0];
     if (!embedding?.length) return;
     await env.VECTORIZE.upsert([{ id: projectId, values: embedding }]);
-  } catch { /* non-critical — index stays stale */ }
+  } catch (e) { console.warn('Vectorize upsert failed:', e); }
 }
 
 /** Remove a project from the Vectorize index. No-op when binding is absent. */
@@ -32,7 +32,7 @@ export async function deleteProjectVector(
   if (!env.VECTORIZE) return;
   try {
     await env.VECTORIZE.deleteByIds([projectId]);
-  } catch { /* non-critical */ }
+  } catch (e) { console.warn('Vectorize delete failed:', e); }
 }
 
 /**
@@ -51,7 +51,8 @@ export async function searchProjects(
     if (!embedding?.length) return [];
     const matches = await env.VECTORIZE.query(embedding, { topK, returnMetadata: false });
     return matches.matches.map((m: { id: string }) => m.id);
-  } catch {
+  } catch (e) {
+    console.warn('Vectorize search failed:', e);
     return [];
   }
 }

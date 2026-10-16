@@ -676,6 +676,7 @@ export class GenerationPipeline {
                 }
                 if (!isOperator) {
                   sendError('Custom models are only available to admin users.');
+                  jobOutcome = { kind: 'failed', error: 'Custom models are only available to admin users.' };
                   return;
                 }
                 try {
@@ -686,6 +687,7 @@ export class GenerationPipeline {
                 } catch { /* fall through to the allowlist error below */ }
                 if (!customModel) {
                   sendError('That custom model is no longer available.');
+                  jobOutcome = { kind: 'failed', error: 'That custom model is no longer available.' };
                   return;
                 }
               }
@@ -701,6 +703,7 @@ export class GenerationPipeline {
                 const allowlisted = resolveModel(requestedModel, data.provider);
                 if (!allowlisted) {
                   sendError(`Model "${requestedModel}" is not in the model allowlist`);
+                  jobOutcome = { kind: 'failed', error: `Model "${requestedModel}" is not in the model allowlist` };
                   return;
                 }
                 resolved = allowlisted;
@@ -723,7 +726,7 @@ export class GenerationPipeline {
                     disabledModels: Array.isArray(body.disabledModels) ? body.disabledModels : [],
                   };
                   this.killSwitchCache = status;
-                  void this.ctx.storage.put?.(KILL_SWITCH_CACHE_KEY, status);
+                  void this.ctx.storage.put?.(KILL_SWITCH_CACHE_KEY, status)?.catch(() => {});
                   return status;
                 },
                 async () => {
@@ -745,11 +748,13 @@ export class GenerationPipeline {
               const initialStatus = await getKillSwitchStatus();
               if (initialStatus === null) {
                 sendError('Model status could not be verified. Please try again.');
+                jobOutcome = { kind: 'failed', error: 'Model status could not be verified.' };
                 return;
               }
               const initialRefusal = getDisabledMsg(initialStatus);
               if (initialRefusal) {
                 sendError(initialRefusal);
+                jobOutcome = { kind: 'failed', error: initialRefusal };
                 return;
               }
     
@@ -918,6 +923,7 @@ export class GenerationPipeline {
                 const cmUrlError = assertSafeCustomModelUrl(normalizedBaseUrl);
                 if (cmUrlError) {
                   sendError(`Custom model base URL is not allowed: ${cmUrlError}`);
+                  jobOutcome = { kind: 'failed', error: `Custom model base URL is not allowed: ${cmUrlError}` };
                   return;
                 }
                 try {
@@ -955,7 +961,9 @@ export class GenerationPipeline {
                   aiModel = custom.chat(customModel.modelId.trim());
                   maxTokensForModel = 16384;
                 } catch (err) {
-                  sendError(err instanceof Error ? err.message : 'Custom model is not configured');
+                  const msg = err instanceof Error ? err.message : 'Custom model is not configured';
+                  sendError(msg);
+                  jobOutcome = { kind: 'failed', error: msg };
                   return;
                 }
               } else {
@@ -968,7 +976,9 @@ export class GenerationPipeline {
                   aiModel = built.aiModel;
                   maxTokensForModel = built.maxTokens;
                 } catch (err) {
-                  sendError(err instanceof Error ? err.message : 'Model provider is not configured');
+                  const msg = err instanceof Error ? err.message : 'Model provider is not configured';
+                  sendError(msg);
+                  jobOutcome = { kind: 'failed', error: msg };
                   return;
                 }
     
@@ -976,6 +986,7 @@ export class GenerationPipeline {
                 // the request fails with a clear message instead of rerouting.
                 if (!aiModel) {
                   sendError(`Model "${model.name}" needs ${model.provider} credentials, which are not configured`);
+                  jobOutcome = { kind: 'failed', error: `Model "${model.name}" needs ${model.provider} credentials, which are not configured` };
                   return;
                 }
               }
@@ -1443,7 +1454,7 @@ export class GenerationPipeline {
             // page reload and cross-device sessions. Skipped when a turn was already
             // saved for this epoch (e.g. a completed stage before a later failure).
             if (this.turnSavedForEpoch !== epoch) {
-              try { this.ctx.saveGenerationTurn(actualPrompt, cleanError, epoch); } catch { }
+              try { this.ctx.saveGenerationTurn(actualPrompt, cleanError, epoch); } catch (e) { console.error('saveGenerationTurn failed (429 branch):', e); }
             }
             // Distinguish daily-budget exhaustion from concurrent-generation capacity
             // so the frontend can give the right guidance (midnight UTC reset vs.
@@ -1460,7 +1471,7 @@ export class GenerationPipeline {
             // context — never sees what the user asked. (Aborts return earlier;
             // an intentional stop stays unsaved.)
             if (this.turnSavedForEpoch !== epoch) {
-              try { this.ctx.saveGenerationTurn(actualPrompt, cleanError, epoch); } catch { }
+              try { this.ctx.saveGenerationTurn(actualPrompt, cleanError, epoch); } catch (e) { console.error('saveGenerationTurn failed (error branch):', e); }
             }
             sendError(cleanError, err instanceof GenerationUserError ? err.code : undefined);
             // Resume only what a fresh attempt could plausibly fix: the
@@ -1598,11 +1609,30 @@ export class GenerationPipeline {
               // return above the catch). Leave the saved files resumable.
               jobs.interrupt(accounting.id, 'The build stopped before finishing. Your saved files are safe — you can resume.');
             }
-          } catch { /* resume state is auxiliary; the files themselves are saved */ }
+          } catch (bookkeepingErr) {
+            console.error('Generation bookkeeping failed (job/resume state):', bookkeepingErr);
+            // The client must learn that generation ended, even if job tracking
+            // failed — otherwise the UI spinner hangs forever.
+            try {
+              const fallback = JSON.stringify({ type: 'generation_completed', files: {}, error: 'Generation finished but session bookkeeping failed.' });
+              connection.send(fallback);
+            } catch (e) { noteSendFailure(e); }
+          }
           // P0-4: if this turn was a queued repair, resolve the parent turn's
           // bookkeeping now that the repair outcome is known.
           this.resolveCompletenessRepair(actualPrompt, accounting.id, completed, jobOutcome, abortController.signal.aborted);
-          this.clearActiveGenerationState();
+          // Only skip clearing the recovery row when a repair turn is genuinely
+          // pending AND the epoch is still valid (so trigger-auto-reply will
+          // actually fire below). If the epoch was superseded before terminal
+          // events flush, the repair turn will never arrive — clean up now so
+          // recoverOrphanedGeneration can handle the stuck usage row on wake.
+          if (repairPending && !this.ctx.writeEpoch.accepts(epoch)) {
+            this.resolveCompletenessRepair(actualPrompt, accounting.id, false, { kind: 'interrupted', error: 'Repair superseded by a new request.' }, false);
+            try { this.ctx.runSql`UPDATE generation_usage SET finished_at=${Date.now()}, status='interrupted' WHERE id=${accounting.id} AND status='running'`; } catch { /* metering is best-effort */ }
+          }
+          if (!(repairPending && this.ctx.writeEpoch.accepts(epoch))) {
+            this.clearActiveGenerationState();
+          }
           if (this.activeJobId === accounting.id) this.activeJobId = null;
           // No asynchronous cleanup remains after completion/retry is visible.
           // A client may immediately send its next turn after receiving these events.
@@ -1649,7 +1679,7 @@ export class GenerationPipeline {
         try { connection.send(msg); } catch (e) { noteSendFailure(e); }
         try { this.ctx.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
         if (res.ok && job?.id) {
-          void this.ctx.storage.put?.('server_build_check', { jobId: job.id, revision, ownerId });
+          void this.ctx.storage.put?.('server_build_check', { jobId: job.id, revision, ownerId })?.catch(() => {});
           this.scheduleBuildStatusCheck(job.id as string, connection, 0);
         }
         if (!res.ok) {
@@ -1716,7 +1746,7 @@ export class GenerationPipeline {
       try { this.ctx.broadcast(chatMsg, [connection.id]); } catch (e) { noteSendFailure(e); }
       return;
     }
-    void this.ctx.storage.put?.('server_build_check', { retry: true, attempt, revision, ownerId });
+    void this.ctx.storage.put?.('server_build_check', { retry: true, attempt, revision, ownerId })?.catch(() => {});
     this.ctx.waitUntil(
       new Promise<void>(r => setTimeout(r, backoff[attempt])).then(async () => {
         const pending = await this.ctx.storage.get?.('server_build_check') as { retry?: boolean; revision?: string } | undefined;
@@ -1737,7 +1767,7 @@ export class GenerationPipeline {
         const result = await res.json().catch(() => ({})) as Record<string, unknown>;
         if (res.ok && result.job) {
           const job = result.job as Record<string, unknown>;
-          void this.ctx.storage.put?.('server_build_check', { jobId: job.id as string, revision });
+          void this.ctx.storage.put?.('server_build_check', { jobId: job.id as string, revision })?.catch(() => {});
           const msg = JSON.stringify({ type: 'runtime_build_status', status: 'triggered', revision, jobId: job.id });
           try { connection.send(msg); } catch (e) { noteSendFailure(e); }
           try { this.ctx.broadcast(msg, [connection.id]); } catch (e) { noteSendFailure(e); }
