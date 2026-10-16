@@ -424,10 +424,15 @@ export async function handleLogout(request: Request, env: RegistryEnv): Promise<
     }
     // Eagerly evict from KV so the 5-minute cache window does not outlast logout.
     if (env.SESSION_CACHE) {
-      const secret = getSessionSecret(env);
-      verifyTokenSignature(token, secret)
-        .then(verified => { if (verified) env.SESSION_CACHE!.delete(sessionCacheKey(verified.tokenId)).catch(() => {}); })
-        .catch(() => {});
+      try {
+        const secret = getSessionSecret(env);
+        const verified = await verifyTokenSignature(token, secret);
+        if (verified) await env.SESSION_CACHE.delete(sessionCacheKey(verified.tokenId));
+      } catch {
+        // KV eviction failed — the session can still be used at other edges
+        // for up to SESSION_CACHE_TTL_SECONDS. Registry revocation is the
+        // authoritative gate, so this is defense-in-depth, not critical.
+      }
     }
   }
   // Clear the cookie regardless of the token's state.

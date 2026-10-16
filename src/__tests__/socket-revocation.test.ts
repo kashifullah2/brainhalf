@@ -45,16 +45,13 @@ describe('WebSocket session and ownership revocation', () => {
     expect(agent.connectionUserIds.has(connection.id)).toBe(true);
     expect((connection.state as any).transientAuthFailures).toBe(1);
   });
-  it('tolerates two consecutive transient failures before the third closes with 4401', async () => {
+  it('tolerates one transient failure before the second closes with 4401', async () => {
     const { agent, connection, fetch } = fixture();
     // Prime the connectionUserIds map so the connection looks authenticated.
     agent.connectionUserIds.set(connection.id, 'alice');
     fetch.mockRejectedValue(new Error('timeout'));
     expect(await agent.authorizeConnection(connection, true)).toBe(true);
     expect((connection.state as any).transientAuthFailures).toBe(1);
-    agent.authCache.clear();
-    expect(await agent.authorizeConnection(connection, true)).toBe(true);
-    expect((connection.state as any).transientAuthFailures).toBe(2);
     agent.authCache.clear();
     expect(await agent.authorizeConnection(connection, true)).toBe(false);
     expect(connection.close).toHaveBeenCalledWith(4401, expect.any(String));
@@ -64,7 +61,7 @@ describe('WebSocket session and ownership revocation', () => {
     const { agent, connection, fetch } = fixture();
     agent.connectionUserIds.set(connection.id, 'alice');
     // Seed a failure count via connection.state.
-    connection.state = { ...connection.state, transientAuthFailures: 2 };
+    connection.state = { ...connection.state, transientAuthFailures: 1 };
     // Next call succeeds.
     fetch.mockResolvedValueOnce(Response.json({ userId: 'alice' }));
     expect(await agent.authorizeConnection(connection, true)).toBe(true);

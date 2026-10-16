@@ -386,7 +386,9 @@ export class AuthRegistry {
       if (path === '/account/github-token') {
         const userId = url.searchParams.get('userId') || '';
         if (!userId) return this.json(400, { error: 'userId is required' });
-        const secret = ((this.env as Record<string, unknown>).GITHUB_TOKEN_SECRET as string | undefined) || this.env.SESSION_SECRET;
+        const ghTokenSecret = (this.env as Record<string, unknown>).GITHUB_TOKEN_SECRET as string | undefined;
+        if (!ghTokenSecret) console.warn('GITHUB_TOKEN_SECRET not set — falling back to SESSION_SECRET. Rotating SESSION_SECRET will break GitHub token decryption.');
+        const secret = ghTokenSecret || this.env.SESSION_SECRET;
         if (!secret) return this.json(500, { error: 'Encryption secret is not configured' });
         if (method === 'GET') {
           const rows = this.sql.exec(
@@ -804,10 +806,10 @@ export class AuthRegistry {
           return { userId: id, email };
         });
         if (body.token && result.userId) {
-          const secret = ((this.env as Record<string, unknown>).GITHUB_TOKEN_SECRET as string | undefined) || this.env.SESSION_SECRET;
-          if (secret) {
+          const ghSecret = ((this.env as Record<string, unknown>).GITHUB_TOKEN_SECRET as string | undefined) || this.env.SESSION_SECRET;
+          if (ghSecret) {
             const { encryptValue } = await import('./lib/crypto');
-            const encrypted = await encryptValue(secret, body.token.trim());
+            const encrypted = await encryptValue(ghSecret, body.token.trim());
             this.sql.exec(
               'INSERT OR REPLACE INTO github_tokens (user_id, login, token_encrypted, connected_at) VALUES (?, ?, ?, ?)',
               result.userId, login, encrypted, Date.now()

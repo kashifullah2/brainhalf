@@ -1128,13 +1128,10 @@ export default {
 
         if (env.ChatAgent) {
           if (!access.owner && !isPublicPreviewRead(subPath)) return withCors(previewDenied(user ? 403 : 401), origin);
-          const redirectPath = subPath === '/' || subPath === '' ? '/index.html' : subPath;
-          if ((request.method === 'GET' || request.method === 'HEAD') && (subPath === '/' || subPath === '' || subPath === '/index.html')) {
-            return withPreviewPrivacy(Response.redirect(`${url.origin}/preview/${scriptName}${redirectPath}`, 302));
-          }
+          const internalPath = subPath === '/' || subPath === '' ? '/index.html' : subPath;
 
           const targetUrl = new URL(request.url);
-          targetUrl.pathname = `/preview/${scriptName}${redirectPath}`;
+          targetUrl.pathname = `/preview/${scriptName}${internalPath}`;
           const forwardRequest = new Request(targetUrl.toString(), previewRequest(request, user?.userId, access.owner));
           const id = env.ChatAgent.idFromName(scriptName);
           const obj = env.ChatAgent.get(id);

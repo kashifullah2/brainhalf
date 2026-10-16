@@ -34,9 +34,11 @@
 
 .trust-benefit h3 {
   margin: 0;
-  font-size: 18px;
+  font-family: var(--landing-font-display, inherit);
+  font-size: var(--landing-text-lg, 18px);
+  font-weight: 400;
   letter-spacing: -0.3px;
-  color: var(--studio-ink);
+  color: var(--landing-ink, var(--studio-ink));
 }
 
 .trust-benefit p {

@@ -41,6 +41,9 @@ export const ALLOWED_ORIGINS: readonly string[] = [
   ...DEV_ORIGINS,
 ];
 
+/** Production-only origins for client-side checks where the Worker `env` is unavailable. */
+export const PRODUCTION_ALLOWED_ORIGINS: readonly string[] = PRODUCTION_ORIGINS;
+
 /**
  * Gate function used by the Worker. Checks the request-time origin against
  * the environment-appropriate allowlist so localhost origins are never

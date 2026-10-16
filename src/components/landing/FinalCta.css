@@ -7,9 +7,9 @@
   overflow: hidden;
   border-radius: 28px;
   background:
-    radial-gradient(120% 160% at 12% 8%, rgba(129, 140, 248, 0.55) 0%, rgba(129, 140, 248, 0) 55%),
-    radial-gradient(120% 160% at 88% 92%, rgba(45, 212, 191, 0.35) 0%, rgba(45, 212, 191, 0) 55%),
-    linear-gradient(120deg, #1b2340 0%, #2b2a5e 48%, #3b2f6e 100%);
+    radial-gradient(120% 160% at 12% 8%, rgba(79, 70, 229, 0.45) 0%, rgba(79, 70, 229, 0) 55%),
+    radial-gradient(120% 160% at 88% 92%, rgba(129, 140, 248, 0.3) 0%, rgba(129, 140, 248, 0) 55%),
+    linear-gradient(135deg, #0F0F10 0%, #1a1a3e 48%, #252550 100%);
   padding: clamp(48px, 7vw, 96px) clamp(28px, 6vw, 88px);
   color: #fff;
 }
@@ -37,7 +37,9 @@
 .final-cta-content h2 {
   margin: 0;
   color: #fff;
-  font-size: clamp(34px, 4.4vw, 52px);
+  font-family: var(--landing-font-display, var(--font-brand));
+  font-size: var(--landing-text-3xl, clamp(34px, 4.4vw, 52px));
+  font-weight: 400;
   line-height: 1.08;
   letter-spacing: -1.6px;
   text-wrap: balance;

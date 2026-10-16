@@ -667,7 +667,7 @@ function fetchProjectSnapshot(projectId: string): Promise<{ files: Record<string
       if (scope !== accountScope || projectDeleted(projectId)) return null;
       // Only populate files cache/IDB if no local write happened while /snapshot was in flight.
       const currentFilesRev = storageRevisions.get(filesKey) || 0;
-      if (currentFilesRev === filesRevBefore || Object.keys(files).length > 0) {
+      if (currentFilesRev === filesRevBefore) {
         void idbSet('files', projectId, files);
         if (revision !== null) void idbSet('files', `revision:${projectId}`, revision);
         memoryCache[filesKey] = files;

@@ -1,22 +1,16 @@
 import { useEffect } from 'react';
 
-/**
- * Observes every [data-reveal] element in the document and adds the
- * `is-visible` class once the element enters the viewport (with 60px margin).
- * Disconnects after all elements have been revealed.
- */
 export function useScrollReveal() {
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      document.querySelectorAll<HTMLElement>('[data-reveal]').forEach(el => {
-        el.classList.add('is-visible');
-      });
+    const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
+    if (targets.length === 0) return;
+
+    if (typeof IntersectionObserver === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      targets.forEach(el => el.classList.add('is-visible'));
       return;
     }
 
-    const targets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'));
-    if (targets.length === 0) return;
+    targets.forEach(el => el.classList.add('will-reveal'));
 
     let pending = targets.length;
     const io = new IntersectionObserver(

@@ -431,7 +431,9 @@ describe('Cloudflare Worker Gateway & Routing', () => {
     expect(await res.text()).toBe('Not found');
   });
 
-  it('falls back to ChatAgent preview redirect when worker is not in DISPATCHER namespace', async () => {
+  it('falls back to ChatAgent proxy when worker is not in DISPATCHER namespace', async () => {
+    const mockDoFetch = vi.fn().mockResolvedValue(new Response('<html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } }));
+    const mockDoObj = { fetch: mockDoFetch };
     const registry = mockRegistry();
     const env = envWith(registry, {
       DISPATCHER: {
@@ -439,14 +441,16 @@ describe('Cloudflare Worker Gateway & Routing', () => {
           throw new Error('Worker not found.');
         }),
       },
-      ChatAgent: { idFromName: vi.fn(), get: vi.fn() },
+      ChatAgent: { idFromName: vi.fn().mockReturnValue('mock-id'), get: vi.fn().mockReturnValue(mockDoObj) },
     });
 
     const { request } = await authenticatedRequest('https://brainhalf.com/p/proj-xpjpet-mu0tk7tr');
     const res = await worker.fetch(request, env, {} as any);
 
-    expect(res.status).toBe(302);
-    expect(res.headers.get('Location')).toBe('https://brainhalf.com/preview/proj-xpjpet-mu0tk7tr/index.html');
+    expect(res.status).toBe(200);
+    expect(mockDoFetch).toHaveBeenCalled();
+    const fetchedUrl = new URL(mockDoFetch.mock.calls[0][0].url);
+    expect(fetchedUrl.pathname).toBe('/preview/proj-xpjpet-mu0tk7tr/index.html');
   });
 
   it('forwards subpath requests to ChatAgent when falling back from DISPATCHER', async () => {

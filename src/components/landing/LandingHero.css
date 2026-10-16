@@ -37,14 +37,17 @@
 
 .landing-hero-redesign h1 {
   margin: 0;
-  color: var(--studio-ink);
-  font: 400 clamp(38px, 5.6vw, 66px)/1.05 var(--font-brand);
+  color: var(--landing-ink, var(--studio-ink));
+  font: 400 var(--landing-text-4xl, clamp(38px, 5.6vw, 66px))/1.05 var(--landing-font-display, var(--font-brand));
   letter-spacing: -2px;
   text-wrap: balance;
 }
 
 .hero-gradient-text {
-  color: var(--brand-solid);
+  background: linear-gradient(135deg, var(--landing-accent, var(--brand-solid)), #818CF8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .hero-sub {

@@ -13,9 +13,9 @@
 .bento-tile {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--studio-line);
-  border-radius: 20px;
-  background: var(--studio-white);
+  border: 1px solid var(--landing-border, var(--studio-line));
+  border-radius: var(--landing-radius-xl, 20px);
+  background: var(--landing-surface, var(--studio-white));
   padding: 26px;
   display: flex;
   flex-direction: column;
@@ -84,9 +84,11 @@
 
 .bento-tile h3 {
   margin: 0;
-  font-size: 21px;
+  font-family: var(--landing-font-display, inherit);
+  font-size: var(--landing-text-xl, 21px);
+  font-weight: 400;
   letter-spacing: -0.4px;
-  color: var(--studio-ink);
+  color: var(--landing-ink, var(--studio-ink));
 }
 
 .bento-tile p {

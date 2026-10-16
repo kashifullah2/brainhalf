@@ -10,8 +10,12 @@ export function createPreviewFetch(
 ): typeof fetch {
   return async (input, init) => {
     const address = input instanceof Request ? input.url : String(input);
-    const url = new URL(address, origin);
-    if (url.origin !== origin || !url.pathname.startsWith('/api/')) return nativeFetch(input, init);
+    // In sandboxed iframes without allow-same-origin, origin is the string "null"
+    // which is not a valid URL base. Use a synthetic base so relative paths resolve.
+    const safeBase = origin === 'null' ? 'http://preview.invalid' : origin;
+    let url: URL;
+    try { url = new URL(address, safeBase); } catch { return nativeFetch(input, init); }
+    if (url.origin !== safeBase || !url.pathname.startsWith('/api/')) return nativeFetch(input, init);
 
     const request = new Request(input instanceof Request ? input : url, init);
     request.signal.throwIfAborted();

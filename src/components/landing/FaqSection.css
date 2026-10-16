@@ -37,9 +37,10 @@
 
 .faq-summary h3 {
   margin: 0;
-  font-size: 15px;
+  font-family: var(--landing-font-body, inherit);
+  font-size: var(--landing-text-base, 15px);
   font-weight: 600;
-  color: var(--studio-ink);
+  color: var(--landing-ink, var(--studio-ink));
 }
 
 .faq-summary:hover h3 {

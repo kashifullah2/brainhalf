@@ -236,7 +236,8 @@ export default function PublicationControls({ projectId, files, publishOnOpen, o
     // so it intentionally does NOT use an AbortController. A failed call here
     // means the registry never learns the app is published, blocking gallery
     // listing and leaving the dashboard stuck on "Draft".
-    void projectPublication(projectId, AbortSignal.timeout(30_000), true, status?.productionUrl || '').catch(() => {});
+    const pubUrl = status?.productionUrl || `${window.location.origin}/p/${encodeURIComponent(projectId)}/`;
+    void projectPublication(projectId, AbortSignal.timeout(30_000), true, pubUrl).catch(() => {});
   }, [projectId, job?.id, job?.status, job?.kind]);
   // Backfill: when the console opens on an already-live release, push the
   // production URL to the registry so gallery links resolve correctly.

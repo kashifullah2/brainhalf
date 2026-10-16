@@ -1362,12 +1362,12 @@ export class ChatAgent extends Agent<ChatAgentEnv> {
         // Definitive rejection: Registry responded but session or ownership check failed.
       } catch (e) {
         // Transient failure: Registry timeout, 5xx, DO cold start.
-        // Tolerate up to 2 consecutive transients before failing closed so that
+        // Tolerate 1 consecutive transient before failing closed so that
         // a brief Registry hiccup does not kill a running generation.
         console.warn('Auth check failed (transient):', e instanceof Error ? e.message : e);
         const failures = (state?.transientAuthFailures ?? 0) + 1;
         try { connection.setState({ ...state, transientAuthFailures: failures }); } catch {}
-        if (failures < 3) return true;
+        if (failures < 2) return true;
         console.warn(`Auth check failed ${failures} times consecutively on ${connection.id}; failing closed`);
       }
     }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { basicReactTemplate } from './templates';
 import { InMemoryDataStore } from './backend-runner';
-import { isAllowedOrigin, ALLOWED_ORIGINS } from './allowed-origins';
+import { PRODUCTION_ALLOWED_ORIGINS, ALLOWED_ORIGINS } from './allowed-origins';
 import { selectHtmlEntry } from './preview-entry';
 import { loadPreviewDependencies } from './preview-modules';
 import { createPreviewFetch } from './preview-fetch';
@@ -14,7 +14,12 @@ const FILE_SYNC_RETRY_MS = 2_000;
 const FILE_SYNC_MAX_ATTEMPTS = 5;
 
 function isTrustedParentOrigin(origin: string): boolean {
-  return isAllowedOrigin(origin) || ALLOWED_ORIGINS.includes(origin);
+  if (PRODUCTION_ALLOWED_ORIGINS.includes(origin)) return true;
+  // In local dev, also trust localhost origins
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return ALLOWED_ORIGINS.includes(origin);
+  }
+  return false;
 }
 
 function getDefaultFiles(): Record<string, string> {

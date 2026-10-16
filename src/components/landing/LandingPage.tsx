@@ -10,6 +10,7 @@ import TrustSection from './TrustSection';
 import FaqSection from './FaqSection';
 import FinalCta from './FinalCta';
 import { useScrollReveal } from '../../hooks/useScrollReveal';
+import './landing-tokens.css';
 import './LandingPage.css';
 import '../PublicPage.css';
 

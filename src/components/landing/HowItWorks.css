@@ -97,9 +97,11 @@
 
 .hiw-step-body h3 {
   margin: 0 0 12px;
-  font-size: 26px;
+  font-family: var(--landing-font-display, inherit);
+  font-size: var(--landing-text-xl, 26px);
+  font-weight: 400;
   letter-spacing: -0.5px;
-  color: var(--studio-ink);
+  color: var(--landing-ink, var(--studio-ink));
 }
 
 .hiw-step-body p {

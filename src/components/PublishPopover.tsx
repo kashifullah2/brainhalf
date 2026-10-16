@@ -149,7 +149,8 @@ export default function PublishPopover({ projectId, files, onClose, onCustomDoma
   // "Public" lists the app in the gallery; "Private" keeps it link-only.
   // The gallery requires the published flag, which is set first.
   const applyVisibility = async () => {
-    await projectPublication(projectId, AbortSignal.timeout(15_000), true).catch(() => {});
+    const pubUrl = status?.productionUrl || `${window.location.origin}/p/${encodeURIComponent(projectId)}/`;
+    await projectPublication(projectId, AbortSignal.timeout(15_000), true, pubUrl).catch(() => {});
     await authFetch(`${apiOrigin()}/api/projects/${encodeURIComponent(projectId)}/showcase`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ showcase: visibility === 'public' }),
