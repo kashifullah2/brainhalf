@@ -1333,14 +1333,16 @@ export class GenerationPipeline {
                         continue;
                       }
                       const classification = classifyGenerationError(effectiveErr);
-                      // A custom endpoint rejecting the tool payload (400s naming
-                      // tools/functions/schema) is not a transient failure — drop
-                      // the tools and retry the stage once with plain text output.
+                      // A custom endpoint rejecting the tool payload is not a transient
+                      // failure — drop tools and retry the stage once with plain text output.
+                      // Catches explicit tool/schema rejections (400s) AND 401/403 responses
+                      // that some providers return for account-tier tool restrictions (the
+                      // same key works fine without tools, as the admin playground proves).
                       // Gate on no streamed text AND no tool writes this stage — tool summary
                       // markup sets displayContent even before any real output, poisoning the
                       // original !displayContent check after the first tool call.
                       if (customModel && !customToolsDisabled && !streamedText && toolWrittenPaths.size === stageToolWrittenPaths.size && !abortController.signal.aborted
-                        && (/\btools?\b|\bfunctions?\b|schema|400|422|500|501|502|503|bad request|service unavailable|overloaded|invalid (?:param|argument|request)/i.test(errMessage))) {
+                        && (classification.category === 'auth' || /\btools?\b|\bfunctions?\b|schema|400|422|500|501|502|503|bad request|service unavailable|overloaded|invalid (?:param|argument|request)/i.test(errMessage))) {
                         customToolsDisabled = true;
                         console.warn(`Custom model ${customModel.name} rejected tool calling; retrying stage "${stage.stageId}" without tools`);
                         try { connection.send(JSON.stringify({ type: 'generation_notice', message: 'This model does not support tool calls — switching to direct file output…', stage: stage.stageId, requestId: data.idempotencyKey })); } catch (e) { noteSendFailure(e); }

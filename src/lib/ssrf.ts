@@ -559,11 +559,12 @@ export async function fetchCustomModelWithRetry(options: {
   }
 
   // 2b. If the request included `tools` / `tool_choice` and the custom endpoint
-  // returned 400, 422, 500, 501, 502, or 503 (many OpenAI-compatible proxies,
-  // reasoning models, and vLLM deployments return 503/500/400 when tool schemas
-  // or `tool_choice: "auto"` are sent), retry without `tools` so the model can
-  // respond directly using BrainHalf's <file path="..."> protocol.
-  if (!lastResp.ok && [400, 422, 500, 501, 502, 503].includes(lastResp.status) && parsedBody && ('tools' in parsedBody || 'tool_choice' in parsedBody)) {
+  // returned 400, 401, 403, 422, 500, 501, 502, or 503 (many OpenAI-compatible
+  // proxies, reasoning models, and vLLM deployments reject tool schemas with
+  // 4xx/5xx — including 401/403 when the account tier doesn't allow tool
+  // calling), retry without `tools` so the model can respond directly using
+  // BrainHalf's <file path="..."> protocol.
+  if (!lastResp.ok && [400, 401, 403, 422, 500, 501, 502, 503].includes(lastResp.status) && parsedBody && ('tools' in parsedBody || 'tool_choice' in parsedBody)) {
     const toolLessBody = { ...parsedBody };
     delete toolLessBody.tools;
     delete toolLessBody.tool_choice;
