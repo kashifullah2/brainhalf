@@ -1,132 +1,122 @@
 /* ==========================================================================
-   Landing Page Design Tokens
-   Unified with studio accent (#5857FF). Single surface, single accent.
-   Overrides studio-theme tokens within .landing-container scope.
+   BrainHalf Pro Studio — Architectural Design Tokens
+   Atmospheric Minimalism & High-Craft Dark/Light UI System
    ========================================================================== */
 .landing-container {
-  /* ---- Surface ---- */
-  --landing-bg: #f8f9fc;
-  --landing-bg-alt: #f0f2f7;
+  /* ---- Core Surfaces (Light Mode — Crisp Daylight Studio) ---- */
+  --landing-bg: #F6F7FB;
+  --landing-bg-alt: #EDF0F7;
   --landing-surface: #FFFFFF;
-  --landing-surface-hover: #f4f5f9;
+  --landing-surface-elevated: rgba(255, 255, 255, 0.86);
+  --landing-surface-hover: #F2F4FA;
+  --landing-surface-glass: rgba(255, 255, 255, 0.75);
 
-  /* ---- Ink ---- */
-  --landing-ink: #0F0F10;
-  --landing-ink-secondary: #4A4A4D;
-  --landing-ink-muted: #7C7C80;
+  /* ---- Ink Hierarchy ---- */
+  --landing-ink: #090A0F;
+  --landing-ink-secondary: #3E4251;
+  --landing-ink-muted: #6E7385;
 
-  /* ---- Accent — unified brand blue-violet ---- */
+  /* ---- Brand Electric Violet & Cyber Indigo ---- */
   --landing-accent: #5857FF;
-  --landing-accent-hover: #3A39C0;
-  --landing-accent-light: rgba(88, 87, 255, 0.10);
+  --landing-accent-hover: #4645E6;
+  --landing-accent-secondary: #818CF8;
+  --landing-accent-cyan: #06B6D4;
+  --landing-accent-emerald: #10B981;
+  --landing-accent-light: rgba(88, 87, 255, 0.09);
+  --landing-accent-glow: rgba(88, 87, 255, 0.24);
   --landing-accent-on: #FFFFFF;
 
-  /* ---- Secondary highlight ---- */
-  --landing-highlight: #f4f5f9;
-  --landing-highlight-warm: #edf0f8;
+  /* ---- Specular Borders & Hairlines ---- */
+  --landing-border: rgba(15, 18, 34, 0.08);
+  --landing-border-strong: rgba(15, 18, 34, 0.14);
+  --landing-rim-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
 
-  /* ---- Borders ---- */
-  --landing-border: #e2e5ee;
-  --landing-border-strong: #d0d4e0;
-
-  /* ---- Shadows ---- */
-  --landing-shadow-sm: 0 1px 2px rgba(15, 15, 16, 0.04);
-  --landing-shadow-md: 0 4px 16px rgba(15, 15, 16, 0.06), 0 1px 3px rgba(15, 15, 16, 0.04);
-  --landing-shadow-lg: 0 12px 48px rgba(15, 15, 16, 0.08), 0 2px 6px rgba(15, 15, 16, 0.03);
-  --landing-shadow-xl: 0 24px 80px rgba(15, 15, 16, 0.10), 0 4px 12px rgba(15, 15, 16, 0.04);
+  /* ---- Architectural Shadows ---- */
+  --landing-shadow-sm: 0 1px 2px rgba(9, 10, 15, 0.04), 0 0 0 1px rgba(9, 10, 15, 0.05);
+  --landing-shadow-md: 0 8px 24px -4px rgba(9, 10, 15, 0.06), 0 2px 6px -1px rgba(9, 10, 15, 0.04);
+  --landing-shadow-lg: 0 20px 50px -12px rgba(15, 20, 40, 0.10), 0 4px 12px -2px rgba(15, 20, 40, 0.04);
+  --landing-shadow-xl: 0 32px 80px -16px rgba(15, 20, 40, 0.14), 0 0 0 1px rgba(15, 20, 40, 0.06);
+  --landing-shadow-composer: 0 24px 60px -12px rgba(88, 87, 255, 0.14), 0 4px 16px rgba(9, 10, 15, 0.06);
 
   /* ---- Typography ---- */
-  --landing-font-display: var(--font-sans, 'Instrument Sans', system-ui, sans-serif);
+  --landing-font-display: var(--font-brand, 'Instrument Studio', 'Instrument Sans', system-ui, sans-serif);
   --landing-font-body: var(--font-sans, 'Instrument Sans', system-ui, sans-serif);
+  --landing-font-mono: var(--font-mono, 'DM Mono', ui-monospace, monospace);
 
-  /* Fluid type scale */
+  /* ---- Fluid Type Scale ---- */
   --landing-text-xs: clamp(11px, 0.75vw, 12px);
   --landing-text-sm: clamp(12.5px, 0.85vw, 13.5px);
   --landing-text-base: clamp(14px, 1vw, 15px);
-  --landing-text-md: clamp(15px, 1.1vw, 16.5px);
-  --landing-text-lg: clamp(17px, 1.3vw, 19px);
+  --landing-text-md: clamp(15.5px, 1.1vw, 17px);
+  --landing-text-lg: clamp(18px, 1.35vw, 20px);
   --landing-text-xl: clamp(22px, 2vw, 26px);
   --landing-text-2xl: clamp(28px, 2.8vw, 36px);
-  --landing-text-3xl: clamp(34px, 3.6vw, 48px);
-  --landing-text-4xl: clamp(40px, 4.8vw, 62px);
+  --landing-text-3xl: clamp(34px, 3.8vw, 48px);
+  --landing-text-4xl: clamp(44px, 5.4vw, 72px);
 
-  /* ---- Spacing (8px grid) ---- */
-  --landing-space-1: 4px;
-  --landing-space-2: 8px;
-  --landing-space-3: 12px;
-  --landing-space-4: 16px;
-  --landing-space-5: 20px;
-  --landing-space-6: 24px;
-  --landing-space-8: 32px;
-  --landing-space-10: 40px;
-  --landing-space-12: 48px;
-  --landing-space-16: 64px;
-  --landing-space-20: 80px;
-  --landing-space-24: 96px;
-  --landing-space-28: 112px;
-  --landing-space-32: 128px;
-  --landing-space-section: clamp(64px, 8vw, 120px);
-
-  /* ---- Radii ---- */
+  /* ---- Spacing & Radii ---- */
   --landing-radius-sm: 8px;
   --landing-radius-md: 12px;
   --landing-radius-lg: 16px;
-  --landing-radius-xl: 20px;
-  --landing-radius-full: 999px;
+  --landing-radius-xl: 22px;
+  --landing-radius-2xl: 28px;
+  --landing-radius-full: 9999px;
 
-  /* ---- Grain texture overlay ---- */
-  --landing-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-
-  /* ---- Override studio tokens for landing scope ---- */
+  /* ---- Studio Scope Overrides ---- */
   --studio-paper: var(--landing-bg);
   --studio-ink: var(--landing-ink);
   --studio-muted: var(--landing-ink-muted);
   --studio-white: var(--landing-surface);
   --studio-line: var(--landing-border);
-  --studio-wash: var(--landing-highlight);
+  --studio-wash: var(--landing-bg-alt);
   --brand-solid: var(--landing-accent);
   --brand-solid-hover: var(--landing-accent-hover);
   --brand-on-solid: var(--landing-accent-on);
-  --focus-ring: rgba(88, 87, 255, 0.15);
+  --focus-ring: rgba(88, 87, 255, 0.22);
   --text-secondary: var(--landing-ink-secondary);
 }
 
-/* ---- Dark theme overrides ---- */
+/* ==========================================================================
+   Dark Mode Overrides — Deep Carbon Obsidian & Luminous Surfaces
+   ========================================================================== */
 :root[data-theme='dark'] .landing-container {
-  --landing-bg: #0C0C0E;
-  --landing-bg-alt: #111113;
-  --landing-surface: #171719;
-  --landing-surface-hover: #1E1E21;
+  --landing-bg: #07080C;
+  --landing-bg-alt: #0D0E14;
+  --landing-surface: #11131C;
+  --landing-surface-elevated: rgba(22, 25, 36, 0.82);
+  --landing-surface-hover: #181B28;
+  --landing-surface-glass: rgba(17, 19, 28, 0.72);
 
-  --landing-ink: #EAEAEE;
-  --landing-ink-secondary: #9494A4;
-  --landing-ink-muted: #5A5A6E;
+  --landing-ink: #F4F5F8;
+  --landing-ink-secondary: #A0A6BA;
+  --landing-ink-muted: #63697E;
 
-  --landing-accent: #7B7AFF;
-  --landing-accent-hover: #9B9AFF;
-  --landing-accent-light: rgba(88, 87, 255, 0.10);
-  --landing-accent-on: #ffffff;
+  --landing-accent: #6E6DFF;
+  --landing-accent-hover: #8584FF;
+  --landing-accent-secondary: #A5B4FC;
+  --landing-accent-light: rgba(110, 109, 255, 0.12);
+  --landing-accent-glow: rgba(110, 109, 255, 0.32);
+  --landing-accent-on: #FFFFFF;
 
-  --landing-highlight: #1E1E21;
-  --landing-highlight-warm: #171719;
+  --landing-border: rgba(255, 255, 255, 0.07);
+  --landing-border-strong: rgba(255, 255, 255, 0.14);
+  --landing-rim-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.09);
 
-  --landing-border: rgba(255, 255, 255, 0.06);
-  --landing-border-strong: rgba(255, 255, 255, 0.10);
-
-  --landing-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --landing-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.15);
-  --landing-shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15);
-  --landing-shadow-xl: 0 24px 80px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
+  --landing-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --landing-shadow-md: 0 12px 32px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --landing-shadow-lg: 0 24px 64px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --landing-shadow-xl: 0 40px 100px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.09);
+  --landing-shadow-composer: 0 28px 70px -12px rgba(88, 87, 255, 0.25), 0 0 0 1px rgba(110, 109, 255, 0.22);
 
   --studio-paper: var(--landing-bg);
   --studio-ink: var(--landing-ink);
   --studio-muted: var(--landing-ink-muted);
   --studio-white: var(--landing-surface);
   --studio-line: var(--landing-border);
-  --studio-wash: var(--landing-highlight);
+  --studio-wash: var(--landing-bg-alt);
   --brand-solid: var(--landing-accent);
   --brand-solid-hover: var(--landing-accent-hover);
   --brand-on-solid: var(--landing-accent-on);
-  --focus-ring: rgba(88, 87, 255, 0.20);
+  --focus-ring: rgba(110, 109, 255, 0.28);
   --text-secondary: var(--landing-ink-secondary);
 }

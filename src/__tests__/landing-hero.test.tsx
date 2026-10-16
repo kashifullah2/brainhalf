@@ -27,8 +27,7 @@ describe('LandingHero redesign', () => {
     expect(html).toContain('hero-gradient-text');
     expect(html).toContain('build it.');
     expect(html).toContain('Start building');
-    expect(html).toContain('See examples');
-    expect(html).toContain('href="#examples"');
+    expect(html).toContain('hero-starters');
   });
 
   it('keeps the composer hooks the new-project flow depends on', () => {

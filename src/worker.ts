@@ -1116,7 +1116,8 @@ export default {
         const scriptName = match[1];
         const subPath = match[2] || '/';
         const user = untrustedOrigin ? null : await verifyPreviewSession(request, env);
-        const access = await checkPreviewAccess(env, scriptName, user?.userId, request.method, subPath, 'deployment');
+        const isOp = user ? isOperator(env, user) : false;
+        const access = isOp ? { ok: true as const, owner: true } : await checkPreviewAccess(env, scriptName, user?.userId, request.method, subPath, 'deployment');
         if (!access.ok) return withCors(previewDenied(access.status), origin);
         const limited = await checkPreviewRateLimit(env, request, scriptName);
         if (limited) return withCors(withPreviewPrivacy(limited), origin);
@@ -1151,6 +1152,20 @@ export default {
       }
     }
 
+    /* --------- Preview frame wrapper: sandboxed-iframe page for "open in new tab" --------- */
+    if (url.pathname.startsWith('/preview-frame/')) {
+      const match = url.pathname.match(/^\/preview-frame\/([A-Za-z0-9_-]+)$/);
+      if (match && match[1] && (request.method === 'GET' || request.method === 'HEAD')) {
+        const agentId = match[1];
+        const user = untrustedOrigin ? null : await verifyPreviewSession(request, env);
+        const isOp = user ? isOperator(env, user) : false;
+        const access = isOp ? { ok: true as const, owner: true } : await checkPreviewAccess(env, agentId, user?.userId, 'GET', '/index.html');
+        if (!access.ok) return withCors(previewDenied(access.status), origin);
+        const html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>App Preview</title><style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:none}</style></head><body><iframe src="/preview/${agentId}/index.html" sandbox="allow-scripts allow-forms allow-popups" allow="microphone; fullscreen; autoplay"></iframe></body></html>`;
+        return new Response(request.method === 'HEAD' ? null : html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' } });
+      }
+    }
+
     /* --------- Edge preview routes (authenticated read / public showcase; write-guarded mutations) --------- */
     if (url.pathname.startsWith('/preview/')) {
       const match = url.pathname.match(/^\/preview\/([^/]+)/);
@@ -1158,7 +1173,8 @@ export default {
         const agentId = match[1];
         const user = untrustedOrigin ? null : await verifyPreviewSession(request, env);
         const subPath = url.pathname.slice(match[0].length) || '/';
-        const access = await checkPreviewAccess(env, agentId, user?.userId, request.method, subPath);
+        const isOp = user ? isOperator(env, user) : false;
+        const access = isOp ? { ok: true as const, owner: true } : await checkPreviewAccess(env, agentId, user?.userId, request.method, subPath);
         if (!access.ok) return withCors(previewDenied(access.status), origin);
         const limited = await checkPreviewRateLimit(env, request, agentId);
         if (limited) return withCors(withPreviewPrivacy(limited), origin);
@@ -1244,7 +1260,8 @@ export default {
       if (previewMatch && previewMatch[1] && env.ChatAgent) {
         const agentId = previewMatch[1];
         const user = await verifyPreviewSession(request, env);
-        const access = await checkPreviewAccess(env, agentId, user?.userId, request.method, url.pathname);
+        const isOp = user ? isOperator(env, user) : false;
+        const access = isOp ? { ok: true as const, owner: true } : await checkPreviewAccess(env, agentId, user?.userId, request.method, url.pathname);
         if (!access.ok) return withCors(previewDenied(access.status), origin);
         const limited = await checkPreviewRateLimit(env, request, agentId);
         if (limited) return withCors(limited, origin);

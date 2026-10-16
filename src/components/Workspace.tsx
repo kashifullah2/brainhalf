@@ -553,6 +553,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [previewLoadState, setPreviewLoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [previewLoadError, setPreviewLoadError] = useState('');
   const previewLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewLoadRetryRef = useRef(0);
   // Mirror for the generation-status effect, whose subscription does not
   // resubscribe on preview state changes.
   const previewLoadStateRef = useRef(previewLoadState);
@@ -640,6 +641,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
       appEvents.emit('preview-state', { projectId: activeProjectId, state: 'loading' });
       if (previewLoadTimerRef.current) clearTimeout(previewLoadTimerRef.current);
       previewLoadTimerRef.current = setTimeout(() => {
+        if (previewLoadRetryRef.current < 1 && !generationActiveRef.current) {
+          // Auto-retry once before showing the error — same as Bolt/Lovable.
+          previewLoadRetryRef.current += 1;
+          reloadPreview();
+          return;
+        }
+        previewLoadRetryRef.current = 0;
         const message = 'Preview could not be loaded. Refresh, then run Build app again.';
         setPreviewLoadState('error');
         setPreviewLoadError(message);
@@ -656,6 +664,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     }
 
     if (state === 'ready') {
+      previewLoadRetryRef.current = 0;
       setStatus(() => generationActiveRef.current ? 'Generating' : 'Ready');
       setPreviewStatus(activeProjectId, 'Ready');
       setPreviewLoadError('');
@@ -1440,7 +1449,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     // For static apps, or full-stack apps whose backend hasn't started yet,
     // always fall through to the edge preview so the button is never a no-op.
     appEvents.emit('sync-files', { files: filesRef.current, replaceAll: false });
-    window.open(`/preview/${activeProjectId}/index.html`, '_blank', 'noopener,noreferrer');
+    window.open(`/preview-frame/${activeProjectId}`, '_blank', 'noopener,noreferrer');
   }, [activeProjectId, backend.ready, backend.open]);
 
   // When the design preview iframe loads, send files — and quickly detect
@@ -1566,6 +1575,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
             {!autoFixing && (
               <button type="button" className="studio-empty-action premium-action-btn secondary" onClick={() => { openChat(); appEvents.emit('screenshot-fix-request', { projectId: activeProjectId }); }}>
                 <Camera size={16} />Fix with screenshot
+              </button>
+            )}
+            {!autoFixing && (
+              <button type="button" className="studio-empty-action premium-action-btn secondary" onClick={handlePopoutPreview}>
+                <ArrowUpRight size={16} />Open in new tab
               </button>
             )}
           </div>

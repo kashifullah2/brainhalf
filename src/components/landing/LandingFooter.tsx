@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, ArrowUpRight, Sparkles } from 'lucide-react';
 import BrainHalfLogo from '../BrainHalfLogo';
 
 const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
@@ -55,37 +55,59 @@ export const LandingFooter: React.FC = () => {
 
   return (
     <footer className="landing-footer" aria-label="Landing footer">
-      <div className="landing-footer-grid">
-        <div className="landing-footer-brand-col">
-          <a className="landing-footer-brand" href="/" aria-label="BrainHalf home">
-            <BrainHalfLogo size={26} />
-            <span>BrainHalf</span>
-          </a>
-          <p className="landing-footer-tagline">
-            Describe your idea, watch it become a working app, and publish it — all from one workspace. Free to start, no coding required.
-          </p>
-          <button type="button" className="landing-footer-top-btn" onClick={scrollToTop}>
-            <ArrowUp size={13} aria-hidden="true" />
-            <span>Back to top</span>
-          </button>
+      <div className="landing-footer-shell">
+        <div className="landing-footer-grid">
+          <div className="landing-footer-brand-col">
+            <a className="landing-footer-brand" href="/" aria-label="BrainHalf home">
+              <span className="landing-footer-logo-badge">
+                <BrainHalfLogo size={24} />
+              </span>
+              <span>BrainHalf</span>
+              <span className="landing-footer-edition">STUDIO</span>
+            </a>
+            <p className="landing-footer-tagline">
+              Describe your idea, watch it become a working app, and publish it — all from one workspace. Free to start, no coding required.
+            </p>
+            <div className="landing-footer-meta-actions">
+              <div className="landing-footer-status" aria-label="System status">
+                <span className="landing-footer-status-dot" aria-hidden="true" />
+                <span>All systems operational</span>
+              </div>
+              <button type="button" className="landing-footer-top-btn" onClick={scrollToTop}>
+                <ArrowUp size={13} aria-hidden="true" />
+                <span>Back to top</span>
+              </button>
+            </div>
+          </div>
+
+          {COLUMNS.map(column => (
+            <nav key={column.title} className="landing-footer-col" aria-label={column.title}>
+              <p className="landing-footer-heading">{column.title}</p>
+              {column.links.map(link => {
+                const isExternal = link.href.startsWith('mailto:');
+                return (
+                  <a key={link.href} className="landing-footer-link" href={link.href}>
+                    <span>{link.label}</span>
+                    {isExternal && <ArrowUpRight size={12} className="landing-footer-ext-icon" aria-hidden="true" />}
+                  </a>
+                );
+              })}
+            </nav>
+          ))}
         </div>
-        {COLUMNS.map(column => (
-          <nav key={column.title} className="landing-footer-col" aria-label={column.title}>
-            <p className="landing-footer-heading">{column.title}</p>
-            {column.links.map(link => (
-              <a key={link.href} className="landing-footer-link" href={link.href}>
-                {link.label}
-              </a>
-            ))}
-          </nav>
-        ))}
-      </div>
-      <div className="landing-footer-bottom">
-        <span className="landing-footer-copy">© {year} BrainHalf. A little thought goes a long way.</span>
-        <div className="landing-footer-legal">
-          <a className="landing-footer-link" href="/privacy">Privacy</a>
-          <a className="landing-footer-link" href="/terms">Usage guidelines</a>
-          <a className="landing-footer-link" href="/contact">Contact</a>
+
+        <div className="landing-footer-bottom">
+          <div className="landing-footer-copy-group">
+            <span className="landing-footer-copy">© {year} BrainHalf. A little thought goes a long way.</span>
+            <span className="landing-footer-craft-badge">
+              <Sparkles size={11} aria-hidden="true" /> Crafted for builders
+            </span>
+          </div>
+          <div className="landing-footer-legal">
+            <a className="landing-footer-link" href="/privacy">Privacy</a>
+            <a className="landing-footer-link" href="/terms">Usage guidelines</a>
+            <a className="landing-footer-link" href="/contact">Contact</a>
+          </div>
         </div>
       </div>
     </footer>

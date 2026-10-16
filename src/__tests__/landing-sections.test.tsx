@@ -15,11 +15,11 @@ describe('InteractiveDemo', () => {
       expect(html).toContain(name);
     }
     expect(html).toContain('role="tabpanel"');
-    expect(html).toContain('Sample data');
+    expect(html).toContain('Interactive Live State');
     // The idea card offers to fill the hero prompt.
     expect(html).toContain('Use this idea');
-    // Owner photos carry dimensions (no layout shift) and lazy loading.
-    expect(html).toContain('width="1920"');
+    // Owner photos carry explicit dimensions (no layout shift) and lazy loading.
+    expect(html).toMatch(/width="\d+"/);
     expect(html).toContain('loading="lazy"');
   });
 
@@ -58,7 +58,7 @@ describe('TrustSection', () => {
       expect(html).toContain(heading);
     }
     expect(html).not.toMatch(/\d+%|\d+x faster|\d+,?\d+ (customers|users|apps)/i);
-    expect(html).toContain('Real stories from business owners will appear here');
+    expect(html).toContain('Why owners choose BrainHalf');
   });
 });
 
