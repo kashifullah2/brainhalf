@@ -99,7 +99,7 @@
 /* Two work surfaces share one quiet frame. */
 .studio-workspace .workspace-area { padding: 12px; height: 100%; max-height: 100dvh; box-sizing: border-box; flex: 1; min-height: 0; gap: 0; background: var(--bg-canvas); overflow: hidden; display: flex; }
 .studio-workspace .chat-panel-container { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-card); box-shadow: var(--shadow-panel); transition: none; height: 100%; box-sizing: border-box; overflow: hidden; }
-.studio-workspace .workspace-panel-container { border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: var(--shadow-panel); height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
+.studio-workspace .workspace-panel-container { border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: var(--shadow-panel); height: 100%; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .studio-workspace .panel-resize-handle { width: 14px; min-width: 14px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; opacity: 1; color: var(--text-secondary); cursor: col-resize; touch-action: none; }
 .studio-workspace .panel-resize-handle::before { display: none; }
 .studio-workspace .panel-resize-handle > svg { flex: none; padding: 10px 1px; box-sizing: content-box; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--bg-surface); opacity: .85; color: var(--text-secondary); }
@@ -149,6 +149,7 @@
 .studio-workspace [data-testid='model-picker-btn'] { background: var(--bg-card) !important; border: 1px solid var(--border-medium) !important; color: var(--text-secondary) !important; font-size: 12px !important; min-height: 30px; padding: 5px 8px !important; max-width: 205px !important; transition: border-color 140ms ease !important; }
 .studio-workspace [data-testid='model-picker-btn']:disabled { opacity: 0.65 !important; cursor: not-allowed !important; border-color: var(--border-subtle) !important; }
 .studio-model-caption { font-size: 11.5px !important; font-weight: 500; color: var(--text-muted); }
+.studio-model-caption::after { content: ': '; }
 .studio-workspace [data-testid='send-prompt-btn'], .studio-workspace [data-testid='stop-generation-btn'] { min-height: 34px; min-width: 34px; border-radius: 7px !important; box-shadow: none !important; color: var(--text-on-accent) !important; background: var(--accent-primary) !important; transition: transform 140ms ease !important; }
 .studio-workspace [data-testid='send-prompt-btn']:disabled { background: var(--bg-surface) !important; border-color: var(--bg-surface) !important; color: var(--text-muted) !important; }
 .studio-composer-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 3px 0; font-size: 12px; color: var(--text-muted); }
@@ -401,7 +402,9 @@
 .studio-workspace .studio-mobile-tabs button { justify-content: center; transition: none; }
 
 /* Tools participate in message layout on mouse, keyboard and touch screens. */
-.studio-message-actions { display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin: 0; white-space: normal; }
+.studio-message-actions { display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin: 0; white-space: normal; opacity: 0; transition: opacity 150ms; }
+.studio-workspace .chat-message:hover .studio-message-actions,
+.studio-workspace .studio-message-actions:focus-within { opacity: 1; }
 .studio-message-actions button, .studio-message-tool { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; min-width: 30px; padding: 5px 7px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font-size: 12px; }
 .studio-message-actions button:hover, .studio-message-tool:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
 .studio-message-actions button { color: var(--text-secondary); background: var(--bg-card); border: 1px solid var(--border-subtle); }
