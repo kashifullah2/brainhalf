@@ -13,30 +13,29 @@ import { stages as controlsStages, stageKeys as controlsStageKeys, stageLabels }
  * contracts so a later copy tweak cannot silently break them.
  */
 
-describe('dark-grey theme (no navy regression)', () => {
+describe('unified brand palette (no legacy prism regression)', () => {
   const themeCss = readFileSync(resolve(__dirname, '../styles/studio-theme.css'), 'utf8');
   const indexCss = readFileSync(resolve(__dirname, '../index.css'), 'utf8');
   const themeInit = readFileSync(resolve(__dirname, '../../public/theme-init.js'), 'utf8');
-  // Hexes from the old navy dark theme that must not come back.
-  const NAVY_HEXES = ['#1a2332', '#16213e', '#0f172a', '#1e293b'];
-  // studio-theme.css dark palette anchors (updated to new darker pure-black palette).
-  const STUDIO_GREY_HEXES = ['#0C0C0E', '#111113', '#171719'];
-  // index.css carries baseline dark defaults (overridden by studio-theme.css at runtime).
-  const INDEX_GREY_HEXES = ['#161616', '#212121', '#292929'];
+  // Hexes from the retired palettes that must not come back: the triadic
+  // "prism" brand (violet/aqua/ember) and the app's former accent blue.
+  const LEGACY_HEXES = ['#4f31ff', '#00bfae', '#ff6a3d', '#5857ff', '#5873df'];
+  // studio-theme.css dark palette anchors (unified slate scale).
+  const STUDIO_DARK_HEXES = ['#020617', '#0F172A', '#1E293B'];
 
-  it('studio-theme.css uses the neutral grey scale with no navy hexes', () => {
-    for (const hex of STUDIO_GREY_HEXES) expect(themeCss).toContain(hex);
-    for (const hex of NAVY_HEXES) expect(themeCss.toLowerCase()).not.toContain(hex);
+  it('studio-theme.css uses the unified slate scale with the indigo brand accent', () => {
+    for (const hex of STUDIO_DARK_HEXES) expect(themeCss.toLowerCase()).toContain(hex.toLowerCase());
+    expect(themeCss).toContain('#4F46E5');
+    for (const hex of LEGACY_HEXES) expect(themeCss.toLowerCase()).not.toContain(hex);
   });
 
-  it('index.css dark base layer uses grey and keeps navy out of dark mode', () => {
-    const [darkLayer] = indexCss.split("Light Mode Theme Overrides");
-    for (const hex of INDEX_GREY_HEXES) expect(darkLayer).toContain(hex);
-    for (const hex of NAVY_HEXES) expect(darkLayer.toLowerCase()).not.toContain(hex);
+  it('index.css keeps the retired prism palette out of the landing system', () => {
+    for (const hex of LEGACY_HEXES) expect(indexCss.toLowerCase()).not.toContain(hex);
   });
 
-  it('theme-init.js sets the dark theme-color meta to the grey canvas', () => {
-    expect(themeInit).toContain('#161616');
+  it('theme-init.js sets the theme-color meta to the unified canvases', () => {
+    expect(themeInit).toContain('#020617');
+    expect(themeInit).toContain('#ffffff');
   });
 
   it('theme.ts sets the dark theme-color meta to the grey canvas (M11)', () => {

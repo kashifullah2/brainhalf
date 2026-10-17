@@ -60,10 +60,10 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
       })
     );
 
-    expect(html).toContain('Inventory tool');
-    expect(html).toContain('Task manager');
-    expect(html).toContain('Booking app');
-    expect(html).toContain('Simple CRM');
+    expect(html).toContain('Inventory');
+    expect(html).toContain('Task board');
+    expect(html).toContain('Bookings');
+    expect(html).toContain('Follow-ups');
   });
 
   it('allows landing page content to scroll so the footer remains visible', () => {
@@ -76,7 +76,7 @@ describe('Unauthenticated Landing Page & Get Started flow', () => {
     );
 
     expect(html).toContain('class="landing-container"');
-    expect(html).toContain('landing-footer');
+    expect(html).toContain('lp-footer');
   });
 
   it('renders exactly one id="examples" — the showcase must not duplicate the page anchor', () => {

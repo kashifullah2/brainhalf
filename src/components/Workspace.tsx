@@ -488,13 +488,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
         ],
         colors: {
           'editor.background': '#FFFFFF', 'editor.foreground': '#202631',
-          'editorLineNumber.foreground': '#626D80', 'editorLineNumber.activeForeground': '#3659D9',
+          'editorLineNumber.foreground': '#64748B', 'editorLineNumber.activeForeground': '#4F46E5',
           'editor.lineHighlightBackground': '#F4F5F9', 'editor.selectionBackground': '#DDE5FF',
-          'editor.inactiveSelectionBackground': '#EDF0F8', 'editorCursor.foreground': '#3659D9',
+          'editor.inactiveSelectionBackground': '#E2E8F0', 'editorCursor.foreground': '#4F46E5',
           'editorIndentGuide.background1': '#E7EAF1', 'editorIndentGuide.activeBackground1': '#B4BDCE',
           'editorWidget.background': '#FAFBFE', 'editorWidget.border': '#E0E4ED',
           'editorSuggestWidget.background': '#FFFFFF', 'editorSuggestWidget.border': '#E0E4ED',
-          'editorSuggestWidget.selectedBackground': '#EDF0F8',
+          'editorSuggestWidget.selectedBackground': '#E2E8F0',
           'scrollbarSlider.background': '#C7CDDB66', 'scrollbarSlider.hoverBackground': '#AAB4C688',
         },
       });

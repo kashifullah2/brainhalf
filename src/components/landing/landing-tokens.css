@@ -1,122 +1,318 @@
 /* ==========================================================================
-   BrainHalf Pro Studio — Architectural Design Tokens
-   Atmospheric Minimalism & High-Craft Dark/Light UI System
+   landing-tokens.css · BrainHalf "Field Notes" design tokens v7
+   Warm paper, ink, one vermilion accent.
+
+   Theme rules
+   - Light is the default.
+   - Dark applies when <html data-theme="dark"> is set.
+   - With no data-theme attribute, the page follows the system setting.
+   - data-theme="light" always forces light, even on a dark system.
+
+   Legacy names are kept as aliases so SiteNavbar, /contact, /account and
+   the rest of the app render without edits.
    ========================================================================== */
-.landing-container {
-  /* ---- Core Surfaces (Light Mode — Crisp Daylight Studio) ---- */
-  --landing-bg: #F6F7FB;
-  --landing-bg-alt: #EDF0F7;
-  --landing-surface: #FFFFFF;
-  --landing-surface-elevated: rgba(255, 255, 255, 0.86);
-  --landing-surface-hover: #F2F4FA;
-  --landing-surface-glass: rgba(255, 255, 255, 0.75);
 
-  /* ---- Ink Hierarchy ---- */
-  --landing-ink: #090A0F;
-  --landing-ink-secondary: #3E4251;
-  --landing-ink-muted: #6E7385;
+/* Plus Jakarta Sans loaded via studio-fonts.css self-hosted woff2 */
 
-  /* ---- Brand Electric Violet & Cyber Indigo ---- */
-  --landing-accent: #5857FF;
-  --landing-accent-hover: #4645E6;
-  --landing-accent-secondary: #818CF8;
-  --landing-accent-cyan: #06B6D4;
-  --landing-accent-emerald: #10B981;
-  --landing-accent-light: rgba(88, 87, 255, 0.09);
-  --landing-accent-glow: rgba(88, 87, 255, 0.24);
-  --landing-accent-on: #FFFFFF;
-
-  /* ---- Specular Borders & Hairlines ---- */
-  --landing-border: rgba(15, 18, 34, 0.08);
-  --landing-border-strong: rgba(15, 18, 34, 0.14);
-  --landing-rim-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
-
-  /* ---- Architectural Shadows ---- */
-  --landing-shadow-sm: 0 1px 2px rgba(9, 10, 15, 0.04), 0 0 0 1px rgba(9, 10, 15, 0.05);
-  --landing-shadow-md: 0 8px 24px -4px rgba(9, 10, 15, 0.06), 0 2px 6px -1px rgba(9, 10, 15, 0.04);
-  --landing-shadow-lg: 0 20px 50px -12px rgba(15, 20, 40, 0.10), 0 4px 12px -2px rgba(15, 20, 40, 0.04);
-  --landing-shadow-xl: 0 32px 80px -16px rgba(15, 20, 40, 0.14), 0 0 0 1px rgba(15, 20, 40, 0.06);
-  --landing-shadow-composer: 0 24px 60px -12px rgba(88, 87, 255, 0.14), 0 4px 16px rgba(9, 10, 15, 0.06);
-
-  /* ---- Typography ---- */
-  --landing-font-display: var(--font-brand, 'Instrument Studio', 'Instrument Sans', system-ui, sans-serif);
-  --landing-font-body: var(--font-sans, 'Instrument Sans', system-ui, sans-serif);
-  --landing-font-mono: var(--font-mono, 'DM Mono', ui-monospace, monospace);
-
-  /* ---- Fluid Type Scale ---- */
-  --landing-text-xs: clamp(11px, 0.75vw, 12px);
-  --landing-text-sm: clamp(12.5px, 0.85vw, 13.5px);
-  --landing-text-base: clamp(14px, 1vw, 15px);
-  --landing-text-md: clamp(15.5px, 1.1vw, 17px);
-  --landing-text-lg: clamp(18px, 1.35vw, 20px);
-  --landing-text-xl: clamp(22px, 2vw, 26px);
-  --landing-text-2xl: clamp(28px, 2.8vw, 36px);
-  --landing-text-3xl: clamp(34px, 3.8vw, 48px);
-  --landing-text-4xl: clamp(44px, 5.4vw, 72px);
-
-  /* ---- Spacing & Radii ---- */
-  --landing-radius-sm: 8px;
-  --landing-radius-md: 12px;
-  --landing-radius-lg: 16px;
-  --landing-radius-xl: 22px;
-  --landing-radius-2xl: 28px;
-  --landing-radius-full: 9999px;
-
-  /* ---- Studio Scope Overrides ---- */
-  --studio-paper: var(--landing-bg);
-  --studio-ink: var(--landing-ink);
-  --studio-muted: var(--landing-ink-muted);
-  --studio-white: var(--landing-surface);
-  --studio-line: var(--landing-border);
-  --studio-wash: var(--landing-bg-alt);
-  --brand-solid: var(--landing-accent);
-  --brand-solid-hover: var(--landing-accent-hover);
-  --brand-on-solid: var(--landing-accent-on);
-  --focus-ring: rgba(88, 87, 255, 0.22);
-  --text-secondary: var(--landing-ink-secondary);
+@property --ang {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
 }
 
-/* ==========================================================================
-   Dark Mode Overrides — Deep Carbon Obsidian & Luminous Surfaces
-   ========================================================================== */
+@property --spot {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 50%;
+}
+
+/* ── Light (default) ──────────────────────────────────────────────────────── */
+:root,
+.landing-container {
+  color-scheme: light;
+
+  /* 1 · Type */
+  --font-global: 'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-display: var(--font-global);
+  --font-body: var(--font-global);
+  --font-serif: var(--font-global);
+  --font-mono: 'DM Studio Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --t-micro: clamp(10px, 0.7vw, 11px);
+  --t-xs: clamp(11.5px, 0.8vw, 12.5px);
+  --t-sm: clamp(13px, 0.9vw, 14px);
+  --t-base: clamp(15px, 1.05vw, 16px);
+  --t-md: clamp(17px, 1.2vw, 19px);
+  --t-lg: clamp(19px, 1.5vw, 22px);
+  --t-xl: clamp(22px, 2vw, 28px);
+  --t-2xl: clamp(28px, 3vw, 40px);
+  --t-3xl: clamp(36px, 4.6vw, 62px);
+  --t-hero: clamp(46px, 7.2vw, 104px);
+  --t-mega: clamp(60px, 11vw, 160px);
+
+  /* 2 · Surfaces — clean white */
+  --paper: #FFFFFF;
+  --paper-deep: #F8F9FB;
+  --paper-raise: #FFFFFF;
+  --card: #FFFFFF;
+  --card-sunk: #F0F1F5;
+  --card-hover: #F8F9FB;
+  --glass: rgba(255, 255, 255, 0.88);
+  --glass-deep: rgba(255, 255, 255, 0.97);
+
+  /* 3 · Ink */
+  --ink: #0F172A;
+  --ink-soft: #475569;
+  --ink-mute: #64748B;
+  --ink-faint: #94A3B8;
+  --ink-invert: #FFFFFF;
+
+  /* 4 · Accent (indigo) and status green */
+  --accent: #4F46E5;
+  --accent-deep: #4338CA;
+  --accent-hi: #6366F1;
+  --accent-on: #FFFFFF;
+  --accent-wash: rgba(79, 70, 229, 0.08);
+  --accent-wash-strong: rgba(79, 70, 229, 0.15);
+  --accent-border: rgba(79, 70, 229, 0.30);
+  --focus-ring: rgba(79, 70, 229, 0.20);
+  --green: #166534;
+  --green-wash: rgba(22, 101, 52, 0.08);
+
+  /* 5 · Lines */
+  --line: rgba(15, 23, 42, 0.08);
+  --line-2: rgba(15, 23, 42, 0.14);
+  --line-3: rgba(15, 23, 42, 0.28);
+  --rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.7);
+  --rim-dark: inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+
+  /* 6 · Elevation */
+  --sh-1: 0 1px 2px rgba(15, 23, 42, 0.06), var(--rim);
+  --sh-2: 0 1px 3px rgba(15, 23, 42, 0.06), 0 10px 24px -12px rgba(15, 23, 42, 0.12), var(--rim);
+  --sh-3: 0 2px 4px rgba(15, 23, 42, 0.06), 0 24px 48px -20px rgba(15, 23, 42, 0.18), var(--rim);
+  --sh-4: 0 4px 8px rgba(15, 23, 42, 0.06), 0 40px 80px -24px rgba(15, 23, 42, 0.24), var(--rim);
+  --sh-glow: 0 10px 28px -10px rgba(79, 70, 229, 0.45), inset 0 1px 0 0 rgba(255, 255, 255, 0.28);
+  --sh-glow-aqua: var(--sh-glow);
+  --sh-hard: var(--sh-2);
+  --sh-composer: 0 1px 2px rgba(15, 23, 42, 0.06), 0 30px 60px -30px rgba(15, 23, 42, 0.20);
+
+  /* 7 · Gradients */
+  --grad-prism: linear-gradient(120deg, var(--accent) 0%, var(--accent-hi) 100%);
+  --grad-duo: linear-gradient(180deg, var(--accent), var(--accent-deep));
+  --grad-ember: var(--ink);
+  --grad-ink: var(--ink);
+  --grad-fade: linear-gradient(180deg, var(--ink) 0%, rgba(15, 23, 42, 0.55) 100%);
+  --grad-conic: conic-gradient(from var(--ang, 0deg), transparent 55%, var(--accent-hi) 82%, transparent 100%);
+
+  /* 8 · Geometry */
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-2xl: 28px;
+  --r-3xl: 36px;
+  --r-pill: 999px;
+
+  --shell: 1200px;
+  --gutter: clamp(20px, 5vw, 64px);
+
+  /* 9 · Motion */
+  --e-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --e-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --e-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --e-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --d-fast: 150ms;
+  --d-mid: 260ms;
+  --d-slow: 480ms;
+
+  /* 10 · Texture */
+  --grain: none;
+  --grid-line: rgba(15, 23, 42, 0.04);
+
+  /* 11 · Legacy aliases (do not remove; other pages use them) */
+  --violet: var(--accent);
+  --violet-hi: var(--accent-hi);
+  --violet-lo: var(--accent-deep);
+  --violet-wash: var(--accent-wash);
+  --aqua: var(--green);
+  --aqua-hi: #4ade80;
+  --aqua-wash: var(--green-wash);
+  --ember: var(--ink);
+  --ember-hi: var(--ink-soft);
+  --ember-wash: var(--card-sunk);
+  --gold: var(--accent);
+  --moss: var(--green);
+  --moss-wash: var(--green-wash);
+
+  --landing-bg: var(--paper);
+  --landing-bg-alt: var(--paper-deep);
+  --landing-surface: var(--card);
+  --landing-surface-hover: var(--card-hover);
+  --landing-surface-glass: var(--glass);
+  --landing-ink: var(--ink);
+  --landing-ink-secondary: var(--ink-soft);
+  --landing-ink-muted: var(--ink-mute);
+  --landing-accent: var(--accent);
+  --landing-accent-hover: var(--accent-hi);
+  --landing-accent-secondary: var(--accent-hi);
+  --landing-accent-cyan: var(--accent);
+  --landing-accent-emerald: var(--green);
+  --landing-accent-light: var(--accent-wash);
+  --landing-accent-glow: rgba(79, 70, 229, 0.20);
+  --landing-accent-on: var(--accent-on);
+  --landing-border: var(--line);
+  --landing-border-strong: var(--line-2);
+  --landing-rim-light: var(--rim);
+  --landing-shadow-sm: var(--sh-1);
+  --landing-shadow-md: var(--sh-2);
+  --landing-shadow-lg: var(--sh-3);
+  --landing-shadow-xl: var(--sh-4);
+  --landing-shadow-composer: var(--sh-composer);
+  --landing-font-display: var(--font-global);
+  --landing-font-body: var(--font-global);
+  --landing-font-mono: var(--font-mono);
+  --landing-radius-sm: var(--r-sm);
+  --landing-radius-md: var(--r-md);
+  --landing-radius-lg: var(--r-lg);
+  --landing-radius-xl: var(--r-xl);
+  --landing-radius-2xl: var(--r-2xl);
+  --landing-radius-full: var(--r-pill);
+
+  --studio-paper: var(--paper);
+  --studio-ink: var(--ink);
+  --studio-muted: var(--ink-mute);
+  --studio-white: var(--card);
+  --studio-line: var(--line);
+  --studio-wash: var(--card-sunk);
+
+  --brand-solid: var(--accent);
+  --brand-solid-hover: var(--accent-deep);
+  --brand-on-solid: #FFFFFF;
+  --text-secondary: var(--ink-soft);
+  --desk-shadow: var(--sh-composer);
+  --shot-shadow: var(--sh-4);
+  --frame-bar: var(--card-sunk);
+  --closing-background: #0F172A;
+  --closing-ink: #F1F5F9;
+  --closing-muted: #94A3B8;
+}
+
+/* ── Dark (explicit) ─────────────────────────────────────────────────────── */
+/* Only primitives and literal shadows are overridden. Every alias above
+   follows automatically because it is a var() reference. */
+:root[data-theme='dark'],
 :root[data-theme='dark'] .landing-container {
-  --landing-bg: #07080C;
-  --landing-bg-alt: #0D0E14;
-  --landing-surface: #11131C;
-  --landing-surface-elevated: rgba(22, 25, 36, 0.82);
-  --landing-surface-hover: #181B28;
-  --landing-surface-glass: rgba(17, 19, 28, 0.72);
+  color-scheme: dark;
 
-  --landing-ink: #F4F5F8;
-  --landing-ink-secondary: #A0A6BA;
-  --landing-ink-muted: #63697E;
+  --paper: #020617;
+  --paper-deep: #0F172A;
+  --paper-raise: #0F172A;
+  --card: #0F172A;
+  --card-sunk: #1E293B;
+  --card-hover: #1E293B;
+  --glass: rgba(2, 6, 23, 0.88);
+  --glass-deep: rgba(2, 6, 23, 0.97);
 
-  --landing-accent: #6E6DFF;
-  --landing-accent-hover: #8584FF;
-  --landing-accent-secondary: #A5B4FC;
-  --landing-accent-light: rgba(110, 109, 255, 0.12);
-  --landing-accent-glow: rgba(110, 109, 255, 0.32);
-  --landing-accent-on: #FFFFFF;
+  --ink: #F1F5F9;
+  --ink-soft: #94A3B8;
+  --ink-mute: #64748B;
+  --ink-faint: #334155;
+  --ink-invert: #020617;
 
-  --landing-border: rgba(255, 255, 255, 0.07);
-  --landing-border-strong: rgba(255, 255, 255, 0.14);
-  --landing-rim-light: inset 0 1px 0 0 rgba(255, 255, 255, 0.09);
+  --accent: #818CF8;
+  --accent-deep: #6366F1;
+  --accent-hi: #A5B4FC;
+  --accent-on: #0F172A;
+  --accent-wash: rgba(129, 140, 248, 0.10);
+  --accent-wash-strong: rgba(129, 140, 248, 0.18);
+  --accent-border: rgba(129, 140, 248, 0.35);
+  --focus-ring: rgba(129, 140, 248, 0.25);
+  --green: #4ADE80;
+  --green-wash: rgba(74, 222, 128, 0.10);
+  --aqua-hi: #86EFAC;
 
-  --landing-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  --landing-shadow-md: 0 12px 32px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
-  --landing-shadow-lg: 0 24px 64px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
-  --landing-shadow-xl: 0 40px 100px -16px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.09);
-  --landing-shadow-composer: 0 28px 70px -12px rgba(88, 87, 255, 0.25), 0 0 0 1px rgba(110, 109, 255, 0.22);
+  --line: rgba(241, 245, 249, 0.08);
+  --line-2: rgba(241, 245, 249, 0.14);
+  --line-3: rgba(241, 245, 249, 0.25);
+  --rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  --rim-dark: var(--rim);
 
-  --studio-paper: var(--landing-bg);
-  --studio-ink: var(--landing-ink);
-  --studio-muted: var(--landing-ink-muted);
-  --studio-white: var(--landing-surface);
-  --studio-line: var(--landing-border);
-  --studio-wash: var(--landing-bg-alt);
-  --brand-solid: var(--landing-accent);
-  --brand-solid-hover: var(--landing-accent-hover);
-  --brand-on-solid: var(--landing-accent-on);
-  --focus-ring: rgba(110, 109, 255, 0.28);
-  --text-secondary: var(--landing-ink-secondary);
+  --sh-1: 0 2px 6px rgba(0, 0, 0, 0.35), var(--rim);
+  --sh-2: 0 12px 28px -12px rgba(0, 0, 0, 0.6), var(--rim);
+  --sh-3: 0 24px 48px -20px rgba(0, 0, 0, 0.7), var(--rim);
+  --sh-4: 0 40px 80px -24px rgba(0, 0, 0, 0.8), var(--rim);
+  --sh-glow: 0 10px 28px -10px rgba(129, 140, 248, 0.45), inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
+  --sh-composer: 0 24px 60px -24px rgba(0, 0, 0, 0.8);
+
+  --grid-line: rgba(241, 245, 249, 0.03);
+  --landing-accent-glow: rgba(129, 140, 248, 0.20);
+  --closing-background: #1E293B;
+  --closing-ink: #F1F5F9;
+  --closing-muted: #94A3B8;
+}
+
+/* ── Dark · follows the system when no data-theme is set ─────────────────── */
+/* Mirrors the explicit dark block above. Kept separate because a selector
+   inside @media cannot share a rule with an attribute-only selector. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']),
+  :root:not([data-theme='light']) .landing-container {
+    color-scheme: dark;
+
+    --paper: #020617;
+    --paper-deep: #0F172A;
+    --paper-raise: #0F172A;
+    --card: #0F172A;
+    --card-sunk: #1E293B;
+    --card-hover: #1E293B;
+    --glass: rgba(2, 6, 23, 0.88);
+    --glass-deep: rgba(2, 6, 23, 0.97);
+
+    --ink: #F1F5F9;
+    --ink-soft: #94A3B8;
+    --ink-mute: #64748B;
+    --ink-faint: #334155;
+    --ink-invert: #020617;
+
+    --accent: #818CF8;
+    --accent-deep: #6366F1;
+    --accent-hi: #A5B4FC;
+    --accent-on: #0F172A;
+    --accent-wash: rgba(129, 140, 248, 0.10);
+    --accent-wash-strong: rgba(129, 140, 248, 0.18);
+    --accent-border: rgba(129, 140, 248, 0.35);
+    --focus-ring: rgba(129, 140, 248, 0.25);
+    --green: #4ADE80;
+    --green-wash: rgba(74, 222, 128, 0.10);
+    --aqua-hi: #86EFAC;
+
+    --line: rgba(241, 245, 249, 0.08);
+    --line-2: rgba(241, 245, 249, 0.14);
+    --line-3: rgba(241, 245, 249, 0.25);
+    --rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+    --rim-dark: var(--rim);
+
+    --sh-1: 0 2px 6px rgba(0, 0, 0, 0.35), var(--rim);
+    --sh-2: 0 12px 28px -12px rgba(0, 0, 0, 0.6), var(--rim);
+    --sh-3: 0 24px 48px -20px rgba(0, 0, 0, 0.7), var(--rim);
+    --sh-4: 0 40px 80px -24px rgba(0, 0, 0, 0.8), var(--rim);
+    --sh-glow: 0 10px 28px -10px rgba(129, 140, 248, 0.45), inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
+    --sh-composer: 0 24px 60px -24px rgba(0, 0, 0, 0.8);
+
+    --grid-line: rgba(241, 245, 249, 0.03);
+    --landing-accent-glow: rgba(129, 140, 248, 0.20);
+    --closing-background: #1E293B;
+    --closing-ink: #F1F5F9;
+    --closing-muted: #94A3B8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  .landing-container {
+    --d-fast: 0.01ms;
+    --d-mid: 0.01ms;
+    --d-slow: 0.01ms;
+  }
 }

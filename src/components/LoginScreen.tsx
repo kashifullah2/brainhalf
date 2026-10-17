@@ -41,6 +41,7 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
   const turnstileTokenRef = useRef<string | null>(null);
   const turnstileWidgetId = useRef<string | null>(null);
   const turnstilePending = useRef<{ resolve: (t: string) => void; reject: (e: Error) => void } | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // Skip in Vite dev — the widget requires a registered domain, and the CF
   // Worker that verifies the token doesn't run during local development.
@@ -154,6 +155,15 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
 
   useEffect(() => { emailRef.current?.focus(); }, []);
 
+  // Magnetic spotlight — track cursor over the card.
+  const handleCardMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = cardRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+    el.style.setProperty('--my', `${e.clientY - rect.top}px`);
+  }, []);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -220,59 +230,104 @@ export default function LoginScreen({ onAuthenticated, onClose, onGoogleStart, i
     finally { setBusy(null); }
   };
 
-  return <div className={`login-screen ${onClose ? 'is-modal' : 'is-page'}`} role="dialog" aria-modal="true" aria-labelledby="login-title"
-    ref={dialogRef} tabIndex={-1} onClick={event => { if (event.target === event.currentTarget) onClose?.(); }}>
-    <div className="studio-auth-card">
-      <div className="studio-auth-topline">
-        <div className="studio-auth-brand"><BrainHalfLogo size={24} strokeWidth={1.6} color="currentColor" /><span>BrainHalf</span></div>
-        <div className="studio-auth-topline-actions">
-          <ThemeToggle />
-          {onClose && <button type="button" className="studio-auth-close" onClick={onClose} aria-label="Close"><X size={18} /></button>}
+  return (
+    <div className={`login-screen ${onClose ? 'is-modal' : 'is-page'}`} role="dialog" aria-modal="true" aria-labelledby="login-title"
+      ref={dialogRef} tabIndex={-1} onClick={event => { if (event.target === event.currentTarget) onClose?.(); }}>
+      <div className="studio-auth-card" ref={cardRef} onMouseMove={handleCardMove}>
+        <span className="studio-auth-spotlight" aria-hidden="true" />
+
+        <div className="studio-auth-topline">
+          <div className="studio-auth-brand"><BrainHalfLogo size={26} strokeWidth={1.6} color="currentColor" /><span>BrainHalf</span></div>
+          <div className="studio-auth-topline-actions">
+            <ThemeToggle />
+            {onClose && <button type="button" className="studio-auth-close" onClick={onClose} aria-label="Close"><X size={18} /></button>}
+          </div>
         </div>
-      </div>
-      <div className="studio-auth-heading">
-        <h1 id="login-title">{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
-        <p>{mode === 'login' ? 'Sign in to keep working on your app' : 'Start making your app for free'}</p>
-      </div>
-      <div className="studio-auth-tabs" role="tablist" aria-label="Authentication mode">
-        {(['login', 'signup'] as Mode[]).map((item, index) => <button type="button" key={item} id={`auth-tab-${item}`} role="tab" aria-controls="auth-panel" aria-selected={mode === item} tabIndex={mode === item ? 0 : -1} disabled={!!busy}
-          onClick={() => { setMode(item); setError(null); setVerificationRequired(false); setShowPassword(false); }} onKeyDown={event => {
-            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-              event.preventDefault(); const next = event.key === 'Home' ? 'login' : event.key === 'End' ? 'signup' : index === 0 ? 'signup' : 'login';
-              setMode(next); setError(null); setVerificationRequired(false); setShowPassword(false); document.getElementById(`auth-tab-${next}`)?.focus();
-            }
-          }}>{item === 'login' ? 'Sign in' : 'Sign up'}</button>)}
-      </div>
-      <div id="auth-panel" role="tabpanel" aria-labelledby={`auth-tab-${mode}`}>
-        <button type="button" className="studio-google-button" disabled={!!busy} onClick={() => void handleGoogle()}><GoogleMark />{busy === 'google' ? 'Opening Google…' : 'Continue with Google'}</button>
-        <button type="button" className="studio-google-button" style={{ marginTop: '8px' }} disabled={!!busy} onClick={() => void handleGithub()}>
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
-          </svg>
-          {busy === 'github' ? 'Opening GitHub…' : 'Continue with GitHub'}
-        </button>
-        <div className="studio-auth-divider"><span>or continue with email</span></div>
-        <form onSubmit={handleSubmit} noValidate className="studio-auth-form" aria-busy={!!busy}>
-          <label htmlFor="login-email">Email address<input id="login-email" ref={emailRef} type="email" aria-label="Email Address" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" spellCheck={false} required disabled={!!busy} /></label>
-          <label htmlFor="login-password">
-            <span className="studio-auth-labelrow">
-              <span>Password</span>
-              {mode === 'login' && <button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleForgotPassword()}>Forgot password?</button>}
-            </span>
-            <span className="studio-auth-passwordwrap">
-              <input id="login-password" type={showPassword ? 'text' : 'password'} aria-label="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder={mode === 'login' ? 'Enter your password' : 'At least 8 characters'} required minLength={8} disabled={!!busy} />
+
+        <div className="studio-auth-heading">
+          <h1 id="login-title">
+            {mode === 'login' ? <>Welcome <em>back</em></> : <>Create your <em>account</em></>}
+          </h1>
+          <p>{mode === 'login' ? 'Sign in to keep working on your app' : 'Start making your app for free'}</p>
+        </div>
+
+        <div className="studio-auth-tabs" role="tablist" aria-label="Authentication mode">
+          {(['login', 'signup'] as Mode[]).map((item, index) => <button type="button" key={item} id={`auth-tab-${item}`} role="tab" aria-controls="auth-panel" aria-selected={mode === item} tabIndex={mode === item ? 0 : -1} disabled={!!busy}
+            onClick={() => { setMode(item); setError(null); setVerificationRequired(false); setShowPassword(false); }} onKeyDown={event => {
+              if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+                event.preventDefault(); const next = event.key === 'Home' ? 'login' : event.key === 'End' ? 'signup' : index === 0 ? 'signup' : 'login';
+                setMode(next); setError(null); setVerificationRequired(false); setShowPassword(false); document.getElementById(`auth-tab-${next}`)?.focus();
+              }
+            }}>{item === 'login' ? 'Sign in' : 'Sign up'}</button>)}
+        </div>
+
+        <div id="auth-panel" role="tabpanel" aria-labelledby={`auth-tab-${mode}`}>
+          <button type="button" className="studio-google-button" disabled={!!busy} onClick={() => void handleGoogle()}><GoogleMark />{busy === 'google' ? 'Opening Google…' : 'Continue with Google'}</button>
+          <button type="button" className="studio-google-button" disabled={!!busy} onClick={() => void handleGithub()}>
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+            </svg>
+            {busy === 'github' ? 'Opening GitHub…' : 'Continue with GitHub'}
+          </button>
+
+          <div className="studio-auth-divider"><span>or continue with email</span></div>
+
+          <form onSubmit={handleSubmit} noValidate className="studio-auth-form" aria-busy={!!busy}>
+            {/* Email — floating label */}
+            <div className="studio-auth-field">
+              <input
+                id="login-email"
+                ref={emailRef}
+                type="email"
+                aria-label="Email Address"
+                autoComplete="email"
+                value={email}
+                onChange={event => setEmail(event.target.value)}
+                placeholder=" "
+                spellCheck={false}
+                required
+                disabled={!!busy}
+              />
+              <label htmlFor="login-email">Email address</label>
+            </div>
+
+            {/* Password — floating label + peek */}
+            <div className="studio-auth-field has-peek">
+              <span className="studio-auth-labelrow">
+                <span>Password</span>
+                {mode === 'login' && <button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleForgotPassword()}>Forgot password?</button>}
+              </span>
+              <input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                aria-label="Password"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                value={password}
+                onChange={event => setPassword(event.target.value)}
+                placeholder={mode === 'login' ? 'Enter your password' : 'At least 8 characters'}
+                required
+                minLength={8}
+                disabled={!!busy}
+              />
               <button type="button" className="studio-auth-peek" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} disabled={!!busy} onClick={() => setShowPassword(value => !value)}>
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
-            </span>
-          </label>
-          {error && <div className="studio-auth-error" role="alert">{error}</div>}
-          {notice && <div className="account-notice" role="status">{notice}</div>}
-          {SITE_KEY && <div ref={turnstileRef} data-sitekey={SITE_KEY} aria-hidden="true" />}
-          <button type="submit" className="studio-auth-submit" disabled={!!busy}>{busy === 'email' ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}<ArrowRight size={17} /></button>
-          {mode === 'login' && verificationRequired && <div className="studio-auth-resend"><button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
-        </form>
+            </div>
+
+            {error && <div className="studio-auth-error" role="alert">{error}</div>}
+            {notice && <div className="account-notice" role="status">{notice}</div>}
+            {SITE_KEY && <div ref={turnstileRef} data-sitekey={SITE_KEY} aria-hidden="true" />}
+
+            <button type="submit" className="studio-auth-submit" disabled={!!busy}>
+              <span>{busy === 'email' ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}</span>
+              <ArrowRight size={17} />
+            </button>
+
+            {mode === 'login' && verificationRequired && <div className="studio-auth-resend"><button type="button" className="studio-auth-textlink" disabled={!!busy} onClick={() => void handleResendVerification()}>Resend verification email</button></div>}
+          </form>
+        </div>
       </div>
     </div>
-  </div>;
+  );
 }
+

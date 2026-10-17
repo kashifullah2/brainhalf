@@ -72,8 +72,8 @@ export default function BackendBuildProgress({ message, startedAt }: { message: 
           width: '52px',
           height: '52px',
           borderRadius: '14px',
-          background: 'linear-gradient(135deg, rgba(54,89,217,0.18) 0%, rgba(99,102,241,0.10) 100%)',
-          border: '1px solid rgba(54,89,217,0.25)',
+          background: 'linear-gradient(135deg, rgba(79,70,229,0.18) 0%, rgba(99,102,241,0.10) 100%)',
+          border: '1px solid rgba(79,70,229,0.25)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -110,7 +110,7 @@ export default function BackendBuildProgress({ message, startedAt }: { message: 
                     ? 'transparent'
                     : 'transparent',
                 border: active
-                  ? '1px solid rgba(54,89,217,0.2)'
+                  ? '1px solid rgba(79,70,229,0.2)'
                   : done
                     ? '1px solid rgba(34,197,94,0.15)'
                     : '1px solid var(--border-subtle)',
@@ -130,12 +130,12 @@ export default function BackendBuildProgress({ message, startedAt }: { message: 
                 background: done
                   ? 'rgba(34,197,94,0.15)'
                   : active
-                    ? 'rgba(54,89,217,0.15)'
+                    ? 'rgba(79,70,229,0.15)'
                     : 'var(--bg-surface)',
                 border: done
                   ? '1px solid rgba(34,197,94,0.3)'
                   : active
-                    ? '1px solid rgba(54,89,217,0.3)'
+                    ? '1px solid rgba(79,70,229,0.3)'
                     : '1px solid var(--border-subtle)',
               }}>
                 {done ? (

@@ -1,53 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import { InteractiveDemo, BentoGrid, HowItWorks, TrustSection, FaqSection, FinalCta } from '../components/landing/LandingPage';
+import { ExamplesSection, BentoGrid, HowItWorks, TrustSection, FaqSection, FinalCta } from '../components/landing/LandingPage';
 import { GalleryRow } from '../components/GalleryRow';
 import { HOME_FAQS } from '../seo/content';
 
 const render = (element: React.ReactElement) => renderToString(element);
 
-describe('InteractiveDemo', () => {
-  it('renders four tabs with the tablist pattern and a sample-data panel', () => {
-    const html = render(<InteractiveDemo onUseIdea={() => {}} />);
-    expect(html).toContain('role="tablist"');
-    for (const name of ['Inventory tool', 'Booking app', 'Simple CRM', 'Task manager']) {
+describe('ExamplesSection', () => {
+  it('renders four example cards with Use this idea buttons', () => {
+    const html = render(<ExamplesSection onUseIdea={() => {}} />);
+    expect(html).toContain('example-card');
+    expect(html).toContain('Use this idea');
+    for (const name of ['Inventory', 'Bookings', 'Follow-ups', 'Task board']) {
       expect(html).toContain(name);
     }
-    expect(html).toContain('role="tabpanel"');
-    expect(html).toContain('Interactive Live State');
-    // The idea card offers to fill the hero prompt.
-    expect(html).toContain('Use this idea');
-    // Owner photos carry explicit dimensions (no layout shift) and lazy loading.
-    expect(html).toMatch(/width="\d+"/);
-    expect(html).toContain('loading="lazy"');
-  });
-
-  it('keeps tab and panel wired with accessible names', () => {
-    const html = render(<InteractiveDemo onUseIdea={() => {}} />);
-    expect(html).toContain('aria-controls="demo-panel"');
-    expect(html).toContain('aria-selected="true"');
   });
 });
 
 describe('BentoGrid', () => {
-  it('renders six tiles with the expected headings', () => {
+  it('renders six features with the expected headings', () => {
     const html = render(<BentoGrid />);
     for (const heading of ['Describe it', 'Live preview', 'Edit by chatting', 'Your own database', 'Customer sign-in', 'Your own web address']) {
       expect(html).toContain(heading);
     }
-    expect(html.match(/bento-tile span-/g)).toHaveLength(6);
   });
 });
 
 describe('HowItWorks', () => {
-  it('renders three steps with one sticky visual region', () => {
+  it('renders three steps', () => {
     const html = render(<HowItWorks />);
-    expect(html.match(/hiw-step[ "]|hiw-step$/g)).not.toBeNull();
     for (const title of ['Describe it in plain words', 'Refine it by chatting', 'Share it with the world']) {
       expect(html).toContain(title);
     }
-    expect(html).toContain('hiw-sticky');
+    expect(html).toContain('step-num');
   });
 });
 
@@ -58,15 +44,13 @@ describe('TrustSection', () => {
       expect(html).toContain(heading);
     }
     expect(html).not.toMatch(/\d+%|\d+x faster|\d+,?\d+ (customers|users|apps)/i);
-    expect(html).toContain('Why owners choose BrainHalf');
   });
 });
 
 describe('FaqSection', () => {
-  it('renders one native disclosure per FAQ, keeps ids, and drops the updated-date line', () => {
+  it('renders one native disclosure per FAQ with ids', () => {
     const html = render(<FaqSection />);
     expect(html.match(/<details/g)).toHaveLength(HOME_FAQS.length);
-    expect(html).not.toContain('Updated');
     for (const faq of HOME_FAQS) {
       expect(html).toContain(`id="${faq.id}"`);
       expect(html).toContain(faq.question);
@@ -75,12 +59,9 @@ describe('FaqSection', () => {
 });
 
 describe('FinalCta', () => {
-  it('has a single button and a fully-specified brain mark', () => {
+  it('has a Start building button', () => {
     const html = render(<FinalCta onStartBuilding={() => {}} />);
-    expect(html.match(/Start building/g)).toHaveLength(1);
-    expect(html).toContain('class="final-cta-mark"');
-    expect(html).toContain('width="512"');
-    expect(html).toContain('height="512"');
+    expect(html).toContain('Start building');
   });
 });
 

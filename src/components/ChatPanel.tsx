@@ -2572,7 +2572,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                               const isBuildDone = !isCurrentGenerating && previewIsReady;
                               return (
                                 <div className="first-generation-summary-card" role="status" aria-live="polite" style={{ padding: '16px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px' }}>
-                                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: !isBuildDone ? 'rgba(54, 89, 217, 0.1)' : 'rgba(34, 197, 94, 0.1)', color: !isBuildDone ? 'var(--accent-light)' : '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: !isBuildDone ? 'rgba(79, 70, 229, 0.1)' : 'rgba(34, 197, 94, 0.1)', color: !isBuildDone ? 'var(--accent-light)' : '#22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     {!isBuildDone ? <Sparkles size={20} className="lucide-pulse" /> : <Check size={20} />}
                                   </div>
                                   <div>
@@ -2920,12 +2920,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             display: 'flex',
             flexDirection: 'column',
             background: 'var(--bg-card)',
-            border: composerDragOver ? '1.5px dashed var(--accent-primary, #3659D9)' : '1px solid rgba(36, 60, 75, 0.1)',
+            border: composerDragOver ? '1.5px dashed var(--accent-primary, #4338CA)' : '1px solid rgba(36, 60, 75, 0.1)',
             borderRadius: '10px',
             padding: '12px 14px 10px 14px',
             position: 'relative',
             zIndex: showModelPicker ? 40 : 1,
-            boxShadow: composerDragOver ? '0 0 0 3px rgba(54,89,217,0.10)' : 'none',
+            boxShadow: composerDragOver ? '0 0 0 3px rgba(79,70,229,0.10)' : 'none',
             transition: 'border-color 0.12s, box-shadow 0.12s',
           }}
           onDragOver={(e) => {
@@ -2980,8 +2980,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
             </div>
           )}
           {composerDragOver && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', borderRadius: '10px', background: 'rgba(54,89,217,0.06)', zIndex: 10 }}>
-              <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--accent-primary, #3659D9)', display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', borderRadius: '10px', background: 'rgba(79,70,229,0.06)', zIndex: 10 }}>
+              <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--accent-primary, #4338CA)', display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <Upload size={15} />Drop to attach
               </span>
             </div>
@@ -3107,7 +3107,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ activeProjectId = 'default', widt
                   <a
                     href="/admin"
                     style={{
-                      color: 'var(--studio-blue, #5873df)',
+                      color: 'var(--studio-blue, #4F46E5)',
                       textDecoration: 'underline',
                       fontWeight: 600,
                       fontSize: '11px',

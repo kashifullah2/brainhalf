@@ -102,7 +102,7 @@
 :root[data-theme='dark'] .category-workflow { --tile-start: #37344a; --tile-end: #2b2d3b; --tile-ink: #c9bfdf; }
 :root[data-theme='dark'] .category-chat { --tile-start: #294149; --tile-end: #22333c; --tile-ink: #afcfd5; }
 :root[data-theme='dark'] .category-forms { --tile-start: #42382f; --tile-end: #352e2c; --tile-ink: #ddc1ab; }
-:root[data-theme='dark'] .category-app { --tile-start: #333333; --tile-end: #292929; --tile-ink: #c7c7c7; }
+:root[data-theme='dark'] .category-app { --tile-start: #1E293B; --tile-end: #0F172A; --tile-ink: #CBD5E1; }
 @media (max-width: 1050px) {
   .recent-projects .landing-project-card { gap: 14px; padding: 15px; }
   .recent-project-thumbnail { width: 80px; }
