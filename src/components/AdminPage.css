@@ -1147,7 +1147,51 @@
   to { background-position: -200% 0; }
 }
 
-/* Models Grid & Forms */
+/* Models Tab Layout */
+.admin-models-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-models-layout .admin-card {
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Master control — inline in built-in models card header */
+.admin-models-master-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: auto;
+}
+
+/* Custom models: form + table side by side */
+.admin-models-custom-cols {
+  display: grid;
+  grid-template-columns: minmax(280px, 400px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .admin-models-custom-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Test panel that appears inside a card (custom model test) */
+.admin-models-test-panel {
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  margin-top: 20px;
+  padding-top: 20px;
+}
+
+/* Legacy grid kept for any external references */
 .admin-models-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

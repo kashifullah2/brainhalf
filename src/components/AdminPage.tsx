@@ -1668,28 +1668,24 @@ export default function AdminPage() {
 
                 {/* TAB 3: MODELS */}
                 {tab === 'models' && (
-                  <div className="admin-models-grid">
-                    {/* Built-in Models Switch & List */}
+                  <div className="admin-models-layout">
+
+                    {/* Section 1: Built-in Models */}
                     <div className="admin-card" aria-label="Built-in BrainHalf models">
                       <div className="admin-card-head">
                         <span className="admin-stat-icon icon-brain">
                           <Brain size={17} aria-hidden="true" />
                         </span>
-                        <div>
-                          <h2>Built-in models</h2>
-                          <p>
-                            Control built-in model availability platform-wide. When the master switch is off, generations
-                            using integrated models are blocked. Custom models are unaffected.
-                          </p>
+                        <div className="admin-card-head-content">
+                          <div className="admin-card-title-row">
+                            <h2>Built-in models</h2>
+                          </div>
+                          <p>Control which integrated models are available for generation, platform-wide.</p>
                         </div>
-                      </div>
-
-                      {/* Hero Master Status Card */}
-                      <div className={`admin-master-card ${integratedEnabled ? 'is-active' : 'is-paused'}`}>
-                        <div className="admin-master-top">
+                        <div className="admin-models-master-ctrl">
                           <span className={`admin-master-status ${integratedEnabled ? 'status-active' : 'status-paused'}`}>
                             <span className="admin-status-dot" aria-hidden="true" />
-                            {integratedEnabled ? 'Platform Active' : 'Platform Paused'}
+                            {integratedEnabled ? 'On' : 'Paused'}
                           </span>
                           <button
                             type="button"
@@ -1704,19 +1700,14 @@ export default function AdminPage() {
                               {integratedToggling
                                 ? 'Updating…'
                                 : integratedEnabled
-                                  ? 'Turn off master switch'
-                                  : 'Turn on master switch'}
+                                  ? 'Turn off'
+                                  : 'Turn on'}
                             </span>
                           </button>
                         </div>
-                        <p className="admin-master-desc">
-                          {integratedEnabled
-                            ? 'All allowed built-in models are accessible in Agent Studio. Turn off to pause all integrated AI generation platform-wide.'
-                            : 'Built-in model generations are paused platform-wide. Agent Studio users will see a friendly notice until turned on.'}
-                        </p>
                       </div>
 
-                      {/* Filter & Bulk Actions Bar */}
+                      {/* Filter & Bulk Actions */}
                       <div className="admin-models-toolbar">
                         <div className="admin-models-search">
                           <Search size={13} className="admin-models-search-icon" aria-hidden="true" />
@@ -1724,7 +1715,7 @@ export default function AdminPage() {
                             type="text"
                             value={modelSearch}
                             onChange={e => setModelSearch(e.target.value)}
-                            placeholder="Filter models by name or provider…"
+                            placeholder="Filter by name or provider…"
                             aria-label="Filter models by name or provider"
                           />
                         </div>
@@ -1759,7 +1750,6 @@ export default function AdminPage() {
                             colorClass: `admin-provider-${m.provider}`,
                             desc: `${m.provider} model endpoint`,
                           };
-
                           return (
                             <div key={key} className={`admin-model-row ${isOff || !integratedEnabled ? 'is-disabled' : ''}`} role="listitem">
                               <div className="admin-model-meta">
@@ -1794,7 +1784,294 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    {/* Test Integrated Model Workbench */}
+                    {/* Section 2: Custom Models — form + table side by side */}
+                    <div className="admin-models-custom-cols">
+
+                      {/* Add Custom Model */}
+                      <div className="admin-card" aria-label="Add a custom model">
+                        <div className="admin-card-head">
+                          <span className="admin-stat-icon icon-plus">
+                            <Plus size={17} aria-hidden="true" />
+                          </span>
+                          <div>
+                            <h2>Connect custom model</h2>
+                            <p>Any OpenAI-compatible endpoint. Keys are encrypted at rest.</p>
+                          </div>
+                        </div>
+
+                        <span className="admin-chips-label admin-chips-label-spaced">Fill from provider:</span>
+                        <div className="admin-preset-chips">
+                          {PRESET_PROVIDERS.map(preset => (
+                            <button
+                              key={preset.name}
+                              type="button"
+                              className="admin-chip-btn"
+                              onClick={() => applyProviderPreset(preset)}
+                            >
+                              <Zap size={11} aria-hidden="true" /> {preset.name}
+                            </button>
+                          ))}
+                        </div>
+
+                        <form
+                          onSubmit={e => { e.preventDefault(); void saveModel(); }}
+                          autoComplete="off"
+                          style={{ display: 'contents' }}
+                        >
+                          <div className="admin-form-grid">
+                            <label>
+                              Base URL
+                              <input
+                                type="url"
+                                name="bh_custom_model_endpoint_url"
+                                autoComplete="off"
+                                value={modelForm.baseUrl}
+                                onChange={e => setModelForm(f => ({ ...f, baseUrl: e.target.value }))}
+                                placeholder="https://api.openai.com/v1"
+                              />
+                            </label>
+                            <label>
+                              API key
+                              <div className="admin-input-with-action">
+                                <input
+                                  type={showApiKey ? 'text' : 'password'}
+                                  name="bh_custom_model_secret_key"
+                                  autoComplete="new-password"
+                                  value={modelForm.apiKey}
+                                  onChange={e => setModelForm(f => ({ ...f, apiKey: e.target.value }))}
+                                  placeholder="sk-…"
+                                />
+                                <button
+                                  type="button"
+                                  className="admin-input-inline-btn"
+                                  onClick={() => setShowApiKey(v => !v)}
+                                  title={showApiKey ? 'Hide API key' : 'Show API key'}
+                                  aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                                >
+                                  {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                </button>
+                              </div>
+                            </label>
+                          </div>
+
+                          <div className="admin-model-entries">
+                            <p className="admin-model-entries-label">Models on this endpoint</p>
+                            {modelForm.entries.map((entry, idx) => (
+                              <div key={idx} className="admin-model-entry-row">
+                                <input
+                                  type="text"
+                                  name={`bh_model_name_${idx}`}
+                                  autoComplete="off"
+                                  value={entry.name}
+                                  onChange={e => setModelForm(f => ({ ...f, entries: f.entries.map((en, i) => i === idx ? { ...en, name: e.target.value } : en) }))}
+                                  placeholder="Display name"
+                                />
+                                <input
+                                  type="text"
+                                  name={`bh_model_id_${idx}`}
+                                  autoComplete="off"
+                                  value={entry.modelId}
+                                  onChange={e => setModelForm(f => ({ ...f, entries: f.entries.map((en, i) => i === idx ? { ...en, modelId: e.target.value } : en) }))}
+                                  placeholder="Model ID"
+                                />
+                                {modelForm.entries.length > 1 && (
+                                  <button
+                                    type="button"
+                                    className="admin-input-inline-btn"
+                                    onClick={() => setModelForm(f => ({ ...f, entries: f.entries.filter((_, i) => i !== idx) }))}
+                                    title="Remove this model"
+                                    aria-label="Remove model entry"
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              className="admin-btn-ghost"
+                              onClick={() => setModelForm(f => ({ ...f, entries: [...f.entries, { name: '', modelId: '' }] }))}
+                            >
+                              <Plus size={13} aria-hidden="true" /> Add another model
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn-primary admin-btn-start"
+                            onClick={saveModel}
+                            disabled={modelSaving}
+                          >
+                            {modelSaving ? (
+                              <Loader2 size={14} className="admin-spin" aria-hidden="true" />
+                            ) : (
+                              <Plus size={14} aria-hidden="true" />
+                            )}
+                            <span>Save model</span>
+                          </button>
+                        </form>
+                      </div>
+
+                      {/* Custom Models Table */}
+                      <div className="admin-card" aria-label="Configured custom models">
+                        <div className="admin-card-head">
+                          <span className="admin-stat-icon icon-brain">
+                            <FileCode2 size={17} aria-hidden="true" />
+                          </span>
+                          <div>
+                            <h2>
+                              Custom models{' '}
+                              <span className="admin-tab-count">{models.length}</span>
+                            </h2>
+                            <p>Configured OpenAI-compatible endpoint connections.</p>
+                          </div>
+                        </div>
+
+                        <div className="admin-table-wrap">
+                          <table className="admin-table">
+                            <thead>
+                              <tr>
+                                <th>Model</th>
+                                <th>Base URL</th>
+                                <th>Model ID</th>
+                                <th className="th-actions">
+                                  <span className="admin-sr">Actions</span>
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {models.map(m => (
+                                <tr key={m.id} className="admin-table-row">
+                                  <td>
+                                    <div className="admin-model-cell-name">
+                                      <strong>{m.name}</strong>
+                                      <span className="admin-provider-pill admin-provider-custom">Custom</span>
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <div className="admin-model-cell-url">
+                                      <span className="admin-mono">{m.baseUrl}</span>
+                                      <button
+                                        type="button"
+                                        className="admin-copy-btn"
+                                        onClick={() => {
+                                          void copyToClipboard(m.baseUrl);
+                                          setCopiedModelUrl(m.id);
+                                          setTimeout(() => setCopiedModelUrl(null), 2000);
+                                        }}
+                                        title={copiedModelUrl === m.id ? 'Copied URL!' : 'Copy base URL'}
+                                        aria-label={`Copy URL for ${m.name}`}
+                                      >
+                                        {copiedModelUrl === m.id ? <Check size={12} /> : <Copy size={12} />}
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="admin-mono">{m.modelId}</td>
+                                  <td className="td-actions">
+                                    <div className="admin-actions">
+                                      <button
+                                        type="button"
+                                        className={`admin-action-pill-btn ${disabledModels.includes(m.id) ? '' : 'active-btn'}`}
+                                        title={disabledModels.includes(m.id) ? `Enable ${m.name}` : `Disable ${m.name}`}
+                                        aria-label={disabledModels.includes(m.id) ? `Enable ${m.name}` : `Disable ${m.name}`}
+                                        onClick={() => void toggleSingleModel(m.id)}
+                                      >
+                                        <Power size={12} aria-hidden="true" />
+                                        <span>{disabledModels.includes(m.id) ? 'Off' : 'On'}</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="admin-action-pill-btn test-btn"
+                                        title={`Test ${m.name}`}
+                                        aria-label={`Test ${m.name}`}
+                                        onClick={() => { setTestModelId(m.id); setTestOutput(''); }}
+                                      >
+                                        <Play size={12} aria-hidden="true" />
+                                        <span>Test</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="admin-action-pill-btn danger-btn"
+                                        title={`Remove ${m.name}`}
+                                        aria-label={`Remove ${m.name}`}
+                                        onClick={() => deleteModel(m.id)}
+                                        disabled={working}
+                                      >
+                                        <Trash2 size={12} aria-hidden="true" />
+                                        <span>Remove</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                              {models.length === 0 && (
+                                <tr>
+                                  <td colSpan={4} className="admin-empty">
+                                    No custom models yet. Connect one using the form.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Custom model test playground — appears inside this card when active */}
+                        {testModelId && (() => {
+                          const model = models.find(m => m.id === testModelId);
+                          return model ? (
+                            <div className="admin-models-test-panel">
+                              <div className="admin-card-head">
+                                <span className="admin-stat-icon icon-play">
+                                  <Play size={17} aria-hidden="true" />
+                                </span>
+                                <div>
+                                  <h2>Test {model.name}</h2>
+                                  <p>Direct streaming generation test.</p>
+                                </div>
+                              </div>
+                              <label className="admin-test-label">
+                                Prompt
+                                <textarea
+                                  value={testPrompt}
+                                  onChange={e => setTestPrompt(e.target.value)}
+                                  placeholder="Describe what to generate…"
+                                  rows={3}
+                                />
+                              </label>
+                              <div className="admin-playground-actions">
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn-primary"
+                                  onClick={() => testModel(model.id)}
+                                  disabled={testRunning}
+                                >
+                                  {testRunning ? (
+                                    <Loader2 size={14} className="admin-spin" aria-hidden="true" />
+                                  ) : (
+                                    <Play size={14} aria-hidden="true" />
+                                  )}
+                                  <span>{testRunning ? 'Generating…' : 'Stream generation'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="admin-btn admin-btn-ghost"
+                                  onClick={() => { setTestModelId(null); setTestOutput(''); }}
+                                >
+                                  Close playground
+                                </button>
+                              </div>
+                              {testOutput && (
+                                <pre className="admin-test-output" aria-live="polite">
+                                  {testOutput}
+                                </pre>
+                              )}
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Section 3: Integrated Model Test Playground */}
                     <div className="admin-card" aria-label="Test a built-in model">
                       <div className="admin-card-head">
                         <span className="admin-stat-icon icon-play">
@@ -1802,7 +2079,7 @@ export default function AdminPage() {
                         </span>
                         <div>
                           <h2>Integrated model playground</h2>
-                          <p>Run latency, throughput, and generation benchmarks directly against live models.</p>
+                          <p>Run latency, throughput, and generation benchmarks against live integrated models.</p>
                         </div>
                       </div>
 
@@ -1828,7 +2105,6 @@ export default function AdminPage() {
                         </label>
                       </div>
 
-                      {/* Quick Prompt Chips */}
                       <span className="admin-chips-label">Quick benchmark prompts:</span>
                       <div className="admin-preset-chips">
                         {BENCHMARK_PROMPTS.map(p => (
@@ -1887,286 +2163,6 @@ export default function AdminPage() {
                       )}
                     </div>
 
-                    {/* Add Custom Model */}
-                    <div className="admin-card" aria-label="Add a custom model">
-                      <div className="admin-card-head">
-                        <span className="admin-stat-icon icon-plus">
-                          <Plus size={17} aria-hidden="true" />
-                        </span>
-                        <div>
-                          <h2>Connect custom model</h2>
-                          <p>
-                            Plug in any OpenAI-compatible inference endpoint. Keys are encrypted at rest with unlimited
-                            test tokens.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Quick Presets */}
-                      <span className="admin-chips-label admin-chips-label-spaced">Fill from provider preset:</span>
-                      <div className="admin-preset-chips">
-                        {PRESET_PROVIDERS.map(preset => (
-                          <button
-                            key={preset.name}
-                            type="button"
-                            className="admin-chip-btn"
-                            onClick={() => applyProviderPreset(preset)}
-                          >
-                            <Zap size={11} aria-hidden="true" /> {preset.name}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Form with autofill prevention */}
-                      <form
-                        onSubmit={e => { e.preventDefault(); void saveModel(); }}
-                        autoComplete="off"
-                        style={{ display: 'contents' }}
-                      >
-                        <div className="admin-form-grid">
-                          <label>
-                            Base URL
-                            <input
-                              type="url"
-                              name="bh_custom_model_endpoint_url"
-                              autoComplete="off"
-                              value={modelForm.baseUrl}
-                              onChange={e => setModelForm(f => ({ ...f, baseUrl: e.target.value }))}
-                              placeholder="https://api.openai.com/v1"
-                            />
-                          </label>
-                          <label>
-                            API key
-                            <div className="admin-input-with-action">
-                              <input
-                                type={showApiKey ? 'text' : 'password'}
-                                name="bh_custom_model_secret_key"
-                                autoComplete="new-password"
-                                value={modelForm.apiKey}
-                                onChange={e => setModelForm(f => ({ ...f, apiKey: e.target.value }))}
-                                placeholder="sk-…"
-                              />
-                              <button
-                                type="button"
-                                className="admin-input-inline-btn"
-                                onClick={() => setShowApiKey(v => !v)}
-                                title={showApiKey ? 'Hide API key' : 'Show API key'}
-                                aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
-                              >
-                                {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                              </button>
-                            </div>
-                          </label>
-                        </div>
-
-                        {/* Per-model entries: multiple models can share one base URL + API key */}
-                        <div className="admin-model-entries">
-                          <p className="admin-model-entries-label">Models on this endpoint</p>
-                          {modelForm.entries.map((entry, idx) => (
-                            <div key={idx} className="admin-model-entry-row">
-                              <input
-                                type="text"
-                                name={`bh_model_name_${idx}`}
-                                autoComplete="off"
-                                value={entry.name}
-                                onChange={e => setModelForm(f => ({ ...f, entries: f.entries.map((en, i) => i === idx ? { ...en, name: e.target.value } : en) }))}
-                                placeholder="Display name (e.g. GPT-4o)"
-                              />
-                              <input
-                                type="text"
-                                name={`bh_model_id_${idx}`}
-                                autoComplete="off"
-                                value={entry.modelId}
-                                onChange={e => setModelForm(f => ({ ...f, entries: f.entries.map((en, i) => i === idx ? { ...en, modelId: e.target.value } : en) }))}
-                                placeholder="Model ID (e.g. gpt-4o)"
-                              />
-                              {modelForm.entries.length > 1 && (
-                                <button
-                                  type="button"
-                                  className="admin-input-inline-btn"
-                                  onClick={() => setModelForm(f => ({ ...f, entries: f.entries.filter((_, i) => i !== idx) }))}
-                                  title="Remove this model"
-                                  aria-label="Remove model entry"
-                                >
-                                  <X size={13} />
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                          <button
-                            type="button"
-                            className="admin-btn-ghost"
-                            onClick={() => setModelForm(f => ({ ...f, entries: [...f.entries, { name: '', modelId: '' }] }))}
-                          >
-                            <Plus size={13} aria-hidden="true" /> Add another model
-                          </button>
-                        </div>
-
-                        <button
-                          type="button"
-                          className="admin-btn admin-btn-primary admin-btn-start"
-                          onClick={saveModel}
-                          disabled={modelSaving}
-                        >
-                          {modelSaving ? (
-                            <Loader2 size={14} className="admin-spin" aria-hidden="true" />
-                          ) : (
-                            <Plus size={14} aria-hidden="true" />
-                          )}
-                          <span>Save model configuration</span>
-                        </button>
-                      </form>
-                    </div>
-
-                    {/* Custom Models Table */}
-                    <div className="admin-models-table-wrap">
-                      <div className="admin-table-bar admin-models-table-bar">
-                        <h2>
-                          Custom models <span className="admin-count-pill">{models.length}</span>
-                        </h2>
-                      </div>
-                      <div className="admin-table-wrap">
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Model</th>
-                              <th>Base URL</th>
-                              <th>Model ID</th>
-                              <th className="th-actions">
-                                <span className="admin-sr">Actions</span>
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {models.map(m => (
-                              <tr key={m.id} className="admin-table-row">
-                                <td>
-                                  <div className="admin-model-cell-name">
-                                    <strong>{m.name}</strong>
-                                    <span className="admin-provider-pill admin-provider-custom">Custom</span>
-                                  </div>
-                                </td>
-                                <td>
-                                  <div className="admin-model-cell-url">
-                                    <span className="admin-mono">{m.baseUrl}</span>
-                                    <button
-                                      type="button"
-                                      className="admin-copy-btn"
-                                      onClick={() => {
-                                        void copyToClipboard(m.baseUrl);
-                                        setCopiedModelUrl(m.id);
-                                        setTimeout(() => setCopiedModelUrl(null), 2000);
-                                      }}
-                                      title={copiedModelUrl === m.id ? 'Copied URL!' : 'Copy base URL'}
-                                      aria-label={`Copy URL for ${m.name}`}
-                                    >
-                                      {copiedModelUrl === m.id ? <Check size={12} /> : <Copy size={12} />}
-                                    </button>
-                                  </div>
-                                </td>
-                                <td className="admin-mono">{m.modelId}</td>
-                                <td className="td-actions">
-                                  <div className="admin-actions">
-                                    <button
-                                      type="button"
-                                      className={`admin-action-pill-btn ${disabledModels.includes(m.id) ? '' : 'active-btn'}`}
-                                      title={disabledModels.includes(m.id) ? `Enable ${m.name}` : `Disable ${m.name}`}
-                                      aria-label={disabledModels.includes(m.id) ? `Enable ${m.name}` : `Disable ${m.name}`}
-                                      onClick={() => void toggleSingleModel(m.id)}
-                                    >
-                                      <Power size={12} aria-hidden="true" />
-                                      <span>{disabledModels.includes(m.id) ? 'Off' : 'On'}</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="admin-action-pill-btn test-btn"
-                                      title={`Test ${m.name}`}
-                                      aria-label={`Test ${m.name}`}
-                                      onClick={() => { setTestModelId(m.id); setTestOutput(''); }}
-                                    >
-                                      <Play size={12} aria-hidden="true" />
-                                      <span>Test</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="admin-action-pill-btn danger-btn"
-                                      title={`Remove ${m.name}`}
-                                      aria-label={`Remove ${m.name}`}
-                                      onClick={() => deleteModel(m.id)}
-                                      disabled={working}
-                                    >
-                                      <Trash2 size={12} aria-hidden="true" />
-                                      <span>Remove</span>
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                            {models.length === 0 && (
-                              <tr>
-                                <td colSpan={4} className="admin-empty">
-                                  No custom models configured yet. Connect one using the form above.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Custom Model Playground */}
-                    {testModelId && (() => {
-                      const model = models.find(m => m.id === testModelId);
-                      return model ? (
-                        <div className="admin-card admin-card-full" aria-label={`Test ${model.name}`}>
-                          <div className="admin-card-head">
-                            <span className="admin-stat-icon icon-play">
-                              <Play size={17} aria-hidden="true" />
-                            </span>
-                            <div>
-                              <h2>Test {model.name}</h2>
-                              <p>Direct unthrottled streaming generation test against custom endpoint.</p>
-                            </div>
-                          </div>
-                          <label className="admin-test-label">
-                            Prompt
-                            <textarea
-                              value={testPrompt}
-                              onChange={e => setTestPrompt(e.target.value)}
-                              placeholder="Describe what to generate…"
-                              rows={3}
-                            />
-                          </label>
-                          <div className="admin-playground-actions">
-                            <button
-                              type="button"
-                              className="admin-btn admin-btn-primary"
-                              onClick={() => testModel(model.id)}
-                              disabled={testRunning}
-                            >
-                              {testRunning ? (
-                                <Loader2 size={14} className="admin-spin" aria-hidden="true" />
-                              ) : (
-                                <Play size={14} aria-hidden="true" />
-                              )}
-                              <span>{testRunning ? 'Generating response…' : 'Stream generation'}</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="admin-btn admin-btn-ghost"
-                              onClick={() => { setTestModelId(null); setTestOutput(''); }}
-                            >
-                              Close playground
-                            </button>
-                          </div>
-                          {testOutput && (
-                            <pre className="admin-test-output" aria-live="polite">
-                              {testOutput}
-                            </pre>
-                          )}
-                        </div>
-                      ) : null;
-                    })()}
                   </div>
                 )}
 

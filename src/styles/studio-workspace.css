@@ -3,6 +3,11 @@
   font-family: var(--font-sans);
   color: var(--text-primary);
   color-scheme: inherit;
+  /* Contain workspace to viewport — prevents page-level scrollbar */
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .studio-workspace button, .studio-workspace input, .studio-workspace textarea { font-family: inherit; }
 .studio-workspace button { -webkit-tap-highlight-color: transparent; }
@@ -13,7 +18,7 @@
 .studio-workspace ::-webkit-scrollbar-track { background: transparent; }
 .studio-workspace ::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 8px; border: 1px solid transparent; }
 .studio-workspace * { scrollbar-color: var(--border-medium) transparent; scrollbar-width: thin; }
-.studio-workspace .main-content { background: var(--bg-canvas); }
+.studio-workspace .main-content { background: var(--bg-canvas); flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 /* ── Unified topbar ── */
 .studio-workspace .top-nav { height: var(--header-height); min-height: var(--header-height); z-index: 100; flex-shrink: 0; padding: 0 12px; background: var(--bg-topnav); border-bottom: 1px solid var(--border-subtle); gap: 0; display: flex; align-items: center; }
 .studio-workspace .top-nav-workspace { padding: 0 10px; gap: 8px; }
