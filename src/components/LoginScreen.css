@@ -21,7 +21,7 @@
    self-contained in both light and dark mode.
    ──────────────────────────────────────────────────────────────────────────── */
 .login-screen {
-  --paper:       #F8FAFC;
+  --paper:       #FFFFFF;
   --card:        #FFFFFF;
   --card-sunk:   #F1F5F9;
   --ink:         #0F172A;
@@ -51,10 +51,10 @@
   --sh-glow:     0 22px 60px -18px rgba(79, 70, 229, 0.32);
   --focus-ring:  rgba(79, 70, 229, 0.24);
 
-  --font-display: var(--font-brand, 'Instrument Sans', system-ui, sans-serif);
-  --font-body:    var(--font-sans,  'Instrument Sans', system-ui, sans-serif);
-  --font-serif:   var(--font-editorial, 'Instrument Serif', Georgia, serif);
-  --font-mono:    'DM Mono', 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: var(--font-brand, 'Plus Jakarta Sans', system-ui, sans-serif);
+  --font-body:    var(--font-sans,  'Plus Jakarta Sans', system-ui, sans-serif);
+  --font-serif:   var(--font-brand, 'Plus Jakarta Sans', system-ui, sans-serif);
+  --font-mono:    'DM Studio Mono', ui-monospace, Consolas, monospace;
 
   --t-micro: clamp(9.5px, 0.68vw, 11px);
   --t-xs:    clamp(11px, 0.76vw, 12px);
@@ -313,9 +313,9 @@
   color: var(--ink);
 }
 .studio-auth-heading h1 em {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-style: italic;
-  font-weight: 400;
+  font-weight: 700;
   background: var(--grad-prism);
   -webkit-background-clip: text;
   background-clip: text;
