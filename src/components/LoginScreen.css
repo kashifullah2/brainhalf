@@ -163,16 +163,19 @@
   max-width: 460px;
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
-  padding: clamp(28px, 4vw, 40px) clamp(30px, 4.4vw, 44px) clamp(32px, 4.4vw, 48px);
+  overflow-x: hidden;
+  padding: clamp(24px, 3.5vw, 36px) clamp(28px, 4vw, 40px) clamp(28px, 4vw, 40px);
   background: var(--card);
   border: 1px solid var(--line-2);
   border-radius: var(--r-2xl);
   box-shadow: var(--sh-4);
   z-index: 1;
-  /* Magnetic spotlight follow — set by JS on mousemove. */
+  box-sizing: border-box;
+  scrollbar-width: none;
   --mx: 50%;
   --my: 50%;
 }
+.studio-auth-card::-webkit-scrollbar { display: none; }
 
 /* Animated conic aurora border — the centerpiece. */
 .studio-auth-card::before {
@@ -283,23 +286,23 @@
   width: 36px;
   height: 36px;
   padding: 0;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink-mute);
+  background: var(--card-sunk);
+  color: var(--ink-soft);
   cursor: pointer;
   transition: background var(--d-fast), border-color var(--d-fast), color var(--d-fast);
 }
 .studio-auth-close:hover,
 .studio-auth-theme:hover {
   background: var(--card-sunk);
-  border-color: var(--line);
+  border-color: var(--line-2);
   color: var(--ink);
 }
 
 /* ── 4 · Heading with editorial serif italic accent ──────────────────────── */
 .studio-auth-heading {
-  margin: clamp(24px, 3vw, 32px) 0 clamp(20px, 2.4vw, 26px);
+  margin: clamp(18px, 2.5vw, 24px) 0 clamp(16px, 2vw, 22px);
   position: relative;
   z-index: 3;
 }
@@ -322,7 +325,7 @@
   -webkit-text-fill-color: transparent;
 }
 .studio-auth-heading p {
-  color: var(--ink-mute);
+  color: var(--ink-soft);
   font-size: var(--t-sm);
   line-height: 1.6;
   margin: 0;
@@ -345,7 +348,7 @@
   min-height: 40px;
   border: 1px solid transparent;
   border-radius: var(--r-xs);
-  color: var(--ink-mute);
+  color: var(--ink-soft);
   background: transparent;
   font-family: var(--font-body);
   font-size: var(--t-sm);
@@ -354,7 +357,7 @@
   transition: color var(--d-fast), background var(--d-fast), box-shadow var(--d-fast);
 }
 .studio-auth-tabs button:hover:not([aria-selected='true']) {
-  color: var(--ink-soft);
+  color: var(--ink);
 }
 .studio-auth-tabs button[aria-selected='true'] {
   color: var(--ink);
@@ -375,9 +378,10 @@
   justify-content: center;
   gap: 12px;
   width: 100%;
-  min-height: 48px;
+  min-height: 46px;
   padding: 10px 16px;
   margin-bottom: 8px;
+  box-sizing: border-box;
   border: 1px solid var(--line-2);
   border-radius: var(--r-lg);
   background: var(--card);
@@ -409,11 +413,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 20px 0;
-  color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: var(--t-micro);
-  letter-spacing: 0.12em;
+  margin: 18px 0;
+  color: var(--ink-mute);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .studio-auth-divider::before,
@@ -428,7 +433,7 @@
 .studio-auth-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   position: relative;
   z-index: 3;
 }
@@ -440,16 +445,17 @@
 .studio-auth-field input,
 .studio-auth-field textarea {
   width: 100%;
-  min-height: 56px;
-  padding: 24px 14px 8px;
+  min-height: 50px;
+  padding: 22px 14px 8px;
   border: 1px solid var(--line-2);
   border-radius: var(--r-md);
   background: var(--card-sunk);
   color: var(--ink);
   font-family: var(--font-body);
-  font-size: var(--t-md);
+  font-size: var(--t-base);
   line-height: 1.4;
   outline: none;
+  box-sizing: border-box;
   transition: border-color var(--d-fast), box-shadow var(--d-fast), background var(--d-fast);
 }
 .studio-auth-field input::placeholder,
@@ -466,9 +472,9 @@
 .studio-auth-field > label {
   position: absolute;
   left: 14px;
-  top: 18px;
-  color: var(--ink-faint);
-  font-size: var(--t-md);
+  top: 16px;
+  color: var(--ink-mute);
+  font-size: var(--t-base);
   font-weight: 500;
   pointer-events: none;
   z-index: 1;
@@ -491,7 +497,7 @@
 /* Password field (has-peek) uses a static label-row above the input,
    not a floating label — so it needs its own block formatting. */
 .studio-auth-field.has-peek { padding-top: 0; }
-.studio-auth-field.has-peek input { padding-right: 48px; padding-top: 14px; padding-bottom: 14px; min-height: 52px; }
+.studio-auth-field.has-peek input { padding-right: 48px; padding-top: 13px; padding-bottom: 13px; min-height: 48px; }
 .studio-auth-field.has-peek > .studio-auth-labelrow {
   position: relative;
   display: flex;
@@ -518,14 +524,14 @@
 }
 /* Password input uses real placeholder text since label is static. */
 .studio-auth-field.has-peek input::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-mute);
   opacity: 1;
 }
 
 .studio-auth-peek {
   position: absolute;
-  right: 6px;
-  bottom: 8px;
+  right: 8px;
+  bottom: 6px;
   display: grid;
   place-items: center;
   width: 36px;
@@ -550,7 +556,7 @@
   padding: 2px 0;
   color: var(--violet);
   font-family: var(--font-body);
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
@@ -606,9 +612,10 @@
   justify-content: center;
   gap: 10px;
   width: 100%;
-  min-height: 52px;
-  margin-top: 4px;
+  min-height: 48px;
+  margin-top: 2px;
   padding: 12px 16px;
+  box-sizing: border-box;
   border: 0;
   border-radius: var(--r-md);
   background: var(--grad-prism);
